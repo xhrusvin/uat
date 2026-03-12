@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Xpress GP Registration</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #fff4e8;
+            font-family: 'Montserrat', Arial, sans-serif;
+            color: #333333;
+            line-height: 1.6;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header img {
+            height: 70px;
+            width: auto;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        h1 {
+            color: #0066cc;
+            font-size: 28px;
+            margin: 0 0 10px 0;
+            font-weight: 700;
+            text-align: center;
+        }
+        .alert-badge {
+            display: inline-block;
+            background-color: #5921cf;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        .details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+            font-size: 16px;
+        }
+        .details-table th {
+            text-align: left;
+            padding: 12px 15px;
+            background-color: #f8f9fa;
+            color: #333;
+            font-weight: 600;
+            width: 180px;
+            border-bottom: 2px solid #5921cf;
+        }
+        .details-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .highlight {
+            background-color: #f0f8ff;
+        }
+        .health-concern {
+            background-color: #fff8e1;
+            padding: 20px;
+            border-left: 5px solid #ff9800;
+            border-radius: 0 8px 8px 0;
+            margin: 25px 0;
+        }
+        .health-concern strong {
+            color: #ff9800;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 25px;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        .footer a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+        <tr>
+            <td align="center">
+                <table class="email-container" cellpadding="0" cellspacing="0" role="presentation">
+                    <!-- Header -->
+                    <tr>
+                        <td class="header">
+                            <img src="https://expresshealth.ie/static/image/custom.png" alt="Xpress GP Logo">
+                        </td>
+                    </tr>
+
+                    <!-- Main Content -->
+                    <tr>
+                        <td class="content">
+                            <h1>Online Appointment Booking Received</h1>
+                            <div style="text-align: center;">
+                                <span class="alert-badge">New Xpress GP Appointment Booking</span>
+                                <br><span><font color="gray">{{ current_time.strftime("%d %B %Y at %I:%M %p") }}</font></span>
+                            </div>
+
+                            <table class="details-table">
+                                <tr class="highlight">
+                                    <th>Requested Appointment</th>
+                                    <td><strong>{{ appointment_info }}</strong></td>
+                                </tr>
+                                <tr>
+                                    <th>Xpress GP Registration ID</th>
+                                    <td>{{ registration_id_input or "Not provided" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Reference ID</th>
+                                    <td><code>{{ reference_id }}</code></td>
+                                </tr>
+                                <tr class="highlight">
+                                    <th>Full Name</th>
+                                    <td>{{ full_name }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Date of Birth</th>
+                                    <td>{{ dob }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Phone Number</th>
+                                    <td>{{ phone }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Email Address</th>
+                                    <td>{{ email }}</td>
+                                </tr>
+                                <tr>
+                                    <th>PPS Number</th>
+                                    <td>{{ pps_number }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Follow-up Consultation</th>
+                                    <td>{{ followup }}</td>
+                                </tr>
+                            </table>
+
+                            <div class="health-concern">
+                                <p><strong>Health Concern / Reason for Contact:</strong></p>
+                                <p>{{ health_concern | replace("\n", "<br>") | safe }}</p>
+                            </div>
+
+                            <p style="text-align: center; color: #666; font-size: 14px;">
+                                This appointment booking was submitted on {{ "now" | strftime("%d %B %Y at %H:%M") }}.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td class="footer">
+                            <p>&copy; {{ current_year }} Xpress GP | Part of Xpress Health</p>
+                            <p>
+                                <a href="https://www.xpressgp.ie">www.xpressgp.ie</a> 
+                                | Email: <a href="mailto:info@xpressgp.ie">info@xpressgp.ie</a>
+                            </p>
+                            <p style="font-size:12px; color:#999; margin-top:20px;">
+                                Automated notification • Do not reply to this email
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Professional Reference Request – Xpress Health</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        .header {
+            background-color: #eef3f7;
+            padding: 30px;
+            text-align: center;
+        }
+        .header img {
+            max-width: 220px;
+            height: auto;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        h3 {
+            color: #007bff;
+            margin-top: 0;
+        }
+        .highlight-note {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 25px 0;
+            border-left: 4px solid #007bff;
+        }
+        ul {
+            margin: 20px 0;
+            padding-left: 20px;
+        }
+        ul li {
+            margin-bottom: 12px;
+        }
+        a {
+            color: #007bff;
+            text-decoration: underline;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 25px;
+            text-align: center;
+            font-size: 12px;
+            color: #666666;
+        }
+    </style>
+</head>
+
+<body>
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4; padding:20px 0;">
+<tr>
+<td align="center">
+
+<table class="container" cellpadding="0" cellspacing="0">
+
+<!-- Header -->
+<tr>
+<td class="header" align="center">
+    <img src="https://expresshealth.ie/static/image/logo.png" alt="Xpress Health Logo">
+</td>
+</tr>
+
+<!-- Content -->
+<tr>
+<td class="content">
+
+<h3>Hello {{ first_name }},</h3>
+
+<p>
+We recently attempted to contact you regarding a <strong>professional reference check</strong> for
+<strong>{{ first_name }} {{ last_name }}</strong>, who has listed you as a professional referee as part of their
+onboarding process with Xpress Health.
+</p>
+
+<p>
+We recently sent you an email and also attempted to contact you by phone, we kindly request that you complete the reference online
+using the secure link below. The process should take no more than <strong>2–3 minutes</strong>.
+</p>
+
+<p>
+👉 <strong>Complete the professional reference here:</strong><br>
+<a href="">Click here to complete the reference</a>
+</p>
+
+<p>
+The form will ask you to confirm:
+<ul>
+    <li>Your professional working relationship with {{ candidate_name }}</li>
+    <li>Any safeguarding concerns, if applicable</li>
+    <li>Their suitability and performance in the role of <strong>{{ designation }}</strong></li>
+</ul>
+
+<p>
+Your response will be treated as strictly confidential and is essential for completing the
+onboarding process.
+</p>
+
+<p>
+If you have any questions or require assistance, please feel free to reply to this email.
+</p>
+
+<p>
+Kind regards,<br>
+<strong>Xpress Health – Compliance Team</strong>
+</p>
+
+</td>
+</tr>
+
+<!-- Footer -->
+<tr>
+<td class="footer">
+    <p>Xpress Health | Ireland's Trusted Healthcare Staffing Platform</p>
+    <p>&copy; {{ current_year }} Xpress Health. All rights reserved.</p>
+</td>
+</tr>
+
+</table>
+
+</td>
+</tr>
+</table>
+</body>
+</html>

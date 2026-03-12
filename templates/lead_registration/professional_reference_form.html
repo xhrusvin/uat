@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Professional Reference Form - Xpress Health</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <style>
+    /* Existing styles remain unchanged */
+    body {
+      font-family: Inter, Arial, sans-serif;
+      background: #f5f7fb;
+      margin: 0;
+      color: #333;
+    }
+
+    .register-container {
+      display: flex;
+      min-height: 80vh;
+    }
+
+    .left-panel {
+      flex: 1;
+      background: #eaf2ff;
+      padding: 60px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .left-content {
+      max-width: 400px;
+    }
+
+    .logo {
+      width: 280px;
+      margin-bottom: 40px;
+      display: block;
+    }
+
+    .left-panel h2 {
+      color: #397eff;
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0 0 12px 0;
+    }
+
+    .left-panel p {
+      color: #555;
+      font-size: 16px;
+      margin-top: 0;
+      line-height: 1.5;
+    }
+
+    .right-panel {
+      flex: 1.2;
+      background: #fff;
+      padding: 20px 80px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .right-panel h1 {
+      margin-bottom: 20px;
+      color: #222;
+      font-size: 28px;
+      font-weight: 600;
+    }
+
+    label {
+      display: block;
+      font-weight: 500;
+      margin-top: 20px;
+      margin-bottom: 8px;
+      color: #333;
+      font-size: 15px;
+    }
+
+    select, textarea {
+      width: 100%;
+      padding: 14px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background-color: #f9fafb;
+      font-size: 14px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+
+    select:focus, textarea:focus {
+      outline: none;
+      border-color: #397eff;
+      box-shadow: 0 0 0 3px rgba(57, 126, 255, 0.1);
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      background: #397eff;
+      color: white;
+      border: none;
+      margin-top: 30px;
+      font-weight: 500;
+      padding: 14px;
+      cursor: pointer;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: background-color 0.2s ease;
+    }
+
+    button[type="submit"]:hover {
+      background: #285edb;
+    }
+
+    .login-link {
+      margin-top: 30px;
+      font-size: 14px;
+      color: #555;
+      text-align: center;
+    }
+
+    .login-link a {
+      color: #397eff;
+      text-decoration: none;
+    }
+
+    .login-link a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 600px) {
+      .register-container {
+        flex-direction: column;
+      }
+
+      .left-panel, .right-panel {
+        flex: none;
+        padding: 40px 20px;
+      }
+
+      .left-content {
+        max-width: none;
+        align-items: center;
+        text-align: center;
+      }
+    }
+
+    /* Styles for editable details */
+    .details-box {
+      background: #f9fafb;
+      padding: 20px;
+      border-radius: 8px;
+      position: relative;
+    }
+
+    .details-box p {
+      margin: 10px 0;
+      display: flex;
+      align-items: center;
+    }
+
+    .details-box strong {
+      width: 120px;
+      flex-shrink: 0;
+    }
+
+    .details-box span.value {
+      flex: 1;
+    }
+
+    .details-box input.edit-input {
+      flex: 1;
+      display: none;
+      width: auto;
+      margin: 0;
+      padding: 8px;
+    }
+
+    .details-box.editing input.edit-input {
+      display: block;
+    }
+
+    .details-box.editing span.value {
+      display: none;
+    }
+
+    .edit-btn {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: #397eff;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      z-index: 10;
+    }
+
+    .edit-btn:hover {
+      background: #285edb;
+    }
+
+    .save-btn, .cancel-btn {
+      background: #397eff;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 10px;
+      font-size: 12px;
+    }
+
+    .cancel-btn {
+      background: #6b7280;
+    }
+
+    #editActions {
+      margin-top: 20px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="register-container">
+    <!-- Left Panel -->
+    <div class="left-panel">
+      <div class="left-content" align="center">
+        <img src="{{ url_for('static', filename='image/login-cover-1.png') }}" alt="Xpress Health Illustration" class="logo">
+        
+        <h2>Xpress Health - Reference Check for {{ first_name }} {{ last_name }}</h2>
+        <p>Confirm details of candidates</p>
+      </div>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="right-panel">
+      <h1>Reference Check for {{ first_name }} {{ last_name }}</h1>
+
+      <div class="details-box" id="detailsBox">
+        <p><strong>Name:</strong> <span class="value" id="firstNameValue">{{ first_name }} {{ last_name }}</span><input type="text" class="edit-input" id="firstNameInput" value="{{ first_name }}"></p>
+        <p><strong>Phone:</strong> <span class="value" id="dialCodeValue">+353 {{ phone_number }}</span><input type="text" class="edit-input" id="dialCodeInput" value="+353" readonly></p>
+        <p><strong>Email:</strong> <span class="value" id="emailValue">{{ email }}</span><input type="email" class="edit-input" id="emailInput" value="{{ email }}"></p>
+      
+       
+      </div>
+
+      <!-- Reference Form -->
+      <form id="referenceForm">
+        <label for="workedDuration">
+          Can you confirm that you have worked with {{ first_name }} {{ last_name }} for more than 3 months?
+        </label>
+        <select id="workedDuration" name="workedDuration" required>
+          <option value="">Please select</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+
+        <label for="safeguardingIssues">
+          Are you aware of any safeguarding issues with {{ first_name }} {{ last_name }}?
+        </label>
+        <select id="safeguardingIssues" name="safeguardingIssues" required>
+          <option value="">Please select</option>
+          <option value="no">No</option>
+          <option value="yes">Yes</option>
+        </select>
+
+        <label for="sufficientSkills">
+          Do you think {{ first_name }} {{ last_name }} has the sufficient skills to work as a Healthcare Assistant?
+        </label>
+        <select id="sufficientSkills" name="sufficientSkills" required>
+          <option value="">Please select</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+
+        <label for="performanceRating">
+          How would you rate {{ first_name }} {{ last_name }}'s performance working as a Healthcare Assistant?
+        </label>
+        <select id="performanceRating" name="performanceRating" required>
+          <option value="">Please select</option>
+          <option value="excellent">Excellent</option>
+          <option value="good">Good</option>
+          <option value="average">Average</option>
+          <option value="below_average">Below Average</option>
+          <option value="poor">Poor</option>
+        </select>
+
+        <button type="submit">Submit Reference</button>
+      </form>
+
+     
+    </div>
+  </div>
+
+  <script>
+    // Edit functionality
+    const detailsBox = document.getElementById('detailsBox');
+    const editButton = document.getElementById('editButton');
+    const saveButton = document.getElementById('saveButton');
+    const cancelButton = document.getElementById('cancelButton');
+    const editActions = document.getElementById('editActions');
+
+    editButton.addEventListener('click', () => {
+      detailsBox.classList.add('editing');
+      editButton.style.display = 'none';
+      editActions.style.display = 'block';
+    });
+
+    cancelButton.addEventListener('click', () => {
+      detailsBox.classList.remove('editing');
+      editButton.style.display = 'block';
+      editActions.style.display = 'none';
+      
+      document.getElementById('firstNameInput').value = document.getElementById('firstNameValue').textContent.trim();
+      document.getElementById('lastNameInput').value = document.getElementById('lastNameValue').textContent.trim();
+      document.getElementById('phoneInput').value = document.getElementById('phoneValue').textContent.trim();
+      document.getElementById('emailInput').value = document.getElementById('emailValue').textContent.trim();
+    });
+
+    saveButton.addEventListener('click', () => {
+      document.getElementById('firstNameValue').textContent = document.getElementById('firstNameInput').value.trim();
+      document.getElementById('lastNameValue').textContent = document.getElementById('lastNameInput').value.trim() || '';
+      document.getElementById('phoneValue').textContent = document.getElementById('phoneInput').value.trim();
+      document.getElementById('emailValue').textContent = document.getElementById('emailInput').value.trim();
+
+      detailsBox.classList.remove('editing');
+      editButton.style.display = 'block';
+      editActions.style.display = 'none';
+    });
+
+    // Placeholder for reference form submission
+    document.getElementById('referenceForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      alert('Reference submitted successfully!'); // Replace with actual API logic
+    });
+  </script>
+</body>
+</html>

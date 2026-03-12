@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xpress GP Registration - Xpress Health</title>
+    
+    <!-- Google Fonts: Montserrat -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Parsley.js for client-side validation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/parsley.js/2.9.2/parsley.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/parsley.js/2.9.2/parsley.css">
+
+    <style>
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: #fff4e8;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .logo-section img {
+            height: 80px;
+            width: auto;
+        }
+        h1 {
+            color: #0066cc;
+            text-align: center;
+            font-weight: 700;
+            font-size: 32px;
+            margin-bottom: 30px;
+        }
+        .section-title {
+            color: #0066cc;
+            font-weight: 600;
+            font-size: 20px;
+            margin: 30px 0 15px;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 8px;
+        }
+        .form-group {
+            margin-bottom: 25px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        input[type="text"],
+        input[type="email"],
+        input[type="tel"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            font-family: 'Montserrat', sans-serif;
+            box-sizing: border-box;
+        }
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #5921cf;
+            box-shadow: 0 0 0 3px rgba(89, 33, 207, 0.2);
+        }
+        .dob-group {
+            display: flex;
+            gap: 15px;
+        }
+        .dob-group select {
+            flex: 1;
+        }
+        .radio-group {
+            display: flex;
+            gap: 30px;
+            margin-top: 10px;
+        }
+        .radio-group label {
+            font-weight: normal;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        .radio-group input[type="radio"] {
+            margin-right: 8px;
+        }
+        .emergency-note {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            font-style: italic;
+            color: #856404;
+        }
+        .slot-info {
+            background: #e8f5e9;
+            border-left: 4px solid #43a047;
+            padding: 20px;
+            margin: 20px 0;
+            font-size: 18px;
+            text-align: center;
+            border-radius: 0 6px 6px 0;
+        }
+        .availability-note {
+            background: #e3f2fd;
+            border-left: 4px solid #0066cc;
+            padding: 20px;
+            margin: 30px 0;
+            font-size: 16px;
+            color: #0066cc;
+            border-radius: 0 6px 6px 0;
+        }
+        button {
+            background: #5921cf;
+            color: white;
+            padding: 16px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #4719b0;
+        }
+        button:disabled {
+            background: #aaa;
+            cursor: not-allowed;
+        }
+        .flash {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+        .flash.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .flash.error   { background: #f8d7da; color: #721c24; border: 1px solid #f1b0b7; }
+        .flash.warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+        }
+        .modal-content h2 {
+            color: #d32f2f;
+            margin-bottom: 20px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .form-disabled {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Logo -->
+    <div class="logo-section">
+        <img src="https://expresshealth.ie/static/image/custom.png" alt="Xpress GP Logo">
+    </div>
+
+    <h1>Xpress GP Appointment Booking</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Display selected slot if passed via URL -->
+    {% if slot_date or slot_time %}
+    <div class="slot-info">
+        <strong>Requested Appointment:</strong><br>
+        {{ slot_date }} at {{ slot_time }}
+    </div>
+    {% endif %}
+
+    <form method="POST" id="registrationForm" data-parsley-validate>
+        <!-- Hidden fields to preserve slot info -->
+        <input type="hidden" name="slot_date" value="{{ slot_date or '' }}">
+        <input type="hidden" name="slot_time" value="{{ slot_time or '' }}">
+
+        <div class="form-group">
+            <label for="registration_id">Xpress GP Registration ID (if you have one)</label>
+            <input type="text"
+                   name="registration_id"
+                   id="registration_id"
+                   placeholder="e.g. XGP-2026-12345"
+                   data-parsley-maxlength="50">
+        </div>
+
+        <div class="form-group">
+            <label>Are you seeking assistance for a condition that requires emergency care? *</label>
+            <div class="radio-group">
+                <label><input type="radio" name="emergency_care" value="no" required data-parsley-required="true"> No</label>
+                <label><input type="radio" name="emergency_care" value="yes"> Yes</label>
+            </div>
+            <div class="emergency-note">
+                If yes, you are not suitable for this service. Please call <strong>999 or 112</strong> immediately for urgent emergency care.
+            </div>
+        </div>
+
+        <!-- All fields below this div will be disabled if "Yes" is selected -->
+        <div id="formContent">
+            <div class="section-title">Contact Details</div>
+
+            <div class="form-group">
+                <label for="full_name">Full Name *</label>
+                <input type="text" name="full_name" id="full_name" required data-parsley-required="true">
+            </div>
+
+            <div class="form-group">
+                <label>Date of Birth *</label>
+                <div class="dob-group">
+                    <select name="dob_day" required data-parsley-required="true">
+                        <option value="">Day</option>
+                        {% for day in range(1, 32) %}
+                            <option value="{{ '%02d' % day }}">{{ day }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="dob_month" required data-parsley-required="true">
+                        <option value="">Month</option>
+                        {% for month in range(1, 13) %}
+                            <option value="{{ '%02d' % month }}">{{ month }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="dob_year" required data-parsley-required="true">
+                        <option value="">Year</option>
+                        {% for year in range(2026, 1900, -1) %}
+                            <option value="{{ year }}">{{ year }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="phone">Registered Phone Number *</label>
+                <input type="tel"
+                       name="phone"
+                       id="phone"
+                       placeholder="+353 85 123 4567"
+                       required
+                       data-parsley-required="true"
+                       data-parsley-pattern="^[+]?[0-9\s]{10,15}$">
+            </div>
+
+            <div class="form-group">
+                <label for="email">Registered Email Address *</label>
+                <input type="email" name="email" id="email" required data-parsley-required="true" data-parsley-type="email">
+            </div>
+
+            <div class="form-group">
+                <label for="pps_number">PPS Number *</label>
+                <input type="text"
+                       name="pps_number"
+                       id="pps_number"
+                       placeholder="e.g. 1234567A"
+                       required
+                       data-parsley-required="true"
+                       data-parsley-pattern="^[0-9]{7}[A-Z]{1,2}$"
+                       data-parsley-pattern-message="PPS Number format: 7 digits followed by 1-2 letters">
+            </div>
+
+            <div class="form-group">
+                <label>Is this a follow-up consultation? *</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="followup" value="yes" required data-parsley-required="true"> Yes</label>
+                    <label><input type="radio" name="followup" value="no"> No</label>
+                </div>
+            </div>
+
+            
+
+            <div class="form-group">
+                <label for="health_concern">Describe the reason for your contact or health concern? *</label>
+                <textarea name="health_concern"
+                          id="health_concern"
+                          rows="7"
+                          placeholder="Please provide as much detail as possible..."
+                          required
+                          data-parsley-required="true"
+                          data-parsley-minlength="20"></textarea>
+            </div>
+
+            <button type="submit" id="submitBtn">Book Now</button>
+        </div>
+    </form>
+</div>
+
+<!-- Emergency Modal -->
+<div id="emergencyModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>Emergency Care Required</h2>
+        <p>You are not suitable for this service.<br><strong>Please call 999 or 112 immediately.</strong></p>
+    </div>
+</div>
+
+<script>
+    // Emergency care radio buttons handling
+    const emergencyRadios = document.querySelectorAll('input[name="emergency_care"]');
+    const formContent = document.getElementById('formContent');
+    const submitBtn = document.getElementById('submitBtn');
+    const modal = document.getElementById('emergencyModal');
+    const closeBtn = document.querySelector('.close');
+
+    emergencyRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'yes') {
+                // Show modal
+                modal.style.display = 'block';
+
+                // Disable the rest of the form
+                formContent.classList.add('form-disabled');
+                submitBtn.disabled = true;
+            } else {
+                // Hide modal if it was open
+                modal.style.display = 'none';
+
+                // Re-enable the form
+                formContent.classList.remove('form-disabled');
+                submitBtn.disabled = false;
+            }
+        });
+    });
+
+    // Close modal when clicking the X
+    closeBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+    });
+
+    // Close modal when clicking outside the modal content
+    window.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    // Optional: Customize Parsley messages
+    window.Parsley.addMessages('en', {
+        defaultMessage: "This value seems invalid.",
+        type: {
+            email: "Please enter a valid email address.",
+            url: "Please enter a valid URL.",
+            number: "Please enter a valid number.",
+            integer: "Please enter a valid integer.",
+            digits: "This field must contain digits only.",
+            alphanum: "This field must be alphanumeric."
+        },
+        notblank: "This field cannot be blank.",
+        required: "This field is required.",
+        pattern: "This value seems invalid.",
+        min: "This value should be greater than or equal to %s.",
+        max: "This value should be less than or equal to %s.",
+        range: "This value should be between %s and %s.",
+        minlength: "This field is too short. It should have %s characters or more.",
+        maxlength: "This field is too long. It should have %s characters or fewer.",
+        length: "This field length is invalid. It should be between %s and %s characters.",
+        equalto: "This value should match."
+    });
+</script>
+
+</body>
+</html>

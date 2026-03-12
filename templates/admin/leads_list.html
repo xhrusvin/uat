@@ -1,0 +1,779 @@
+{% extends "admin/base.html" %}
+{% block title %}All Leads • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">All Leads</h2>
+        <div class="d-flex gap-3 align-items-center">
+            <a href="{{ url_for('admin.leads_management') }}" class="btn btn-outline-secondary btn-sm">
+                Back to Leads Management
+            </a>
+            <span class="badge bg-primary fs-5 px-3 py-2">{{ total }} Total Leads</span>
+        </div>
+    </div>
+
+    <!-- Filters & Bulk Actions -->
+    <div class="card mb-4 border-0 shadow-sm">
+        <div class="card-body py-3">
+
+            <form method="GET" action="{{ url_for('admin.leads_list') }}" class="row g-3 mb-3 align-items-end">
+                <div class="col-lg-3 col-md-4">
+                    <input type="text" class="form-control" name="search" placeholder="Search by name, phone, email..."
+                           value="{{ search or '' }}" autofocus>
+                </div>
+                <div class="col-lg-3 col-md-4">
+                    <select class="form-select" name="status">
+                        <option value="">All Call Status</option>
+                        <option value="not_called" {% if status=='not_called' %}selected{% endif %}>Not Called</option>
+                        <option value="called" {% if status=='called' %}selected{% endif %}>No Answer</option>
+                        <option value="started" {% if status=='started' %}selected{% endif %}>Call Started</option>
+                        <option value="in_progress" {% if status=='in_progress' %}selected{% endif %}>In Progress</option>
+                        <option value="completed" {% if status=='completed' %}selected{% endif %}>Completed</option>
+                    </select>
+                </div>
+
+                <!-- NEW COUNTRY FILTER -->
+    <div class="col-lg-3 col-md-4">
+        <select class="form-select" name="country">
+            <option value="">All Countries</option>
+            <option value="1" {% if country=='1' %}selected{% endif %}>Ireland</option>
+            <option value="2" {% if country=='2' %}selected{% endif %}>United Kingdom</option>
+            <option value="3" {% if country=='3' %}selected{% endif %}>Australia</option>
+            <option value="250" {% if country=='250' %}selected{% endif %}>Other Countries</option>
+        </select>
+    </div>
+                <div class="col-lg-3 col-md-4">
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">Filter</button>
+                        <a href="{{ url_for('admin.leads_list') }}" class="btn btn-outline-secondary">Clear</a>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Bulk Actions -->
+            {% if leads %}
+            <form id="bulkActionsForm" method="POST" action="{{ url_for('admin.bulk_action') }}">
+                <div class="d-flex flex-wrap align-items-center gap-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="selectAll">
+                        <label class="form-check-label small text-muted">Select all on page</label>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" id="deleteSelectedBtn" class="btn btn-danger btn-sm" disabled>
+                            Delete Selected (<span id="selectedCount">0</span>)
+                        </button>
+                        <button type="submit" name="action" value="export_selected"
+                                id="exportSelectedBtn" class="btn btn-success btn-sm" disabled>
+                            Export Selected
+                        </button>
+                    </div>
+
+                    <div class="ms-auto">
+                        <button type="submit" name="action" value="export_all"
+                                class="btn btn-outline-success">
+                            Export All {{ total }} to Excel
+                        </button>
+                    </div>
+
+                    <small class="text-muted ms-3">
+                        <span id="selectedText">No leads selected</span>
+                    </small>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Leads Table -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-header text-white py-3"
+             style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <h5 class="mb-0">
+                All Leads
+                <span class="badge bg-light text-dark ms-2">{{ leads|length }} shown</span>
+            </h5>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-center" style="width: 50px;"><input class="form-check-input" type="checkbox" id="selectAllHeader"></th>
+                            <th>Lead</th>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>Turns</th>
+                            <th class="text-end pe-4">Uploaded</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lead in leads %}
+{% set conv = lead.conversation %}
+<tr class="lead-row" style="cursor: pointer;"
+    data-lead-id="{{ lead._id }}"
+    data-conv-id="{{ conv._id|default('') }}"
+    data-elevenlabs-id="{{ conv.elevenlabs_conversation_id|default('') }}"
+    data-phone="{{ lead.phone_number }}"
+    data-name="{{ lead.name|default('Unknown') }}"
+    data-email="{{ lead.email_id|default('') }}"
+    data-type="{{ lead.user_type|default('') }}"
+    data-location="{{ lead.location|default('') }}"
+    data-started="{{ (conv.started_at.isoformat() if conv and conv.started_at else '') }}"
+    data-ended="{{ (conv.ended_at.isoformat() if conv and conv.ended_at else 'Ongoing') }}">
+
+    <td class="text-center">
+        <input class="form-check-input lead-checkbox" type="checkbox"
+               name="lead_ids" value="{{ lead._id }}" form="bulkActionsForm">
+    </td>
+    <td>
+        <div class="avatar avatar-sm bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
+            {{ (lead.name or 'U')[0]|upper }}
+        </div>
+    </td>
+    <td class="fw-semibold">{{ lead.name or '—' }}</td>
+    <td><code class="text-primary">{{ lead.phone_number }}</code></td>
+    <td><span class="text-muted">{{ lead.email_id or '—' }}</span></td>
+    <td>{{ lead.user_type or '—' }}</td>
+    <td>
+        {% if lead.location and lead.location != '-' %}
+        <span class="badge bg-light text-dark border">{{ lead.location }}</span>
+        {% else %}—{% endif %}
+    </td>
+    <td>
+        {% if conv %}
+            {% if conv.ended_at %}
+                <span class="text-success fw-bold">Completed</span>
+            {% else %}
+                <span class="text-warning fw-bold">In Progress</span>
+            {% endif %}
+        {% elif lead.call_initiated %}
+            {% if lead.call_answered == False %}
+                <span class="text-danger fw-bold">No Answer</span>
+            {% else %}
+                <span class="text-info fw-bold">Started</span>
+            {% endif %}
+        {% else %}
+            <span class="text-secondary">Not Called</span>
+        {% endif %}
+    </td>
+    <td>
+        {% if conv and conv.turns %}
+        <span class="badge rounded-pill bg-info text-dark">{{ conv.turns|length }} turns</span>
+        {% else %}—{% endif %}
+        {% if conv and conv.started_at and conv.ended_at %}
+            {% set duration = (conv.ended_at - conv.started_at).total_seconds() %}
+            {% set minutes = (duration // 60)|int %}
+            {% set seconds = (duration % 60)|int %}
+            <span class="badge rounded-pill bg-success text-dark">
+                {{ '%d:%02d'|format(minutes, seconds) }} Min
+            </span>
+        {% elif conv and conv.started_at and not conv.ended_at %}
+            <span class="badge rounded-pill bg-warning text-dark">In Progress</span>
+        {% else %}
+            —
+        {% endif %}
+    </td>
+    <td class="text-end pe-4 small text-muted">
+        {{ lead.uploaded_at.strftime('%Y-%m-%d') }}<br>
+        <span class="text-primary fw-bold">{{ lead.uploaded_at.strftime('%H:%M') }}</span>
+    </td>
+</tr>
+{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="card-footer bg-light border-top-0">
+            <div class="d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                    Showing {{ ((page-1)*per_page + 1) }} to {{ [page*per_page, total]|min }} of {{ total }}
+                </small>
+                <nav>
+                    <ul class="pagination pagination-sm mb-0">
+                        <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                            <a class="page-link" href="?page={{ page-1 }}&search={{ search }}&status={{ status }}&country={{ country }}">Previous</a>
+                        </li>
+                        {% for p in range([page-2,1]|max, [page+2,total_pages]|min + 1) %}
+                        <li class="page-item {% if p == page %}active{% endif %}">
+                            <a class="page-link" href="?page={{ p }}&search={{ search }}&status={{ status }}&country={{ country }}">{{ p }}</a>
+                        </li>
+                        {% endfor %}
+                        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                            <a class="page-link" href="?page={{ page+1 }}&search={{ search }}&status={{ status }}&country={{ country }}">Next</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Confirm Deletion</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Permanently delete <strong><span id="deleteCount">0</span></strong> selected lead(s)?</p>
+                <p class="text-danger mb-0">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="bulkActionsForm" name="action" value="delete" class="btn btn-danger">
+                    Yes, Delete Forever
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transcript & Audio Modal -->
+<div class="modal fade" id="leadTranscriptModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content rounded-4 shadow-lg border-0">
+            <div class="modal-header text-white border-0" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                <h5 class="modal-title fw-bold">Call Transcript & Recording</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-4 mb-4">
+                    <div class="col-md-6"><small class="text-muted">Phone</small><h6 class="mb-0 fw-bold" id="modal-lead-phone">-</h6></div>
+                    <div class="col-md-6"><small class="text-muted">Name</small><h6 class="mb-0" id="modal-lead-name">Unknown</h6></div>
+                    <div class="col-md-6"><small class="text-muted">Started</small><h6 class="mb-0" id="modal-lead-started">-</h6></div>
+                    <div class="col-md-6"><small class="text-muted">Status</small><h6 class="mb-0"><span id="modal-lead-status" class="badge bg-success">Completed</span></h6></div>
+                </div>
+                <hr class="my-4">
+
+                <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
+
+                <div id="audio-player-container" class="mb-4 d-none">
+                    <audio id="call-audio" controls class="w-100" style="height: 48px; border-radius: 8px;"></audio>
+                    <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
+                </div>
+
+                <div id="audio-loading" class="text-primary mb-3 d-none">
+                    <div class="spinner-border spinner-border-sm me-2"></div>
+                    <strong>Loading audio recording...</strong>
+                </div>
+
+                <div id="audio-error" class="alert alert-danger d-none" role="alert">
+                    <strong>Audio unavailable:</strong> <span id="error-message">Unknown error</span>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="retry-audio">Retry</button>
+                </div>
+
+                <h6 class="fw-bold text-primary mb-3 mt-4">Conversation Transcript</h6>
+                <div id="modal-lead-turns" class="border-start border-4 border-primary ps-4"></div>
+            </div>
+
+            <div class="modal-footer border-0 d-flex justify-content-between">
+                <div>
+                    <button type="button" id="play-audio-btn" class="btn btn-primary me-2 d-none">
+                        Play Full Call Recording
+                    </button>
+                    <button type="button" id="data-collected-btn" class="btn btn-success d-none">
+                        Data Collected
+                    </button>
+                </div>
+                <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Enhanced Data Collected Modal -->
+<div class="modal fade" id="dataCollectedModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content rounded-4 shadow-lg border-0">
+            <div class="modal-header text-white border-0" 
+                 style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-database-fill-check me-2"></i>
+                    Collected Lead Data
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4" id="data-collected-body">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-success" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3 text-muted">Fetching structured data from ElevenLabs...</p>
+                </div>
+            </div>
+            <div class="modal-footer border-0 bg-light">
+                <button type="button" class="btn btn-outline-success" id="export-data-btn" style="display: none;">
+                    <i class="bi bi-download me-2"></i>Export as CSV
+                </button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .avatar-sm { width: 40px; height: 40px; font-size: 1rem; }
+    tr.lead-row:hover { background-color: #f8f9ff !important; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); transition: all 0.2s; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const modal = new bootstrap.Modal('#leadTranscriptModal');
+    const dataModal = new bootstrap.Modal('#dataCollectedModal');
+    const audioPlayer = document.getElementById('call-audio');
+    const audioContainer = document.getElementById('audio-player-container');
+    const loadingEl = document.getElementById('audio-loading');
+    const errorEl = document.getElementById('audio-error');
+    const errorMsgEl = document.getElementById('error-message');
+    const playBtn = document.getElementById('play-audio-btn');
+    const dataBtn = document.getElementById('data-collected-btn');
+    const retryBtn = document.getElementById('retry-audio');
+
+    let currentConvId = null;
+    let currentElevenLabsId = null;
+
+    // ────────────────────────────────
+    // Audio State Management
+    // ────────────────────────────────
+    const resetAudioState = () => {
+        audioContainer.classList.add('d-none');
+        loadingEl.classList.add('d-none');
+        errorEl.classList.add('d-none');
+        playBtn.classList.remove('d-none');
+        dataBtn.classList.add('d-none');  // Hide data button initially
+        playBtn.disabled = false;
+        audioPlayer.src = '';
+        URL.revokeObjectURL(audioPlayer.src);  // Clean up old blob URL
+    };
+
+    const showError = (msg) => {
+        errorMsgEl.textContent = msg;
+        errorEl.classList.remove('d-none');
+        loadingEl.classList.add('d-none');
+        playBtn.disabled = false;
+    };
+
+    // ────────────────────────────────
+    // Load Audio (same as transcriptions)
+    // ────────────────────────────────
+    const loadAudio = async () => {
+    if (!currentConvId) {
+        showError("No conversation selected");
+        return;
+    }
+
+    resetAudioState();
+    loadingEl.classList.remove('d-none');
+    playBtn.disabled = true;
+
+    try {
+        const response = await fetch(`/admin/lead_conversation/${currentConvId}/audio`);
+        if (!response.ok) {
+            let msg = "Audio not available yet";
+            if (response.status === 404) {
+                msg = "Audio is still being generated by ElevenLabs";
+            } else {
+                const text = await response.text();
+                msg = text || "Failed to load audio";
+            }
+            throw new Error(msg);
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        audioPlayer.src = url;
+        audioContainer.classList.remove('d-none');
+        loadingEl.classList.add('d-none');
+
+        // ONLY hide ONLY the Play button
+        playBtn.classList.add('d-none');
+
+        // keep "Data Collected" button visible!
+        dataBtn.classList.remove('d-none');
+
+    } catch (err) {
+        showError(err.message || "Failed to load audio");
+        // On error, keep "Data Collected" visible if it was already shown
+        if (currentElevenLabsId) {
+            dataBtn.classList.remove('d-none');
+        }
+    }
+};
+
+    // ────────────────────────────────
+    // COMPLETE Data Collected Flow (copied from transcriptions)
+    // ────────────────────────────────
+    const loadCollectedData = async () => {
+        if (!currentElevenLabsId) {
+            document.getElementById('data-collected-body').innerHTML = `
+                <div class="alert alert-warning text-center">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    No ElevenLabs conversation ID found
+                </div>
+            `;
+            return;
+        }
+
+        // Show loading state
+        document.getElementById('data-collected-body').innerHTML = `
+            <div class="text-center py-5">
+                <div class="spinner-border text-success" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3 text-muted">Fetching collected data from ElevenLabs...</p>
+            </div>
+        `;
+
+        try {
+            // Use the lead-specific proxy route
+            const response = await fetch(`/admin/lead_elevenlabs/api/conversation/${currentElevenLabsId}`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            
+            // Check for API errors
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            const dcr = data.analysis?.data_collection_results;
+
+            if (!dcr || Object.keys(dcr).length === 0) {
+                document.getElementById('data-collected-body').innerHTML = `
+                    <div class="alert alert-info text-center">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        No structured data was collected during this call.
+                    </div>
+                `;
+                return;
+            }
+
+            // Build beautiful display for collected data
+            let rows = '';
+
+            Object.keys(dcr).forEach(key => {
+                const item = dcr[key];
+                const label = item.json_schema?.description || 
+                             item.data_collection_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                
+                const value = item.value !== null && item.value !== undefined ? item.value : '—';
+                const valueStr = String(value).trim();
+                
+                // Color coding for different value types
+                let valueColor = 'text-dark';
+                if (item.value === null || item.value === undefined) {
+                    valueColor = 'text-muted';
+                } else if (item.value === true || valueStr.toLowerCase() === 'true') {
+                    valueColor = 'text-success fw-bold';
+                } else if (item.value === false || valueStr.toLowerCase() === 'false') {
+                    valueColor = 'text-danger fw-bold';
+                } else if (valueStr.toLowerCase() === 'yes') {
+                    valueColor = 'text-success fw-bold';
+                } else if (valueStr.toLowerCase() === 'no') {
+                    valueColor = 'text-danger fw-bold';
+                }
+
+                rows += `
+                    <div class="row g-3 mb-3 pb-3 border-bottom border-light">
+                        <div class="col-md-5">
+                            <strong class="text-dark">${label}</strong>
+                            <small class="text-muted d-block">${item.data_collection_id}</small>
+                        </div>
+                        <div class="col-md-7">
+                            <span class="fs-5 ${valueColor}">${valueStr || '—'}</span>
+                            ${item.rationale ? `
+                                <p class="small text-muted mt-2 mb-0">
+                                    <em class="text-primary">Reason:</em> ${item.rationale}
+                                </p>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Optional: Show call summary if available
+            const summaryTitle = data.analysis?.call_summary_title ? 
+                `<div class="alert alert-success mb-4">
+                    <strong><i class="bi bi-lightbulb-fill me-2"></i>Call Summary:</strong> 
+                    ${data.analysis.call_summary_title}
+                </div>` : '';
+
+            // Optional: Show AI-generated transcript summary
+            const transcriptSummary = data.transcript_summary ? 
+                `<hr class="my-4">
+                 <h6 class="text-primary"><i class="bi bi-chat-square-text-fill me-2"></i>AI Call Summary</h6>
+                 <div class="bg-light p-4 rounded-3 small">
+                     ${data.transcript_summary.replace(/\n/g, '<br>')}
+                 </div>` : '';
+
+            // Final rendered HTML
+            document.getElementById('data-collected-body').innerHTML = `
+                ${summaryTitle}
+                <h5 class="mb-4 text-success">
+                    <i class="bi bi-check-circle-fill me-2"></i>
+                    Structured Data Collected (${Object.keys(dcr).length} fields)
+                </h5>
+                <div class="row">
+                    <div class="col-lg-12">
+                        ${rows}
+                    </div>
+                </div>
+                ${transcriptSummary}
+            `;
+
+        } catch (err) {
+            console.error('Data collection error:', err);
+            document.getElementById('data-collected-body').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <strong>Failed to load collected data:</strong><br>
+                    <small class="mt-2 d-block">${err.message}</small>
+                </div>
+            `;
+        }
+    };
+
+    // ────────────────────────────────
+    // Row Click Handler
+    // ────────────────────────────────
+    document.querySelectorAll('.lead-row').forEach(row => {
+        row.addEventListener('click', function(e) {
+            // Ignore checkbox clicks
+            if (e.target.type === 'checkbox') return;
+
+            // Extract data from row attributes
+            const d = this.dataset;
+            currentConvId = d.convId || null;
+            currentElevenLabsId = d.elevenlabsId || null;
+
+            // Update modal header info
+            document.getElementById('modal-lead-phone').textContent = d.phone || '—';
+            document.getElementById('modal-lead-name').textContent = d.name || 'Unknown';
+            
+            const startedTime = d.started ? 
+                new Date(d.started).toLocaleString([], { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric', 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                }) : '—';
+            document.getElementById('modal-lead-started').textContent = startedTime;
+
+            // Update status
+            const isCompleted = d.ended && d.ended !== 'Ongoing';
+            const statusEl = document.getElementById('modal-lead-status');
+            statusEl.textContent = isCompleted ? 'Completed' : 'In Progress';
+            statusEl.className = isCompleted ? 'badge bg-success' : 'badge bg-warning';
+
+            // Reset audio state
+            resetAudioState();
+
+            // Show buttons only if we have a completed call with ElevenLabs ID
+            if (currentConvId && currentElevenLabsId && isCompleted) {
+                playBtn.classList.remove('d-none');
+                dataBtn.classList.remove('d-none');
+            } else {
+                playBtn.classList.add('d-none');
+                dataBtn.classList.add('d-none');
+            }
+
+            // Load conversation transcript
+            const turnsContainer = document.getElementById('modal-lead-turns');
+            if (currentConvId) {
+                fetch(`/admin/lead_conversation/${currentConvId}`)
+                    .then(r => {
+                        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                        return r.json();
+                    })
+                    .then(data => {
+                        turnsContainer.innerHTML = '';
+                        
+                        // Sort turns by timestamp if available
+                        const sortedTurns = (data.turns || []).sort((a, b) => 
+                            new Date(a.ts || 0) - new Date(b.ts || 0)
+                        );
+
+                        if (sortedTurns.length === 0) {
+                            turnsContainer.innerHTML = `
+                                <div class="text-center py-4">
+                                    <i class="bi bi-chat-square-text text-muted" style="font-size: 3rem; opacity: 0.5;"></i>
+                                    <p class="text-muted mt-3">No conversation transcript available</p>
+                                </div>
+                            `;
+                            return;
+                        }
+
+                        sortedTurns.forEach(turn => {
+                            const isAgent = turn.role === 'agent';
+                            const bubble = document.createElement('div');
+                            bubble.className = `mb-4 ${isAgent ? 'text-end' : ''}`;
+                            
+                            const timeStr = turn.ts ? 
+                                new Date(turn.ts).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) 
+                                : '—';
+                            
+                            bubble.innerHTML = `
+                                <div class="d-inline-block p-3 rounded-3 shadow-sm ${isAgent ? 'bg-primary text-white' : 'bg-light'}" 
+                                     style="max-width: 80%;">
+                                    <div class="small fw-bold mb-1 ${isAgent ? 'text-white opacity-75' : 'text-primary'}">
+                                        <i class="bi ${isAgent ? 'bi-robot' : 'bi-person'} me-1"></i>
+                                        ${isAgent ? 'AI Agent' : 'Lead'} • ${timeStr}
+                                    </div>
+                                    <div style="white-space: pre-wrap; line-height: 1.5;">
+                                        ${(turn.text || '').replace(/\n/g, '<br>')}
+                                    </div>
+                                </div>
+                            `;
+                            
+                            turnsContainer.appendChild(bubble);
+                        });
+
+                        // Auto-scroll to bottom of transcript
+                        turnsContainer.scrollTop = turnsContainer.scrollHeight;
+                    })
+                    .catch(err => {
+                        console.error('Transcript load error:', err);
+                        turnsContainer.innerHTML = `
+                            <div class="alert alert-danger">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                Failed to load transcript: ${err.message}
+                            </div>
+                        `;
+                    });
+            } else {
+                turnsContainer.innerHTML = `
+                    <div class="text-center py-4">
+                        <i class="bi bi-telephone-x text-muted" style="font-size: 3rem; opacity: 0.5;"></i>
+                        <p class="text-muted mt-3">No conversation recorded for this lead</p>
+                    </div>
+                `;
+            }
+
+            // Show the modal
+            modal.show();
+        });
+    });
+
+    // ────────────────────────────────
+    // Button Event Handlers
+    // ────────────────────────────────
+    playBtn.onclick = loadAudio;
+    retryBtn.onclick = loadAudio;
+    
+    dataBtn.onclick = () => {
+        loadCollectedData();
+        dataModal.show();
+    };
+
+    // Clean up blob URLs when modal closes
+    modal._element.addEventListener('hidden.bs.modal', () => {
+        if (audioPlayer.src) {
+            URL.revokeObjectURL(audioPlayer.src);
+            audioPlayer.src = '';
+        }
+        resetAudioState();
+    });
+});
+
+// ────────────────────────────────
+// Bulk Actions & Checkbox Handling
+// ────────────────────────────────
+document.addEventListener('DOMContentLoaded', function () {
+    const selectAllHeader = document.getElementById('selectAllHeader');
+    const selectAllPage = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.lead-checkbox');
+    const selectedCountEl = document.getElementById('selectedCount');
+    const selectedTextEl = document.getElementById('selectedText');
+    const deleteBtn = document.getElementById('deleteSelectedBtn');
+    const exportBtn = document.getElementById('exportSelectedBtn');
+    const deleteConfirmModal = new bootstrap.Modal('#deleteConfirmModal');
+    const deleteCountEl = document.getElementById('deleteCount');
+
+    // Update selected count and button states
+    function updateSelection() {
+        const checked = document.querySelectorAll('.lead-checkbox:checked');
+        const count = checked.length;
+
+        selectedCountEl.textContent = count;
+        selectedTextEl.textContent = count === 0 ? 'No leads selected' :
+                                   count === 1 ? '1 lead selected' :
+                                   `${count} leads selected`;
+
+        const hasSelection = count > 0;
+        deleteBtn.disabled = !hasSelection;
+        exportBtn.disabled = !hasSelection;
+
+        // Update delete modal count
+        deleteCountEl.textContent = count;
+    }
+
+    // "Select All" in table header
+    if (selectAllHeader) {
+        selectAllHeader.addEventListener('click', function () {
+            const isChecked = this.checked;
+            checkboxes.forEach(cb => cb.checked = isChecked);
+            updateSelection();
+        });
+    }
+
+    // "Select all on page" checkbox in bulk actions
+    if (selectAllPage) {
+        selectAllPage.addEventListener('click', function () {
+            const isChecked = this.checked;
+            checkboxes.forEach(cb => cb.checked = isChecked);
+            if (selectAllHeader) selectAllHeader.checked = isChecked;
+            updateSelection();
+        });
+    }
+
+    // Individual checkbox changes
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function () {
+            updateSelection();
+
+            // Update "Select All" state if needed
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            const noneChecked = Array.from(checkboxes).every(cb => !cb.checked);
+
+            if (selectAllHeader) selectAllHeader.checked = allChecked;
+            if (selectAllPage) selectAllPage.checked = allChecked;
+
+            // Partial check (indeterminate)
+            if (selectAllHeader) {
+                selectAllHeader.indeterminate = !allChecked && !noneChecked;
+            }
+        });
+    });
+
+    // Delete Selected Button → Open Confirmation Modal
+    deleteBtn.addEventListener('click', function () {
+        if (this.disabled) return;
+        deleteConfirmModal.show();
+    });
+
+    // Initial update
+    updateSelection();
+});
+</script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+{% endblock %}

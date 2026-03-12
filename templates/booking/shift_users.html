@@ -1,0 +1,169 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Shift Users • Admin{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+<style>
+    .table-responsive { overflow-x: auto; }
+    .hover-lift:hover { background-color: #f8f9fa; transition: background-color 0.15s; }
+    .shift-name { font-weight: 600; color: #0d6efd; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <h2 class="mb-0 fw-bold text-primary">Shift Users Management</h2>
+        <div class="d-flex gap-3 align-items-center">
+            <a href="{{ url_for('booking.shifts') }}" class="btn btn-outline-secondary">
+                ← All Shifts
+            </a>
+            <span class="badge bg-primary fs-5 px-3 py-2">
+                {{ total }} shifts • {{ shifts|sum(attribute='assigned_count') }} assignments
+            </span>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <form method="get" class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <input type="text" name="q" class="form-control form-control-lg"
+                           placeholder="Search shift name or location..." value="{{ q }}">
+                </div>
+                <div class="col-md-4">
+                    <select name="client_id" class="form-select form-select-lg">
+                        <option value="">All clients</option>
+                        {% for c in clients %}
+                        <option value="{{ c._id }}" {% if client_id == c._id|string %}selected{% endif %}>
+                            {{ c.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-grow-1">Filter</button>
+                    {% if q or client_id %}
+                    <a href="{{ url_for('shift_users.shift_users_list') }}" class="btn btn-outline-secondary">Clear</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <!-- Table View -->
+    {% if shifts %}
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Shift Name</th>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Client</th>
+                            <th>Location</th>
+                            <th>Assigned Staff</th>
+                            <th>Sample Staff</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in shifts %}
+                        <tr class="hover-lift">
+                            <td>
+                                <div class="shift-name">{{ s.name }}</div>
+                            </td>
+                            <td>
+                                {{ s.date.strftime('%d %b %Y') if s.date else '—' }}
+                            </td>
+                            <td>
+                                {{ s.start_time_formatted or '—' }} – {{ s.end_time_formatted or '—' }}
+                            </td>
+                            <td>{{ s.client_name or '—' }}</td>
+                            <td>{{ s.location or '—' }}</td>
+                            <td>
+                                <span class="badge bg-primary rounded-pill px-3">
+                                    {{ s.assigned_count }}
+                                </span>
+                            </td>
+                            <td class="small">
+                                {% if s.assigned_count > 0 and s.sample_users %}
+                                    {% for u in s.sample_users %}
+                                        {{ u.name or (u.first_name ~ ' ' ~ u.last_name)|trim or '—' }}{% if not loop.last %}, {% endif %}
+                                    {% endfor %}
+                                    {% if s.assigned_count > 3 %}
+                                        <span class="text-muted fst-italic"> +{{ s.assigned_count - 3 }} more</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">None</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary rounded-pill px-3"
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#manageUsersModal"
+                                        onclick="openManageUsers('{{ s._id }}', '{{ s.name|e }}')">
+                                    <i class="bi bi-people-fill me-1"></i> Manage
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if pages > 1 %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center">
+            {% if page > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page-1 }}{% if q %}&q={{ q }}{% endif %}{% if client_id %}&client_id={{ client_id }}{% endif %}&avail={{ request.args.get('avail') }}">Previous</a>
+            </li>
+            {% endif %}
+            {% for p in range(1, pages+1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}{% if q %}&q={{ q }}{% endif %}{% if client_id %}&client_id={{ client_id }}{% endif %}&avail={{ request.args.get('avail') }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+            {% if page < pages %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page+1 }}{% if q %}&q={{ q }}{% endif %}{% if client_id %}&client_id={{ client_id }}{% endif %}&avail={{ request.args.get('avail') }}">Next</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
+    {% else %}
+    <div class="alert alert-light text-center py-5 border">
+        <i class="bi bi-calendar-x display-1 text-muted d-block mb-3 opacity-50"></i>
+        No shifts found matching your filters.
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- Manage Users Modal remains unchanged -->
+<div class="modal fade" id="manageUsersModal" tabindex="-1" aria-labelledby="manageUsersModalLabel" aria-hidden="true">
+    <!-- ... your existing modal code here ... -->
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<!-- your existing scripts remain here -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+// ... your existing openManageUsers(), loadAssignedUsers(), select2 init, etc. ...
+</script>
+{% endblock %}

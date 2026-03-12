@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Enter Contact Number</title>
+  <style>
+    body {
+      font-family: 'Inter', Arial, sans-serif;
+      background: #f5f7fb;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      color: #333;
+    }
+    .container {
+      background: #fff;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 400px;
+    }
+    h2 {
+      margin: 0 0 24px;
+      font-size: 24px;
+      font-weight: 600;
+      color: #222;
+      text-align: center;
+    }
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #333;
+    }
+    .phone-input {
+      display: flex;
+      gap: 10px;
+    }
+    select, input {
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    select {
+      width: 100px;
+      flex-shrink: 0;
+      background: #fff;
+    }
+    input {
+      flex: 1;
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: #397eff;
+      box-shadow: 0 0 0 3px rgba(57, 126, 255, 0.1);
+    }
+    .error {
+      color: #e53e3e;
+      font-size: 12px;
+      margin-top: 6px;
+      min-height: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 20px;
+      background: #397eff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    button:hover {
+      background: #285edb;
+    }
+    @media (max-width: 480px) {
+      .container { margin: 20px; padding: 30px; }
+      .phone-input { flex-direction: column; }
+      select { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Enter Contact Number</h2>
+
+    <label for="country-code">Contact Number <span style="color: #e53e3e">*</span></label>
+    <div class="phone-input">
+      <select id="country-code">
+        <option value="+353">+353 (IE)</option>
+        <option value="+44" selected>+44 (UK)</option>
+        <option value="+61">+61 (AU)</option>
+        <option value="+91">+91 (IN)</option>
+      </select>
+      <input type="tel" id="phone-number" placeholder="e.g. 712345678" required />
+    </div>
+    <div id="phone-error" class="error"></div>
+
+    <button id="submit-btn">Call Me Now</button>
+  </div>
+
+  <script>
+    const submitBtn = document.getElementById('submit-btn');
+    const phoneInput = document.getElementById('phone-number');
+    const countryCode = document.getElementById('country-code');
+    const errorDiv = document.getElementById('phone-error');
+
+    submitBtn.addEventListener('click', async () => {
+      const phone = phoneInput.value.trim();
+      const code = countryCode.value;
+      errorDiv.textContent = '';
+
+      if (!phone) {
+        errorDiv.textContent = 'Please enter your phone number.';
+        return;
+      }
+      if (!/^\d{7,15}$/.test(phone)) {
+        errorDiv.textContent = 'Invalid number. Use 7–15 digits.';
+        return;
+      }
+
+      const fullPhone = `${code} ${phone}`;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Calling...';
+
+      try {
+        const response = await fetch('/api/submit-contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: fullPhone, first_name: 'Friend' })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          alert(`We are calling you at ${fullPhone}...`);
+        } else {
+          errorDiv.textContent = result.error || 'Call failed.';
+        }
+      } catch (err) {
+        errorDiv.textContent = 'Network error. Try again.';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Call Me Now';
+      }
+    });
+  </script>
+</body>
+</html>

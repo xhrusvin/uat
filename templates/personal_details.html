@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Xpress Health – Personal Details</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Inter font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN (v3) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            primary: '#397eff',
+            'primary-dark': '#2563eb',
+            gray: {
+              50: '#f9fafb',
+              100: '#f1f5f9',
+              200: '#e5e7eb',
+              300: '#d1d5db',
+              400: '#9ca3af',
+              500: '#6b7280',
+              600: '#4b5563',
+              700: '#374151',
+              800: '#1f2937',
+            },
+          },
+        },
+      },
+    };
+  </script>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+  <!-- Header -->
+  <header class="bg-white shadow-sm flex items-center justify-between px-5 py-3">
+    <img src="/static/image/logo.png" alt="Xpress Health" class="h-10">
+    <a href="/logout" class="text-primary font-medium hover:underline">Logout</a>
+  </header>
+
+  <!-- Main container -->
+  <div class="max-w-lg mx-auto mt-10 bg-white rounded-xl shadow-lg overflow-hidden">
+    <div class="bg-blue-50 py-5 text-center">
+      <h1 class="text-xl font-semibold text-gray-900">Personal Details (Part 1/3)</h1>
+      <p class="text-sm text-gray-500 mt-1">Step 1/6</p>
+    </div>
+
+    <form id="personalForm" class="px-8 pt-6 pb-8 space-y-6">
+
+      <!-- Total Work Experience -->
+      <div>
+        <label class="block font-medium text-gray-700 mb-2">Total Work Experience</label>
+        <div class="flex items-center space-x-6">
+          <!-- Years -->
+          <div class="flex items-center space-x-2">
+            <div class="flex border border-gray-300 rounded-lg overflow-hidden">
+              <button type="button" class="dec w-9 h-10 flex items-center justify-center bg-gray-50 text-gray-600 hover:bg-gray-200" data-target="expYears">-</button>
+              <input type="number" id="expYears" value="0" min="0" readonly class="w-14 h-10 text-center border-x border-gray-300 font-medium">
+              <button type="button" class="inc w-9 h-10 flex items-center justify-center bg-gray-50 text-gray-600 hover:bg-gray-200" data-target="expYears">+</button>
+            </div>
+            <span class="text-gray-500 w-12">Years</span>
+          </div>
+
+          <!-- Months -->
+          <div class="flex items-center space-x-2">
+            <div class="flex border border-gray-300 rounded-lg overflow-hidden">
+              <button type="button" class="dec w-9 h-10 flex items-center justify-center bg-gray-50 text-gray-600 hover:bg-gray-200" data-target="expMonths">-</button>
+              <input type="number" id="expMonths" value="0" min="0" max="11" readonly class="w-14 h-10 text-center border-x border-gray-300 font-medium">
+              <button type="button" class="inc w-9 h-10 flex items-center justify-center bg-gray-50 text-gray-600 hover:bg-gray-200" data-target="expMonths">+</button>
+            </div>
+            <span class="text-gray-500 w-12">Months</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- County & Nationality -->
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block font-medium text-gray-700 mb-1">County</label>
+          <select id="county" required class="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+            <option value="" disabled selected>Select your County</option>
+            <option value="Dublin">Dublin</option>
+            <option value="Cork">Cork</option>
+            <option value="Galway">Galway</option>
+            <option value="Limerick">Limerick</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-medium text-gray-700 mb-1">Country of Nationality</label>
+          <select id="nationality" required class="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+            <option value="" disabled selected>Select your Country of Nationality</option>
+            <option value="Ireland">Ireland</option>
+            <option value="United Kingdom">United Kingdom</option>
+            <option value="Poland">Poland</option>
+            <option value="India">India</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Gender & DOB -->
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block font-medium text-gray-700 mb-1">Gender</label>
+          <select id="gender" required class="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+            <option value="" disabled selected>Select your gender</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-medium text-gray-700 mb-1">Date of Birth</label>
+          <input type="date" id="dob" required class="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+        </div>
+      </div>
+
+      <!-- EIR Code -->
+      <div>
+        <label class="block font-medium text-gray-700 mb-1">EIR Code</label>
+        <input type="text" id="eirCode" placeholder="Enter your 7-digit EIR code e.g D02 X285" maxlength="8" required
+               class="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+        <p class="text-xs text-gray-500 mt-1">Enter your 7-digit EIR code e.g D02 X285</p>
+      </div>
+
+      <!-- Address -->
+      <div>
+        <label class="block font-medium text-gray-700 mb-1">Address</label>
+        <textarea id="address" placeholder="Enter your Address" required rows="3"
+                  class="w-full p-3 border border-gray-300 rounded-lg text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary"></textarea>
+      </div>
+
+      <!-- Navigation -->
+      <div class="flex justify-between pt-4 border-t border-gray-200">
+        <button type="button" id="prevBtn"
+                class="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition">
+          Previous
+        </button>
+        <button type="button" id="nextBtn"
+                class="px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition">
+          Next
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Scripts -->
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('user_id') || '';
+
+    // Spinner logic
+    $('.dec, .inc').on('click', function () {
+      const $btn = $(this);
+      const target = $btn.data('target');
+      const $input = $('#' + target);
+      let val = parseInt($input.val(), 10) || 0;
+
+      if ($btn.hasClass('inc')) {
+        if (target === 'expMonths' && val < 11) val++;
+        else if (target !== 'expMonths') val++;
+      } else {
+        if (val > 0) val--;
+      }
+      $input.val(val);
+    });
+
+    // Navigation
+    $('#prevBtn').on('click', () => {
+      window.location = `/register/summary?user_id=${userId}`;
+    });
+
+    $('#nextBtn').on('click', () => {
+      const form = $('#personalForm')[0];
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+
+      const payload = {
+        user_id: userId,
+        total_experience_years: $('#expYears').val(),
+        total_experience_months: $('#expMonths').val(),
+        county: $('#county').val(),
+        nationality: $('#nationality').val(),
+        gender: $('#gender').val(),
+        date_of_birth: $('#dob').val(),
+        eir_code: $('#eirCode').val().replace(/\s/g, '').toUpperCase(),
+        address: $('#address').val().trim()
+      };
+
+      $.post('/api/save_personal_details', payload)
+        .done(() => window.location = `/register/permission?user_id=${userId}`)
+        .fail(xhr => alert('Error: ' + (xhr.responseJSON?.message || xhr.statusText)));
+    });
+
+    // Load saved data
+    if (userId) {
+      $.get('/api/personal_details', { user_id: userId })
+        .done(data => {
+          if (!data) return;
+          $('#expYears').val(data.total_experience_years ?? 0);
+          $('#expMonths').val(data.total_experience_months ?? 0);
+          $('#county').val(data.county ?? '');
+          $('#nationality').val(data.nationality ?? '');
+          $('#gender').val(data.gender ?? '');
+          $('#dob').val(data.date_of_birth ?? '');
+          $('#eirCode').val(data.eir_code ?? '');
+          $('#address').val(data.address ?? '');
+        });
+    }
+  </script>
+</body>
+</html>

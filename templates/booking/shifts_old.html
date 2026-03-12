@@ -1,0 +1,433 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Shift Management • Admin{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+{% endblock %}
+
+{% block content %}
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">Shift Management</h2>
+        <div class="d-flex gap-3">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#shiftModal" 
+                    onclick="prepareAddModal()">
+                <i class="bi bi-plus-lg"></i> Add Shift
+            </button>
+            <a href="{{ url_for('booking.shifts') }}" class="btn btn-outline-secondary">
+                Refresh
+            </a>
+            <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">{{ total }} Total Shifts</span>
+        </div>
+    </div>
+
+    <!-- Search -->
+    <form method="get" class="mb-5">
+        <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+            <span class="input-group-text bg-white border-0">Search</span>
+            <input type="text" name="search" class="form-control border-0 ps-0"
+                   placeholder="Search by shift name or location..." value="{{ search }}" autofocus>
+            <button class="btn btn-primary" type="submit">Search</button>
+            {% if search %}
+            <a href="{{ url_for('booking.shifts') }}" class="btn btn-outline-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+
+    <!-- Table -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <tr>
+                            <th class="ps-4">Unit Name</th>
+                            <th>Client</th>
+                            <th>Date</th>
+                            <th>Start Time</th>
+                            <th>End Time</th>
+                            <th>Location</th>
+                            <th>Description</th>
+                            <th>Active</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in shifts %}
+                        <tr>
+                            <td class="ps-4 fw-semibold">{{ s.name }}</td>
+                            <td>
+            {% if s.client_name %}
+                {{ s.client_name }}
+            {% else %}
+                <span class="text-muted">—</span>
+            {% endif %}
+        </td>
+                            <td>
+                                {% if s.date %}
+                                    {{ s.date.strftime('%d %b %Y') }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td>{{ s.start_time_formatted or s.start_time or '—' }}</td>
+                            <td>{{ s.end_time_formatted or s.end_time or '—' }}</td>
+                            <td>{{ s.location or '<span class="text-muted">—</span>'|safe }}</td>
+                            <td>{{ s.description or '<span class="text-muted">—</span>'|safe }}</td>
+                            <td>
+                                {% if s.is_active %}
+                                <span class="badge bg-success rounded-pill">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary rounded-pill">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1"
+                                        onclick="prepareEditModal('{{ s._id }}', '{{ s.name|e }}', '{{ s.date or '' }}', '{{ s.start_time or '' }}', '{{ s.end_time or '' }}', '{{ s.location|e }}', '{{ s.description|e }}', '{{ s.is_active }}', '{{ s.client_id }}', '{{ s.client_name|e }}')">
+                                   <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
+                                        data-id="{{ s._id|string }}"
+                                        data-name="{{ s.name|e }}">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5">
+                                <i class="bi bi-calendar-x display-1 text-muted opacity-25 d-block mb-3"></i>
+                                <h5 class="text-muted">No shifts found</h5>
+                                {% if search %}
+                                <p>Try a different search term</p>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if total > per_page %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center pagination-lg">
+            {% if page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&search={{ search }}">Previous</a></li>
+            {% endif %}
+
+            {% set pages = ((total / per_page) | round(0, 'ceil')) | int %}
+            {% set start_page = [page - 2, 1] | max %}
+            {% set end_page = [start_page + 4, pages] | min %}
+
+            {% if start_page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page=1&search={{ search }}">1</a></li>
+            {% if start_page > 2 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            {% endif %}
+
+            {% for p in range(start_page, end_page + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}&search={{ search }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if end_page < pages %}
+            {% if end_page < pages - 1 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            <li class="page-item"><a class="page-link" href="?page={{ pages }}&search={{ search }}">{{ pages }}</a></li>
+            {% endif %}
+
+            {% if page < pages %}
+            <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&search={{ search }}">Next</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="shiftModal" tabindex="-1" aria-labelledby="shiftModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="shiftModalLabel">Add New Shift</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="shiftForm">
+                <div class="modal-body">
+                    <input type="hidden" name="shift_id" id="shift_id">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Unit Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Client</label>
+                        <select class="form-select" id="client_id" name="client_id">
+                            <option value="">— No client assigned —</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Date <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="date" name="date" placeholder="Select date" required readonly>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Start Time</label>
+                            <input type="time" class="form-control" id="start_time" name="start_time">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">End Time</label>
+                            <input type="time" class="form-control" id="end_time" name="end_time">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Location</label>
+                        <input type="text" class="form-control" id="location" name="location" placeholder="e.g. Conference Room, Kochi Branch">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="2"></textarea>
+                    </div>
+
+                    <div class="mb-3 form-check">
+                        <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
+                        <label class="form-check-label" for="is_active">Active / Available for booking</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary" id="submitBtn">Create Shift</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+<script>
+// Flatpickr setup (unchanged)
+let datePicker = null;
+
+document.addEventListener("DOMContentLoaded", function () {
+    const el = document.getElementById('date');
+    if (el) {
+        datePicker = flatpickr(el, {
+            dateFormat: "Y-m-d",
+            altInput: true,
+            altFormat: "d M Y",
+            minDate: "today",
+            allowInput: false,
+            appendTo: document.body,
+            disableMobile: true
+        });
+    }
+});
+
+document.getElementById('shiftModal')
+    .addEventListener('shown.bs.modal', function () {
+        if (datePicker) datePicker.redraw();
+    });
+
+// prepareAddModal & prepareEditModal (unchanged except client handling)
+function prepareAddModal() {
+    document.getElementById('shiftModalLabel').textContent = 'Add New Shift';
+    document.getElementById('submitBtn').textContent = 'Create Shift';
+    document.getElementById('shift_id').value = '';
+    document.getElementById('name').value = '';
+    if (datePicker) datePicker.setDate(new Date());
+    document.getElementById('start_time').value = '';
+    document.getElementById('end_time').value = '';
+    document.getElementById('location').value = '';
+    document.getElementById('description').value = '';
+    $('#client_id').val(null).trigger('change');  // ← better reset for Select2
+    document.getElementById('is_active').checked = true;
+}
+
+function prepareEditModal(id, name, date, start, end, location, desc, active, client_id, client_name = '') {
+    document.getElementById('shiftModalLabel').textContent = 'Edit Shift';
+    document.getElementById('submitBtn').textContent = 'Save Changes';
+    document.getElementById('shift_id').value = id;
+    document.getElementById('name').value = name;
+    if (datePicker) datePicker.setDate(date || new Date());
+    document.getElementById('start_time').value = start || '';
+    document.getElementById('end_time').value = end || '';
+    document.getElementById('location').value = location || '';
+    document.getElementById('description').value = desc || '';
+    
+    // Select2 pre-select
+    if (client_id && client_name) {
+        const option = new Option(client_name, client_id, true, true);
+        $('#client_id').append(option).trigger('change');
+    } else {
+        $('#client_id').val(null).trigger('change');
+    }
+    
+    document.getElementById('is_active').checked = (active === 'True' || active === true);
+
+    const modal = new bootstrap.Modal(document.getElementById('shiftModal'));
+    modal.show();
+}
+
+// AJAX Form Submit
+document.getElementById('shiftForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const form = e.target;
+    const submitBtn = document.getElementById('submitBtn');
+    const isEdit = document.getElementById('shift_id').value !== '';
+    const url = isEdit 
+        ? "{{ url_for('booking.shift_edit') }}" 
+        : "{{ url_for('booking.shift_add') }}";
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = isEdit ? 'Saving...' : 'Creating...';
+
+    const formData = new FormData(form);
+    const data = {};
+    for (let [key, value] of formData.entries()) {
+        data[key] = value;
+    }
+    data.is_active = form.querySelector('#is_active').checked;
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Success!',
+                text: result.message || (isEdit ? 'Shift updated' : 'Shift created'),
+                timer: 1800,
+                showConfirmButton: false
+            }).then(() => {
+                bootstrap.Modal.getInstance(document.getElementById('shiftModal')).hide();
+                location.reload();
+            });
+        } else {
+            Swal.fire('Error', result.error || 'Something went wrong', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = isEdit ? 'Save Changes' : 'Create Shift';
+    }
+});
+
+// ────────────────────────────────────────
+// Delete (your existing code – no change needed)
+// ────────────────────────────────────────
+document.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+        const id = e.target.dataset.id;
+        const name = e.target.dataset.name || 'this shift';
+
+        const result = await Swal.fire({
+            title: 'Delete Shift?',
+            html: `Are you sure you want to delete <strong>${name}</strong>?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, delete'
+        });
+
+        if (result.isConfirmed) {
+            try {
+                const res = await fetch("{{ url_for('booking.shift_delete') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ shift_id: id })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    Swal.fire('Deleted!', `${name} has been removed.`, 'success')
+                        .then(() => location.reload());
+                } else {
+                    Swal.fire('Error', data.error || 'Failed to delete', 'error');
+                }
+            } catch (err) {
+                Swal.fire('Error', 'Network error', 'error');
+            }
+        }
+    });
+});
+
+// Initialize Select2 for client search with AJAX
+$(document).ready(function() {
+    $('#client_id').select2({
+        theme: "bootstrap-5",
+        dropdownParent: $('#shiftModal'),          // try .modal-dialog or .modal-content if this fails
+        placeholder: "Search for a client...",
+        allowClear: true,
+        minimumInputLength: 0,                     // ← set to 0 for testing
+        ajax: {
+            url: "{{ url_for('booking.client_search') }}",
+            dataType: 'json',
+            delay: 250,
+            data: params => ({ q: params.term || '', page: params.page || 1 }),
+            processResults: data => {
+                console.log("Server response:", data); // MUST see this in console
+                return {
+                    results: (data.items || []).map(item => ({
+                        id: item._id,
+                        text: item.name || item.text || '??'
+                    })),
+                    pagination: { more: !!data.more }
+                };
+            },
+            cache: true
+        },
+        width: '100%'
+    });
+});
+
+$(document).on('select2:open', function () {
+    setTimeout(() => {
+        $('.select2-search__field').focus();
+    }, 0);
+});
+
+</script>
+
+{% endblock %}
+<style>
+.flatpickr-calendar {
+    z-index: 9999 !important;
+}
+.select2-container--open .select2-dropdown {
+    z-index: 1060 !important;     /* higher than modal ~1055 */
+}
+
+.modal .select2-container {
+    z-index: 1060 !important;
+}
+</style>
+

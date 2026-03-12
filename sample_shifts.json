@@ -1,0 +1,25 @@
+{
+  "shifts": [
+    {
+      "job_title": "Nurse",
+      "location": "Mumbai",
+      "start": "2025-10-25T08:00:00",
+      "end": "2025-10-25T16:00:00",
+      "details": "Day shift at City Hospital"
+    },
+    {
+      "job_title": "Caregiver",
+      "location": "Delhi",
+      "start": "2025-10-26T08:00:00",
+      "end": "2025-10-26T20:00:00",
+      "details": "Overnight care"
+    },
+    {
+      "job_title": "Developer",
+      "location": "Bengaluru",
+      "start": "2025-11-01T09:00:00",
+      "end": "2025-11-01T17:00:00",
+      "details": "Contract frontend role"
+    }
+  ]
+}

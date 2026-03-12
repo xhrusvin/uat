@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Next Steps for Your Application - Xpress Health</title>
+    <style>
+        body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333333; background-color: #f4f4f4; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background-color: #eef3f7; padding: 30px; text-align: center; }
+        .header img { max-width: 220px; height: auto; }
+        .content { padding: 40px 30px; }
+        h3 { color: #007bff; margin-top: 0; }
+        .highlight-note { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #007bff; }
+        ul { margin: 20px 0; padding-left: 20px; }
+        ul li { margin-bottom: 12px; }
+        .footer { background-color: #f8f9fa; padding: 25px; text-align: center; font-size: 12px; color: #666666; }
+    </style>
+</head>
+
+<body>
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4; padding:20px 0;">
+<tr>
+<td align="center">
+<table class="container" cellpadding="0" cellspacing="0">
+
+<!-- Header -->
+<tr>
+<td class="header" align="center">
+<img src="https://expresshealth.ie/static/image/logo.png" alt="Xpress Health Logo">
+</td>
+</tr>
+
+<!-- Content -->
+<tr>
+<td class="content">
+
+<h3>Hi {{ first_name }},</h3>
+
+<p>Hope you are doing well.</p>
+
+<p>As discussed over the call, we are proceeding with your application for the role of <strong>{{ designation }}</strong>.  
+To move forward, please provide the following documents:</p>
+
+<ul>
+<li><strong>1. Identity & Eligibility</strong><br>
+• Valid Passport<br>
+• Irish Residence Permit (IRP/GNIB), if applicable<br>
+• Proof of Address (dated within the last 3 months)
+</li>
+
+<!-- PROFESSIONAL REGISTRATION / QUALIFICATION -->
+{% if designation in ["Nurse", "Midwife"] %}
+<li><strong>2. Professional Registration</strong><br>
+• NMBI Registration
+</li>
+{% elif designation in ["Pharmacist"] %}
+<li><strong>2. Professional Registration</strong><br>
+• PSI Registration
+</li>
+{% elif designation in ["Pharmacy Technician"] %}
+<li><strong>2. Qualification</strong><br>
+• Relevant Pharmacy Technician Qualification
+</li>
+{% elif designation in ["Chef"] %}
+<li><strong>2. Qualification</strong><br>
+• Culinary Degree
+</li>
+{% else %}
+<li><strong>2. Qualification</strong><br>
+• QQI Level 5 or relevant role qualification
+</li>
+{% endif %}
+
+<!-- CERTIFICATES -->
+<li><strong>3. Mandatory Training Certificates</strong><br>
+
+{% if designation == "Healthcare Assistant" %}
+• Fire Safety<br>
+• Hand Hygiene<br>
+• Covid Certificate<br>
+• Attach Any Other Certificate<br>
+• Infection Prevention & Control<br>
+• Children First<br>
+• Safeguarding Adults at Risk<br>
+• CPR / BLS<br>
+• Manual & People Handling<br>
+• Garda Vetting Document<br>
+• CPI / MAPA / PMAV<br>
+• Open Disclosure<br>
+• GDPR<br>
+• PPE<br>
+• Dignity at Work<br>
+• HACCP/Food Safety<br>
+• Cyber Security<br>
+• Irish National Early Warning System (INEWS V2 – Nursing/HSE)<br>
+
+{% elif designation == "Nurse" %}
+• Covid Certificate<br>
+• Medication Management<br>
+• Attach Any Other Certificate<br>
+• Fire Safety<br>
+• Infection Prevention & Control<br>
+• Hand Hygiene<br>
+• Children First<br>
+• Safeguarding Adults at Risk<br>
+• CPR / BLS<br>
+• Manual & People Handling<br>
+• Garda Vetting Document<br>
+• Open Disclosure<br>
+• CPI / MAPA / PMAV<br>
+• Cyber Security<br>
+• GDPR<br>
+• Visual Display Equipment<br>
+• PPE<br>
+• Dignity at Work<br>
+• Irish National Early Warning System (INEWS V2 – Nursing/HSCP)<br>
+
+
+{% elif designation == "Midwives" %}
+• Nmbi Qualification<br>
+• Covid Certificate<br>
+• Attach Any Other Certificate<br>
+• Infection Prevention Control Certificate<br>
+• Children First<br>
+• Safeguarding Adults at Risk<br>
+• Neonatal Resuscitation Programme<br>
+• Breastfeeding Certification<br>
+• Prompt (Obstetric Emergency Training)<br>
+• Ctg (Fetal Heart Rate Monitoring)<br>
+• CPR / BLS<br>
+• K2<br>
+• Manual and People Handling Documents<br>
+• Garda Vetting Document<br>
+• Cyber Security<br>
+• The Open Disclosure<br>
+
+
+{% elif designation == "Multi-Task Assistant" %}
+• Food Hygiene<br>
+• Attach Any Other Certificate<br>
+• Fire Safety<br>
+• Infection Prevention & Control<br>
+• Hand Hygiene<br>
+• Children First<br>
+• Safeguarding Adults at Risk<br>
+• CPR / BLS<br>
+• Manual & People Handling<br>
+• Garda Vetting Document<br>
+• CPI / MAPA / PMAV<br>
+
+
+{% elif designation == "Pharmacy Technician" %}
+• Attach Any Other Certificate<br>
+• Qualification<br>
+• Garda Vetting Document<br>
+
+{% elif designation == "Cleaner" %}
+• Food Hygiene<br>
+• Cleaning & Disinfecting in a Healthcare Environment<br>
+• Attach Any Other Certificate<br>
+• Fire Safety<br>
+• Standard and Transmission Precaution<br>
+• Infection Prevention & Control<br>
+• PPE<br>
+• Hand Hygiene<br>
+• Garda Vetting Document<br>
+
+{% elif designation == "Pharmacist" %}
+• Attach Any Other Certificate<br>
+• Psi Registration<br>
+• Garda Vetting Document<br>
+
+{% elif designation == "Kitchen Assistant" %}
+• Attach Any Other Certificate<br>
+• Fire Safety<br>
+• Infection Prevention & Control<br>
+• Safeguarding Adults At Risk<br>
+• Manual & People Handling<br>
+• Garda Vetting Document<br>
+• HACCP / Food Safety<br>
+• Manual Handling Practical<br>
+• Allergens Awareness<br>
+• Health and Safety<br>
+• Hand Hygiene<br>
+
+
+{% elif designation == "Chef" %}
+• Culinary Degree<br>
+• Food Hygiene<br>
+• Attach Any Other Certificate<br>
+• Hand Hygiene<br>
+• Garda Vetting Document<br>
+
+{% elif designation == "Housekeeping" %}
+• Food Hygiene<br>
+• Fire Safety<br>
+• Infection Prevention & Control<br>
+• PPE<br>
+• Hand Hygiene<br>
+• Manual & People Handling<br>
+• Garda Vetting Document<br>
+• CPI / MAPA / PMAV<br>
+• Cleaning & Disinfecting in a Healthcare Environment<br>
+
+
+{% endif %} 
+</li>
+
+<li><strong>4. Bank Details</strong></li>
+</ul>
+
+<div class="highlight-note">
+                                <p><strong>Note:</strong> All theory certificates can be completed through our Care Learning portal: <a href="https://www.care-learning.com/" style="color: #007bff; text-decoration: underline;">Online Health Care Courses | Care Learning </a></p>
+                            </div>
+
+<p>Please find the <strong>Garda Vetting Form</strong> attached. Kindly ensure:</p>
+<ul>
+<li>Your name matches your passport exactly</li>
+<li>Your address matches your proof of address</li>
+</ul>
+
+<p>Please complete the form in handwritten format and share a scanned copy along with the required supporting documents.</p>
+
+<p>If you have any questions, our team is available 24/7 at +353 1 211 8883.</p>
+
+<p>Best regards,<br><strong>Xpress Health Team</strong></p>
+
+</td>
+</tr>
+
+<!-- Footer -->
+<tr>
+<td class="footer">
+<p>Xpress Health | Ireland's Trusted Healthcare Staffing Platform</p>
+<p>&copy; {{ current_year }} Xpress Health. All rights reserved.</p>
+</td>
+</tr>
+
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>

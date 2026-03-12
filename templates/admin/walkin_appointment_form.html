@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xpress GP Registration - Xpress Health</title>
+    
+    <!-- Google Fonts: Montserrat -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Parsley.js for client-side validation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/parsley.js/2.9.2/parsley.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/parsley.js/2.9.2/parsley.css">
+
+    <style>
+        /* ── Your original styles remain unchanged ── */
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: #fff4e8;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .logo-section img {
+            height: 80px;
+            width: auto;
+        }
+        h1 {
+            color: #0066cc;
+            text-align: center;
+            font-weight: 700;
+            font-size: 32px;
+            margin-bottom: 30px;
+        }
+        .section-title {
+            color: #0066cc;
+            font-weight: 600;
+            font-size: 20px;
+            margin: 30px 0 15px;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 8px;
+        }
+        .form-group {
+            margin-bottom: 25px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        input[type="text"],
+        input[type="email"],
+        input[type="tel"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            font-family: 'Montserrat', sans-serif;
+            box-sizing: border-box;
+        }
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #5921cf;
+            box-shadow: 0 0 0 3px rgba(89, 33, 207, 0.2);
+        }
+        .dob-group {
+            display: flex;
+            gap: 15px;
+        }
+        .dob-group select {
+            flex: 1;
+        }
+        .radio-group {
+            display: flex;
+            gap: 30px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .radio-group label {
+            font-weight: normal;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        .radio-group input[type="radio"] {
+            margin-right: 8px;
+        }
+        .checkbox-group {
+            margin-top: 10px;
+        }
+        .emergency-note {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            font-style: italic;
+            color: #856404;
+        }
+        .slot-info {
+            background: #e8f5e9;
+            border-left: 4px solid #43a047;
+            padding: 20px;
+            margin: 20px 0;
+            font-size: 18px;
+            text-align: center;
+            border-radius: 0 6px 6px 0;
+        }
+        button {
+            background: #5921cf;
+            color: white;
+            padding: 16px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #4719b0;
+        }
+        button:disabled {
+            background: #aaa;
+            cursor: not-allowed;
+        }
+        .flash {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+        .flash.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .flash.error   { background: #f8d7da; color: #721c24; border: 1px solid #f1b0b7; }
+        .flash.warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+        }
+        .modal-content h2 {
+            color: #d32f2f;
+            margin-bottom: 20px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .form-disabled {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Logo -->
+    <div class="logo-section">
+        <img src="https://expresshealth.ie/static/image/custom.png" alt="Xpress GP Logo">
+    </div>
+
+    <!-- <h1>Xpress GP Appointment Booking</h1> -->
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% if slot_date or slot_time %}
+    <div class="slot-info">
+        <strong>Requested Appointment:</strong><br>
+        {{ slot_date }} at {{ slot_time }}
+    </div>
+    {% endif %}
+
+    <form method="POST" id="registrationForm" data-parsley-validate>
+        <!-- Hidden fields to preserve slot info -->
+       
+
+        
+
+
+        <!-- All fields below this div will be disabled if "Yes" is selected -->
+        <div id="formContent">
+            <div class="section-title">Patient Details</div>
+
+<div class="form-group">
+    <label for="full_name">Full Name *</label>
+    <input type="text" name="full_name" id="full_name" required data-parsley-required="true">
+</div>
+
+<div class="form-group">
+    <label>Date of Birth *</label>
+    <div class="dob-group">
+        <select name="dob_day" required data-parsley-required="true">
+            <option value="">Day</option>
+            {% for day in range(1, 32) %}
+                <option value="{{ '%02d' % day }}">{{ day }}</option>
+            {% endfor %}
+        </select>
+        <select name="dob_month" required data-parsley-required="true">
+            <option value="">Month</option>
+            {% for month in range(1, 13) %}
+                <option value="{{ '%02d' % month }}">{{ month }}</option>
+            {% endfor %}
+        </select>
+        <select name="dob_year" required data-parsley-required="true">
+            <option value="">Year</option>
+            {% for year in range(2026, 1900, -1) %}
+                <option value="{{ year }}">{{ year }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<div class="form-group">
+    <label>Gender *</label>
+    <div class="radio-group">
+        <label><input type="radio" name="gender" value="male" required data-parsley-required="true"> Male</label>
+        <label><input type="radio" name="gender" value="female"> Female</label>
+        <label><input type="radio" name="gender" value="other"> Other</label>
+        <label><input type="radio" name="gender" value="prefer_not_to_say"> Prefer not to say</label>
+    </div>
+</div>
+
+<div class="form-group">
+    <label for="pps_number">PPSN NO *</label>
+    <input type="text"
+           name="pps_number"
+           id="pps_number"
+           placeholder="e.g. 1234567A"
+           required
+           data-parsley-required="true"
+           data-parsley-pattern="^[0-9]{7}[A-Z]{1,2}$"
+           data-parsley-pattern-message="PPSN format: 7 digits followed by 1-2 letters (e.g. 1234567A)">
+</div>
+
+<div class="form-group">
+    <label for="birth_place">Town and country of birth *</label>
+    <input type="text"
+           name="birth_place"
+           id="birth_place"
+           placeholder="e.g. Dublin, Ireland"
+           required
+           data-parsley-required="true"
+           data-parsley-minlength="3">
+</div>
+
+<div class="form-group">
+    <label for="preferred_language">Preferred Language *</label>
+    <select name="preferred_language" id="preferred_language" required data-parsley-required="true">
+        <option value="">Select language</option>
+        <option value="English">English</option>
+        <option value="Irish">Irish (Gaeilge)</option>
+        <option value="Polish">Polish</option>
+        <option value="Romanian">Romanian</option>
+        <option value="Lithuanian">Lithuanian</option>
+        <option value="Arabic">Arabic</option>
+        <option value="French">French</option>
+        <option value="Spanish">Spanish</option>
+        <option value="German">German</option>
+        <option value="Other">Other (please specify in notes)</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label>Interpreter Needed? *</label>
+    <div class="radio-group">
+        <label><input type="radio" name="interpreter" value="yes" required data-parsley-required="true"> Yes</label>
+        <label><input type="radio" name="interpreter" value="no"> No</label>
+    </div>
+</div>
+
+            <div class="section-title">Contact Details</div>
+
+<div class="form-group">
+    <label for="address">Address *</label>
+    <textarea name="address"
+              id="address"
+              rows="4"
+              placeholder="Street, House/Apt No, Area, City, County, Eircode"
+              required
+              data-parsley-required="true"
+              data-parsley-minlength="10"></textarea>
+</div>
+
+<div class="form-group">
+    <label for="phone">Phone *</label>
+    <input type="tel"
+           name="phone"
+           id="phone"
+           placeholder="+353 85 123 4567"
+           required
+           data-parsley-required="true"
+           data-parsley-pattern="^[+]?[0-9\s]{10,15}$">
+</div>
+
+<div class="form-group">
+    <label for="email">Email *</label>
+    <input type="email"
+           name="email"
+           id="email"
+           placeholder="example@email.com"
+           required
+           data-parsley-required="true"
+           data-parsley-type="email">
+</div>
+
+<div class="form-group">
+    <label>Preferred Contact Method *</label>
+    <div class="checkbox-group" style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+        <label>
+            <input type="checkbox" name="contact_method[]" value="SMS">
+            SMS
+        </label>
+        <label>
+            <input type="checkbox" name="contact_method[]" value="Phone">
+            Phone
+        </label>
+        <label>
+            <input type="checkbox" name="contact_method[]" value="Email">
+            Email
+        </label>
+        <label>
+            <input type="checkbox" name="contact_method[]" value="Post">
+            Post
+        </label>
+    </div>
+    <small style="color: #666; font-size: 14px; margin-top: 8px; display: block;">
+        Please select at least one preferred method (you can choose multiple)
+    </small>
+</div>
+
+<div class="section-title">Previous GP Details</div>
+
+<div class="form-group">
+    <label for="previous_gp_name">Name</label>
+    <input type="text"
+           name="previous_gp_name"
+           id="previous_gp_name"
+           placeholder="e.g. Dr. John Murphy">
+</div>
+
+<div class="form-group">
+    <label for="previous_gp_phone">Phone No:</label>
+    <input type="tel"
+           name="previous_gp_phone"
+           id="previous_gp_phone"
+           placeholder="+353 1 123 4567 or 01 123 4567">
+</div>
+
+<div class="form-group">
+    <label for="previous_gp_address">Address:</label>
+    <textarea name="previous_gp_address"
+              id="previous_gp_address"
+              rows="4"
+              placeholder="Practice name, street, town, county, Eircode"></textarea>
+</div>
+
+            <div class="section-title">Medical History</div>
+
+<div class="form-group">
+    <label>Do you have any allergies? *</label>
+    <div class="radio-group">
+        <label><input type="radio" name="allergies" value="yes" required data-parsley-required="true"> Yes</label>
+        <label><input type="radio" name="allergies" value="no"> No</label>
+    </div>
+</div>
+
+<!-- Conditional field - shown only if Yes is selected -->
+<div class="form-group" id="allergies_details_group" >
+    <label for="allergies_details">If yes, please specify:</label>
+    <textarea name="allergies_details"
+              id="allergies_details"
+              rows="3"
+              placeholder="e.g. Penicillin, nuts, latex, bee stings..."></textarea>
+</div>
+
+<div class="form-group">
+    <label for="medical_history">Medical History:</label>
+    <textarea name="medical_history"
+              id="medical_history"
+              rows="4"
+              placeholder="e.g. Previous surgeries, hospitalizations, chronic illnesses, heart disease, diabetes, asthma, etc..."></textarea>
+</div>
+
+<div class="form-group">
+    <label for="ongoing_conditions">Ongoing Conditions:</label>
+    <textarea name="ongoing_conditions"
+              id="ongoing_conditions"
+              rows="4"
+              placeholder="List any current long-term medical conditions..."></textarea>
+</div>
+
+<div class="form-group">
+    <label for="current_medications">Current Medications:</label>
+    <textarea name="current_medications"
+              id="current_medications"
+              rows="4"
+              placeholder="List all medications you are currently taking, including dosage if known (e.g. Metformin 500mg twice daily, Aspirin 75mg daily)..."></textarea>
+</div>
+
+            <div class="section-title">Life Style</div>
+
+<div class="form-group">
+    <label>Do you smoke or drink? *</label>
+    <div class="radio-group">
+        <label><input type="radio" name="smoke_drink" value="yes" required data-parsley-required="true"> Yes</label>
+        <label><input type="radio" name="smoke_drink" value="no"> No</label>
+    </div>
+</div>
+
+<!-- Conditional field - shown only if Yes is selected for smoke/drink -->
+<div class="form-group" id="smoke_drink_details_group">
+    <label for="smoke_drink_details">If yes, how many per day?</label>
+    <input type="text"
+           name="smoke_drink_details"
+           id="smoke_drink_details"
+           placeholder="e.g. 10 cigarettes / 2 pints"
+           data-parsley-maxlength="100">
+</div>
+
+<div class="form-group">
+    <label>Do you drink alcohol? *</label>
+    <div class="radio-group">
+        <label><input type="radio" name="alcohol" value="yes" required data-parsley-required="true"> Yes</label>
+        <label><input type="radio" name="alcohol" value="no"> No</label>
+    </div>
+</div>
+
+<!-- Conditional field - shown only if Yes is selected for alcohol -->
+<div class="form-group" id="alcohol_details_group" >
+    <label for="alcohol_units">If yes, how many units per week?</label>
+    <input type="text"
+           name="alcohol_units"
+           id="alcohol_units"
+           placeholder="e.g. 8-10 units"
+           data-parsley-type="number"
+           data-parsley-min="0">
+</div>
+
+<!-- Confirmation & Acceptance (moved here as per your image) -->
+<div class="section-title">Confirmation</div>
+
+<div class="form-group checkbox-group">
+    <label>
+        <input type="checkbox" name="consent" value="1" required data-parsley-required="true">
+        I confirm that the information I have provided is accurate and complete. I understand that this information will be used for my medical care.
+    </label>
+</div>
+
+<div class="form-group checkbox-group" style="margin-top: 15px;">
+    <label>
+        <input type="checkbox" name="terms_accept" value="1" required data-parsley-required="true">
+        I accept the Terms and Conditions.
+    </label>
+</div>
+
+<div class="form-group">
+    <label>Today's Date (for confirmation) *</label>
+    <div class="dob-group">
+        <select name="sign_day" required data-parsley-required="true">
+            <option value="">Day</option>
+            {% for day in range(1, 32) %}
+                <option value="{{ '%02d' % day }}">{{ day }}</option>
+            {% endfor %}
+        </select>
+        <select name="sign_month" required data-parsley-required="true">
+            <option value="">Month</option>
+            {% for month in range(1, 13) %}
+                <option value="{{ '%02d' % month }}">{{ month }}</option>
+            {% endfor %}
+        </select>
+        <select name="sign_year" required data-parsley-required="true">
+            <option value="">Year</option>
+            <!-- Limited to recent years + current year (2026) -->
+            {% for year in range(2026, 2015, -1) %}
+                <option value="{{ year }}">{{ year }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+            <button type="submit" id="submitBtn">Book Now</button>
+        </div>
+    </form>
+</div>
+
+<!-- Emergency Modal -->
+<div id="emergencyModal" class="modal">
+    <div class="modal-content">
+        <span class="close">×</span>
+        <h2>Emergency Care Required</h2>
+        <p>You are not suitable for this service.<br><strong>Please call 999 or 112 immediately.</strong></p>
+    </div>
+</div>
+
+<script>
+    // ── Your original emergency handling script remains unchanged ──
+    const emergencyRadios = document.querySelectorAll('input[name="emergency_care"]');
+    const formContent = document.getElementById('formContent');
+    const submitBtn = document.getElementById('submitBtn');
+    const modal = document.getElementById('emergencyModal');
+    const closeBtn = document.querySelector('.close');
+
+    emergencyRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'yes') {
+                modal.style.display = 'block';
+                formContent.classList.add('form-disabled');
+                submitBtn.disabled = true;
+            } else {
+                modal.style.display = 'none';
+                formContent.classList.remove('form-disabled');
+                submitBtn.disabled = false;
+            }
+        });
+    });
+
+    closeBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+    });
+
+    window.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    // Customize Parsley messages (unchanged)
+    window.Parsley.addMessages('en', {
+        defaultMessage: "This value seems invalid.",
+        required: "This field is required.",
+        type: {
+            email: "Please enter a valid email address.",
+            url: "Please enter a valid URL.",
+            number: "Please enter a valid number.",
+            integer: "Please enter a valid integer.",
+            digits: "This field must contain digits only.",
+            alphanum: "This field must be alphanumeric."
+        },
+        notblank: "This field cannot be blank.",
+        required: "This field is required.",
+        pattern: "This value seems invalid.",
+        min: "This value should be greater than or equal to %s.",
+        max: "This value should be less than or equal to %s.",
+        range: "This value should be between %s and %s.",
+        minlength: "This field is too short. It should have %s characters or more.",
+        maxlength: "This field is too long. It should have %s characters or fewer.",
+        length: "This field length is invalid. It should be between %s and %s characters.",
+        equalto: "This value should match."
+    });
+
+    // Show/hide conditional fields for Life Style
+const smokeDrinkRadios = document.querySelectorAll('input[name="smoke_drink"]');
+const alcoholRadios = document.querySelectorAll('input[name="alcohol"]');
+
+const smokeDrinkGroup = document.getElementById('smoke_drink_details_group');
+const alcoholGroup = document.getElementById('alcohol_details_group');
+
+smokeDrinkRadios.forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.value === 'yes') {
+            smokeDrinkGroup.style.display = 'block';
+        } else {
+            smokeDrinkGroup.style.display = 'none';
+        }
+    });
+});
+
+alcoholRadios.forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.value === 'yes') {
+            alcoholGroup.style.display = 'block';
+        } else {
+            alcoholGroup.style.display = 'none';
+        }
+    });
+});
+
+// Trigger on page load (useful if form is repopulated)
+document.addEventListener('DOMContentLoaded', () => {
+    const smokeSelected = document.querySelector('input[name="smoke_drink"]:checked');
+    if (smokeSelected && smokeSelected.value === 'yes') {
+        smokeDrinkGroup.style.display = 'block';
+    }
+
+    const alcoholSelected = document.querySelector('input[name="alcohol"]:checked');
+    if (alcoholSelected && alcoholSelected.value === 'yes') {
+        alcoholGroup.style.display = 'block';
+    }
+});
+
+// Show/hide allergies details when "Yes/No" is selected
+const allergiesRadios = document.querySelectorAll('input[name="allergies"]');
+const allergiesDetailsGroup = document.getElementById('allergies_details_group');
+
+allergiesRadios.forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.value === 'yes') {
+            allergiesDetailsGroup.style.display = 'block';
+            // Optional: make it required only when visible
+            document.getElementById('allergies_details').setAttribute('data-parsley-required', 'true');
+        } else {
+            allergiesDetailsGroup.style.display = 'none';
+            document.getElementById('allergies_details').removeAttribute('data-parsley-required');
+        }
+    });
+});
+
+// Also trigger on page load (in case of form repopulation)
+document.addEventListener('DOMContentLoaded', () => {
+    const selected = document.querySelector('input[name="allergies"]:checked');
+    if (selected && selected.value === 'yes') {
+        allergiesDetailsGroup.style.display = 'block';
+        document.getElementById('allergies_details').setAttribute('data-parsley-required', 'true');
+    }
+});
+</script>
+
+</body>
+</html>

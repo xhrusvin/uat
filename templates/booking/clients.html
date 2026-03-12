@@ -1,0 +1,492 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Client Management • Admin{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">Client Management</h2>
+        <div class="d-flex gap-3 flex-wrap">
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#clientModal" onclick="prepareAddModal()">
+        <i class="bi bi-person-plus"></i> Add Client
+    </button>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#importModal">
+        <i class="bi bi-upload"></i> Import from Excel
+    </button>
+    <a href="{{ url_for('booking.clients') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-repeat"></i> Refresh
+    </a>
+    <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">{{ total }} Clients</span>
+</div>
+    </div>
+
+    <!-- Search -->
+    <form method="get" class="mb-5">
+        <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+            <span class="input-group-text bg-white border-0">Search</span>
+            <input type="text" name="search" class="form-control border-0 ps-0"
+                   placeholder="Search by name, email or phone..." value="{{ search }}" autofocus>
+            <button class="btn btn-primary px-4" type="submit">Search</button>
+            {% if search %}
+            <a href="{{ url_for('booking.clients') }}" class="btn btn-outline-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+
+    <!-- Table -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <tr>
+                            <th class="ps-4">Name</th>
+                            <th>Client Type</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Address</th>
+                            <th>County</th>
+                            <th>Notes</th>
+                            <th>Status</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in clients %}
+                        <tr>
+                            <td class="ps-4 fw-semibold">{{ c.name }}</td>
+                            <td class="text-muted">
+            {{ c.client_type or '—' }}
+        </td>
+                            <td>
+                                {% if c.email %}
+                                    <a href="mailto:{{ c.email }}" class="text-primary text-decoration-none">{{ c.email }}</a>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if c.phone %}
+                                    <a href="tel:{{ c.phone }}" class="text-dark text-decoration-none">{{ c.phone }}</a>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-muted">{{ c.address or '—' }}</td>
+                            <td class="text-muted">{{ c.county or '—' }}</td>
+                            <td class="text-muted">{{ c.notes or '—' }}</td>
+                            <td>
+                                {% if c.is_active %}
+                                <span class="badge bg-success rounded-pill px-3">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary rounded-pill px-3">Inactive</span>
+                                {% endif %}
+                            </td>
+                           <td class="text-center">
+    <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 edit-btn"
+        type="button"
+        data-bs-toggle="modal"
+        data-bs-target="#clientModal"
+        data-client-id="{{ c._id }}"
+        data-client-name={{ c.name     | tojson }}
+        data-client-type={{ c.client_type | tojson }}
+        data-client-email={{ c.email    | tojson }}
+        data-client-phone={{ c.phone    | tojson }}
+        data-client-address={{ c.address  | tojson }}
+        data-client-county={{ c.county | default('') | tojson }}
+        data-client-notes={{ c.notes    | tojson }}
+        data-client-active={{ c.is_active| tojson }}>
+   <i class="bi bi-pencil"></i>
+</button>
+
+    <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
+            data-id="{{ c._id | string }}"
+            data-name="{{ c.name | tojson | safe }}">
+       <i class="bi bi-trash"></i>
+    </button>
+</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5 text-muted">
+                                <i class="bi bi-people-fill display-1 opacity-25 d-block mb-3"></i>
+                                <h5>No clients found</h5>
+                                {% if search %}
+                                <p class="mb-0">Try adjusting your search term</p>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+  <!-- Pagination -->
+    {% if total > per_page %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center pagination-lg">
+            {% if page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&search={{ search }}">Previous</a></li>
+            {% endif %}
+
+            {% set pages = ((total / per_page) | round(0, 'ceil')) | int %}
+            {% set start_page = [page - 2, 1] | max %}
+            {% set end_page = [start_page + 4, pages] | min %}
+
+            {% if start_page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page=1&search={{ search }}">1</a></li>
+            {% if start_page > 2 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            {% endif %}
+
+            {% for p in range(start_page, end_page + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}&search={{ search }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if end_page < pages %}
+            {% if end_page < pages - 1 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            <li class="page-item"><a class="page-link" href="?page={{ pages }}&search={{ search }}">{{ pages }}</a></li>
+            {% endif %}
+
+            {% if page < pages %}
+            <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&search={{ search }}">Next</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="clientModal" tabindex="-1" aria-labelledby="clientModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title fw-bold" id="clientModalLabel">Add New Client</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="clientForm" data-parsley-validate data-parsley-focus="first">
+        <div class="modal-body">
+            <input type="hidden" name="client_id" id="client_id">
+
+            <div class="mb-4">
+                <label class="form-label fw-bold fs-5">Full Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control form-control-lg" 
+                       id="name" name="name" required 
+                       data-parsley-required-message="Full name is required"
+                       data-parsley-minlength="2"
+                       data-parsley-minlength-message="Name must be at least 2 characters"
+                       autofocus>
+            </div>
+
+            <!-- Client Type (from previous request) -->
+            <div class="mb-4">
+                <label class="form-label fw-bold">Client Type</label>
+                <input type="text" class="form-control" id="client_type" name="client_type"
+                       placeholder="e.g. Regular, VIP, Corporate..."
+                       data-parsley-pattern="[a-zA-Z0-9\s\-]+"
+                       data-parsley-pattern-message="Only letters, numbers, spaces and hyphens allowed">
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Email</label>
+                    <input type="email" class="form-control" id="email" name="email"
+                           placeholder="client@example.com"
+                           data-parsley-trigger="change"
+                           data-parsley-type="email"
+                           data-parsley-type-message="Please enter a valid email address">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Phone</label>
+                    <input type="tel" class="form-control" id="phone" name="phone"
+                           placeholder="+91 98765 43210"
+                           data-parsley-pattern="^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$"
+                           data-parsley-pattern-message="Invalid phone number format"
+                           data-parsley-trigger="change">
+                </div>
+            </div>
+
+            <!-- Address & Notes – optional, but you can add minlength etc. if wanted -->
+            <div class="mt-3 mb-3">
+                <label class="form-label fw-bold">Address</label>
+                <textarea class="form-control" id="address" name="address" rows="2"
+                          data-parsley-maxlength="200"
+                          data-parsley-maxlength-message="Address too long (max 200 characters)"></textarea>
+            </div>
+
+            <div class="mb-3">
+    <label class="form-label fw-bold">County</label>
+    <input type="text" class="form-control" 
+           id="county" name="county"
+           placeholder="Enter county..."
+           maxlength="100">
+</div>
+
+            <div class="mb-4">
+                <label class="form-label fw-bold">Notes / Preferences</label>
+                <textarea class="form-control" id="notes" name="notes" rows="3"
+                          data-parsley-maxlength="500"></textarea>
+            </div>
+
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
+                <label class="form-check-label fw-bold" for="is_active">Active client (can book appointments)</label>
+            </div>
+        </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-5 fw-bold" id="submitBtn">Create Client</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header bg-success text-white rounded-top-4">
+                <h5 class="modal-title fw-bold" id="importModalLabel">Import Clients from Excel</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">
+                    Upload an <strong>.xlsx</strong> file with columns:<br>
+                    <code>Client Type, Name, Email, Phone Number, Address, ...</code><br>
+                    <small>Required: Name<br>Optional: others</small>
+                    <a href="{{ url_for('static', filename='documents/sample_clients.xlsx') }}">Sample xlsx</a>
+                </p>
+                <form id="importForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="importFile" class="form-label fw-bold">Select Excel File</label>
+                        <input type="file" class="form-control" id="importFile" name="file" accept=".xlsx,.xls" required>
+                    </div>
+                    <div id="importProgress" class="d-none alert alert-info mt-3">
+                        Processing...
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success px-5 fw-bold" id="importBtn">Import</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+// Prepare modal for ADD
+function prepareAddModal() {
+    document.getElementById('clientModalLabel').textContent = 'Add New Client';
+    document.getElementById('submitBtn').textContent = 'Create Client';
+    document.getElementById('client_id').value = '';
+    document.getElementById('name').value = '';
+    document.getElementById('client_type').value = '';
+    document.getElementById('email').value = '';
+    document.getElementById('phone').value = '';
+    document.getElementById('address').value = '';
+    document.getElementById('county').value = '';
+    document.getElementById('notes').value = '';
+    document.getElementById('is_active').checked = true;
+}
+
+
+
+// Populate edit modal using data attributes when it is about to show
+const clientModal = document.getElementById('clientModal');
+
+if (clientModal) {
+    clientModal.addEventListener('show.bs.modal', function (event) {
+        // Button that triggered the modal
+        const button = event.relatedTarget;
+
+        // If it's not an edit button → it's add → skip population
+        if (!button.classList.contains('edit-btn')) {
+            prepareAddModal();  // reset for add
+            return;
+        }
+
+        // Extract data-* attributes (they come already as strings)
+        const id      = button.getAttribute('data-client-id');
+        const name    = button.getAttribute('data-client-name');
+        const clientType = button.getAttribute('data-client-type')   || '';
+        const email   = button.getAttribute('data-client-email')   || '';
+        const phone   = button.getAttribute('data-client-phone')   || '';
+        const address = button.getAttribute('data-client-address') || '';
+        const county = button.getAttribute('data-client-county') || '';
+        const notes   = button.getAttribute('data-client-notes')   || '';
+        const active  = button.getAttribute('data-client-active') === 'true';
+
+        // Update modal title and button
+        document.getElementById('clientModalLabel').textContent = 'Edit Client';
+        document.getElementById('submitBtn').textContent = 'Save Changes';
+
+        // Fill the form fields
+        document.getElementById('client_id').value = id;
+        document.getElementById('name').value      = name;
+        document.getElementById('client_type').value  = clientType;
+        document.getElementById('email').value     = email;
+        document.getElementById('phone').value     = phone;
+        document.getElementById('address').value   = address;
+        document.getElementById('county').value = county;
+        document.getElementById('notes').value     = notes;
+        document.getElementById('is_active').checked = active;
+    });
+}
+// Form submit (AJAX)
+document.getElementById('clientForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const form = e.target;
+    const parsleyForm = $(form).parsley();  // Get Parsley instance
+
+    // Trigger validation
+    if (!parsleyForm.isValid()) {
+        // Optional: focus first error
+        parsleyForm.validationResult.forEach(field => {
+            if (!field.isValid()) field.element.focus();
+        });
+        return;  // Stop submit if invalid
+    }
+    const submitBtn = document.getElementById('submitBtn');
+    const isEdit = !!document.getElementById('client_id').value;
+    const url = isEdit ? "{{ url_for('booking.client_edit') }}" : "{{ url_for('booking.client_add') }}";
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = isEdit ? 'Saving...' : 'Creating...';
+
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData);
+    data.is_active = form.querySelector('#is_active').checked;
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: isEdit ? 'Client updated successfully' : 'Client created successfully',
+                timer: 1600,
+                showConfirmButton: false
+            }).then(() => {
+                bootstrap.Modal.getInstance(document.getElementById('clientModal')).hide();
+                location.reload();
+            });
+        } else {
+            Swal.fire('Error', result.error || 'Operation failed', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = isEdit ? 'Save Changes' : 'Create Client';
+    }
+});
+
+// Delete buttons
+document.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const id = this.dataset.id;
+        const name = this.dataset.name || 'this client';
+
+        const { isConfirmed } = await Swal.fire({
+            title: 'Delete Client?',
+            html: `Are you sure you want to delete <strong>${name}</strong>?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, delete'
+        });
+
+        if (isConfirmed) {
+            try {
+                const res = await fetch("{{ url_for('booking.client_delete') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ client_id: id })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    Swal.fire('Deleted!', 'Client has been removed.', 'success')
+                        .then(() => location.reload());
+                } else {
+                    Swal.fire('Error', data.error || 'Failed to delete', 'error');
+                }
+            } catch {
+                Swal.fire('Error', 'Network error', 'error');
+            }
+        }
+    });
+});
+
+// Import handling
+document.getElementById('importBtn')?.addEventListener('click', async function() {
+    const importBtn = this;
+    const fileInput = document.getElementById('importFile');
+    const progress = document.getElementById('importProgress');
+
+    if (!fileInput.files.length) {
+        Swal.fire('Error', 'Please select an Excel file', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    importBtn.disabled = true;
+    importBtn.textContent = 'Importing...';
+    progress.classList.remove('d-none');
+    progress.textContent = 'Uploading and processing...';
+
+    try {
+        const res = await fetch("{{ url_for('booking.client_import') }}", {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Import Successful',
+                html: result.message.replace(/\n/g, '<br>'),
+                timer: 4000,
+                showConfirmButton: false
+            }).then(() => {
+                bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
+                location.reload();
+            });
+        } else {
+            Swal.fire('Error', result.error || 'Import failed', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error during import', 'error');
+    } finally {
+        importBtn.disabled = false;
+        importBtn.textContent = 'Import';
+        progress.classList.add('d-none');
+    }
+});
+</script>
+
+{% endblock %}

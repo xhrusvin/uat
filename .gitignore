@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.py[cod]
+*.pyc
+__pycache__/registration.cpython-314.pyc
+__pycache__/lead_call.cpython-314.pyc
+__pycache__/routes.cpython-314.pyc

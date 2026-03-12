@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Xpress Health — Register</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" integrity="sha512-1ycn6IcaQQ40/MKBW2W4Rhis/DbILU74C1vSrLJxCq57o941Ym01SwNsOMqvEBFlcgUa6xLiPY/NS5R+E6ztJQ==" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/parsley.js/2.9.2/parsley.min.js"></script>
+  <style>
+    /* Same styles as provided in the original HTML */
+    body {
+      font-family: Inter, Arial, sans-serif;
+      background: #f5f7fb;
+      margin: 0;
+      color: #333;
+    }
+
+    .register-container {
+      display: flex;
+      min-height: 80vh;
+    }
+
+    .left-panel {
+      flex: 1;
+      background: #eaf2ff;
+      padding: 60px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .logo {
+      width: 200px;
+      margin-bottom: 30px;
+    }
+
+    .left-panel h2 {
+      color: #397eff;
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .left-panel p {
+      color: #555;
+      font-size: 16px;
+      margin-top: 12px;
+      line-height: 1.5;
+    }
+
+    .right-panel {
+      flex: 1.2;
+      background: #fff;
+      padding: 60px 80px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .right-panel h1 {
+      margin-bottom: 20px;
+      color: #222;
+      font-size: 28px;
+      font-weight: 600;
+    }
+
+    label {
+      display: block;
+      font-weight: 500;
+      margin-top: 12px;
+      color: #333;
+      font-size: 14px;
+    }
+
+    .form-group {
+      margin-bottom: 2px;
+    }
+
+    input, button, select, .field-container {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      margin-top: 6px;
+      font-size: 14px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      box-sizing: border-box;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #397eff;
+      box-shadow: 0 0 0 3px rgba(57, 126, 255, 0.1);
+    }
+
+    button[type="submit"] {
+      background: #397eff;
+      color: white;
+      border: none;
+      margin-top: 20px;
+      font-weight: 500;
+      padding: 12px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    button[type="submit"]:hover {
+      background: #285edb;
+    }
+
+    #audioToggleIcon {
+      font-size: 20px;
+      color: #397eff;
+      cursor: pointer;
+      transition: color 0.2s ease, transform 0.2s ease;
+      position: absolute;
+      bottom: 40px;
+      right: 20px;
+      background: #fff;
+      border-radius: 50%;
+      padding: 10px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #audioToggleIcon:hover {
+      color: #285edb;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    #audioToggleIcon.fa-phone-slash, #audioToggleIcon.fa-microphone {
+      color: #e53e3e;
+    }
+
+    #audioToggleIcon.fa-phone-slash:hover, #audioToggleIcon.fa-microphone:hover {
+      color: #c53030;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    #audioToggleIcon.pulsate {
+      animation: pulsate 1s infinite;
+    }
+
+    @keyframes pulsate {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+
+    .login-link {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #555;
+    }
+
+    .login-link a {
+      color: #397eff;
+      text-decoration: none;
+    }
+
+    .login-link a:hover {
+      text-decoration: underline;
+    }
+
+    .msg {
+      color: #2f855a;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    .error {
+      color: #e53e3e;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .country-btn {
+      flex: 1;
+      background: #fff;
+      border: 1px solid #d1d5db;
+      color: #333;
+      cursor: pointer;
+      padding: 12px;
+      border-radius: 8px;
+      transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .country-btn.selected {
+      background: #397eff;
+      color: #fff;
+      border: 1px solid #285edb;
+      font-weight: 600;
+    }
+
+    .field-container {
+      display: flex;
+      gap: 10px;
+      border: none;
+      padding: 0;
+    }
+
+    .field-container > * {
+      flex: 1;
+      margin-top: 0;
+    }
+
+    .field-container button {
+      background: #e0e7ff;
+      border: 1px solid #d1d5db;
+      color: #333;
+    }
+
+    .field-container select {
+      flex: 0.2;
+    }
+
+    .field-container input[type="tel"] {
+      flex: 0.8;
+    }
+
+    @media (max-width: 600px) {
+      .register-container {
+        flex-direction: column;
+      }
+
+      .left-panel, .right-panel {
+        flex: none;
+        padding: 40px 20px;
+      }
+
+      #audioToggleIcon {
+        bottom: 30px;
+        right: 10px;
+      }
+    }
+
+    /* Parsley.js Error Styles */
+    input.parsley-error, select.parsley-error {
+      border-color: #e53e3e;
+      box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.1);
+    }
+
+    .parsley-errors-list {
+      color: #e53e3e;
+      font-size: 12px;
+      margin-top: 8px;
+      list-style: none;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="register-container">
+    <div class="left-panel">
+      <img src="https://xpresshealthapp.com/assets/login-cover-2.png" class="logo" alt="Logo">
+      <h2>Join Xpress Health</h2>
+      <p>Create an account to manage your shifts seamlessly.</p>
+    </div>
+    <div class="right-panel">
+      <h1>Create your Xpress Health Account</h1>
+      <form id="registerForm" data-parsley-validate>
+        <div class="form-group">
+          <label>Select country of residence</label>
+          <div id="countryButtons" class="field-container">
+            <button type="button" class="country-btn" data-value="Ireland">Ireland</button>
+            <button type="button" class="country-btn" data-value="UK">UK</button>
+            <button type="button" class="country-btn" data-value="Northern Ireland">Northern Ireland</button>
+            <button type="button" class="country-btn" data-value="Australia">Australia</button>
+          </div>
+          <input type="hidden" id="country" name="country" data-parsley-required="true" data-parsley-error-message="Please select a country of residence">
+        </div>
+
+        <div class="form-group">
+          <label>Select Designation</label>
+          <select id="designation" name="designation" data-parsley-required="true" data-parsley-error-message="Please select a designation">
+            <option value="">Select your role</option>
+            <option value="Nurse">Nurse</option>
+            <option value="Healthcare Assistant">Healthcare Assistant</option>
+            <option value="RPN">RPN</option>
+            <option value="Pharmacist">Pharmacist</option>
+            <option value="Pharmacy Technician">Pharmacy Technician</option>
+            <option value="Multi-Task Assistant">Multi-Task Assistant</option>
+            <option value="Cleaner">Cleaner</option>
+            <option value="Radiographer">Radiographer</option>
+            <option value="Cardiac Physiologist">Cardiac Physiologist</option>
+            <option value="Chef">Chef</option>
+            <option value="Housekeeping">Housekeeping</option>
+            <option value="Occupational Therapists">Occupational Therapists</option>
+            <option value="Physiotherapist">Physiotherapist</option>
+            <option value="Speech And Language Therapist">Speech And Language Therapist</option>
+            <option value="Podiatrists">Podiatrists</option>
+            <option value="Support Worker">Support Worker</option>
+            <option value="Admin Assistant">Admin Assistant</option>
+            <option value="Test">Test</option>
+            <option value="Social Care Worker">Social Care Worker</option>
+            <option value="Anaesthetic Rn">Anaesthetic Rn</option>
+            <option value="Midwives">Midwives</option>
+            <option value="Psychologists">Psychologists</option>
+            <option value="Kitchen Assistant">Kitchen Assistant</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Location</label>
+          <div class="field-container">
+            <input type="text" id="locationInput" name="location" value="Ireland" readonly data-parsley-required="true">
+            <button type="button">Fetch Location</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>First Name</label>
+          <input type="text" id="firstName" name="firstName" placeholder="Enter your first name" data-parsley-required="true" data-parsley-error-message="Please enter your first name">
+        </div>
+
+        <div class="form-group">
+          <label>Last Name</label>
+          <input type="text" id="lastName" name="lastName" placeholder="Enter your last name" data-parsley-required="true" data-parsley-error-message="Please enter your last name">
+        </div>
+
+        <div class="form-group">
+          <label>Phone</label>
+          <div class="field-container">
+            <select id="countryCode" name="countryCode">
+              <option value="+353">+353</option>
+              <option value="+44">+44</option>
+              <option value="+91">+91</option>
+            </select>
+            <input type="tel" id="phoneNumber" name="phoneNumber" placeholder="Enter your phone number" data-parsley-required="true" data-parsley-pattern="^[0-9]{7,15}$" data-parsley-error-message="Please enter a valid phone number">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="email" name="email" placeholder="Enter your E-mail Id" data-parsley-required="true" data-parsley-type="email" data-parsley-error-message="Please enter a valid email">
+        </div>
+
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="password" name="password" placeholder="Enter your password" data-parsley-required="true" data-parsley-minlength="8" data-parsley-error-message="Password must be at least 8 characters long">
+        </div>
+
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm your password" data-parsley-required="true" data-parsley-equalto="#password" data-parsley-error-message="Passwords do not match">
+        </div>
+
+        <div id="error" class="error"></div>
+        <div id="success" class="msg"></div>
+
+        <button type="submit" id="register_btn">Register</button>
+      </form>
+
+      <div class="login-link">
+        Already have an account? <a href="/">Log in here</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const countryButtons = document.getElementById('countryButtons').getElementsByTagName('button');
+    const locationInput = document.getElementById('locationInput');
+    const countryInput = document.getElementById('country');
+    const designationSelect = document.getElementById('designation');
+    const form = $('#registerForm');
+
+    // Initialize Parsley
+    form.parsley();
+
+    // Parse query parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const firstName = urlParams.get('first_name') || '';
+    const lastName = urlParams.get('last_name') || '';
+    const phone = urlParams.get('phone') || '';
+    const email = urlParams.get('email') || '';
+    const country = urlParams.get('country') || '';
+    const designation = urlParams.get('designation') || '';
+
+    // Pre-fill form fields
+    if (firstName) document.getElementById('firstName').value = firstName;
+    if (lastName) document.getElementById('lastName').value = lastName;
+    if (phone) {
+      const phoneParts = phone.split(' ');
+      if (phoneParts.length >= 2 && ['+353', '+44'].includes(phoneParts[0])) {
+        document.getElementById('countryCode').value = phoneParts[0];
+        document.getElementById('phoneNumber').value = phoneParts.slice(1).join(' ').replace(/[^0-9]/g, '');
+      } else if (phone.startsWith('+')) {
+        document.getElementById('countryCode').value = phoneParts[0] || '+353';
+        document.getElementById('phoneNumber').value = phoneParts.slice(1).join(' ') || '';
+      }
+    }
+    if (email) document.getElementById('email').value = email;
+    if (country) {
+      for (let button of countryButtons) {
+        if (button.getAttribute('data-value') === country) {
+          for (let btn of countryButtons) btn.classList.remove('selected');
+          button.classList.add('selected');
+          locationInput.value = country;
+          countryInput.value = country;
+          break;
+        }
+      }
+    }
+    if (designation) designationSelect.value = designation;
+
+    // Country button click handler
+    for (let button of countryButtons) {
+      button.addEventListener('click', () => {
+        for (let btn of countryButtons) btn.classList.remove('selected');
+        button.classList.add('selected');
+        const countryValue = button.getAttribute('data-value');
+        locationInput.value = countryValue;
+        countryInput.value = countryValue;
+        form.parsley().validate();
+      });
+    }
+
+    // Handle form submission with AJAX
+    form.on('submit', (e) => {
+      e.preventDefault();
+      if (form.parsley().isValid()) {
+        const country = countryInput.value;
+        const designation = designationSelect.value;
+        const firstName = document.getElementById('firstName').value;
+        const lastName = document.getElementById('lastName').value;
+        const countryCode = document.getElementById('countryCode').value;
+        const phoneNumber = document.getElementById('phoneNumber').value;
+        const phone = `${countryCode} ${phoneNumber}`;
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+
+        $.ajax({
+          url: '/api/register',
+          method: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify({
+            first_name: firstName,
+            last_name: lastName,
+            email: email,
+            password: password,
+            confirm_password: confirmPassword,
+            phone: phone,
+            country: country,
+            designation: designation
+          }),
+          success: (data) => {
+              const userId = data.user_id;
+              window.location.href = `/registration_success?user_id=${userId}`;
+          },
+          error: (xhr) => {
+            document.getElementById('success').textContent = '';
+            const errorMsg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'An error occurred during registration.';
+            document.getElementById('error').textContent = errorMsg;
+          }
+        });
+      }
+    });
+  });
+</script>
+</body>
+</html>

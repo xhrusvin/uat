@@ -1,0 +1,13 @@
+flask
+flask-cors
+python-dotenv
+openai
+pdfplumber
+python-docx
+pymongo==4.15.5
+bcrypt==5.0.0
+twilio==9.9.0
+flask-talisman==1.1.0
+xlsxwriter==3.2.9
+flask-socketio==5.6.0
+eventlet==0.40.4

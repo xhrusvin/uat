@@ -1,0 +1,371 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Staff Management • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">
+            Staff Management
+        </h2>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-secondary">
+                Back to Dashboard
+            </a>
+            <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">{{ total }} Total Staff</span>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <form method="get" class="mb-4">
+        <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+            <span class="input-group-text bg-white border-0">Search</span>
+            <input type="text" name="search" class="form-control border-0 ps-0"
+                   placeholder="Search by email..." value="{{ search }}" autofocus>
+            <button class="btn btn-primary" type="submit">Search</button>
+            {% if search %}
+            <a href="{{ url_for('admin.staff') }}" class="btn btn-outline-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+
+    <!-- Staff Table -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <tr>
+                            <th class="ps-4">Name</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Country</th>
+                            <th>Designation</th>
+                            <th>Joined</th>
+                            <th class="text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="d-flex align-items-center">
+                                    <div class="avatar avatar-sm bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
+                                        {{ u.first_name[0] if u.first_name else 'U' }}{{ u.last_name[0] if u.last_name else '' }}
+                                    </div>
+                                    <div>
+                                        <div class="fw-semibold">{{ u.first_name }} {{ u.last_name }}</div>
+                                        {% if not u.first_name and not u.last_name %}
+                                        <small class="text-muted">Name not set</small>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </td>
+                            <td><span class="text-primary fw-medium">{{ u.email }}</span></td>
+                            <td>{{ u.phone or '<span class="text-muted">—</span>'|safe }}</td>
+                            <td>
+                                {% if u.country and u.country != '-' %}
+                                <span class="badge bg-light text-dark border">{{ u.country }}</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td><span class="text-muted">{{ u.designation or '—' }}</span></td>
+                            <td class="small text-muted">
+                                {{ u.created_at_formatted }}<br>
+                                {% if u.created_at_time %}
+                                <span class="text-primary">{{ u.created_at_time }}</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-primary btn-sm rounded-pill px-4 view-detail-btn"
+                                        data-id="{{ u._id | string }}"     
+                                        data-first="{{ u.first_name or '' }}"
+                                        data-last="{{ u.last_name or '' }}"
+                                        data-email="{{ u.email }}"
+                                        data-phone="{{ u.phone or '—' }}"
+                                        data-country="{{ u.country or '—' }}"
+                                        data-designation="{{ u.designation or '—' }}"
+                                        data-joined="{{ u.created_at_formatted }}{% if u.created_at_time %} {{ u.created_at_time }}{% else %} —{% endif %}"
+                                        data-preferred="{{ u.preferred_contact | default([]) | tojson | safe }}">
+                                   <i class="bi bi-eye"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-6">
+                                <div class="py-5">
+                                    <i class="bi bi-people display-1 text-muted opacity-25 d-block mb-3"></i>
+                                    <h5 class="text-muted">No staff found</h5>
+                                    {% if search %}
+                                    <p>Try adjusting your search term.</p>
+                                    <a href="{{ url_for('admin.staff') }}" class="btn btn-outline-primary">Clear Search</a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if total > per_page %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center pagination-lg">
+            {% if page > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page - 1 }}&search={{ search }}">Previous</a>
+            </li>
+            {% endif %}
+
+            {% set pages = (total / per_page) | round(0, 'ceil') | int %}
+            {% set start_page = [page - 2, 1] | max %}
+            {% set end_page = [start_page + 4, pages] | min %}
+
+            {% if start_page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page=1&search={{ search }}">1</a></li>
+            {% if start_page > 2 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            {% endif %}
+
+            {% for p in range(start_page, end_page + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}&search={{ search }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if end_page < pages %}
+            {% if end_page < pages - 1 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            <li class="page-item"><a class="page-link" href="?page={{ pages }}&search={{ search }}">{{ pages }}</a></li>
+            {% endif %}
+
+            {% if page < pages %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page + 1 }}&search={{ search }}">Next</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<!-- Staff Detail Modal -->
+<div class="modal fade" id="staffDetailModal" tabindex="-1" aria-labelledby="staffDetailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow-lg">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="staffDetailModalLabel">
+          <i class="bi bi-person-circle me-2"></i> Staff Details
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="row g-4">
+          <div class="col-12 text-center mb-3">
+            <div class="avatar avatar-lg bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold mx-auto mb-2" style="width: 80px; height: 80px; font-size: 2.2rem;">
+              <span id="modal-avatar-initials"></span>
+            </div>
+            <h4 id="modal-fullname" class="fw-bold mb-1"></h4>
+            <p id="modal-email" class="text-primary mb-0"></p>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label fw-semibold text-muted">Phone</label>
+            <p id="modal-phone" class="fs-5 mb-0"></p>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold text-muted">Country</label>
+            <p id="modal-country" class="fs-5 mb-0"></p>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold text-muted">Designation</label>
+            <p id="modal-designation" class="fs-5 mb-0"></p>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold text-muted">Joined</label>
+            <p id="modal-joined" class="fs-5 mb-0"></p>
+          </div>
+       
+         <!-- New field: Preferred Contact Method (now MULTIPLE) -->
+<div class="col-12 mt-3">
+    <label class="form-label fw-semibold text-muted">Preferred Contact Methods</label>
+    <select class="form-select fs-5" id="modal-preferred-contact" name="preferred_contact[]" multiple size="4">
+        <option value="1">Call</option>
+        <option value="2">WhatsApp</option>
+        <option value="3">Email</option>
+        <option value="4">SMS</option>
+    </select>
+   
+</div>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary px-4" id="save-preferred-contact">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Styles -->
+<style>
+    .avatar-sm { width: 40px; height: 40px; font-size: 1rem; }
+    .avatar-lg { width: 80px; height: 80px; font-size: 2.2rem; }
+    tr:hover { background-color: #f8f9ff !important; transition: background-color 0.2s; }
+    .view-detail-btn:hover { transform: scale(1.05); transition: all 0.2s; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- Select2 JS (after jQuery) -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+$(document).ready(function() {
+
+    let currentUserId = null;
+
+    // Initialize Select2 on the multi-select when modal is shown
+    $('#staffDetailModal').on('shown.bs.modal', function () {
+        $('#modal-preferred-contact').select2({
+            theme: 'bootstrap-5',           // important for Bootstrap 5 look
+            width: '100%',                  // full width
+            placeholder: "Select contact methods",
+            allowClear: true,
+            closeOnSelect: false            // keep dropdown open after selection (better UX for multi)
+        });
+    });
+
+    // Optional: destroy Select2 when modal hides (prevents issues on reopen)
+    $('#staffDetailModal').on('hidden.bs.modal', function () {
+        $('#modal-preferred-contact').select2('destroy');
+    });
+
+    // When "View" button is clicked
+    $('.view-detail-btn').on('click', function() {
+        const $btn = $(this);
+
+        currentUserId = $btn.data('id');
+
+        const first       = $btn.data('first') || '';
+        const last        = $btn.data('last')  || '';
+        const email       = $btn.data('email');
+        const phone       = $btn.data('phone');
+        const country     = $btn.data('country');
+        const designation = $btn.data('designation');
+        const joined      = $btn.data('joined');
+        
+
+        // Get preferred_contact – NO automatic default anymore
+let preferred = $btn.data('preferred');
+
+// Force it to be array or empty
+if (Array.isArray(preferred)) {
+    // good
+} else if (typeof preferred === 'number') {
+    preferred = [preferred];
+} else if (typeof preferred === 'string' && preferred.trim() !== '' && preferred !== 'null') {
+    preferred = preferred
+        .replace(/[\[\]]/g, '')           // remove [ ]
+        .split(/[\s,]+/)
+        .map(n => parseInt(n.trim(), 10))
+        .filter(n => !isNaN(n) && [1,2,3,4].includes(n));
+} else {
+    preferred = [];  // explicitly empty – no default
+}
+
+        // Build full name & initials
+        let fullName = (first + ' ' + last).trim() || 'Name not set';
+        let initials = '';
+        if (first) initials += first.charAt(0).toUpperCase();
+        if (last)  initials += last.charAt(0).toUpperCase();
+        if (!initials) initials = 'U';
+
+        // Fill modal
+        $('#modal-avatar-initials').text(initials);
+        $('#modal-fullname').text(fullName);
+        $('#modal-email').text(email);
+        $('#modal-phone').text(phone);
+        $('#modal-country').text(country);
+        $('#modal-designation').text(designation);
+        $('#modal-joined').text(joined);
+
+
+        // Set multiple select values
+        $('#modal-preferred-contact').val(preferred);
+
+   
+
+        $('#staffDetailModal').modal('show');
+    });
+
+    // Save button
+    $('#save-preferred-contact').on('click', function() {
+        if (!currentUserId) {
+            alert('No user selected.');
+            return;
+        }
+
+        // Get array of selected values
+        const selected = $('#modal-preferred-contact').val() || [];
+        const preferredArray = selected.map(Number).filter(n => [1,2,3,4].includes(n));
+
+        if (preferredArray.length === 0) {
+            alert('Please select at least one contact method.');
+            return;
+        }
+
+        $.ajax({
+            url: '/admin/api/update-preferred-contact',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                user_id: currentUserId,
+                preferred_contact: preferredArray   // send as array [1,3] etc.
+            }),
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Updated!',
+                        text: 'Preferred contact methods have been saved successfully',
+                        timer: 1800,
+                        showConfirmButton: false
+                    }).then(() => {
+                        // Reload the page after success
+                        window.location.reload();
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Failed',
+                        text: response.message || 'Could not update contact preferences',
+                        confirmButtonColor: '#d33'
+                    });
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'Server error occurred';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg = xhr.responseJSON.message;
+                }
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: errorMsg,
+                    confirmButtonColor: '#d33'
+                });
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

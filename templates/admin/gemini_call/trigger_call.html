@@ -1,0 +1,32 @@
+{% extends "admin/base.html" %}  <!-- assuming you have admin layout -->
+
+{% block content %}
+<div class="ps-3">
+<h2>Trigger Twilio Reminder Call</h2>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ 'success' if category=='success' else 'danger' }}">
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<form method="post">
+  <div class="mb-3">
+    <label for="phone" class="form-label">Phone Number (with +91...)</label>
+    <input type="tel" class="form-control" id="phone" name="phone" required placeholder="+919876543210">
+  </div>
+
+  <div class="mb-3">
+    <label for="message" class="form-label">Custom Message (optional)</label>
+    <textarea class="form-control" id="message" name="message" rows="3" 
+      placeholder="Hello, this is your follow-up reminder."></textarea>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Make Call Now</button>
+</form>
+</div>
+{% endblock %}

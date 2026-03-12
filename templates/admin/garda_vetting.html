@@ -1,0 +1,203 @@
+{% extends "admin/base.html" %}
+
+{% block title %}GARDA Vetting • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">
+            GARDA Vetting Management
+        </h2>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-secondary">
+                Back to Dashboard
+            </a>
+            <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">{{ total }} Users</span>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <form method="get" class="mb-4">
+        <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+            <span class="input-group-text bg-white border-0">Search</span>
+            <input type="text" name="search" class="form-control border-0 ps-0"
+                   placeholder="Name, email, phone, country..." value="{{ search }}" autofocus>
+            <button class="btn btn-primary" type="submit">Search</button>
+            {% if search %}
+            <a href="{{ url_for('admin.garda_vetting') }}" class="btn btn-outline-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+
+    <!-- Users Table -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="text-white" style="background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);">
+                        <tr>
+                            <th class="ps-4">User</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Country</th>
+                            <th>Designation</th>
+                            <th>Joined</th>
+                            <th class="text-center">GARDA Vetting Status</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="d-flex align-items-center">
+                                    <div class="avatar avatar-sm bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
+                                        {{ u.first_name[0] if u.first_name else 'U' }}{{ u.last_name[0] if u.last_name else '' }}
+                                    </div>
+                                    <div>
+                                        <div class="fw-semibold">{{ u.display_name }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td><span class="text-primary fw-medium">{{ u.email }}</span></td>
+                            <td>{{ u.phone or '<span class="text-muted">—</span>'|safe }}</td>
+                            <td>{{ u.country or '<span class="text-muted">—</span>'|safe }}</td>
+                            <td><span class="text-muted">{{ u.designation or '—' }}</span></td>
+                            <td class="small text-muted">{{ u.created_at_formatted }}</td>
+                            <td class="text-center">
+                                {% if u.garda_vetted %}
+                                <span class="badge bg-success rounded-pill">Vetted</span>
+                                <br><small class="text-muted">{{ u.garda_vetted_at_formatted }}</small>
+                                {% else %}
+                                <span class="badge bg-warning text-dark rounded-pill">Not Vetted</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if u.garda_vetted %}
+                                <button class="btn btn-outline-danger btn-sm btn-revoke"
+                                        data-id="{{ u.id_str }}"
+                                        data-name="{{ u.display_name }}">
+                                    Revoke
+                                </button>
+                                {% else %}
+                                <button class="btn btn-success btn-sm btn-vet"
+                                        data-id="{{ u.id_str }}"
+                                        data-name="{{ u.display_name }}">
+                                    Mark as Vetted
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-6">
+                                <div class="py-5">
+                                    <i class="bi bi-shield-check display-1 text-muted opacity-25 d-block mb-3"></i>
+                                    <h5 class="text-muted">No users found</h5>
+                                    {% if search %}
+                                    <p>Try adjusting your search.</p>
+                                    <a href="{{ url_for('admin.garda_vetting') }}" class="btn btn-outline-primary">Clear Search</a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination (same as users page) -->
+    {% if total > per_page %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center pagination-lg">
+            {% if page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page={{ page - 1 }}&search={{ search }}">Previous</a></li>
+            {% endif %}
+
+            {% set pages = (total / per_page) | round(0, 'ceil') | int %}
+            {% set start_page = [page - 2, 1] | max %}
+            {% set end_page = [start_page + 4, pages] | min %}
+
+            {% if start_page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page=1&search={{ search }}">1</a></li>
+            {% if start_page > 2 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            {% endif %}
+
+            {% for p in range(start_page, end_page + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}&search={{ search }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if end_page < pages %}
+            {% if end_page < pages - 1 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            <li class="page-item"><a class="page-link" href="?page={{ pages }}&search={{ search }}">{{ pages }}</a></li>
+            {% endif %}
+
+            {% if page < pages %}
+            <li class="page-item"><a class="page-link" href="?page={{ page + 1 }}&search={{ search }}">Next</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<style>
+    .avatar-sm { width: 40px; height: 40px; font-size: 1rem; }
+    tr:hover { background-color: #f8f9ff !important; }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.btn-vet, .btn-revoke').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const userId = e.target.dataset.id;
+            const userName = e.target.dataset.name;
+            const isVetting = e.target.classList.contains('btn-vet');
+
+            const actionText = isVetting ? 'vet' : 'revoke vetting for';
+            const title = isVetting ? 'Mark as GARDA Vetted?' : 'Revoke GARDA Vetting?';
+
+            const result = await Swal.fire({
+                title: title,
+                html: `Are you sure you want to <strong>${actionText}</strong><br><span class="text-primary">${userName}</span>?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: isVetting ? '#28a745' : '#dc3545',
+                confirmButtonText: isVetting ? 'Yes, mark as vetted' : 'Yes, revoke',
+                cancelButtonText: 'Cancel'
+            });
+
+            if (result.isConfirmed) {
+                try {
+                    const res = await fetch('/admin/api/garda-vetting/toggle', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user_id: userId,
+                            action: isVetting ? 'vet' : 'revoke'
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (data.success) {
+                        Swal.fire('Success!', `User has been ${isVetting ? 'vetted' : 'un-vetted'}.`, 'success')
+                            .then(() => location.reload());
+                    } else {
+                        Swal.fire('Error', data.error || 'Operation failed', 'error');
+                    }
+                } catch (err) {
+                    Swal.fire('Error', 'Network error', 'error');
+                }
+            }
+        });
+    });
+});
+</script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+{% endblock %}

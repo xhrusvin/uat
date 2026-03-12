@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Xpress Health — Login</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#397eff',
+            'primary-hover': '#285edb',
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"/>
+
+  <style>
+    input:focus, select:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(57, 126, 255, 0.1);
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+
+  <div class="min-h-screen flex flex-col lg:flex-row">
+
+    <!-- Left Panel -->
+    <div class="flex-1 bg-blue-50 p-10 lg:p-16 flex flex-col justify-center items-center text-center">
+      <img src="https://xpresshealthapp.com/assets/login-cover-2.png" alt="Logo" class="w-48 mb-6"/>
+      <h2 class="text-2xl font-semibold text-primary">All-in-One Shift Dashboard</h2>
+      <p class="mt-3 text-gray-600 max-w-md">Access your shifts and manage your schedule with ease.</p>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="flex-1 lg:flex-[1.3] bg-white p-10 lg:p-20 flex flex-col">
+      <h1 class="text-3xl font-semibold text-gray-900 mb-8">Log in to Xpress Health</h1>
+
+      <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+      <input type="email" id="email" placeholder="Enter your email"
+             class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-4 focus:border-primary">
+
+      <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+      <input type="password" id="password" placeholder="Enter your password"
+             class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-2 focus:border-primary">
+
+      <div id="error" class="text-red-600 text-sm mb-4"></div>
+
+      <button id="login_btn"
+              class="w-full bg-primary hover:bg-primary-hover text-white font-medium py-3 rounded-lg transition duration-200">
+        Log In
+      </button>
+
+      <p class="mt-6 text-sm text-gray-600 text-center">
+        Don't have an account?
+        <a href="#" id="signup-link" class="text-primary hover:underline font-medium">Sign up here</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Signup Modal -->
+  <div class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" id="signup-modal">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-semibold text-gray-900">Sign Up</h2>
+        <button id="close-signup-modal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+      </div>
+
+      <label class="block text-sm font-medium text-gray-700 mb-2">Country of Residence <span class="text-red-500">*</span></label>
+      <div class="flex flex-wrap gap-2 mb-2">
+        <button type="button" class="capsule px-4 py-2 rounded-full border border-gray-300 text-sm font-medium transition"
+                data-country="Ireland">Ireland</button>
+        <button type="button" class="capsule px-4 py-2 rounded-full border border-gray-300 text-sm font-medium transition"
+                data-country="UK">UK</button>
+        <button type="button" class="capsule px-4 py-2 rounded-full border border-gray-300 text-sm font-medium transition"
+                data-country="Australia">Australia</button>
+      </div>
+      <input type="hidden" id="country" required>
+      <div id="country-error" class="text-red-600 text-xs mb-3"></div>
+
+      <label class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-red-500">*</span></label>
+      <input type="email" id="signup-email" placeholder="Enter your email" required
+             class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-1 focus:border-primary">
+      <div id="email-error" class="text-red-600 text-xs mb-3"></div>
+
+      <label class="block text-sm font-medium text-gray-700 mb-1">Password <span class="text-red-500">*</span></label>
+      <input type="password" id="signup-password" placeholder="Enter your password" required
+             class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-4 focus:border-primary">
+      <div id="password-error" class="text-red-600 text-xs mb-4"></div>
+
+      <button id="signup-btn"
+              class="w-full bg-primary hover:bg-primary-hover text-white font-medium py-3 rounded-lg transition">
+        Continue
+      </button>
+    </div>
+  </div>
+
+  <!-- CV Upload Modal (Professional) -->
+  <div class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" id="cv-upload-modal">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 lg:p-8">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-semibold text-gray-900">Upload Your CV</h2>
+        <button id="close-cv-modal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+      </div>
+
+      <!-- Drag & Drop Zone -->
+      <div id="drop-zone"
+           class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer transition hover:border-primary hover:bg-blue-50">
+        <input type="file" id="cv-file" accept=".pdf,.doc,.docx" class="hidden"/>
+        <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-3"></i>
+        <p class="text-gray-600 font-medium">Drop your CV here or <span class="text-primary underline">browse</span></p>
+        <p class="text-xs text-gray-500 mt-1">PDF, DOC, DOCX up to 10MB</p>
+      </div>
+
+      <!-- File Preview -->
+      <div id="file-preview" class="hidden mt-4 p-3 bg-gray-50 rounded-lg flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <i class="fas fa-file-pdf text-red-600 text-xl"></i>
+          <div>
+            <p class="text-sm font-medium text-gray-800" id="file-name"></p>
+            <p class="text-xs text-gray-500" id="file-size"></p>
+          </div>
+        </div>
+        <button id="remove-file" class="text-gray-500 hover:text-red-600">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <div id="cv-error" class="text-red-600 text-sm mt-2"></div>
+
+      <button id="cv-submit-btn"
+              class="mt-6 w-full bg-primary hover:bg-primary-hover text-white font-medium py-3 rounded-lg transition opacity-50 cursor-not-allowed"
+              disabled>
+        <span id="submit-text">Submit CV</span>
+        <span id="loading-text" class="hidden flex items-center justify-center">
+          <svg class="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          Processing...
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Registration Modal -->
+  <div class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" id="registration-modal">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-semibold text-gray-900">Complete Registration</h2>
+        <button id="close-registration-modal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+      </div>
+
+      <label class="block text-sm font-medium text-gray-700 mb-1">First Name <span class="text-red-500">*</span></label>
+      <input type="text" id="first-name" placeholder="First Name" required
+             class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-1 focus:border-primary">
+      <div id="first-name-error" class="text-red-600 text-xs mb-3"></div>
+
+      <label class="block text-sm font-medium text-gray-700 mb-1">Last Name <span class="text-red-500">*</span></label>
+      <input type="text" id="last-name" placeholder="Last Name" required
+             class="w-full px-4 py-3 border border-gray-300 rounded-lg mb-1 focus:border-primary">
+      <div id="last-name-error" class="text-red-600 text-xs mb-3"></div>
+
+      <label class="block text-sm font-medium text-gray-700 mb-1">Phone <span class="text-red-500">*</span></label>
+      <div class="flex gap-2">
+        <select id="country-code"
+                class="w-24 px-3 py-3 border border-gray-300 rounded-lg focus:border-primary">
+          <option value="+353">+353</option>
+          <option value="+44" selected>+44</option>
+          <option value="+61">+61</option>
+          <option value="+91">+91</option>
+        </select>
+        <input type="tel" id="phone-number" placeholder="Enter phone number" required
+               class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:border-primary">
+      </div>
+      <div id="phone-error" class="text-red-600 text-xs mt-1 mb-4"></div>
+
+      <button id="register-btn"
+              class="w-full bg-primary hover:bg-primary-hover text-white font-medium py-3 rounded-lg transition">
+        Register
+      </button>
+    </div>
+  </div>
+
+  {% if support_enabled %}
+<!-- ElevenLabs Voice Agent (Admin Enabled) -->
+<elevenlabs-convai agent-id="agent_3501k8131kbje3x8hy3mz0q8yn9e"></elevenlabs-convai>
+<script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async></script>
+{% else %}
+<!-- Support Agent Disabled by Admin -->
+<!-- <div id="support-disabled-notice" class="fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+  <i class="fas fa-headset mr-2"></i> Live support is currently unavailable.
+</div> -->
+{% endif %}
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Predefined data
+      const predefinedData = {
+        first_name: "Roswain", last_name: "K", country_code: "+44", phone: "5056505",
+        email: "roswanarul@gmail.com", country: "UK", designation: "Nurse"
+      };
+
+      const formatData = (d) => ({
+        first_name: d.first_name.charAt(0).toUpperCase() + d.first_name.slice(1).toLowerCase(),
+        last_name: d.last_name.charAt(0).toUpperCase() + d.last_name.slice(1).toLowerCase(),
+        phone: d.country_code + ' ' + d.phone,
+        email: '',
+        country: d.country,
+        designation: d.designation
+      });
+
+      const constructRedirectUrl = (data) => {
+        const params = new URLSearchParams(data);
+        return `/register?${params.toString()}`;
+      };
+
+      // Voice Agent
+      const widget = document.querySelector('elevenlabs-convai');
+      if (widget) {
+        widget.addEventListener('elevenlabs-convai:call', (e) => {
+          e.detail.config.clientTools = {
+            redirectToLocalURL: ({ url }) => window.open(url, '_blank', 'noopener,noreferrer'),
+            fill_email: ({ email }) => {
+              const field = document.getElementById('email');
+              if (field) field.value = email;
+            },
+            openSignUpForm: () => document.getElementById('cv-upload-modal').classList.remove('hidden'),
+            UserData: () => {
+              const formatted = formatData(predefinedData);
+              window.location.href = constructRedirectUrl(formatted);
+            }
+          };
+        });
+      }
+
+      // Elements
+      const loginBtn = document.getElementById('login_btn');
+      const emailInput = document.getElementById('email');
+      const passwordInput = document.getElementById('password');
+      const errorDiv = document.getElementById('error');
+
+      const signupLink = document.getElementById('signup-link');
+      const signupModal = document.getElementById('signup-modal');
+      const closeSignupModal = document.getElementById('close-signup-modal');
+
+      const cvUploadModal = document.getElementById('cv-upload-modal');
+      const closeCvModal = document.getElementById('close-cv-modal');
+      const dropZone = document.getElementById('drop-zone');
+      const fileInput = document.getElementById('cv-file');
+      const filePreview = document.getElementById('file-preview');
+      const fileNameEl = document.getElementById('file-name');
+      const fileSizeEl = document.getElementById('file-size');
+      const removeFileBtn = document.getElementById('remove-file');
+      const cvSubmitBtn = document.getElementById('cv-submit-btn');
+      const submitText = document.getElementById('submit-text');
+      const loadingText = document.getElementById('loading-text');
+      const cvError = document.getElementById('cv-error');
+
+      const registrationModal = document.getElementById('registration-modal');
+      const closeRegistrationModal = document.getElementById('close-registration-modal');
+
+      // Open CV Upload on Signup Link
+      signupLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        cvUploadModal.classList.remove('hidden');
+      });
+
+      // Close Modals
+      [closeSignupModal, closeCvModal, closeRegistrationModal].forEach(btn => {
+        btn.addEventListener('click', () => {
+          btn.closest('.fixed').classList.add('hidden');
+          if (btn === closeCvModal) resetCVUpload();
+        });
+      });
+
+      // Close on backdrop
+      [signupModal, cvUploadModal, registrationModal].forEach(modal => {
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            modal.classList.add('hidden');
+            if (modal === cvUploadModal) resetCVUpload();
+          }
+        });
+      });
+
+      // Drag & Drop
+      ['dragover', 'dragenter'].forEach(evt => {
+        dropZone.addEventListener(evt, (e) => {
+          e.preventDefault();
+          dropZone.classList.add('border-primary', 'bg-blue-50');
+        });
+      });
+
+      ['dragleave', 'dragend'].forEach(evt => {
+        dropZone.addEventListener(evt, () => {
+          dropZone.classList.remove('border-primary', 'bg-blue-50');
+        });
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-primary', 'bg-blue-50');
+        const files = e.dataTransfer.files;
+        if (files.length) handleFile(files[0]);
+      });
+
+      dropZone.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) handleFile(fileInput.files[0]);
+      });
+
+      function handleFile(file) {
+        const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        const maxSize = 10 * 1024 * 1024; // 10MB
+
+        if (!validTypes.includes(file.type)) {
+          cvError.textContent = 'Please upload a PDF, DOC, or DOCX file.';
+          return;
+        }
+        if (file.size > maxSize) {
+          cvError.textContent = 'File must be under 10MB.';
+          return;
+        }
+
+        cvError.textContent = '';
+        fileNameEl.textContent = file.name;
+        fileSizeEl.textContent = formatFileSize(file.size);
+        filePreview.classList.remove('hidden');
+        cvSubmitBtn.disabled = false;
+        cvSubmitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+
+      function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        else return (bytes / 1048576).toFixed(1) + ' MB';
+      }
+
+      removeFileBtn.addEventListener('click', resetCVUpload);
+
+      function resetCVUpload() {
+        fileInput.value = '';
+        filePreview.classList.add('hidden');
+        cvError.textContent = '';
+        cvSubmitBtn.disabled = true;
+        cvSubmitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        submitText.classList.remove('hidden');
+        loadingText.classList.add('hidden');
+      }
+
+      // CV Submit
+      cvSubmitBtn.addEventListener('click', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  submitText.classList.add('hidden');
+  loadingText.classList.remove('hidden');
+  cvSubmitBtn.disabled = true;
+
+  const formData = new FormData();
+  formData.append('cv', file);
+
+  fetch('/api/upload_cv', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(resp => {
+      const { cv_data, empty, message, error } = resp;
+
+      // ---- NEW: No data extracted -------------------------------------------------
+      if (!cv_data.first_name && !cv_data.last_name && !cv_data.designation && !cv_data.phone && !cv_data.email) {
+        cvError.textContent = "Not fetched any data from your cv, try to upload another cv";
+        throw new Error("empty CV");
+      }
+      // ---------------------------------------------------------------------------
+
+      if (cv_data) { 
+        cvUploadModal.classList.add('hidden');
+        const params = new URLSearchParams(cv_data).toString();
+        window.location.href = `/register?${params}`;
+      } else {
+        throw new Error(error || message || 'Processing failed');
+      }
+    })
+    .catch(err => {
+      // only overwrite the custom empty-CV message if something else went wrong
+      if (err.message !== "empty CV") {
+        cvError.textContent = err.message || 'Upload failed. Try again.';
+      }
+    })
+    .finally(() => {
+      submitText.classList.remove('hidden');
+      loadingText.classList.add('hidden');
+      cvSubmitBtn.disabled = false;
+    });
+});
+
+      // Login
+      loginBtn.addEventListener('click', async () => {
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+
+        errorDiv.textContent = '';
+        if (!email || !password) {
+          errorDiv.textContent = 'Please enter both email and password.';
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+
+          if (res.ok) {
+            window.location.href = '/registration_success';
+          } else {
+            errorDiv.textContent = data.error || 'Login failed.';
+          }
+        } catch {
+          errorDiv.textContent = 'Network error.';
+        }
+      });
+
+      // Capsules
+      document.querySelectorAll('.capsule').forEach(c => {
+        c.addEventListener('click', () => {
+          document.querySelectorAll('.capsule').forEach(b => {
+            b.classList.remove('bg-primary', 'text-white', 'border-primary');
+            b.classList.add('border-gray-300');
+          });
+          c.classList.add('bg-primary', 'text-white', 'border-primary');
+          c.classList.remove('border-gray-300');
+          document.getElementById('country').value = c.dataset.country;
+          document.getElementById('country-error').textContent = '';
+        });
+      });
+
+      // Signup to CV
+      document.getElementById('signup-btn').addEventListener('click', () => {
+        let valid = true;
+        ['country', 'signup-email', 'signup-password'].forEach(id => {
+          const el = document.getElementById(id);
+          const err = document.getElementById(id + '-error');
+          if (!el.value) {
+            err.textContent = 'Required';
+            valid = false;
+          } else {
+            err.textContent = '';
+          }
+        });
+        if (valid) {
+          signupModal.classList.add('hidden');
+          cvUploadModal.classList.remove('hidden');
+        }
+      });
+
+      // Final Registration
+      document.getElementById('register-btn').addEventListener('click', () => {
+        let valid = true;
+        ['first-name', 'last-name', 'phone-number'].forEach(id => {
+          const el = document.getElementById(id);
+          const err = document.getElementById(id + '-error');
+          if (!el.value.trim()) {
+            err.textContent = 'Required';
+            valid = false;
+          } else {
+            err.textContent = '';
+          }
+        });
+        if (valid) {
+          const phone = `${document.getElementById('country-code').value} ${document.getElementById('phone-number').value}`;
+          console.log('Registered:', {
+            firstName: document.getElementById('first-name').value,
+            lastName: document.getElementById('last-name').value,
+            phone
+          });
+          registrationModal.classList.add('hidden');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Xpress GP Registration – {{ full_name }}</title>
+  <style>
+    body {
+      font-family: 'Montserrat', Arial, Helvetica, sans-serif;
+      background-color: #fff4e8;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 720px;
+      margin: 30px auto;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    .header {
+      background: #5921cf;
+      color: white;
+      padding: 25px 30px;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .content {
+      padding: 30px;
+    }
+    .section-title {
+      color: #5921cf;
+      font-weight: 700;
+      font-size: 20px;
+      margin: 35px 0 15px;
+      border-bottom: 2px solid #5921cf;
+      padding-bottom: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 15px 0;
+    }
+    th, td {
+      padding: 12px 15px;
+      border: 1px solid #eee;
+      text-align: left;
+    }
+    th {
+      background: #f8f5ff;
+      color: #4719b0;
+      width: 32%;
+      font-weight: 600;
+    }
+    .yes { color: #2e7d32; font-weight: 600; }
+    .no { color: #c62828; font-weight: 600; }
+    .highlight {
+      color: #5921cf;
+      font-weight: 600;
+    }
+    .footer {
+      background: #f8f5ff;
+      padding: 20px;
+      text-align: center;
+      font-size: 13px;
+      color: #555;
+      border-top: 1px solid #eee;
+    }
+    img {
+            height: 70px;
+            width: auto;
+        }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>New Online Walk-in Appointment Registration Received</h1>
+      
+      <!-- <p style="margin: 8px 0 0; opacity: 0.9;">{{ full_name }} • {{ appointment_info }}</p> -->
+    </div>
+
+    <div class="content">
+
+         <img src="https://expresshealth.ie/static/image/custom.png" align="center" alt="Xpress GP Logo">
+      <br><span><font color="gray">{{ current_time.strftime("%d %B %Y at %I:%M %p") }}</font></span>
+      <div class="section-title">Basic Information</div>
+      <table>
+        <tr><th>Full Name</th><td>{{ full_name }}</td></tr>
+        <tr><th>Reference ID</th><td><code>{{ reference_id }}</code></td></tr>
+        <tr><th>Date of Birth</th><td>{{ dob }}</td></tr>
+        <tr><th>Gender</th><td>{{ gender|capitalize }}</td></tr>
+        <tr><th>PPS Number</th><td>{{ pps_number }}</td></tr>
+        <tr><th>Place of Birth</th><td>{{ data.birth_place or '-' }}</td></tr>
+        <tr><th>Preferred Language</th><td>{{ data.preferred_language }}</td></tr>
+        <tr><th>Interpreter Needed</th><td class="{% if data.interpreter_needed %}yes{% else %}no{% endif %}">
+          {{ 'Yes' if data.interpreter_needed else 'No' }}
+        </td></tr>
+      </table>
+
+      <div class="section-title">Contact Details</div>
+      <table>
+        <tr><th>Address</th><td style="white-space: pre-line;">{{ address|replace('\n','<br>')|safe or '-' }}</td></tr>
+        <tr><th>Phone</th><td>{{ phone }}</td></tr>
+        <tr><th>Email</th><td>{{ email }}</td></tr>
+        <tr><th>Preferred Contact</th><td>{{ data.preferred_contact_methods|join(', ') or 'Not selected' }}</td></tr>
+      </table>
+
+      
+
+      <div class="section-title">Medical & Lifestyle Summary</div>
+      <table>
+        <tr><th>Allergies</th><td>
+          {% if data.allergies.has_allergies %}
+            <span class="yes">Yes</span> — {{ data.allergies.details or 'details not provided' }}
+          {% else %}
+            <span class="no">No</span>
+          {% endif %}
+        </td></tr>
+        <tr><th>Medical History</th><td>{{ data.medical_history|replace('\n','<br>')|safe or '-' }}</td></tr>
+        <tr><th>Ongoing Conditions</th><td>{{ data.ongoing_conditions|replace('\n','<br>')|safe or '-' }}</td></tr>
+        <tr><th>Current Medications</th><td>{{ data.current_medications|replace('\n','<br>')|safe or '-' }}</td></tr>
+        <tr><th>Smoke/Other Habits</th><td>
+          {% if data.lifestyle.smoke_drink %}
+            <span class="yes">Yes</span> — {{ data.lifestyle.smoke_drink_details or 'details not provided' }}
+          {% else %}
+            <span class="no">No</span>
+          {% endif %}
+        </td></tr>
+        <tr><th>Alcohol</th><td>
+          {% if data.lifestyle.alcohol %}
+            <span class="yes">Yes</span> — {{ data.lifestyle.alcohol_units_per_week or '?' }} units/week
+          {% else %}
+            <span class="no">No</span>
+          {% endif %}
+        </td></tr>
+      </table>
+
+      <div class="section-title">Additional Info</div>
+      <table>
+        <tr><th>Previous GP Name</th><td>{{ data.previous_gp.name or '-' }}</td></tr>
+        <tr><th>Previous GP Phone</th><td>{{ data.previous_gp.phone or '-' }}</td></tr>
+        <tr><th>Signed On</th><td>{{ data.signed_on or 'Not recorded' }}</td></tr>
+        <!-- <tr><th>Registration ID</th><td><code>{{ mongo_id }}</code></td></tr> -->
+      </table>
+
+    </div>
+
+    <div class="footer">
+      &copy; {{ current_year }} Xpress GP • Please process this registration promptly<br>
+      This is an automated notification
+    </div>
+  </div>
+</body>
+</html>

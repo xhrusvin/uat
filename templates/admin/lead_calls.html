@@ -1,0 +1,66 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Leads Awaiting Call ({{ total }})</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, msg in messages %}
+          <div class="alert alert-{{ 'danger' if category=='danger' else category }} alert-dismissible fade show">
+            {{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <table class="table table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Type</th>
+                <th>Location</th>
+                <th>Uploaded</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lead in leads %}
+            <tr>
+                <td>{{ lead.name or '—' }}</td>
+                <td>{{ lead.email_id or '—' }}</td>
+                <td>{{ lead.phone_number or '—' }}</td>
+                <td>{{ lead.user_type or '—' }}</td>
+                <td>{{ lead.location or '—' }}</td>
+                <td>{{ lead.uploaded_at.strftime('%Y-%m-%d %H:%M') if lead.uploaded_at else '—' }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('lead_call_trigger', lead_id=lead._id) }}" style="display:inline;">
+                        <button type="submit" class="btn btn-sm btn-success">
+                            Call Now
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center">No pending leads</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Simple pagination -->
+    <nav>
+        <ul class="pagination">
+            {% if page > 1 %}
+                <li class="page-item"><a class="page-link" href="?page={{ page-1 }}">Previous</a></li>
+            {% endif %}
+            <li class="page-item disabled"><a class="page-link">{{ page }}</a></li>
+            {% if total > page * per_page %}
+                <li class="page-item"><a class="page-link" href="?page={{ page+1 }}">Next</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+{% endblock %}

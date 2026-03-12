@@ -1,0 +1,143 @@
+{% extends "admin/base.html" %}
+{% block title %}Leads Management • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-5">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">Leads Management</h2>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            Back to Dashboard
+        </a>
+    </div>
+
+    <!-- Stats + View All Button -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex flex-column justify-content-center">
+                    <h4 class="mb-1">{{ total_leads }}</h4>
+                    <p class="text-muted mb-0">Total Leads in System</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <a href="{{ url_for('admin.leads_list') }}" class="btn btn-primary btn-lg w-100 h-100 d-flex flex-column justify-content-center align-items-center shadow-sm">
+                <i class="bi bi-list-ul me-2"></i>
+                View All Leads
+            </a>
+        </div>
+    </div>
+
+    <!-- Upload Section -->
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-gradient text-white py-3"
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <h5 class="mb-0">Upload New Leads (CSV Only)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-4">
+                        <a href="{{ url_for('admin.download_sample_csv') }}" class="btn btn-outline-success">
+                            <i class="bi bi-download"></i> Download Sample CSV Template
+                        </a>
+                        <p class="text-muted small mt-2 mb-0">
+                            Use this exact format to avoid import errors
+                        </p>
+                    </div>
+
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="mb-4">
+                            <div class="input-group">
+                            <input type="file" name="file" class="form-control" accept=".csv" required>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-upload"></i> Upload & Import
+                            </button>
+                        </div>
+                        <div class="form-text text-muted mt-2">
+                            Only <strong>.csv</strong> files • UTF-8 encoding recommended<br>
+                            <strong>Required columns:</strong> Name, Email ID, Phone Number, User Type, Location<br>
+                            <em>Optional:</em> Call Initiated (yes/no), Call answered (yes/no), Feedback
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Leads Preview -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <h4 class="mb-3 text-primary">Recently Added Leads {% if recent_leads %}(Last {{ recent_leads|length }}){% endif %}</h4>
+
+            {% if recent_leads %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Call Status</th>
+                            <th>Email Sent</th>
+                            <th>Uploaded</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lead in recent_leads %}
+                        <tr>
+                            <td><strong>{{ lead.name or '—' }}</strong></td>
+                            <td>{{ lead.email_id or '—' }}</td>
+                            <td><code>{{ lead.phone_number or '—' }}</code></td>
+                            <td>{{ lead.user_type or '—' }}</td>
+                            <td>{{ lead.location or '—' }}</td>
+                            <td>
+                                {% if lead.call_answered %}
+                                    <span class="badge bg-success">Answered</span>
+                                {% elif lead.call_initiated %}
+                                    <span class="badge bg-warning text-dark">Called</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark rounded-pill">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if lead.email_sent_status == "Sent" %}
+                                <span class="badge bg-success">Sent</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark rounded-pill">Not Sent</span>
+                                {% endif %}
+                                </td>
+                            <td>
+                                {% if lead.uploaded_at %}
+                                    {{ lead.uploaded_at.strftime('%d %b %Y') }}<br>
+                                    <small class="text-muted">{{ lead.uploaded_at.strftime('%H:%M') }}</small>
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="text-center mt-4">
+                <a href="{{ url_for('admin.leads_list') }}" class="btn btn-outline-primary">
+                    View All {{ total_leads }} Leads →
+                </a>
+            </div>
+
+            {% else %}
+            <div class="text-center py-5 text-center">
+                <div class="display-4 text-muted mb-3">No leads uploaded yet</div>
+                <p class="lead text-muted">Upload your first CSV file above to get started</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

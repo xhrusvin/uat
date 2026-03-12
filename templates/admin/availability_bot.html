@@ -1,0 +1,100 @@
+<!-- templates/xpressgp/ai_assistant.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xpress Health AI Assistant - Xpress Health</title>
+    <!-- Same theme as booking form -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: #fff4e8;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            padding: 40px;
+            position: relative;
+        }
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo-section img {
+            max-width: 200px;
+            height: auto;
+        }
+        .header {
+            text-align: center;
+            color: #5921cf;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            font-weight: 700;
+            margin: 0;
+        }
+        .widget-container {
+            width: 100%;
+            min-height: 500px;
+            border: 2px solid #eee;
+            border-radius: 12px;
+            padding: 20px;
+            background: #fafafa;
+        }
+        .btn {
+            background-color: #5921cf;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        .btn:hover { background-color: #4a1bb3; }
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            font-size: 0.9em;
+        }
+        @media (max-width: 768px) {
+            .container { padding: 20px; }
+            .header h1 { font-size: 2em; }
+        }
+    </style>
+</head>
+<body>
+    <!-- <div class="container"> -->
+        <!-- Logo section matching booking form -->
+        <!-- <div class="logo-section"> -->
+            <!-- Replace with your actual logo path, e.g., {{ url_for('xpressgp.static', filename='logo.png') }} -->
+            <!-- <img src="{{ url_for('static', filename='image/custom.png') }}" alt="Xpress Health Logo" onerror="this.style.display='none'">
+            <h2 style="color: #5921cf; margin-top: 10px;">Xpress GP</h2>
+        </div> -->
+        
+        <!-- <div class="header">
+            <h1>AI Voice Assistant</h1>
+            <p>Speak to our AI for healthcare queries, screening, or GP info. Integrated with ElevenLabs ConvAI.</p>
+        </div> -->
+        
+      
+        
+        <!-- <footer>
+            &copy; 2026 Xpress Health.
+        </footer> -->
+    <!-- </div> -->
+
+   <elevenlabs-convai agent-id="agent_8401kjavdn3ne2n8x0sg2x5ngse7"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
+</body>
+</html>

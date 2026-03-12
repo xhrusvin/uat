@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RecruitAssist - Find Your Next Job</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <header class="bg-blue-600 text-white py-4">
+        <div class="container mx-auto px-4">
+            <h1 class="text-3xl font-bold">RecruitAssist</h1>
+            <p class="mt-1">Your gateway to finding the perfect job opportunities</p>
+        </div>
+    </header>
+    <main class="container mx-auto px-4 py-8">
+        <section class="mb-8">
+            <h2 class="text-2xl font-semibold mb-4">Welcome to RecruitAssist</h2>
+            <p class="text-gray-700">
+                Upload your CV and provide your details to find tailored job shifts in your area. 
+                We'll match you with opportunities and notify you via WhatsApp.
+            </p>
+        </section>
+
+        <section class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold mb-4">Submit Your Details</h2>
+            <div id="registration-form">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700">Name1</label>
+                        <input type="text" id="name" class="mt-1 p-2 w-full border rounded-md" placeholder="Your Name (optional)">
+                    </div>
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" id="email" class="mt-1 p-2 w-full border rounded-md" placeholder="your.email@example.com (optional)">
+                    </div>
+                    <div>
+                        <label for="phone" class="block text-sm font-medium text-gray-700">Phone Number</label>
+                        <input type="tel" id="phone" class="mt-1 p-2 w-full border rounded-md" placeholder="+911234567890" required>
+                    </div>
+                    <div>
+                        <label for="country" class="block text-sm font-medium text-gray-700">Country</label>
+                        <input type="text" id="country" class="mt-1 p-2 w-full border rounded-md" placeholder="IN" required>
+                    </div>
+                    <div>
+                        <label for="location" class="block text-sm font-medium text-gray-700">Location</label>
+                        <input type="text" id="location" class="mt-1 p-2 w-full border rounded-md" placeholder="Mumbai" required>
+                    </div>
+                    <div>
+                        <label for="cv_path" class="block text-sm font-medium text-gray-700">Upload CV</label>
+                        <input type="file" id="cv_path" class="mt-1 p-2 w-full border rounded-md" accept=".pdf">
+                    </div>
+                </div>
+                <button onclick="submitForm()" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                    Find Jobs
+                </button>
+                <p id="form-message" class="mt-2 text-sm text-gray-600"></p>
+            </div>
+        </section>
+
+        <section class="mt-8">
+            <h2 class="text-xl font-semibold mb-2">System Status</h2>
+            <p id="health-status" class="text-gray-700">Checking system health...</p>
+        </section>
+    </main>
+
+    <footer class="bg-gray-800 text-white py-4">
+        <div class="container mx-auto px-4">
+            <p>&copy; 2025 RecruitAssist. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Check system health
+        fetch('/health')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('health-status').textContent = 
+                    data.status === 'ok' ? 'System is operational' : 'System is down';
+                document.getElementById('health-status').classList.add(
+                    data.status === 'ok' ? 'text-green-600' : 'text-red-600'
+                );
+            })
+            .catch(() => {
+                document.getElementById('health-status').textContent = 'Failed to check system health';
+                document.getElementById('health-status').classList.add('text-red-600');
+            });
+
+        // Handle form submission
+        function submitForm() {
+            const formData = new FormData();
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const phone = document.getElementById('phone').value;
+            const country = document.getElementById('country').value;
+            const location = document.getElementById('location').value;
+            const cvFile = document.getElementById('cv_path').files[0];
+
+            if (!phone || !country || !location) {
+                document.getElementById('form-message').textContent = 'Please fill in all required fields.';
+                document.getElementById('form-message').classList.add('text-red-600');
+                return;
+            }
+
+            const jsonData = { phone, country, location };
+            if (name) jsonData.name = name;
+            if (email) jsonData.email = email;
+
+            // For demo purposes, we'll assume CV is uploaded to a server and we get a path
+            // In production, you'll need to handle file upload properly
+            if (cvFile) {
+                jsonData.cv_path = cvFile.name; // Replace with actual server path in production
+            }
+
+            fetch('/process_registration', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(jsonData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                const messageEl = document.getElementById('form-message');
+                if (data.status === 'success') {
+                    messageEl.textContent = `Success! Found ${data.shifts.length} job opportunities. Check WhatsApp for details.`;
+                    messageEl.classList.remove('text-red-600');
+                    messageEl.classList.add('text-green-600');
+                } else {
+                    messageEl.textContent = `Error: ${data.message || 'Something went wrong'}`;
+                    messageEl.classList.add('text-red-600');
+                }
+            })
+            .catch(error => {
+                document.getElementById('form-message').textContent = 'Error submitting form. Please try again.';
+                document.getElementById('form-message').classList.add('text-red-600');
+            });
+        }
+    </script>
+    
+</body>
+</html>

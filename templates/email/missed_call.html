@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>We Missed Your Call - Xpress Health</title>
+    <style>
+        body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333333; background-color: #f4f4f4; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background-color: #eef3f7; padding: 30px; text-align: center; }
+        .header img { max-width: 220px; height: auto; }
+        .content { padding: 40px 30px; }
+        h3 { color: #007bff; margin-top: 0; }
+        .welcome-note { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #007bff; }
+        .button-container { text-align: center; margin: 40px 0; }
+        .footer { background-color: #f8f9fa; padding: 25px; text-align: center; font-size: 12px; color: #666666; }
+    </style>
+</head>
+<body style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333333; background-color: #f4f4f4; margin: 0; padding: 0;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4; padding: 20px 0;">
+        <tr>
+            <td align="center">
+                <table class="container" cellpadding="0" cellspacing="0">
+                    <!-- Header with Logo -->
+                    <tr>
+                        <td class="header" align="center">
+                            <img src="https://expresshealth.ie/static/image/logo.png" alt="Xpress Health Logo" style="max-width: 220px; height: auto;" />
+                        </td>
+                    </tr>
+
+                    <!-- Main Content -->
+                    <tr>
+                        <td class="content">
+                            <h3>Hello {{ first_name }},</h3>
+                            <p>We tried to reach you regarding your registration interest with <strong>Xpress Health</strong> – Ireland's trusted healthcare staffing platform – but unfortunately missed you.</p>
+
+                            <p>We're excited to help you take control of your healthcare career and connect you with flexible shifts across Ireland. Here’s a quick reminder of the details you provided:</p>
+
+                            <div class="welcome-note">
+                                <p><strong>Full Name:</strong> {{ first_name }} {{ last_name }}</p>
+                                <p><strong>Phone:</strong> {{ dial_code }} {{ phone_number }}</p>
+                                <p><strong>Email:</strong> {{ email }}</p>
+                            </div>
+
+                            <p>To complete your registration and gain full access to our app and platform, simply log in or set up your account by clicking the button below. Once logged in, you can browse available shifts, book work that fits your schedule, and manage everything in one place.</p>
+
+                            <!-- Bulletproof CTA Button -->
+                            <div class="button-container">
+                                <table cellpadding="0" cellspacing="0" border="0">
+                                    <tr>
+                                        <td align="center" bgcolor="#007bff" style="border-radius: 8px;">
+                                            <!--[if mso]>
+                                            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="https://xpresshealthapp.com/" style="height:56px;v-text-anchor:middle;width:300px;" arcsize="10%" stroke="f" fillcolor="#007bff">
+                                                <w:anchorlock/>
+                                                <center style="color:#ffffff;font-family:Arial, sans-serif;font-size:18px;font-weight:bold;">Log In & Access Your Account</center>
+                                            </v:roundrect>
+                                            <![endif]-->
+                                            <!--[if !mso]><!-- -->
+                                            <a href="https://xpresshealthapp.com/" style="background-color:#007bff; border-radius:8px; color:#ffffff; display:inline-block; font-family:Arial, sans-serif; font-size:18px; font-weight:bold; line-height:56px; text-align:center; text-decoration:none; width:300px; -webkit-text-size-adjust:none;">
+                                                Log In & Access Your Account
+                                            </a>
+                                            <!--<![endif]-->
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            <p>With Xpress Health, you’ll discover flexible shifts, earn competitive rates, and achieve the work-life balance you deserve.</p>
+
+                            <p>If you have any questions or need assistance, our team is here 24/7 to help – feel free to reply to this email or give us a call.</p>
+
+                            <br>
+                            <p>We look forward to welcoming you aboard!<br><strong>Xpress Health Team</strong></p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td class="footer">
+                            <p>Xpress Health | Ireland's Trusted Healthcare Staffing Platform</p>
+                            <p>Connecting healthcare professionals with flexible opportunities across Ireland.</p>
+                            <p>&copy; {{ current_year }} Xpress Health. All rights reserved.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

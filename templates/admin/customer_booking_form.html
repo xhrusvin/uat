@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book a Service - Xpress Health</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background: #0066cc; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0052a3; }
+        .flash { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .flash.success { background: #d4edda; color: #155724; }
+        .flash.error { background: #f8d7da; color: #721c24; }
+        .flash.warning { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+
+<h1>Customer Booking Request</h1>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<form method="POST">
+    <div class="form-group">
+        <label for="first_name">First Name *</label>
+        <input type="text" name="first_name" id="first_name" required>
+    </div>
+
+    <div class="form-group">
+        <label for="last_name">Last Name *</label>
+        <input type="text" name="last_name" id="last_name" required>
+    </div>
+
+    <div class="form-group">
+        <label for="email">Email *</label>
+        <input type="email" name="email" id="email" required>
+    </div>
+
+    <div class="form-group">
+        <label for="phone">Phone Number *</label>
+        <input type="tel" name="phone" id="phone" required placeholder="e.g. 0851234567 or +353851234567">
+    </div>
+
+    <div class="form-group">
+        <label for="service">Service Required *</label>
+        <select name="service" id="service" required>
+            <option value="">-- Select Service --</option>
+            <option value="General Nursing">General Nursing</option>
+            <option value="HCA / Care Assistant">HCA / Care Assistant</option>
+            <option value="Midwifery">Midwifery</option>
+            <option value="Theatre Nursing">Theatre Nursing</option>
+            <option value="Mental Health Nursing">Mental Health Nursing</option>
+            <option value="Other">Other</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="preferred_date">Preferred Date (optional)</label>
+        <input type="date" name="preferred_date" id="preferred_date">
+    </div>
+
+    <div class="form-group">
+        <label for="message">Additional Message</label>
+        <textarea name="message" id="message" rows="4" placeholder="Any extra details..."></textarea>
+    </div>
+
+    <button type="submit">Submit Booking Request</button>
+</form>
+
+</body>
+</html>

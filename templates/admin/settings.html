@@ -1,0 +1,79 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Settings – Xpress Health{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>System Settings</h1>
+    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Call Registration</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+    <!-- Call Toggle -->
+    <div class="form-check form-switch mb-4">
+        <input class="form-check-input" type="checkbox" id="allowRegCall"
+               name="allow_registration_call"
+               {% if settings.allow_registration_call %}checked{% endif %}>
+        <label class="form-check-label" for="allowRegCall">
+            <strong>Allow Registration via Call</strong>
+        </label>
+    </div>
+
+    <!-- Lead Call Toggle -->
+    <div class="form-check form-switch mb-4">
+        <input class="form-check-input" type="checkbox" id="enableLeadCall"
+               name="enable_lead_call"
+               {% if settings.enable_lead_call %}checked{% endif %}>
+        <label class="form-check-label" for="enableLeadCall">
+            <strong>Enable Lead Auto-Calling</strong>
+        </label>
+    </div>
+
+    <!-- Support Agent Toggle -->
+    <div class="form-check form-switch mb-4">
+        <input class="form-check-input" type="checkbox" id="enableSupportAgent"
+               name="enable_support_agent"
+               {% if settings.enable_support_agent %}checked{% endif %}>
+        <label class="form-check-label" for="enableSupportAgent">
+            <strong>Enable Support Agent</strong>
+        </label>
+    </div>
+
+    <div class="form-check form-switch mb-4">
+        <input class="form-check-input" type="checkbox" id="enableFollowUpCall"
+               name="enable_follow_up_call"
+               {% if settings.enable_follow_up_call %}checked{% endif %}>
+        <label class="form-check-label" for="enableFollowUpCall">
+            <strong>Enable Follow up Call (BOT 3)</strong>
+        </label>
+    </div>
+
+    <div class="form-check form-switch mb-4">
+        <input class="form-check-input" type="checkbox" id="enableFollowUpCallbot4"
+               name="enable_follow_up_call_bot4"
+               {% if settings.enable_follow_up_call_bot4 %}checked{% endif %}>
+        <label class="form-check-label" for="enableFollowUpCallbot4">
+            <strong>Enable Follow up Call (BOT 4)</strong>
+        </label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">
+        Save All Settings
+    </button>
+</form>
+            </div>
+        </div>
+
+       
+    </div>
+</div>
+{% endblock %}

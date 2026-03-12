@@ -1,0 +1,2326 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Shift Management • Admin{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+{% endblock %}
+
+{% block content %}
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">Shift Management</h2>
+        <div class="d-flex gap-3">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#shiftModal" 
+                    onclick="prepareAddModal()">
+                <i class="bi bi-plus-lg"></i> Add Shift
+            </button>
+            <a href="{{ url_for('booking.shifts') }}" class="btn btn-outline-secondary">
+                Refresh
+            </a>
+            <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">{{ total }} Total Shifts</span>
+        </div>
+    </div>
+
+    <!-- Search -->
+    <!-- Search -->
+<form method="get" class="mb-5">
+    <div class="row g-3 align-items-end">
+        <!-- Text search -->
+        <div class="col-md-5">
+            <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+                <span class="input-group-text bg-white border-0"></span>
+                <input type="text" name="search" class="form-control border-0 ps-0"
+                       placeholder="Search shift name, client, location, shift ID.." value="{{ search }}">
+            </div>
+        </div>
+
+        <!-- Date filter -->
+        <div class="col-md-4">
+            <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+                <span class="input-group-text bg-white border-0"></span>
+                <input type="text" name="date_filter" id="date_filter" class="form-control border-0 ps-0"
+                       placeholder="Filter by date" value="{{ date_filter }}">
+            </div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="col-md-3 d-flex gap-2">
+            <button class="btn btn-primary flex-grow-1" type="submit">Filter</button>
+            {% if search or date_filter %}
+            <a href="{{ url_for('booking.shifts') }}" class="btn btn-outline-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </div>
+</form>
+
+    <!-- Table -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <tr>
+                            <th class="ps-4">Shift ID</th>
+                            <th class="ps-4">Unit Name</th>
+                            <th>Client</th>
+                            <th>Date</th>
+                            <th>Start Time</th>
+                            <th>End Time</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>Active</th>
+                            <th>Premium</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    {% set previous_shift_id = none %}
+{% for s in shifts %}
+    {% set slots_list = s.slots if s.slots is defined and s.slots|length > 0 else [s] %}
+    
+    {% for slot in slots_list %}
+        {% set is_first_row = loop.first and (previous_shift_id != s._id|string) %}
+        {% set previous_shift_id = s._id|string %}
+        
+        <tr class="{% if is_first_row %}shift-group-first{% else %}shift-group{% endif %}">
+            <!-- Shift ID -->
+            <td class="ps-4 fw-semibold">
+                {{ slot.shift_xn_id or s.shift_xn_id or '—' }}
+            </td>
+            <!-- Unit Name -->
+            <td class="ps-4 fw-semibold">{{ s.name }}</td>
+           <!-- ── CLIENT ── only show on first row ── -->
+            {% if is_first_row %}
+            <td>
+                {% if s.client_name %}
+                    {{ s.client_name }}
+                {% else %}
+                    <span class="text-muted">—</span>
+                {% endif %}
+            </td>
+            {% else %}
+            <td></td>  <!-- keep table structure / alignment -->
+            {% endif %}
+             <!-- Date -->
+            <td>
+                {% if slot.date %}
+                    {{ slot.date.strftime('%d %b %Y') if not slot.date is string else slot.date }}
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+            <!-- Start Time -->
+            <td>{{ slot.start_time or '—' }}</td>
+            <!-- End Time -->
+            <td>{{ slot.end_time or '—' }}</td>
+            <!-- Location -->
+            <td>{{ s.location or '<span class="text-muted">—</span>'|safe }}</td>
+
+            <!-- ── STATUS ── only on first row of the group ── -->
+            {% if is_first_row %}
+            <td>
+                {% set status = s.status or 'To be assigned' %}
+                <div class="d-flex align-items-center gap-2 status-cell">
+                    <select class="form-select form-select-sm status-select rounded-pill px-2"
+                            data-id="{{ s._id }}"
+                            style="min-width: 140px; font-size: 0.8rem; cursor: pointer;">
+                        <option value="To be assigned" {% if status == 'To be assigned' %}selected{% endif %}>🔵 To be assigned</option>
+                        <option value="Assigned" {% if status == 'Assigned' %}selected{% endif %}>🟢 Assigned</option>
+                        <option value="Cancelled" {% if status == 'Cancelled' %}selected{% endif %}>🔴 Cancelled</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary rounded-pill btn-manage-staff px-2
+                                   {% if status != 'Assigned' %}d-none{% endif %}"
+                            data-id="{{ s._id }}"
+                            title="Manage assigned staff">
+                        <i class="bi bi-people-fill"></i>
+                    </button>
+                </div>
+            </td>
+            {% else %}
+            <!-- Empty cell for repeated rows – keeps alignment -->
+            <td></td>
+            {% endif %}
+
+            <!-- Active -->
+           <!-- ── ACTIVE ── now only on first row ── -->
+{% if is_first_row %}
+<td>
+    {% if s.is_active %}
+        <span class="badge bg-success rounded-pill">Active</span>
+    {% else %}
+        <span class="badge bg-secondary rounded-pill">Inactive</span>
+    {% endif %}
+</td>
+{% else %}
+<td></td>  <!-- empty cell to keep table alignment -->
+{% endif %}
+            <!-- Premium -->
+          <!-- Premium ── only first row ── -->
+            {% if is_first_row %}
+            <td>
+                {% if s.is_premium %}
+                    <span class="badge bg-warning text-dark rounded-pill">Premium</span>
+                {% else %}
+                    <span class="badge bg-light text-muted rounded-pill">—</span>
+                {% endif %}
+            </td>
+            {% else %}
+            <td></td>
+            {% endif %}
+
+            <td class="text-center">
+                    {% if is_first_row %}
+                        <button class="btn btn-outline-info btn-sm rounded-pill px-3 me-1 btn-view"
+                                data-id="{{ s._id }}"
+                                data-name="{{ s.name }}"
+                                data-date="{{ slot.date or '' }}"
+                                data-start="{{ slot.start_time or '' }}"
+                                data-end="{{ slot.end_time or '' }}"
+                                data-location="{{ s.location or '' }}"
+                                data-description="{{ s.description or '' }}"
+                                data-active="{{ s.is_active }}"
+                                data-client="{{ s.client_name or '' }}"
+                                data-client-type="{{ s.client_type or '' }}"
+                                data-xnid="{{ slot.shift_xn_id or s.shift_xn_id or '' }}"
+                                data-status="{{ s.status or 'To be assigned' }}"
+                                data-rate="{{ s.rate or '' }}"
+                                data-postal_code="{{ s.postal_code or '' }}">
+                            <i class="bi bi-eye"></i>
+                        </button>
+
+                        <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 btn-edit"
+                                data-id="{{ s._id }}"
+                                data-name="{{ s.name }}"
+                                data-date="{{ slot.date or '' }}"
+                                data-start="{{ slot.start_time or '' }}"
+                                data-end="{{ slot.end_time or '' }}"
+                                data-location="{{ s.location or '' }}"
+                                data-description="{{ s.description or '' }}"
+                                data-active="{{ s.is_active }}"
+                                data-client-id="{{ s.client_id or '' }}"
+                                data-client="{{ s.client_name or '' }}"
+                                data-client-type="{{ s.client_type or '' }}"
+                                data-default-location="{{ s.default_location or '' }}"
+                                data-xnid="{{ slot.shift_xn_id or s.shift_xn_id or '' }}"
+                                data-premium="{{ s.is_premium }}"
+                                data-status="{{ s.status or 'To be assigned' }}"
+                                data-rate="{{ s.rate or '' }}"
+                                data-postal_code="{{ s.postal_code or '' }}"
+                                data-slots='{{ s.slots_json | tojson | e if s.slots_json is defined else "[]" }}'>
+                            <i class="bi bi-pencil"></i>
+                        </button>
+
+                        <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
+                                data-id="{{ s._id|string }}"
+                                data-name="{{ s.name|e }}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    {% else %}
+                        <span class="text-muted small"></span>
+                    {% endif %}
+                </td>
+        </tr>
+    {% endfor %}
+{% else %}
+    <tr>
+            <td colspan="11" class="text-center py-5">
+                <i class="bi bi-calendar-x display-1 text-muted opacity-25 d-block mb-3"></i>
+                <h5 class="text-muted">No shifts found</h5>
+                {% if search %}
+                    <p>Try a different search term</p>
+                {% endif %}
+            </td>
+        </tr>
+{% endfor %}
+</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if total > per_page %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center pagination-lg">
+            {% if page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&search={{ search }}">Previous</a></li>
+            {% endif %}
+
+            {% set pages = ((total / per_page) | round(0, 'ceil')) | int %}
+            {% set start_page = [page - 2, 1] | max %}
+            {% set end_page = [start_page + 4, pages] | min %}
+
+            {% if start_page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page=1&search={{ search }}">1</a></li>
+            {% if start_page > 2 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            {% endif %}
+
+            {% for p in range(start_page, end_page + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}&search={{ search }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if end_page < pages %}
+            {% if end_page < pages - 1 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            <li class="page-item"><a class="page-link" href="?page={{ pages }}&search={{ search }}">{{ pages }}</a></li>
+            {% endif %}
+
+            {% if page < pages %}
+            <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&search={{ search }}">Next</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="shiftModal" tabindex="-1" aria-labelledby="shiftModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="shiftModalLabel">Add New Shift</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="shiftForm" autocomplete="off">
+                <div class="modal-body">
+                    <input type="hidden" name="shift_id" id="shift_id">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Unit Name <span class="text-danger"></span></label>
+                        <input type="text" class="form-control" id="name" name="name">
+                    </div>
+
+                 
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Client</label>
+                        <select class="form-select" id="client_id" name="client_id" required>
+                            <option value="">— No client assigned —</option>
+                        </select>
+                    </div>
+
+
+
+                    <!-- ── Repeating shifts ─────────────────────────────────────── -->
+<div class="mb-3">
+    <label class="form-label fw-bold">Shifts to create <span class="text-danger">*</span></label>
+    
+    <div id="shifts-container">
+        <!-- will be filled dynamically -->
+    </div>
+
+    <button type="button" class="btn btn-outline-primary mt-2" id="btn-add-shift-row" style="display: none;" >
+        <i class="bi bi-plus-lg"></i> Add another date & time
+    </button>
+</div>
+
+
+
+                    <div class="mb-3">
+    <label class="form-label fw-bold">Client Type</label>
+    <input type="text" class="form-control bg-light" id="client_type" name="client_type" readonly placeholder="Will auto-fill when client is selected">
+</div>
+
+
+
+<div class="mb-3">
+    <label class="form-label fw-bold">Location</label>
+    <input type="text" class="form-control" id="location" name="location" placeholder="Enter location">
+</div>
+
+<div class="mb-3">
+    <label class="form-label fw-bold">Postal Code</label>
+    <input type="text" class="form-control" id="postal_code" name="postal_code" placeholder="e.g. 110001" maxlength="20">
+</div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="2"></textarea>
+                    </div>
+
+                    <div class="mb-3 form-check">
+                        <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
+                        <label class="form-check-label" for="is_active">Active / Available for booking</label>
+                    </div>
+
+                 <!-- ← New Premium checkbox – right after -->
+<div class="form-check mt-2">
+    <input class="form-check-input" type="checkbox" id="is_premium" name="is_premium">
+    <label class="form-check-label" for="is_premium">
+        Premium
+    </label>
+    <div class="form-text text-muted small ms-4">
+        Mark this shift as premium (higher priority / special rate / featured)
+    </div>
+</div>
+
+<!-- Rate field — only visible + required when Premium is checked -->
+<div class="mb-3 mt-3 d-none" id="rate_field_wrapper">
+    <label class="form-label fw-bold">
+        Rate <span class="text-danger">*</span>
+        <small class="text-muted fw-normal ms-1">(required for premium shifts)</small>
+    </label>
+    <div class="input-group">
+        <input type="number" class="form-control" id="rate" name="rate"
+               placeholder="e.g. 1500" min="0" step="0.01">
+    </div>
+    <div class="form-text text-muted small">Enter the hourly / per-shift rate for this premium shift.</div>
+</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary" id="submitBtn">Create Shift</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+<!-- View Shift Modal -->
+<div class="modal fade" id="viewShiftModal"  aria-labelledby="viewShiftModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="viewShiftModalLabel">View Shift Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-4">
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold text-muted">Unit Name</label>
+                        <p class="form-control-plaintext fw-semibold" id="view_name"></p>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold text-muted">Shift ID</label>
+                        <p class="form-control-plaintext fw-semibold font-monospace" id="view_shift_xn_id">—</p>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold text-muted">Client</label>
+                        <p class="form-control-plaintext" id="view_client"></p>
+                    </div>
+
+                    <!-- New: Multiple Dates & Times -->
+<div class="col-12 mt-4">
+    <label class="form-label fw-bold text-muted">All Dates & Times</label>
+    <div id="view_shift_slots" class="list-group mt-2">
+        <!-- Filled dynamically via JS -->
+    </div>
+    <div id="view_slots_loading" class="text-muted small">
+        <span class="spinner-border spinner-border-sm me-1"></span> Loading slots...
+    </div>
+    <div id="view_slots_empty" class="text-muted small d-none">No additional slots</div>
+</div>
+
+                    <div class="col-md-6">
+    <label class="form-label fw-bold text-muted">Date</label>
+    <p class="form-control-plaintext" id="view_date">—</p>
+</div>
+
+<div class="col-md-6">
+    <label class="form-label fw-bold text-muted">Time</label>
+    <p class="form-control-plaintext" id="view_time">—</p>
+</div>
+
+                 
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold text-muted">Location</label>
+                        <p class="form-control-plaintext" id="view_location"></p>
+                    </div>
+
+                    <div class="col-md-6">
+    <label class="form-label fw-bold text-muted">Postal Code</label>
+    <p class="form-control-plaintext" id="view_postal_code">—</p>
+</div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold text-muted">Client Type</label>
+                        <p class="form-control-plaintext" id="view_client_type"></p>
+                    </div>
+
+                    <!-- ADD THIS NEW SECTION -->
+<div class="col-6">
+    <label class="form-label fw-bold text-muted">Selected Staff</label>
+    <div id="view_selected_staff" class="d-flex flex-wrap gap-2 mt-1">
+        <!-- filled dynamically -->
+    </div>
+    <div id="selected_staff_loading" class="text-muted small">
+        <span class="spinner-border spinner-border-sm me-1"></span> Loading...
+    </div>
+    <div id="selected_staff_empty" class="text-muted small d-none">No staff selected</div>
+</div>
+
+                    <div class="col-12">
+                        <label class="form-label fw-bold text-muted">Description</label>
+                        <p class="form-control-plaintext" id="view_description" style="white-space: pre-wrap;"></p>
+                    </div>
+
+                    <div class="col-6">
+                        <label class="form-label fw-bold text-muted">Status</label>
+                        <p id="view_status"></p>
+                    </div>
+
+                    <div class="col-6">
+                       <label class="form-label fw-bold text-muted">Assigned Status</label>
+    <p id="view_status_shift"></p>
+                    </div>
+
+                 
+
+                  <div class="col-12 mt-4">
+    <label class="form-label fw-bold text-muted d-flex align-items-center gap-2">
+        Assigned Staff / Users
+        <div class="form-check ms-2 mb-0">
+            <input class="form-check-input" type="checkbox" id="select_all_staff">
+            <label class="form-check-label small text-muted fw-normal" for="select_all_staff">Select all</label>
+        </div>
+    </label>
+
+    <!-- Search + Add -->
+    <div class="input-group mb-3">
+        <select class="form-select" id="user_search_select" >
+            <option></option>
+        </select>
+        <!-- <button class="btn btn-outline-primary" type="button" id="btn_add_user">
+            <i class="bi bi-plus-lg"></i> Add
+        </button> -->
+    </div>
+
+    <!-- New button: Copy from last shift -->
+    <button class="btn btn-outline-success btn-sm mb-3" id="btn_copy_last_shift" type="button">
+        <i class="bi bi-arrow-left-circle"></i> Copy staff from last shift of this client
+    </button>
+
+    <!-- Current assigned users -->
+    <div id="view_assigned_users" class="list-group mt-2">
+        <!-- dynamically filled -->
+    </div>
+
+    <div id="users_loading" class="list-group-item text-center text-muted py-4">
+        Loading assigned users...
+    </div>
+    <div id="users_empty" class="list-group-item text-center text-muted py-4 d-none">
+        No users assigned to this shift
+    </div>
+</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+    <!-- NEW: Recall Selected -->
+    <button type="button" class="btn btn-warning" id="btn_recall_selected" disabled>
+        <i class="bi bi-telephone-forward-fill me-1"></i> Recall Selected
+    </button>
+    <button type="button" class="btn btn-primary" id="btn_trigger_call">
+        <i class="bi bi-telephone-fill me-1"></i> Trigger Call
+    </button>
+</div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Assign Staff Modal -->
+<div class="modal fade" id="assignStaffModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-people-fill me-2"></i> Assign Staff to Shift
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Search & Add Staff</label>
+                    <select class="form-select" id="assign_user_search"><option></option></select>
+                </div>
+                <div class="mb-2 fw-bold text-muted small">Currently Assigned:</div>
+                <div id="assign_modal_user_list" class="list-group mb-3"></div>
+                <div id="assign_modal_empty" class="text-muted text-center py-3 d-none">No staff assigned yet</div>
+                <div id="assign_modal_loading" class="text-muted text-center py-3">
+                    <div class="spinner-border spinner-border-sm me-2"></div> Loading...
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" id="btn_assign_modal_skip">
+                    Skip — change status only
+                </button>
+                <button type="button" class="btn btn-primary" id="btn_assign_modal_confirm">
+                    <i class="bi bi-check-lg me-1"></i> Done & Set Assigned
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+<script>
+// Flatpickr setup (unchanged)
+let hasAnyConflict = false;
+let datePicker = null;
+
+document.addEventListener("DOMContentLoaded", function () {
+    const el = document.getElementById('date');
+    if (el) {
+        datePicker = flatpickr(el, {
+            dateFormat: "Y-m-d",
+            altInput: true,
+            altFormat: "d M Y",
+            minDate: "today",
+            allowInput: false,
+            appendTo: document.body,
+            disableMobile: true
+        });
+    }
+
+    flatpickr("#date_filter", {
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "Y-m-d",
+        allowInput: true,
+        placeholder: "All dates",
+        // Optional: clearable
+        onClear: function(selectedDates, dateStr, instance) {
+            instance.element.value = "";
+        }
+    });
+});
+
+document.getElementById('shiftModal')
+    .addEventListener('shown.bs.modal', function () {
+        if (datePicker) datePicker.redraw();
+    });
+
+function prepareAddModal() {
+    console.log("prepareAddModal() called — should be clean state");
+   
+
+    // 1. Force close any open flatpickr instances (prevents ghost calendars)
+    if (datePicker && datePicker.destroy) {
+        datePicker.destroy();
+        datePicker = null;
+    }
+
+    // 2. Reset the form HTML-level first
+    const form = document.getElementById('shiftForm');
+    if (form) form.reset();
+
+    // 3. Explicitly clear every important field
+    const fieldsToClear = [
+        'shift_id', 'name', 'shift_xn_id', 'location', 'postal_code',
+        'description', 'client_type', 'rate'
+    ];
+
+    fieldsToClear.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.value = '';
+            if (el.type === 'checkbox') el.checked = (id === 'is_active');
+        }
+    });
+
+    // Special handling for shift_xn_id
+    const xnInput = document.getElementById('shift_xn_id');
+    if (xnInput) {
+        xnInput.disabled = true;
+    }
+
+    // 4. Checkboxes
+    document.getElementById('is_active').checked = true;
+    document.getElementById('is_premium').checked = false;
+    document.getElementById('rate_field_wrapper').classList.add('d-none');
+    document.getElementById('rate').required = false;
+
+    // 5. Title & button
+    document.getElementById('shiftModalLabel').textContent = 'Add New Shift';
+    document.getElementById('submitBtn').textContent = 'Create Shift';
+
+    // 6. Aggressive Select2 clear (most common source of leakage)
+    const $clientSelect = $('#client_id');
+    $clientSelect
+        .val(null)
+        .trigger('change')
+        .trigger('select2:unselect')
+        .trigger('select2:clear');   // extra trigger
+
+    // Force visual placeholder
+    const $rendered = $clientSelect.next('.select2-container').find('.select2-selection__rendered');
+    $rendered
+        .empty()
+        .append('<span class="select2-selection__placeholder">— No client assigned —</span>');
+
+    if (datePicker) { datePicker.destroy(); datePicker = null; }
+
+    // 8. Repeating shifts — complete wipe
+    const container = document.getElementById('shifts-container');
+    container.innerHTML = '';
+
+    container.classList.remove('d-none');
+    document.getElementById('btn-add-shift-row').classList.remove('d-none');
+
+    // Add fresh row
+    addShiftRow();
+
+    // 9. Small delay for focus (after DOM updates)
+    setTimeout(() => {
+        const nameInput = document.getElementById('name');
+        if (nameInput) {
+            nameInput.focus();
+            nameInput.select();
+        }
+    }, 150);
+}
+
+
+document.getElementById('shiftForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const submitBtn = document.getElementById('submitBtn');
+    const isEdit = !!document.getElementById('shift_id').value;
+    const url = isEdit ? "{{ url_for('booking.shift_edit') }}" : "{{ url_for('booking.shift_add') }}";
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = isEdit ? 'Saving...' : 'Creating...';
+
+    // ── Collect shift rows (same for both Add and Edit) ──
+    const rows = document.querySelectorAll('#shifts-container .shift-row');
+    const shifts = [];
+
+    rows.forEach(row => {
+        const dateEl  = row.querySelector('.date-input');
+        const startEl = row.querySelector('[name$=".start_time"]');
+        const endEl   = row.querySelector('[name$=".end_time"]');
+        const xnEl    = row.querySelector('[name$=".shift_xn_id"]');
+
+        const typeEl  = row.querySelector('.shift-type-select');
+
+        const date       = dateEl?.value?.trim();
+        const start      = startEl?.value?.trim();
+        const end        = endEl?.value?.trim();
+        const xnid       = xnEl?.value?.trim() || null;
+        const shift_type = typeEl?.value?.trim() || null;
+
+        if (date && start && end) {
+            shifts.push({ date, start_time: start, end_time: end, shift_xn_id: xnid, shift_type });
+        }
+    });
+
+    if (shifts.length === 0) {
+        Swal.fire('Error', 'Please fill at least one complete date + time slot', 'warning');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = isEdit ? 'Save Changes' : 'Create Shift';
+        return;
+    }
+
+    const commonFields = {
+        name:        document.getElementById('name').value.trim(),
+        client_id:   $('#client_id').val(),
+        client_type: document.getElementById('client_type').value.trim(),
+        location:    document.getElementById('location').value.trim(),
+        description: document.getElementById('description').value.trim(),
+        is_active:   document.getElementById('is_active').checked,
+        is_premium:  document.getElementById('is_premium').checked,
+        rate:        parseFloat(document.getElementById('rate')?.value) || null,
+        status:      document.getElementById('status')?.value || 'To be assigned',
+        postal_code: document.getElementById('postal_code').value.trim(),
+    };
+
+    let payload;
+
+    payload = {
+    ...commonFields,
+    shifts,  // always send full array — backend handles both add and edit
+};
+if (isEdit) {
+    payload.shift_id = document.getElementById('shift_id').value;
+}
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Success!',
+                text: result.message || (isEdit ? 'Shift updated' : `Created ${shifts.length} shift(s)`),
+                timer: 1800,
+                showConfirmButton: false
+            }).then(() => {
+                bootstrap.Modal.getInstance(document.getElementById('shiftModal')).hide();
+                location.reload();
+            });
+        } else {
+            Swal.fire('Error', result.error || 'Operation failed', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = isEdit ? 'Save Changes' : 'Create Shift';
+    }
+});
+
+// ────────────────────────────────────────
+// Delete (your existing code – no change needed)
+// ────────────────────────────────────────
+document.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+        const id = e.currentTarget.dataset.id?.trim();  // ← safer
+        const name = e.currentTarget.dataset.name || 'this shift';
+
+        if (!id || id.length !== 24) {
+            Swal.fire('Error', 'Invalid shift ID format. Please refresh the page.', 'error');
+            return;
+        }
+
+        const result = await Swal.fire({
+            title: 'Delete Shift?',
+            html: `Are you sure you want to delete <strong>${name}</strong>?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, delete'
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            const res = await fetch("{{ url_for('booking.shift_delete') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shift_id: id })  // ← clean string
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                Swal.fire('Deleted!', `${name} has been removed.`, 'success')
+                    .then(() => location.reload());
+            } else {
+                Swal.fire('Error', data.error || 'Failed to delete shift', 'error');
+            }
+        } catch (err) {
+            console.error("Delete request failed:", err);
+            Swal.fire('Error', 'Network error or server unreachable', 'error');
+        }
+    });
+});
+
+
+
+// Initialize Select2 for client search with AJAX
+$(document).ready(function() {
+    $('#client_id').select2({
+        theme: "bootstrap-5",
+        dropdownParent: $('#shiftModal'),
+        placeholder: "Search for a client...",
+        allowClear: true,
+        minimumInputLength: 0,
+        ajax: {
+            url: "{{ url_for('booking.client_search') }}",
+            dataType: 'json',
+            delay: 250,
+            data: params => ({ q: params.term || '', page: params.page || 1 }),
+            processResults: data => {
+                return {
+                    results: (data.items || []).map(item => ({
+                        id: item._id,
+                        text: item.name,
+                        type: item.type || '',                    // ← pass to template
+                        default_location: item.default_location || ''  // ← pass
+                    })),
+                    pagination: { more: !!data.more }
+                };
+            },
+            cache: true
+        },
+        width: '100%'
+    });
+});
+
+// Auto-fill location & client type when selection changes
+    $('#client_id').on('select2:select', function(e) {
+        const data = e.params.data;
+        if (data) {
+            $('#location').val(data.default_location || '').trigger('input');
+            $('#client_type').val(data.type || '').trigger('input');
+        }
+    });
+
+    // Clear fields when selection is cleared
+    $('#client_id').on('select2:unselect', function() {
+        $('#location').val('').trigger('input');
+        $('#client_type').val('').trigger('input');
+    });
+
+
+async function prepareViewModal(id, name, date, start_time, end_time, location, description, is_active, client_name, client_type, shift_xn_id, status, postal_code) {
+    currentShiftId = id;
+
+    // Existing code: fill basic fields
+    document.getElementById('view_name').textContent = name || '—';
+    document.getElementById('view_client').textContent = client_name || '— No client assigned —';
+    document.getElementById('view_client_type').textContent = client_type || '—';
+    document.getElementById('view_location').textContent = location || '—';
+    document.getElementById('view_description').textContent = description || 'No description provided';
+    document.getElementById('view_shift_xn_id').textContent = shift_xn_id || '—';
+    document.getElementById('view_postal_code').textContent = postal_code || '—';
+
+    // Date (main/first one)
+    let displayDate = '—';
+    if (date && date.trim() !== '') {
+        try {
+            const d = new Date(date);
+            if (!isNaN(d.getTime())) {
+                displayDate = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+            }
+        } catch (e) {
+            console.warn("Invalid date format:", date);
+        }
+    }
+    document.getElementById('view_date').textContent = displayDate;
+
+    // Time (main/first one)
+    const timeStr = (start_time || '—') + ' — ' + (end_time || '—');
+    document.getElementById('view_time').textContent = timeStr;
+
+    // Status badges (unchanged)
+    const statusEl = document.getElementById('view_status');
+    statusEl.innerHTML = (is_active === 'True' || is_active === true)
+        ? '<span class="badge bg-success rounded-pill px-3 py-2 fs-6">Active / Bookable</span>'
+        : '<span class="badge bg-secondary rounded-pill px-3 py-2 fs-6">Inactive</span>';
+
+    const shiftstatus = document.getElementById('view_status_shift');
+    const statusBadgeMap = {
+        'To be assigned': '<span class="badge bg-primary text-dark rounded-pill px-3 py-2 fs-6">🔵 To be assigned</span>',
+        'Assigned': '<span class="badge bg-success rounded-pill px-3 py-2 fs-6">🟢 Assigned</span>',
+        'Cancelled': '<span class="badge bg-danger rounded-pill px-3 py-2 fs-6">🔴 Cancelled</span>',
+    };
+    shiftstatus.innerHTML = statusBadgeMap[status] || `<span class="badge bg-secondary rounded-pill px-3 py-2 fs-6">${status || '—'}</span>`;
+
+    // Reset & load assigned users (existing)
+    $('#user_search_select').val(null).trigger('change');
+    await loadAssignedUsers(id);
+    await loadSelectedStaff(id);
+
+    // NEW: Load and display all slots
+    await loadShiftSlots(id);
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('viewShiftModal'));
+    modal.show();
+}
+
+async function loadAssignedUsers(shiftId) {
+    const container  = document.getElementById('view_assigned_users');
+    const loadingEl  = document.getElementById('users_loading');
+    const emptyEl    = document.getElementById('users_empty');
+    const triggerBtn = document.getElementById('btn_trigger_call');
+    const recallBtn  = document.getElementById('btn_recall_selected');
+    const selectAllWrapper = document.getElementById('select_all_wrapper');
+    const selectAllCb = document.getElementById('select_all_staff');
+    const recallBadge = document.getElementById('recall_count_badge');
+
+    if (!container || !loadingEl || !emptyEl) return;
+
+    container.innerHTML = '';
+    loadingEl.classList.remove('d-none');
+    emptyEl.classList.add('d-none');
+    if (selectAllWrapper) selectAllWrapper.style.display = 'none';
+    if (recallBtn) { recallBtn.disabled = true; }
+    if (recallBadge) recallBadge.style.display = 'none';
+
+    // Reset conflict state
+    hasAnyConflict = false;
+    if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.classList.remove('btn-outline-danger', 'btn-danger', 'btn-warning');
+        triggerBtn.classList.add('btn-primary');
+        triggerBtn.title = '';
+        triggerBtn.innerHTML = `<i class="bi bi-telephone-fill me-1"></i> Trigger Call`;
+    }
+
+    try {
+        const usersRes = await fetch(getShiftUsersUrl(shiftId));
+        if (!usersRes.ok) throw new Error(`HTTP ${usersRes.status}`);
+        const usersData = await usersRes.json();
+
+        loadingEl.classList.add('d-none');
+
+        if (!usersData.success || !Array.isArray(usersData.users) || usersData.users.length === 0) {
+            emptyEl.classList.remove('d-none');
+            return;
+        }
+
+        // Show "select all" checkbox
+        if (selectAllWrapper) selectAllWrapper.style.display = '';
+
+        // Conflict check
+        const userIds = usersData.users.map(u => u._id);
+        const conflictRes = await fetch(`/booking/shifts/${shiftId}/staff-conflicts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_ids: userIds })
+        });
+        const conflictData = await conflictRes.json();
+        const conflicts = conflictData.success ? conflictData.conflicts : {};
+
+        hasAnyConflict = Object.values(conflicts).some(c => c.has_conflict === true);
+        if (hasAnyConflict && triggerBtn) {
+            triggerBtn.disabled = true;
+            triggerBtn.classList.remove('btn-primary');
+            triggerBtn.classList.add('btn-outline-danger');
+            triggerBtn.title = 'Cannot trigger call — resolve scheduling conflicts first';
+            triggerBtn.innerHTML = `<i class="bi bi-telephone-fill me-1"></i> Trigger Call <span class="badge bg-danger ms-2">Conflicts</span>`;
+        }
+
+        // ── Render each user with a checkbox ──
+        usersData.users.forEach(user => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item';
+
+            const fullName = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || '—';
+            const userId = user._id;
+            const conflictInfo = conflicts[userId] || { has_conflict: false };
+
+            const warningHtml = conflictInfo.has_conflict
+                ? `<span class="badge bg-danger ms-2" title="Conflict with ${conflictInfo.other_shift_name || 'another shift'}"><i class="bi bi-exclamation-triangle-fill"></i> Conflict</span>`
+                : '';
+
+            let callBadgeHtml = '';
+            if (user.call_processed === 1) {
+                const processedTime = user.call_processed_at
+                    ? new Date(user.call_processed_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+                    : 'unknown time';
+                callBadgeHtml = `<span class="badge bg-success ms-2" title="Processed: ${processedTime}"><i class="bi bi-telephone-check-fill"></i> Call Processed</span>`;
+            } else if (user.call_enabled === 1) {
+                callBadgeHtml = `<span class="badge bg-warning text-dark ms-2"><i class="bi bi-telephone-outbound-fill"></i> Call Triggered</span>`;
+            }
+
+            let availabilityBadgeHtml = '';
+            if ('availability' in user) {
+                const avMap = {
+                    1: `<span class="badge bg-success-subtle text-success ms-2"><i class="bi bi-check-circle-fill"></i> Available</span>`,
+                    0: `<span class="badge bg-danger-subtle text-danger ms-2"><i class="bi bi-x-circle-fill"></i> Not Available</span>`,
+                    3: `<span class="badge ms-2" style="background-color:#e2e60e"><i class="bi bi-x-circle-fill"></i> Voice mail</span>`,
+                    4: `<span class="badge bg-primary-subtle ms-2" style="background-color:#2085eb"><i class="bi bi-x-circle-fill"></i> Call Not attended</span>`,
+                };
+                availabilityBadgeHtml = avMap[user.availability] || '';
+            }
+
+            item.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-2">
+                        <!-- Recall checkbox -->
+                        <input type="checkbox" class="form-check-input staff-recall-cb mt-0"
+                               data-user-id="${userId}" title="Select for recall">
+                        <div>
+                            <div class="d-flex align-items-center flex-wrap gap-1">
+                                <strong>${fullName}</strong>
+                                ${warningHtml}${callBadgeHtml}${availabilityBadgeHtml}
+                            </div>
+                            <div class="small text-muted">
+                                ${user.designation ? user.designation + ' • ' : ''}${user.email || '—'}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <small class="text-muted">
+                            Assigned: ${user.assigned_at ? new Date(user.assigned_at).toLocaleDateString() : '—'}
+                        </small>
+                        <button class="btn btn-sm btn-outline-danger rounded-pill btn-unassign"
+                                data-user-id="${userId}">
+                            <i class="bi bi-x-lg"></i> Remove
+                        </button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(item);
+        });
+
+        // ── Checkbox logic ──
+        function updateRecallBtn() {
+            const checked = container.querySelectorAll('.staff-recall-cb:checked');
+            const count = checked.length;
+            if (recallBtn) recallBtn.disabled = count === 0;
+            if (recallBadge) {
+                recallBadge.textContent = count;
+                recallBadge.style.display = count > 0 ? '' : 'none';
+            }
+            // Sync select-all state
+            const all = container.querySelectorAll('.staff-recall-cb');
+            if (selectAllCb) {
+                selectAllCb.indeterminate = count > 0 && count < all.length;
+                selectAllCb.checked = count > 0 && count === all.length;
+            }
+        }
+
+        container.querySelectorAll('.staff-recall-cb').forEach(cb => {
+            cb.addEventListener('change', updateRecallBtn);
+        });
+
+        // Select All
+        if (selectAllCb) {
+            // Remove old listener to avoid stacking
+            const newSelectAll = selectAllCb.cloneNode(true);
+            selectAllCb.parentNode.replaceChild(newSelectAll, selectAllCb);
+            newSelectAll.addEventListener('change', function () {
+                container.querySelectorAll('.staff-recall-cb').forEach(cb => {
+                    cb.checked = this.checked;
+                });
+                updateRecallBtn();
+            });
+        }
+
+        container.querySelectorAll('.btn-unassign').forEach(btn => {
+            btn.addEventListener('click', handleUnassign);
+        });
+
+    } catch (err) {
+        console.error("Failed to load assigned users / conflicts:", err);
+        loadingEl.innerHTML = '<span class="text-danger">Failed to load – check console</span>';
+    }
+}
+
+// ── Recall Selected Staff ────────────────────────────────────────
+document.getElementById('btn_recall_selected')?.addEventListener('click', async () => {
+    if (!currentShiftId) return;
+
+    const checkedBoxes = document.querySelectorAll('#view_assigned_users .staff-recall-cb:checked');
+    const selectedUserIds = Array.from(checkedBoxes).map(cb => cb.dataset.userId);
+
+    if (selectedUserIds.length === 0) {
+        Swal.fire('No staff selected', 'Please check at least one staff member to recall.', 'warning');
+        return;
+    }
+
+    const confirmed = await Swal.fire({
+        title: `Recall ${selectedUserIds.length} staff member(s)?`,
+        text: 'This will re-trigger the call for the selected staff. Their previous call status will be reset.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#f0a500',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, Recall',
+        cancelButtonText: 'Cancel'
+    });
+
+    if (!confirmed.isConfirmed) return;
+
+    try {
+        const res = await fetch('/booking/shifts/recall-call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                shift_id: currentShiftId,
+                user_ids: selectedUserIds
+            })
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Recall Triggered',
+                text: result.message || `Recall triggered for ${result.updated_count} staff`,
+                timer: 2000,
+                showConfirmButton: false
+            });
+            // Refresh list to show updated badge states
+            await loadAssignedUsers(currentShiftId);
+        } else {
+            Swal.fire('Error', result.error || 'Failed to trigger recall', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    }
+});
+// ── Add user ───────────────────────────────────────────────────
+document.getElementById('btn_add_user')?.addEventListener('click', async () => {
+    if (!currentShiftId) return;
+
+    const select = $('#user_search_select');
+    const user = select.select2('data')[0];
+
+    if (!user || !user.id) {
+        Swal.fire('Please select a user first', '', 'warning');
+        return;
+    }
+
+    try {
+        const res = await fetch("{{ url_for('booking.assign_user_to_shift') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                shift_id: currentShiftId,
+                user_id: user.id
+            })
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+            // Swal.fire({
+            //     icon: 'success',
+            //     title: 'Added!',
+            //     text: 'User assigned to shift',
+            //     timer: 1400,
+            //     showConfirmButton: false
+            // });
+            select.val(null).trigger('change');
+            loadAssignedUsers(currentShiftId);  // refresh list
+        } else {
+            Swal.fire('Error', result.error || 'Could not assign user', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error', 'error');
+    }
+});
+
+// ── Remove user ────────────────────────────────────────────────
+async function handleUnassign(e) {
+    const btn = e.currentTarget;
+    const userId = btn.dataset.userId;
+    if (!currentShiftId || !userId) return;
+
+    const confirmed = await Swal.fire({
+        title: 'Remove user?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        confirmButtonText: 'Yes, remove'
+    });
+
+    if (!confirmed.isConfirmed) return;
+
+    try {
+        const res = await fetch("{{ url_for('booking.unassign_user_from_shift') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                shift_id: currentShiftId,
+                user_id: userId
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            Swal.fire('Removed', '', 'success');
+            loadAssignedUsers(currentShiftId);
+        } else {
+            Swal.fire('Error', data.error || 'Failed to remove', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network issue', 'error');
+    }
+}
+
+
+let currentShiftId = null;  // we'll store it when opening view modal
+
+// Helper function to build correct API URLs (add this once at the top of your <script>)
+function getShiftUsersUrl(shiftId) {
+    // This pattern avoids double slashes and works reliably with Jinja url_for
+    const base = "{{ url_for('booking.get_shift_users', shift_id='DUMMY') }}";
+    return base.replace('DUMMY', shiftId);
+}
+
+
+$(document).ready(function() {
+
+    // ── User search Select2 ────────────────────────────────────────
+    $('#user_search_select').select2({
+        theme: "bootstrap-5",
+        dropdownParent: $('#view_location'),
+        placeholder: "Search staff by name or email...",
+        allowClear: true,
+        minimumInputLength: 2,
+        ajax: {
+            url: "{{ url_for('booking.user_search') }}",   // ← you need to create this route
+            dataType: 'json',
+            delay: 300,
+            data: function(params) {
+                return {
+                    q: params.term || '',
+                    page: params.page || 1
+                };
+            },
+            processResults: function(data) {
+                return {
+                    results: (data.items || []).map(function(item) {
+                        return {
+                            id: item._id,
+                            text: item.name || (item.first_name + ' ' + item.last_name),
+                            email: item.email || '',
+                            designation: item.designation || ''
+                        };
+                    }),
+                    pagination: { more: !!data.more }
+                };
+            },
+            cache: true
+        },
+        templateResult: function(user) {
+            if (!user.id) return user.text;
+            return $(`
+                <div>
+                    <strong>${user.text}</strong>
+                    <div class="small text-muted">
+                        ${user.designation ? user.designation + ' • ' : ''}
+                        ${user.email || '—'}
+                    </div>
+                </div>
+            `);
+        }    }).on('select2:select', async function (e) {
+    const user = e.params.data;
+
+    if (!user || !user.id || !currentShiftId) {
+        return;
+    }
+
+    try {
+        const res = await fetch("{{ url_for('booking.assign_user_to_shift') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                shift_id: currentShiftId,
+                user_id: user.id
+            })
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+            // Optional: small toast / no Swal to keep it fast & non-intrusive
+            // Swal.fire({ icon: 'success', title: 'Added', text: user.text, timer: 1200, showConfirmButton: false });
+
+            // Clear selection (ready for next user)
+            $('#user_search_select').val(null).trigger('change');
+
+            // Refresh the assigned users list
+            await loadAssignedUsers(currentShiftId);
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Cannot assign',
+                text: result.error || 'Assignment failed',
+                timer: 2200
+            });
+            // Keep the selected user visible so they see the error
+        }
+    } catch (err) {
+        console.error("Assign error:", err);
+        Swal.fire('Error', 'Network issue – try again', 'error');
+    }
+})
+// Optional: handle clear (not usually needed)
+.on('select2:unselect', function () {
+    // Do nothing — or show hint if you want
+});
+
+
+
+        // Copy from last shift button
+document.getElementById('btn_copy_last_shift')?.addEventListener('click', async () => {
+    if (!currentShiftId) {
+        Swal.fire('Error', 'No shift selected', 'error');
+        return;
+    }
+
+    const confirmed = await Swal.fire({
+        title: 'Copy staff?',
+        text: 'Copy all staff from the most recent previous shift of the same client?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, copy',
+        cancelButtonText: 'No'
+    });
+
+    if (!confirmed.isConfirmed) return;
+
+    try {
+        const res = await fetch(`/booking/shifts/${currentShiftId}/copy-last-client-staff`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Done',
+                text: result.message || 'Staff copied successfully',
+                timer: 2000
+            });
+            // Refresh the list
+            await loadAssignedUsers(currentShiftId);
+        } else {
+            Swal.fire('Info / Error', result.error || 'Nothing to copy', result.success ? 'info' : 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    }
+});
+
+// Trigger Call button handler
+document.getElementById('btn_trigger_call')?.addEventListener('click', async () => {
+    if (!currentShiftId) {
+        Swal.fire('Error', 'No shift selected', 'error');
+        return;
+    }
+
+    const confirmed = await Swal.fire({
+        title: 'Trigger Call?',
+        text: 'This will enable call for all currently assigned staff in this shift. Continue?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#28a745', // green
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, Trigger Call',
+        cancelButtonText: 'Cancel'
+    });
+
+    if (!confirmed.isConfirmed) return;
+
+    try {
+        const res = await fetch("{{ url_for('booking.trigger_call_for_shift') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                shift_id: currentShiftId
+            })
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: result.message || `Call enabled for ${result.updated_count || '?'} staff members`,
+                timer: 2000,
+                showConfirmButton: false
+            });
+            // Optional: refresh the user list or show visual feedback
+            await loadAssignedUsers(currentShiftId);
+        } else {
+            Swal.fire('Error', result.error || 'Failed to trigger call', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    }
+});
+
+});
+
+
+let rowCounter = 0;
+
+function addShiftRow(initialData = {}) {
+    rowCounter++;
+    const index = rowCounter;
+
+    const row = document.createElement('div');
+    row.className = 'shift-row row align-items-end mb-3 border-bottom pb-3 g-2';
+    row.dataset.index = index;
+
+    row.innerHTML = `
+        <div class="col-md-10">
+            <label class="form-label small fw-bold">Shift ID<span class="text-danger">*</span></label>
+            <input type="text" class="form-control font-monospace"
+                   name="shifts[${index}].shift_xn_id"
+                   placeholder="e.g. KKD-NIGHT-042"
+                   maxlength="30" required>
+        </div>
+        <div class="col-md-1 d-flex align-items-end">
+            <button type="button" class="btn btn-outline-danger btn-sm remove-shift-row">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label small fw-bold">Date <span class="text-danger">*</span></label>
+            <input type="text" class="form-control date-input flatpickr-date"
+                   name="shifts[${index}].date" required placeholder="Select date">
+        </div>
+        <div class="col-md-4">
+            <label class="form-label small fw-bold">Start<span class="text-danger">*</span></label>
+            <input type="time" class="form-control time-input"
+                   name="shifts[${index}].start_time" placeholder="HH:MM" required>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label small fw-bold">End<span class="text-danger">*</span></label>
+            <input type="time" class="form-control time-input"
+                   name="shifts[${index}].end_time" placeholder="HH:MM" required>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label small fw-bold">Shift Type</label>
+            <select class="form-select shift-type-select" name="shifts[${index}].shift_type">
+                <option value="">— Select type —</option>
+                <option value="Morning">🌅 Morning</option>
+                <option value="Day">☀️ Day</option>
+                <option value="Afternoon">🌤️ Afternoon</option>
+                <option value="Night">🌙 Night</option>
+                <option value="Sleepover">🛏️ Sleepover</option>
+                <option value="Escort">🚗 Escort</option>
+            </select>
+        </div>
+    `;
+
+    document.getElementById('shifts-container').appendChild(row);
+
+    // Initialize flatpickr on new elements
+    flatpickr(row.querySelector('.flatpickr-date'), {
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d M Y",
+        minDate: "today"
+    });
+
+    flatpickr(row.querySelectorAll('.flatpickr-time1'), {
+        enableTime: true,
+        noCalendar: true,
+        dateFormat: "H:i",
+        time_24hr: true
+    });
+
+    // Remove handler
+    row.querySelector('.remove-shift-row').onclick = () => row.remove();
+
+    // Optional: fill if editing (but for add we usually start empty)
+   // Replace the existing initialData block at the bottom of addShiftRow():
+if (initialData.date) {
+    row.querySelector('.date-input')._flatpickr?.setDate(initialData.date, true);
+}
+if (initialData.start_time) {
+    const stEl = row.querySelector('[name$=".start_time"]');
+    if (stEl._flatpickr) stEl._flatpickr.setDate(initialData.start_time, true);
+    else stEl.value = initialData.start_time;
+}
+if (initialData.end_time) {
+    const etEl = row.querySelector('[name$=".end_time"]');
+    if (etEl._flatpickr) etEl._flatpickr.setDate(initialData.end_time, true);
+    else etEl.value = initialData.end_time;
+}
+if (initialData.shift_xn_id) {
+    const xnEl = row.querySelector('[name$=".shift_xn_id"]');
+    if (xnEl) xnEl.value = initialData.shift_xn_id;
+}
+if (initialData.shift_type) {
+    const typeEl = row.querySelector('.shift-type-select');
+    if (typeEl) typeEl.value = initialData.shift_type;
+}
+    // ... same for time
+}
+document.getElementById('btn-add-shift-row').onclick = () => addShiftRow();
+document.addEventListener('DOMContentLoaded', () => {
+    addShiftRow(); // start with one
+});
+
+
+
+
+$(document).ready(function() {
+
+    // ── Shared state — declared ONCE at the top of this ready block ──
+    let pendingStatusSelect = null;
+    let pendingShiftId = null;
+    let pendingNewStatus = null;
+
+    // ── saveStatus helper ────────────────────────────────────────────
+    async function saveStatus(select, shiftId, newStatus) {
+    const prevStatus = select.data('prev-status') || 'To be assigned';
+
+    select.prop('disabled', true);
+
+    try {
+        const res = await fetch("{{ url_for('booking.update_shift_status') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shift_id: shiftId, status: newStatus })
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+            // ── Status update succeeded ──
+            applyStatusStyle(select, newStatus);
+            select.data('prev-status', newStatus);
+
+            const row = select.closest('tr');
+            row.find('.btn-view').data('status', newStatus).attr('data-status', newStatus);
+            row.find('.btn-edit').data('status', newStatus).attr('data-status', newStatus);
+
+            // ── NOW clear assigned staff if we moved AWAY from Assigned ──
+            if (prevStatus === 'Assigned' && newStatus !== 'Assigned') {
+                try {
+                    const clearRes = await fetch('/booking/shifts/assigned-users/unassign-all', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ shift_id: shiftId })
+                    });
+
+                    const clearResult = await clearRes.json();
+
+                    if (clearResult.success) {
+                        console.log(`Successfully cleared ${clearResult.deleted_count || '?'} staff members`);
+                    } else {
+                        console.warn("Clear staff failed:", clearResult.error);
+                        // Optional: show non-blocking warning
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'Staff not fully cleared',
+                            text: clearResult.error || 'Some assignments may remain',
+                            timer: 4000,
+                            toast: true,
+                            position: 'top-end'
+                        });
+                    }
+                } catch (clearErr) {
+                    console.error("Failed to clear assigned staff:", clearErr);
+                    // Still non-blocking — status already changed
+                }
+            }
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Status Updated',
+                text: `Status changed to "${newStatus}"`,
+                timer: 1400,
+                showConfirmButton: false,
+                toast: true,
+                position: 'top-end'
+            });
+        } else {
+            Swal.fire('Error', result.error || 'Failed to update status', 'error');
+            select.val(prevStatus).trigger('change.revert');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+        select.val(prevStatus).trigger('change.revert');
+    } finally {
+        select.prop('disabled', false);
+    }
+  }
+
+    // ── View button ──────────────────────────────────────────────────
+    $(document).on('click', '.btn-view', function () {
+        const btn = $(this);
+        prepareViewModal(
+            btn.data('id'), btn.data('name'), btn.data('date') || '',
+            btn.data('start') || '', btn.data('end') || '',
+            btn.data('location') || '', btn.data('description') || '',
+            btn.data('active'), btn.data('client') || '',
+            btn.data('client-type') || '', btn.data('xnid') || '',
+            btn.data('status') || 'To be assigned',
+            btn.data('postal_code') || ''
+        );
+    });
+
+
+    
+ // ── Show/hide staff button when status changes ───────────────
+ $(document).on('change', '.status-select', function () {
+    const select = $(this);
+    const newStatus = select.val();
+    // Now correctly scoped — finds button only within the same .status-cell div
+    const staffBtn = select.closest('.status-cell').find('.btn-manage-staff');
+
+    if (newStatus === 'Assigned') {
+        staffBtn.removeClass('d-none');
+    } else {
+        staffBtn.addClass('d-none');
+    }
+  });
+
+
+ $(document).on('click', '.btn-manage-staff', async function () {
+    const shiftId = $(this).data('id');
+
+    // Set pendingShiftId so the modal's select2 save works correctly
+    pendingShiftId = shiftId;
+    pendingStatusSelect = null; // not coming from a status change this time
+    pendingNewStatus = null;
+
+    await loadAssignModalUsers(shiftId);
+    new bootstrap.Modal(document.getElementById('assignStaffModal')).show();
+ });
+
+    // ── Edit button ──────────────────────────────────────────────────
+   $(document).on('click', '.btn-edit', function () {
+    const btn = $(this);
+    
+
+    // jQuery auto-parses JSON data attributes — slots will be an array already
+    let slots = btn.data('slots') || [];
+   
+    prepareEditModal(
+        btn.data('id'), btn.data('name'), btn.data('date') || '',
+        btn.data('start') || '', btn.data('end') || '',
+        btn.data('location') || '', btn.data('description') || '',
+        btn.data('active'), btn.data('client-id') || '',
+        btn.data('client') || '', btn.data('client-type') || '',
+        btn.data('default-location') || '', btn.data('xnid') || '',
+        btn.data('premium'), btn.data('status') || 'To be assigned',
+        btn.data('postal_code') || '',
+        btn.data('rate') || '',
+        slots
+    );
+
+});
+function prepareEditModal(id, name, date, start, end, location, description, is_active, client_id, client_name, client_type, default_location, xnid, is_premium, status, postal_code, rate, slots = []) {
+
+    const form = document.getElementById('shiftForm');
+    if (form) form.reset();
+
+    document.getElementById('shift_id').value = id;
+
+    document.getElementById('name').value        = name || '';
+    document.getElementById('location').value    = location || '';
+    document.getElementById('description').value = description || '';
+    document.getElementById('client_type').value = client_type || '';
+    document.getElementById('postal_code').value = postal_code || '';
+
+    // Checkboxes
+    document.getElementById('is_active').checked  = (is_active === true || is_active === 'True');
+    document.getElementById('is_premium').checked = (is_premium === true || is_premium === 'True');
+
+    // Rate field
+    const isPremiumChecked = (is_premium === true || is_premium === 'True');
+    const rateWrapper = document.getElementById('rate_field_wrapper');
+    document.getElementById('rate').value = rate || '';
+    if (isPremiumChecked) {
+        rateWrapper.classList.remove('d-none');
+        document.getElementById('rate').required = true;
+    } else {
+        rateWrapper.classList.add('d-none');
+        document.getElementById('rate').required = false;
+    }
+    
+
+   
+
+    // Client Select2
+    const $clientSelect = $('#client_id');
+    $clientSelect.empty();
+    if (client_id && client_name) {
+        $clientSelect.append(new Option(client_name, client_id, true, true)).trigger('change');
+    } else {
+        $clientSelect.val(null).trigger('change');
+    }
+
+    const container = document.getElementById('shifts-container');
+    container.innerHTML = '';
+    document.getElementById('btn-add-shift-row').classList.remove('d-none');
+
+    // ── Populate rows ──
+    if (Array.isArray(slots) && slots.length > 0) {
+        slots.forEach(slot => {
+            addShiftRow({
+                date:        slot.date || '',
+                start_time:  slot.start_time || '',
+                end_time:    slot.end_time || '',
+                shift_xn_id: slot.shift_xn_id || '',
+                shift_type:  slot.shift_type  || '',
+            });
+        });
+    } else {
+        // Fallback for old shifts without slots array
+        const cleanDate = typeof date === 'string' ? date.split(' ')[0].split('T')[0] : (date || '');
+        addShiftRow({ date: cleanDate, start_time: start, end_time: end, shift_xn_id: xnid, shift_type: '' });
+    }
+
+    document.getElementById('shiftModalLabel').textContent = 'Edit Shift';
+    document.getElementById('submitBtn').textContent = 'Save Changes';
+
+    new bootstrap.Modal(document.getElementById('shiftModal')).show();
+}
+
+    $(document).on('change', '.status-select', async function () {
+    const select = $(this);
+    const shiftId = select.data('id');
+    const newStatus = select.val();
+
+    // Remember previous status (very important!)
+    let prevStatus = select.data('prev-status');
+    if (!prevStatus) {
+        prevStatus = select.find('option:selected').val(); // fallback
+        select.data('prev-status', prevStatus);
+    }
+
+    // ── Case 1: Changing TO "Assigned" → show assign modal ──
+    if (newStatus === 'Assigned' && prevStatus !== 'Assigned') {
+    pendingStatusSelect = select;
+    pendingShiftId = shiftId;
+    pendingNewStatus = newStatus;
+
+    // 1. Show modal immediately (user sees "Loading..." which is already there)
+    const assignModal = new bootstrap.Modal(document.getElementById('assignStaffModal'));
+    assignModal.show();
+
+    // 2. Then load data (modal is already visible)
+    await loadAssignModalUsers(shiftId);
+
+    return;
+ }
+
+    // ── Case 2: Changing AWAY FROM "Assigned" → remove all assigned staff ──
+    if (prevStatus === 'Assigned' && newStatus !== 'Assigned') {
+        const confirmed = await Swal.fire({
+            title: 'Remove all assigned staff?',
+            text: `Status is changing to "${newStatus}". This will remove all currently assigned staff from this shift. Continue?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, remove & change status'
+        });
+
+        if (!confirmed.isConfirmed) {
+            // User cancelled → revert select to previous value
+            select.val(prevStatus).trigger('change');
+            return;
+        }
+
+        // Actually remove all assigned staff
+        try {
+            const clearRes = await fetch('/booking/shifts/assigned-users/unassign-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shift_id: shiftId })
+            });
+
+            const clearResult = await clearRes.json();
+
+            if (!clearResult.success) {
+                console.warn("Failed to remove staff:", clearResult.error);
+                await Swal.fire({
+                    icon: 'warning',
+                    title: 'Warning',
+                    text: 'Status changed, but could not remove all staff: ' + (clearResult.error || 'unknown error'),
+                    timer: 5000
+                });
+            } else {
+                console.log(`Removed ${clearResult.deleted_count || '?'} staff assignments`);
+            }
+        } catch (err) {
+            console.error("Failed to clear assigned staff:", err);
+            await Swal.fire({
+                icon: 'error',
+                title: 'Network error',
+                text: 'Could not remove assigned staff – status may still change',
+                timer: 4000
+            });
+        }
+    }
+
+    // ── Finally: save the new status ──
+    await saveStatus(select, shiftId, newStatus);
+
+    
+});
+
+    // ── Assign modal: Done button ────────────────────────────────────
+document.getElementById('btn_assign_modal_confirm')?.addEventListener('click', async function () {
+    bootstrap.Modal.getInstance(document.getElementById('assignStaffModal')).hide();
+    // Only save status if we came from a status-change flow
+    if (pendingStatusSelect) {
+        await saveStatus(pendingStatusSelect, pendingShiftId, 'Assigned');
+    }
+    pendingStatusSelect = pendingShiftId = pendingNewStatus = null;
+});
+
+// ── Assign modal: Skip button ────────────────────────────────────
+document.getElementById('btn_assign_modal_skip')?.addEventListener('click', async function () {
+    bootstrap.Modal.getInstance(document.getElementById('assignStaffModal')).hide();
+    // Only save status if we came from a status-change flow
+    if (pendingStatusSelect) {
+        await saveStatus(pendingStatusSelect, pendingShiftId, 'Assigned');
+    }
+    pendingStatusSelect = pendingShiftId = pendingNewStatus = null;
+});
+
+    // ── Clean up backdrop after assign modal closes ──────────────────
+    document.getElementById('assignStaffModal').addEventListener('hidden.bs.modal', function () {
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('overflow');
+        document.body.style.removeProperty('padding-right');
+    });
+
+    // ── Apply styles on page load ────────────────────────────────────
+    $('.status-select').each(function () {
+        applyStatusStyle($(this), $(this).val());
+    });
+
+    // ── Assign Staff modal: user search Select2 ──────────────────────
+    // NOTE: Initialized INSIDE this ready block so it shares pendingShiftId
+    $('#assign_user_search').select2({
+        theme: "bootstrap-5",
+        dropdownParent: $('#assignStaffModal'),
+        placeholder: "Search staff by name or email...",
+        allowClear: true,
+        minimumInputLength: 2,
+        ajax: {
+            url: "{{ url_for('booking.user_search') }}",
+            dataType: 'json',
+            delay: 300,
+            data: params => ({ q: params.term || '', page: params.page || 1 }),
+            processResults: data => ({
+                results: (data.items || []).map(item => ({
+                    id: item._id,
+                    text: item.name || `${item.first_name || ''} ${item.last_name || ''}`.trim(),
+                    email: item.email || '',
+                    designation: item.designation || ''
+                })),
+                pagination: { more: !!data.more }
+            }),
+            cache: true
+        },
+        templateResult: function (user) {
+            if (!user.id) return user.text;
+            return $(`<div><strong>${user.text}</strong><div class="small text-muted">${user.email || ''}</div></div>`);
+        }
+    }).on('select2:select', async function (e) {
+        const user = e.params.data;
+
+        // pendingShiftId is now correctly in scope
+        if (!user || !user.id || !pendingShiftId) {
+            console.warn("Missing user or pendingShiftId:", { userId: user?.id, pendingShiftId });
+            Swal.fire('Error', 'No shift selected. Please try again.', 'error');
+            return;
+        }
+
+        try {
+            const res = await fetch("{{ url_for('booking.assign_user_to_shift_assigned') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shift_id: pendingShiftId, user_id: user.id })
+            });
+
+            const result = await res.json();
+
+            if (result.success) {
+                const list  = document.getElementById('assign_modal_user_list');
+                const empty = document.getElementById('assign_modal_empty');
+                empty.classList.add('d-none');
+
+                const item = document.createElement('div');
+                item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                item.innerHTML = `
+                    <div>
+                        <strong>${user.text}</strong>
+                        <div class="small text-muted">${user.email || '—'}</div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger rounded-pill btn-remove-assign"
+                            data-user-id="${user.id}">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                `;
+                list.appendChild(item);
+
+                // Wire up remove immediately — captures pendingShiftId via closure
+                item.querySelector('.btn-remove-assign').addEventListener('click', async function () {
+                    const userId = this.dataset.userId;
+                    const removeRes = await fetch("{{ url_for('booking.unassign_user_from_shift_assigned') }}", {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ shift_id: pendingShiftId, user_id: userId })
+                    });
+                    const removeResult = await removeRes.json();
+                    if (removeResult.success) {
+                        this.closest('.list-group-item').remove();
+                        if (list.children.length === 0) empty.classList.remove('d-none');
+                    }
+                });
+
+                $(this).val(null).trigger('change'); // clear for next selection
+
+            } else {
+                Swal.fire('Error', result.error || 'Could not assign', 'error');
+            }
+        } catch (err) {
+            console.error("Assign error:", err);
+            Swal.fire('Error', 'Network issue – try again', 'error');
+        }
+    });
+
+$(document).on('click', '#assignStaffModal .btn-remove-assign', async function(e) {
+    e.preventDefault();
+    e.stopPropagation();   // in case something else is capturing
+
+    console.log("Remove button clicked!");           // ← should appear in console
+
+    const btn = $(this);
+    const userId = btn.attr('data-user-id');         // safer than .data()
+    const listItem = btn.closest('.list-group-item');
+
+    console.log("User ID:", userId);                  // ← check if ID is read
+    console.log("pendingShiftId:", pendingShiftId);   // ← the most common culprit
+
+    if (!pendingShiftId || !userId) {
+        console.warn("Missing data → aborting", { pendingShiftId, userId });
+        Swal.fire({
+            icon: 'warning',
+            title: 'Cannot remove',
+            text: 'Shift or user information is missing. Try reopening the modal.',
+            timer: 3000
+        });
+        return;
+    }
+
+    const confirmed = await Swal.fire({
+        title: 'Remove staff member?',
+        text: 'This action cannot be undone.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, remove'
+    });
+
+    if (!confirmed.isConfirmed) {
+        console.log("User cancelled removal");
+        return;
+    }
+
+    console.log("Sending unassign request...");
+
+    try {
+        const res = await fetch("{{ url_for('booking.unassign_user_from_shift_assigned') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                shift_id: pendingShiftId,
+                user_id: userId
+            })
+        });
+
+        const result = await res.json();
+        console.log("Server response:", result);
+
+        if (result.success) {
+            listItem.fadeOut(300, function() {
+                $(this).remove();
+                if ($('#assign_modal_user_list').children().length === 0) {
+                    $('#assign_modal_empty').removeClass('d-none');
+                }
+            });
+            Swal.fire({ icon: 'success', title: 'Removed', timer: 1400, showConfirmButton: false });
+        } else {
+            Swal.fire('Error', result.error || 'Removal failed', 'error');
+        }
+    } catch (err) {
+        console.error("Remove failed:", err);
+        Swal.fire('Error', 'Network or server error – check console', 'error');
+    }
+});
+
+
+function applyStatusStyle(select, status) {
+    // Remove all previous color classes
+    select.removeClass('border-warning border-primary border-success border-danger text-warning text-primary text-success text-danger');
+
+    const styleMap = {
+        'To be assigned': { border: 'border-primary', text: 'text-primary' },
+        'Assigned':        { border: 'border-success', text: 'text-success' },
+        'Cancelled':       { border: 'border-danger',  text: 'text-danger'  }
+    };
+
+    const style = styleMap[status];
+    if (style) {
+        select.addClass(`${style.border} ${style.text} fw-semibold`);
+    }
+}
+
+
+});
+
+
+async function loadAssignModalUsers(shiftId) {
+
+   
+    const list    = document.getElementById('assign_modal_user_list');
+    const empty   = document.getElementById('assign_modal_empty');
+    const loading = document.getElementById('assign_modal_loading');
+
+    list.innerHTML = '';
+    loading.classList.remove('d-none');
+    empty.classList.add('d-none');
+
+    try {
+        const res = await fetch(`/booking/shifts/${shiftId}/assigned-users`);  // ← updated
+        const data = await res.json();
+        loading.classList.add('d-none');
+
+        if (!data.success || !data.users || data.users.length === 0) {
+            empty.classList.remove('d-none');
+            return;
+        }
+
+        data.users.forEach(user => {
+            const fullName = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || '—';
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+            item.innerHTML = `
+                <div>
+                    <strong>${fullName}</strong>
+                    <div class="small text-muted">${user.email || '—'}</div>
+                </div>
+                <button class="btn btn-sm btn-outline-danger rounded-pill btn-remove-assign"
+                        data-user-id="${user._id}">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            `;
+            list.appendChild(item);
+        });
+
+        // Remove button handlers
+        list.querySelectorAll('.btn-remove-assign').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const userId = this.dataset.userId;
+                await fetch("{{ url_for('booking.unassign_user_from_shift_assigned') }}", {  // ← updated
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ shift_id: pendingShiftId, user_id: userId })
+                });
+                this.closest('.list-group-item').remove();
+                if (list.children.length === 0) empty.classList.remove('d-none');
+            });
+        });
+
+    } catch (err) {
+        loading.innerHTML = '<span class="text-danger">Failed to load users</span>';
+    }
+}
+
+async function loadSelectedStaff(shiftId) {
+    const container  = document.getElementById('view_selected_staff');
+    const loadingEl  = document.getElementById('selected_staff_loading');
+    const emptyEl    = document.getElementById('selected_staff_empty');
+
+    container.innerHTML = '';
+    loadingEl.classList.remove('d-none');
+    emptyEl.classList.add('d-none');
+
+    try {
+        const res = await fetch(`/booking/shifts/${shiftId}/assigned-users`);
+        const data = await res.json();
+
+        loadingEl.classList.add('d-none');
+
+        if (!data.success || !Array.isArray(data.users) || data.users.length === 0) {
+            emptyEl.classList.remove('d-none');
+            return;
+        }
+
+        data.users.forEach(user => {
+            const fullName = user.name || 
+                `${user.first_name || ''} ${user.last_name || ''}`.trim() || '—';
+            
+            const badge = document.createElement('span');
+            badge.className = 'badge bg-primary-subtle text-primary rounded-pill px-3 py-2';
+            badge.style.fontSize = '0.85rem';
+            badge.innerHTML = `
+                <i class="bi bi-person-fill me-1"></i>${fullName}
+            `;
+            container.appendChild(badge);
+        });
+
+    } catch (err) {
+        loadingEl.innerHTML = '<span class="text-danger small">Failed to load</span>';
+    }
+}
+$('#shiftModal').on('show.bs.modal', function (e) {
+    // If triggered by Add button (not Edit)
+    if (e.relatedTarget && e.relatedTarget.getAttribute('onclick')?.includes('prepareAddModal')) {
+        prepareAddModal();
+    }
+});
+$(document).on('click', '#is_premium', function () {
+    const wrapper = $('#rate_field_wrapper');
+    const rateInput = $('#rate');
+    if ($(this).is(':checked')) {
+        wrapper.removeClass('d-none');
+        rateInput.prop('required', true);
+    } else {
+        wrapper.addClass('d-none');
+        rateInput.prop('required', false).val('');
+    }
+});
+
+async function loadShiftSlots(shiftId) {
+    const container = document.getElementById('view_shift_slots');
+    const loadingEl = document.getElementById('view_slots_loading');
+    const emptyEl = document.getElementById('view_slots_empty');
+
+    if (!container || !loadingEl || !emptyEl) return;
+
+    container.innerHTML = '';
+    loadingEl.classList.remove('d-none');
+    emptyEl.classList.add('d-none');
+
+    try {
+        // Fetch the full shift data (you need a route to return full shift with slots)
+        // Option A: Use existing /shifts/<id>/assigned-users style route, but better to make a new one
+        // For now, assume you have or will add: /booking/shifts/<shift_id>
+        const res = await fetch(`/booking/shifts/${shiftId}`);  // ← adjust URL to your actual route
+        const data = await res.json();
+
+        loadingEl.classList.add('d-none');
+
+        if (!data.success || !data.shift || !Array.isArray(data.shift.slots) || data.shift.slots.length === 0) {
+            emptyEl.classList.remove('d-none');
+            return;
+        }
+
+        const shiftTypeIcons = {
+            'Morning':   '🌅',
+            'Day':       '☀️',
+            'Afternoon': '🌤️',
+            'Night':     '🌙',
+            'Sleepover': '🛏️',
+            'Escort':    '🚗',
+        };
+
+        data.shift.slots.forEach(slot => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center py-2';
+
+            const shiftTypeHtml = slot.shift_type
+                ? `<span class="badge bg-secondary-subtle text-secondary rounded-pill ms-2">
+                       ${shiftTypeIcons[slot.shift_type] || ''} ${slot.shift_type}
+                   </span>`
+                : '';
+
+            item.innerHTML = `
+                <div>
+                    <div class="d-flex align-items-center">
+                        <strong>${slot.shift_xn_id || '—'}</strong>
+                        ${shiftTypeHtml}
+                    </div>
+                    <small class="text-muted">
+                        ${slot.date ? (typeof slot.date === 'string' ? slot.date : new Date(slot.date).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})) : '—'}
+                        • ${slot.start_time || '—'} – ${slot.end_time || '—'}
+                    </small>
+                </div>
+            `;
+            container.appendChild(item);
+        });
+    } catch (err) {
+        console.error("Failed to load shift slots:", err);
+        loadingEl.innerHTML = '<span class="text-danger small">Failed to load slots</span>';
+    }
+}
+</script>
+
+{% endblock %}
+<style>
+.list-group-item .badge {
+    font-size: 0.8rem;
+    vertical-align: middle;
+}
+
+.list-group-item .d-flex.align-items-center {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.badge.bg-success i.bi-telephone-check {
+    font-size: 0.9em;
+    vertical-align: -0.05em;
+}
+
+.badge {
+    transition: all 0.18s ease;
+}
+.badge.bg-success-subtle {
+    font-weight: 500;
+    padding: 0.35em 0.65em;
+}
+
+.badge.bg-success-subtle i.bi-check-circle-fill {
+    font-size: 1.1em;
+    vertical-align: -0.1em;
+}
+
+.shift-row .flatpickr-input,
+.shift-row input.form-control {
+    height: 48px !important;
+    padding: 0.6rem 0.75rem !important;
+    font-size: 1rem !important;
+}
+
+/* Flatpickr wraps the input — make wrapper full width */
+.shift-row .flatpickr-wrapper {
+    width: 100%;
+    display: block;
+}
+
+/* The visible alt input flatpickr creates */
+.shift-row input[readonly].flatpickr-input {
+    height: 48px !important;
+    background-color: #fff !important; /* prevent grey readonly look */
+}
+  .bg-blue-subtle {
+    background-color:#2085eb;
+}
+.bg-yellow-subtle{
+    background-color:#e2e60e;
+}
+
+</style>
+
+<style>
+/* ... keep your existing styles ... */
+
+/* Light blue for entire shift group - higher specificity */
+.table tbody tr.shift-group,
+.table tbody tr.shift-group-first {
+    background-color: #e6f0ff !important; /* light blue for all rows in group */
+}
+
+/* Slightly stronger blue + top border only for first row of group */
+.table tbody tr.shift-group-first {
+    background-color: #d6e6ff !important; /* stronger blue for first row */
+    border-top: 2px solid #a0c4ff !important;
+}
+
+/* Ensure hover doesn't break the group color */
+.table-hover tbody tr.shift-group:hover,
+.table-hover tbody tr.shift-group-first:hover {
+    background-color: #d0e0ff !important; /* slightly darker on hover, but still blue-ish */
+}
+
+/* Optional: make sure actions column doesn't look broken on repeated rows */
+tr.shift-group td.text-center {
+    background-color: inherit !important;
+}
+</style>

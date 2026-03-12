@@ -1,0 +1,438 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Shift Assignments • Admin{% endblock %}
+
+{% block content %}
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <h2 class="mb-0 fw-bold text-primary">Shift Assignments</h2>
+        <span class="badge bg-primary fs-5 px-3 py-2">
+            {{ total }} records
+        </span>
+
+        {% if request.args.get('avail') %}
+        <span class="badge bg-info fs-6">
+            Filtered: 
+            {% if request.args.get('avail') == '1' %}Available{% elif request.args.get('avail') == '0' %}Not Available {% elif request.args.get('avail') == '3' %}Voice mail{% elif request.args.get('avail') == '4' %}Call Not attended{% else %}Unknown{% endif %}
+        </span>
+        {% endif %}
+    </div>
+
+    
+
+    <form method="get" class="card shadow-sm border-0 mb-4" autocomplete="off">
+    <div class="card-body">
+        <div class="row g-3">
+
+            <!-- Search -->
+            <div class="col-md-4">
+                <input type="text"
+                       name="q"
+                       class="form-control form-control-lg"
+                       placeholder="Search staff, client or county..."
+                       value="{{ request.args.get('q', '') }}">
+            </div>
+
+            <!-- Date Picker -->
+            <div class="col-md-3">
+                <input type="text"
+                       id="datePicker"
+                       name="date"
+                       class="form-control form-control-lg"
+                       placeholder="Select date (YYYY-MM-DD)"
+                       value="{{ request.args.get('date', '') }}">
+            </div>
+
+            <div class="col-md-3">
+    <select name="avail" class="form-select form-select-lg">
+        <option value="" {% if not request.args.get('avail') %}selected{% endif %}>
+            All Availability
+        </option>
+        <option value="1" {% if request.args.get('avail') == '1' %}selected{% endif %}>
+            Available
+        </option>
+        <option value="0" {% if request.args.get('avail') == '0' %}selected{% endif %}>
+            Not Available
+        </option>
+        <option value="3" {% if request.args.get('avail') == '3' %}selected{% endif %}>
+            Voice mail
+        </option>
+        <option value="4" {% if request.args.get('avail') == '4' %}selected{% endif %}>
+            Call Not attended
+        </option>
+        <option value="unknown" {% if request.args.get('avail') == 'unknown' %}selected{% endif %}>
+            Unknown / Not Set
+        </option>
+    </select>
+</div>
+
+            <!-- Buttons -->
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">
+                    Search
+                </button>
+
+                {% if request.args.get('q') or request.args.get('date') or request.args.get('avail') %}
+                <a href="{{ url_for('booking.all_assignments_list') }}"
+                   class="btn btn-outline-secondary">
+                    Clear
+                </a>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+</form>
+
+    {% if assignments %}
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Shift ID</th>
+                        <th>Shift Name</th>
+                        <th>Shift Date</th>
+                        <th>Time</th>
+                        <th>Client Name</th>
+                        <th>Availability</th>
+                        <th>County</th>
+                        <th>Staff Name</th>
+                        <th>Contact</th>
+                        <th class="sortable" data-sort="assigned_at">Assigned At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in assignments %}
+                    <tr>
+                        <td>{{ a.shift_xn_id }}</td>
+                        <td>{{ a.shift_name }}</td>
+                        <td>{{ a.shift_date_formatted or '—' }}</td>
+                        <td>
+                            {% if a.shift_start_time and a.shift_end_time %}
+                                {{ a.shift_start_time }} – {{ a.shift_end_time }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>{{ a.client_name }}</td>
+                        <td>
+    {% if a.availability == 1 %}
+        <span class="badge bg-success-subtle text-success" 
+              title="Staff is available for this shift">
+            <i class="bi bi-check-circle-fill"></i> Available
+        </span>
+    {% elif a.availability == 0 %}
+        <span class="badge bg-danger-subtle text-danger" 
+              title="Staff is not available for this shift">
+            <i class="bi bi-x-circle-fill"></i> Not Available
+        </span>
+    {% elif a.availability == 3 %}
+        <span class="badge bg-yellow-subtle text-end" 
+              title="Voice call detected on call">
+            <i class="bi bi-telephone-fill"></i> Voice mail
+        </span>
+    {% elif a.availability == 4 %}
+        <span class="badge bg-blue-subtle text-end" 
+              title="Call not attended">
+            <i class="bi bi-telephone-fill"></i> Not attended
+        </span>
+    {% else %}
+     
+        <span class="badge bg-secondary-subtle text-secondary" 
+              title="Availability not set">
+            <i class="bi bi-question-circle"></i> Unknown
+        </span>
+    {% endif %}
+</td>
+                        <td>{{ a.client_county }}</td>
+                        <td><strong>{{ a.staff_name or '—' }}</strong></td>
+                        <td>{{ a.staff_email }}<br>{{ a.staff_phone }}</td>
+                        <td>{{ a.assigned_at.strftime('%d %b %Y %H:%M') if a.assigned_at else '—' }}</td>                     
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary"
+                                    onclick="viewAssignment('{{ a.shift_id }}', '{{ a.user_id }}')">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if pages > 1 %}
+    <nav class="mt-4">
+    <ul class="pagination justify-content-center">
+
+        {% set q_param = request.args.get('q') %}
+        {% set date_param = request.args.get('date') %}
+        {% set availability_param = request.args.get('avail') %}
+
+        {% if page > 1 %}
+        <li class="page-item">
+            <a class="page-link"
+               href="?page={{ page-1 }}
+               {% if q_param %}&q={{ q_param }}{% endif %}
+               {% if date_param %}&date={{ date_param }}{% endif %}
+               {% if availability_param %}&avail={{ availability_param }}{% endif %}">
+               Previous
+            </a>
+        </li>
+        {% endif %}
+
+       {% set start_page = [page - 2, 1] | max %}
+{% set end_page = [start_page + 4, pages] | min %}
+{% set start_page = [end_page - 4, 1] | max %}
+
+{% if start_page > 1 %}
+<li class="page-item">
+    <a class="page-link" href="?page=1{% if q_param %}&q={{ q_param }}{% endif %}{% if date_param %}&date={{ date_param }}{% endif %}{% if availability_param %}&avail={{ availability_param }}{% endif %}">1</a>
+</li>
+{% if start_page > 2 %}
+<li class="page-item disabled"><span class="page-link">…</span></li>
+{% endif %}
+{% endif %}
+
+{% for p in range(start_page, end_page + 1) %}
+<li class="page-item {% if p == page %}active{% endif %}">
+    <a class="page-link" href="?page={{ p }}{% if q_param %}&q={{ q_param }}{% endif %}{% if date_param %}&date={{ date_param }}{% endif %}{% if availability_param %}&avail={{ availability_param }}{% endif %}">{{ p }}</a>
+</li>
+{% endfor %}
+
+{% if end_page < pages %}
+{% if end_page < pages - 1 %}
+<li class="page-item disabled"><span class="page-link">…</span></li>
+{% endif %}
+<li class="page-item">
+    <a class="page-link" href="?page={{ pages }}{% if q_param %}&q={{ q_param }}{% endif %}{% if date_param %}&date={{ date_param }}{% endif %}{% if availability_param %}&avail={{ availability_param }}{% endif %}">{{ pages }}</a>
+</li>
+{% endif %}
+
+        {% if page < pages %}
+        <li class="page-item">
+            <a class="page-link"
+               href="?page={{ page+1 }}
+               {% if q_param %}&q={{ q_param }}{% endif %}
+               {% if date_param %}&date={{ date_param }}{% endif %}
+               {% if availability_param %}&avail={{ availability_param }}{% endif %}">
+               Next
+            </a>
+        </li>
+        {% endif %}
+
+    </ul>
+</nav>
+    {% endif %}
+
+    {% else %}
+    <div class="alert alert-light text-center py-5">
+        <i class="bi bi-journal-text display-1 text-muted d-block mb-3 opacity-50"></i>
+        No assignments found.
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- View Assignment Modal -->
+<div class="modal fade" id="assignmentModal" tabindex="-1" aria-labelledby="assignmentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="assignmentModalLabel">
+                    Call Transcription Details
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalBodyContent">
+                <!-- Content will be loaded here via JS -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    // Flatpickr + auto-submit on date change
+    flatpickr("#datePicker", {
+        dateFormat: "Y-m-d",
+        allowInput: true,
+        onChange: function(selectedDates, dateStr) {
+            if (dateStr) {
+                this._input.form.submit();
+            }
+        }
+    });
+
+    // View Assignment Modal
+    function viewAssignment(shift_id, user_id) {
+    const modal = new bootstrap.Modal(document.getElementById('assignmentModal'));
+    const modalBody = document.getElementById('modalBodyContent');
+
+    modalBody.innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 text-muted">Fetching call details...</p>
+        </div>
+    `;
+
+    modal.show();
+
+    fetch(`/booking/assignment-conversation?shift_id=${shift_id}&user_id=${user_id}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Network response was not ok');
+        return response.json();
+    })
+    .then(data => {
+        if (data.error) {
+            modalBody.innerHTML = `
+                <div class="alert alert-warning">
+                    ${data.error}
+                </div>
+            `;
+            return;
+        }
+
+        if (!data.conversation) {
+            modalBody.innerHTML = `
+                <div class="alert alert-info text-center py-4">
+                    <i class="bi bi-telephone-x display-4 d-block mb-3 opacity-50"></i>
+                    No call transcription or recording found.
+                </div>
+            `;
+            return;
+        }
+
+        const conv = data.conversation;
+
+        // ──────────────────────────────
+        // Audio Section
+        // ──────────────────────────────
+        let audioSection = '';
+
+if (data.audio_url) {
+    audioSection = `
+        <div class="mb-4 p-3 border rounded bg-light">
+            <h6 class="fw-bold mb-3">
+                <i class="bi bi-volume-up-fill me-2"></i>
+                Call Recording
+            </h6>
+            <audio controls class="w-100" style="max-height: 60px;">
+                <source src="${data.audio_url}" type="audio/mpeg">
+                Your browser does not support the audio element.
+            </audio>
+            <div class="mt-2 small text-muted">
+                Format: MP3 • 
+                <a href="${data.audio_url}" download class="text-primary">
+                    <i class="bi bi-download"></i> Download
+                </a>
+            </div>
+        </div>
+    `;
+} else {
+    audioSection = `
+        <div class="alert alert-secondary mb-4">
+            <i class="bi bi-volume-mute-fill me-2"></i>
+            No audio recording available for this call.
+        </div>
+    `;
+}
+
+        // Build full content
+        let html = `
+            ${audioSection}
+
+            <div class="mb-3">
+                <strong>Call Period:</strong> 
+                ${conv.started_at ? new Date(conv.started_at).toLocaleString() : '—'} 
+                →
+                ${conv.ended_at ? new Date(conv.ended_at).toLocaleString() : '—'}
+            </div>
+
+            <div class="mb-4">
+                <strong>Phone:</strong> ${conv.phone || '—'}<br>
+                <strong>ElevenLabs Conv ID:</strong> ${conv.elevenlabs_conversation_id || '—'}
+            </div>
+
+            <hr>
+
+            <h6 class="fw-bold mb-3">Conversation Turns:</h6>
+            <div class="conversation-flow">
+        `;
+
+        (conv.turns || []).forEach(turn => {
+            const isAgent = turn.role === 'agent';
+            const bgClass = isAgent ? 'bg-light' : 'bg-primary-subtle';
+            const alignClass = isAgent ? 'text-start' : 'text-end';
+            const time = new Date(turn.ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+            html += `
+                <div class="p-3 mb-2 rounded ${bgClass} ${alignClass}">
+                    <small class="text-muted d-block mb-1">
+                        ${isAgent ? 'Agent' : 'Staff'} • ${time}
+                    </small>
+                    <div>${turn.text.replace(/\n/g, '<br>')}</div>
+                </div>
+            `;
+        });
+
+        html += `</div>`;
+
+        modalBody.innerHTML = html;
+    })
+    .catch(err => {
+        console.error(err);
+        modalBody.innerHTML = `
+            <div class="alert alert-danger">
+                Failed to load conversation details. Please try again.
+            </div>
+        `;
+    });
+}
+
+    document.addEventListener("DOMContentLoaded", function() {
+    flatpickr("#datePicker", {
+        dateFormat: "Y-m-d",
+        allowInput: true,
+        onChange: function(selectedDates, dateStr) {
+            if (dateStr) {
+                this._input.form.submit();
+            }
+        }
+    });
+});
+</script>
+
+<style>
+    .conversation-flow {
+        max-height: 420px;
+        overflow-y: auto;
+        padding-right: 8px;
+    }
+    .conversation-flow::-webkit-scrollbar {
+        width: 6px;
+    }
+    .conversation-flow::-webkit-scrollbar-thumb {
+        background: #adb5bd;
+        border-radius: 3px;
+    }
+     .bg-blue-subtle {
+    background-color:#2085eb;
+}
+.bg-yellow-subtle{
+    background-color:#e2e60e;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registration Confirmation - Xpress GP</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #fff4e8;
+            font-family: 'Montserrat', Arial, sans-serif;
+            color: #333333;
+            line-height: 1.6;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header img {
+            height: 70px;
+            width: auto;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        h1 {
+            color: #0066cc;
+            font-size: 28px;
+            margin: 0 0 10px 0;
+            font-weight: 700;
+        }
+        .greeting {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 25px;
+        }
+        .message {
+            font-size: 16px;
+            color: #444;
+            margin-bottom: 25px;
+        }
+        .highlight-box {
+            background-color: #f0f8ff;
+            border-left: 5px solid #5921cf;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .highlight-box strong {
+            color: #5921cf;
+        }
+        .reference {
+            font-size: 18px;
+            text-align: center;
+            background-color: #fff4e8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 30px 0;
+            font-weight: 600;
+        }
+        .reference strong {
+            color: #5921cf;
+            font-size: 20px;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 25px;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        .footer a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #5921cf;
+            color: white;
+            padding: 14px 28px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 20px;
+        }
+        .btn:hover {
+            background-color: #4719b0;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+        <tr>
+            <td align="center">
+                <table class="email-container" cellpadding="0" cellspacing="0" role="presentation">
+                    <!-- Header with Logo -->
+                    <tr>
+                        <td class="header">
+                            <img src="https://expresshealth.ie/static/image/custom.png" alt="Xpress GP Logo">
+                        </td>
+                    </tr>
+
+                    <!-- Main Content -->
+                    <tr>
+                        <td class="content">
+                            <h1>Online Appointment Booking Received</h1>
+                            <p class="greeting">Dear {{ full_name }},</p>
+
+                            <p class="message">
+                                Thank you for submitting your Xpress GP appointment booking. 
+                                We have successfully received your details and our team will review them shortly.
+                            </p>
+
+                            {% if appointment_info != "No specific time requested" %}
+                            <div class="highlight-box">
+                                <p><strong>Requested Appointment:</strong><br>
+                                {{ appointment_info }}</p>
+                            </div>
+                            {% endif %}
+
+                            <div class="reference">
+                                <p>Your Reference ID:</p>
+                                <strong>{{ reference_id }}</strong>
+                                <br><small>Please quote this in any future correspondence</small>
+                            </div>
+
+                            <p class="message">
+                                One of our team members will contact you soon to confirm your appointment and next steps.
+                            </p>
+
+                            <div style="text-align: center;">
+                                <a href="https://www.xpressgp.ie" class="btn">Visit Xpress GP Website</a>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td class="footer">
+                            <p>&copy; {{ current_year }} Xpress GP | Part of Xpress Health</p>
+                            <p>
+                                <a href="https://www.xpressgp.ie">www.xpressgp.ie</a> 
+                                | Email: <a href="mailto:info@xpressgp.ie">info@xpressgp.ie</a>
+                            </p>
+                            <p style="font-size:12px; color:#999; margin-top:20px;">
+                                This is an automated message. Please do not reply directly to this email.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

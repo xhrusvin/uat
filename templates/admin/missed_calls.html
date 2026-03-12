@@ -1,0 +1,80 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Missed Calls – Xpress Health{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Users Awaiting AI Call</h1>
+    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <table class="table table-striped table-hover">
+    <thead class="table-dark">
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Phone</th>
+        <th>Country</th>
+        <th>Designation</th>
+        <th>Registered</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.first_name }} {{ u.last_name }}</td>
+        <td>{{ u.email }}</td>
+        <td>{{ u.phone or '-' }}</td>
+        <td>{{ u.country or '-' }}</td>
+        <td>{{ u.designation or '-' }}</td>
+        <td>{{ u.created_at|strftime('%Y-%m-%d %H:%M') if u.created_at else 'N/A' }}</td>
+        <td>
+        <!-- ... inside the loop ... -->
+<form action="{{ url_for('call_missed_trigger', user_id=u._id) }}" method="POST" style="display:inline;">
+  <button type="submit" class="="btn btn-sm btn-primary">Call</button>
+</form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="text-center text-muted">No pending calls</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <nav>
+    <ul class="pagination justify-content-center">
+      {% if page > 1 %}
+      <li class="page-item"><a class="page-link" href="?page={{ page-1 }}">Previous</a></li>
+      {% else %}
+      <li class="page-item disabled"><span class="page-link">Previous</span></li>
+      {% endif %}
+
+      <li class="page-item active"><a class="page-link">{{ page }}</a></li>
+
+      {% if page * per_page < total %}
+      <li class="page-item"><a class="page-link" href="?page={{ page+1 }}">Next</a></li>
+      {% else %}
+      <li class="page-item disabled"><span class="page-link">Next</span></li>
+      {% endif %}
+    </ul>
+  </nav>
+</div>
+{% endblock %}

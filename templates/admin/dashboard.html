@@ -1,0 +1,179 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard – Xpress Health{% endblock %}
+
+{% block page_header %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-tachometer-alt text-primary"></i> Dashboard</h1>
+    <div class="text-muted">
+        <p>Welcome, {{ session.name }} | {{ current_time }}</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- ==== Stats Cards ==== -->
+
+
+       
+
+            <!-- Stats Cards -->
+            <div class="row mb-4 ps-3">
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card border-0 shadow-sm bg-primary text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5>Total Users</h5>
+                                    <h2>{{ total_users }}</h2>
+                                </div>
+                                <i class="fas fa-users fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card border-0 shadow-sm bg-success text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5>Active Shifts</h5>
+                                    <h2>{{ active_shifts }}</h2>
+                                </div>
+                                <i class="fas fa-calendar-check fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card border-0 shadow-sm bg-warning text-dark">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5>New Registrations</h5>
+                                    <h2>{{ new_registrations }}</h2>
+                                </div>
+                                <i class="fas fa-user-plus fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card border-0 shadow-sm bg-danger text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5>Pending Approvals</h5>
+                                    <h2>{{ pending_approvals }}</h2>
+                                </div>
+                                <i class="fas fa-clock fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="row mb-4 ps-3">
+                <div class="col-md-8">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-light">
+                            <h5><i class="fas fa-chart-line"></i> User Registrations (Last 30 Days)</h5>
+                        </div>
+                        <div class="card-body chart-container">
+                            <canvas id="registrationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-light">
+                            <h5><i class="fas fa-users"></i> Top Designations</h5>
+                        </div>
+                        <div class="card-body">
+                            <ul class="list-unstyled">
+                                {% for item in top_designations %}
+                                <li class="d-flex justify-content-between mb-2">
+                                    <span>{{ item.designation }}</span>
+                                    <span class="badge bg-primary">{{ item.count }}</span>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="row ps-3">
+                <div class="col-12">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-light">
+                            <h5><i class="fas fa-list"></i> Recent Users</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Phone</th>
+                                            <th>Country</th>
+                                            <th>Designation</th>
+                                            <th>Joined</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for user in recent_users %}
+                                        <tr>
+                                            <td>{{ user.first_name }} {{ user.last_name }}</td>
+                                            <td>{{ user.email }}</td>
+                                            <td>{{ user.phone or '-' }}</td>
+                                            <td>
+                                                <span class="badge bg-info">{{ user.country or '-' }}</span>
+                                            </td>
+                                            <td>{{ user.designation or '-' }}</td>
+                                            <td></td>
+                                            <td>
+                                                {% if user.is_admin %}
+                                                    <span class="badge bg-success">Admin</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">User</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <a href="/admin/users" class="btn btn-primary">View All Users</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+<!-- <elevenlabs-convai agent-id="agent_6201ke9d1fpcfs2tdhb0qqje9nn1"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script> -->
+{% endblock %}
+
+{% block extra_js %}
+ <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Registration Chart
+        new Chart(document.getElementById('registrationChart'), {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                datasets: [{
+                    label: 'New Users',
+                    data: [12, 19, 3, 5, 2, 3],
+                    borderColor: 'rgb(57, 126, 255)',
+                    backgroundColor: 'rgba(57, 126, 255, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    </script>
+{% endblock %}
