@@ -42,7 +42,7 @@ def make_shiftbooking_ai_call(app, phone: str, user_doc: dict, user_object_id, s
             call = twilio_client.calls.create(
                 to=phone,
                 from_=CALLER_ID,
-                url=f'https://app.expresshealth.ie/shiftbooking?{params}'
+                url=f'https://app.expresshealth.ie/shiftbookinguat?{params}'
             )
             print(f"AI Call initiated: {call.sid} for {phone}")
 
