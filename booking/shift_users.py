@@ -7,6 +7,11 @@ from database import db
 from .models.shift import Shift
 from .models.shift_user import ShiftUser
 from .models.client import Client
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+from flask import Response
+import io
 
 shift_model     = Shift(db.shifts)
 shift_user_model = ShiftUser(db.shifts_users)
@@ -396,5 +401,226 @@ def get_assignment_audio():
         as_attachment=False
     )
 
+@bp.route('/assignments/export')
+def export_assignments_excel():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from flask import Response
+    import io
 
+    q = request.args.get('q', '').strip()
+    date_str = request.args.get('date', '').strip()
+    avail_filter = request.args.get('avail', '').strip()
 
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    pipeline = [
+        {"$lookup": {"from": "shifts", "localField": "shift_id", "foreignField": "_id", "as": "shift"}},
+        {"$unwind": {"path": "$shift", "preserveNullAndEmptyArrays": True}},
+        {
+            "$lookup": {
+                "from": "clients",
+                "let": {"client_id_str": "$shift.client_id"},
+                "pipeline": [{"$match": {"$expr": {"$eq": [{"$toString": "$_id"}, "$$client_id_str"]}}}],
+                "as": "client"
+            }
+        },
+        {"$unwind": {"path": "$client", "preserveNullAndEmptyArrays": True}},
+        {"$lookup": {"from": "users", "localField": "user_id", "foreignField": "_id", "as": "user"}},
+        {"$unwind": {"path": "$user", "preserveNullAndEmptyArrays": True}},
+        {"$match": {"user._id": {"$exists": True}}},
+    ]
+
+    if date_str:
+        try:
+            selected_date = datetime.strptime(date_str, "%Y-%m-%d")
+            day_start = selected_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end   = selected_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            pipeline.append({"$match": {"shift.date": {"$gte": day_start, "$lte": day_end}}})
+        except ValueError:
+            # Invalid date string — fall back to today onwards
+            pipeline.append({"$match": {"shift.date": {"$gte": today}}})
+    else:
+        pipeline.append({"$match": {"shift.date": {"$gte": today}}})
+
+    if q:
+        pipeline.append({"$match": {"$or": [
+            {"user.name": {"$regex": q, "$options": "i"}},
+            {"user.first_name": {"$regex": q, "$options": "i"}},
+            {"user.last_name": {"$regex": q, "$options": "i"}},
+            {"client.name": {"$regex": q, "$options": "i"}},
+            {"client.county": {"$regex": q, "$options": "i"}},
+            {"shift.shift_xn_id": {"$regex": q, "$options": "i"}},
+        ]}})
+
+    if avail_filter == "unknown":
+        pipeline.append({"$match": {"$or": [
+            {"availability": {"$exists": False}},
+            {"availability": None},
+            {"availability": {"$nin": [0, 1, 3, 4, 6]}}
+        ]}})
+    elif avail_filter in ["0", "1", "3", "4", "6"]:
+        pipeline.append({"$match": {"availability": int(avail_filter)}})
+
+    pipeline.append({"$project": {
+        "availability": 1, "assigned_at": 1,
+        "shift_name": {"$ifNull": ["$shift.name", "—"]},
+        "shift_date": "$shift.date",
+        "shift_start_time": "$shift.start_time",
+        "shift_end_time": "$shift.end_time",
+        "shift_xn_id": "$shift.shift_xn_id",
+        "client_name": {"$ifNull": ["$client.name", "—"]},
+        "client_county": {"$ifNull": ["$client.county", "—"]},
+        "staff_name": {"$ifNull": ["$user.name", {"$trim": {"input": {"$concat": [
+            {"$ifNull": ["$user.first_name", ""]}, " ", {"$ifNull": ["$user.last_name", ""]}
+        ]}}}]},
+        "staff_email": {"$ifNull": ["$user.email", "—"]},
+        "staff_phone": {"$ifNull": ["$user.phone", "—"]},
+    }})
+
+    records = list(db.shifts_users.aggregate(pipeline))
+
+    # ── Summary counts ──────────────────────────────────────────────────
+    total_calls   = len(records)
+    available     = sum(1 for r in records if r.get('availability') == 1)
+    not_available = sum(1 for r in records if r.get('availability') == 0)
+    voice_mail    = sum(1 for r in records if r.get('availability') == 3)
+    not_attended  = sum(1 for r in records if r.get('availability') == 4)
+    not_triggered = sum(1 for r in records if r.get('availability') == 6)
+    no_response   = sum(1 for r in records if r.get('availability') not in [0, 1, 3, 4, 6])
+
+    # ── Helper: always create fresh style objects ───────────────────────
+    def make_fill(hex_color):
+        return PatternFill("solid", start_color=hex_color, end_color=hex_color)
+
+    def make_border():
+        thin = Side(style="thin", color="B8CCE4")
+        return Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # ── Workbook ────────────────────────────────────────────────────────
+    wb = Workbook()
+
+    # ════════════════════════════════════════════════════════════════════
+    # Sheet 1 — Summary
+    # ════════════════════════════════════════════════════════════════════
+    ws = wb.active
+    ws.title = "Summary"
+    ws.column_dimensions["A"].width = 30
+    ws.column_dimensions["B"].width = 20
+
+    # Title
+    ws.merge_cells("A1:B1")
+    ws["A1"].value = "SHIFT BOOKING — ANALYSIS"
+    ws["A1"].font = Font(bold=True, color="FFFFFF", name="Arial", size=15)
+    ws["A1"].fill = make_fill("1F4E79")
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 34
+
+    # Export timestamp
+    ws.merge_cells("A2:B2")
+    ws["A2"].value = f"Exported: {datetime.now().strftime('%d %b %Y  %H:%M')}{'   |   Date filter: ' + date_str if date_str else ''}"
+    ws["A2"].font = Font(italic=True, name="Arial", size=10, color="595959")
+    ws["A2"].alignment = Alignment(horizontal="center")
+    ws.row_dimensions[2].height = 18
+
+    summary_rows = [
+        ("Metric",               "Count",       "2E75B6", True),
+        ("Total Calls",          total_calls,   "D6E4F0", True),
+        ("Available",            available,     "E8F5E9", False),
+        ("Not Available",        not_available, "FEECEC", False),
+        ("Voice Mail",           voice_mail,    "FFFDE7", False),
+        ("Call Not Attended",    not_attended,  "E3F2FD", False),
+        ("Call Not Triggered",   not_triggered, "FFF3E0", False),
+        ("No Response from User",no_response,   "F3E5F5", False),
+    ]
+
+    for i, (label, value, color, bold) in enumerate(summary_rows, start=3):
+        ca = ws.cell(row=i, column=1, value=label)
+        cb = ws.cell(row=i, column=2, value=value)
+
+        for cell in (ca, cb):
+            cell.fill      = make_fill(color)
+            cell.font      = Font(bold=bold, name="Arial", size=11,
+                                  color="FFFFFF" if color == "2E75B6" else "1F1F1F")
+            cell.border    = make_border()
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        ca.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[i].height = 22
+
+    # ════════════════════════════════════════════════════════════════════
+    # Sheet 2 — Assignments
+    # ════════════════════════════════════════════════════════════════════
+    wd = wb.create_sheet("Assignments")
+
+    AVAIL_MAP = {
+        1: "Available",
+        0: "Not Available",
+        3: "Voice Mail",
+        4: "Call Not Attended",
+        6: "Call Not Triggered",
+    }
+
+    headers = [
+        "Shift ID", "Shift Name", "Shift Date", "Start Time", "End Time",
+        "Client Name", "County", "Staff Name", "Staff Email", "Staff Phone",
+        "Availability", "Assigned At"
+    ]
+    col_widths = [14, 26, 14, 12, 12, 26, 18, 24, 30, 16, 22, 20]
+
+    for col_idx, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+        cell = wd.cell(row=1, column=col_idx, value=hdr)
+        cell.font      = Font(bold=True, color="FFFFFF", name="Arial", size=11)
+        cell.fill      = make_fill("2E75B6")
+        cell.border    = make_border()
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        wd.column_dimensions[get_column_letter(col_idx)].width = width
+
+    wd.row_dimensions[1].height = 28
+    wd.freeze_panes = "A2"
+
+    for row_idx, r in enumerate(records, start=2):
+        row_color = "EBF3FB" if row_idx % 2 == 0 else "FFFFFF"
+
+        avail_val   = r.get('availability')
+        avail_label = AVAIL_MAP.get(avail_val, "No Response from User")
+
+        shift_date  = r['shift_date'].strftime('%d %b %Y') if isinstance(r.get('shift_date'), datetime) else ''
+        assigned_at = r['assigned_at'].strftime('%d %b %Y %H:%M') if isinstance(r.get('assigned_at'), datetime) else ''
+
+        row_data = [
+            str(r.get('shift_xn_id') or '—'),
+            r.get('shift_name') or '—',
+            shift_date,
+            str(r.get('shift_start_time') or ''),
+            str(r.get('shift_end_time') or ''),
+            r.get('client_name') or '—',
+            r.get('client_county') or '—',
+            r.get('staff_name') or '—',
+            r.get('staff_email') or '—',
+            r.get('staff_phone') or '—',
+            avail_label,
+            assigned_at,
+        ]
+
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = wd.cell(row=row_idx, column=col_idx, value=value)
+            cell.font      = Font(name="Arial", size=10)
+            cell.fill      = make_fill(row_color)
+            cell.border    = make_border()
+            cell.alignment = Alignment(vertical="center")
+
+        wd.row_dimensions[row_idx].height = 18
+
+    # ── Stream to browser ───────────────────────────────────────────────
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"shift_assignments_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return Response(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

@@ -13,10 +13,21 @@
             {{ total }} records
         </span>
 
+         <!-- ✅ Export Button -->
+        <a href="{{ url_for('booking.export_assignments_excel',
+                    q=request.args.get('q',''),
+                    date=request.args.get('date',''),
+                    avail=request.args.get('avail','')) }}"
+           class="btn btn-success btn-sm d-flex align-items-center gap-2"
+           title="Export current filtered view to Excel">
+            <i class="bi bi-file-earmark-excel-fill"></i>
+            Export to Excel
+        </a>
+
         {% if request.args.get('avail') %}
         <span class="badge bg-info fs-6">
             Filtered: 
-            {% if request.args.get('avail') == '1' %}Available{% elif request.args.get('avail') == '0' %}Not Available {% elif request.args.get('avail') == '3' %}Voice mail{% elif request.args.get('avail') == '4' %}Call Not attended{% else %}Unknown{% endif %}
+            {% if request.args.get('avail') == '1' %}Available{% elif request.args.get('avail') == '0' %}Not Available {% elif request.args.get('avail') == '3' %}Voice mail{% elif request.args.get('avail') == '4' %}Call Not attended{% elif request.args.get('avail') == '6' %}Call Not Triggered{% else %}Unknown{% endif %}
         </span>
         {% endif %}
     </div>
@@ -63,8 +74,11 @@
         <option value="4" {% if request.args.get('avail') == '4' %}selected{% endif %}>
             Call Not attended
         </option>
+        <option value="6" {% if request.args.get('avail') == '6' %}selected{% endif %}>
+            Call Not Triggered
+        </option>
         <option value="unknown" {% if request.args.get('avail') == 'unknown' %}selected{% endif %}>
-            Unknown / Not Set
+            No response from user
         </option>
     </select>
 </div>
@@ -141,11 +155,16 @@
               title="Call not attended">
             <i class="bi bi-telephone-fill"></i> Not attended
         </span>
+    {% elif a.availability == 6 %}
+        <span class="badge bg-orange-subtle text-end" 
+              title="Call not triggered">
+            <i class="bi bi-telephone-fill"></i> Not triggered
+        </span>
     {% else %}
      
         <span class="badge bg-secondary-subtle text-secondary" 
-              title="Availability not set">
-            <i class="bi bi-question-circle"></i> Unknown
+              title="User dropped">
+            <i class="bi bi-question-circle"></i> No response from user
         </span>
     {% endif %}
 </td>
@@ -433,6 +452,9 @@ if (data.audio_url) {
 }
 .bg-yellow-subtle{
     background-color:#e2e60e;
+}
+.bg-orange-subtle{
+    background-color:#ff9800;
 }
 </style>
 {% endblock %}

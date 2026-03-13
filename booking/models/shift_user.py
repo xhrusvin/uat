@@ -11,6 +11,7 @@ class ShiftUser:
             "shift_id": ObjectId(shift_id),
             "user_id": ObjectId(user_id),
             "assigned_at": datetime.utcnow(),
+            "availability": 6,
         }
         if assigned_by:
             data["assigned_by"] = ObjectId(assigned_by)
