@@ -34,7 +34,7 @@ from admin.views import admin_required
 def all_assignments_list():
 
     page        = int(request.args.get('page', 1))
-    per_page    = 25
+    per_page    = 10
     q           = request.args.get('q', '').strip()
     date_str    = request.args.get('date', '').strip()
     avail_filter = request.args.get('avail', '').strip()
@@ -227,7 +227,7 @@ def shift_users_list():
     Original view: list shifts with assignment summary
     """
     page = int(request.args.get('page', 1))
-    per_page = 12
+    per_page = 10
     q = request.args.get('q', '').strip()
     client_id_str = request.args.get('client_id')
 
