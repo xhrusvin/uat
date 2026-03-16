@@ -882,3 +882,104 @@ def send_sms_to_staff():
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
+
+@bp.route('/sms/reply', methods=['POST'])
+def sms_reply_webhook():
+    """
+    Twilio calls this endpoint when someone replies to your SMS.
+    Twilio sends form data (not JSON).
+    """
+    try:
+        from_number = request.form.get('From', '').strip()      # sender's number e.g. +919876543210
+        to_number   = request.form.get('To', '').strip()        # your Twilio number
+        body        = request.form.get('Body', '').strip()      # the reply message text
+        message_sid = request.form.get('MessageSid', '')        # unique Twilio message ID
+        
+        print(f"[SMS REPLY] From: {from_number} | Body: {body}")
+
+        # ── Find the user by phone number ──────────────────────────
+        user = db.users.find_one({
+            "$or": [
+                {"phone": from_number},
+                {"phone": from_number.lstrip('+91')},   # strip country code
+                {"mobile": from_number},
+            ]
+        })
+
+        # ── Log the reply regardless ───────────────────────────────
+        reply_doc = {
+            "from_number":  from_number,
+            "to_number":    to_number,
+            "body":         body,
+            "message_sid":  message_sid,
+            "user_id":      str(user['_id']) if user else None,
+            "user_name":    user.get('name') if user else None,
+            "received_at":  datetime.utcnow(),
+            "processed":    False,
+        }
+
+        # ── Parse availability from reply ──────────────────────────
+        body_upper = body.upper().strip()
+        availability = None
+
+        if body_upper in ('YES', 'Y', 'AVAILABLE', 'OK', 'CONFIRM'):
+            availability = 1       # Available
+            reply_doc['parsed_response'] = 'available'
+        elif body_upper in ('NO', 'N', 'UNAVAILABLE', 'BUSY', 'CANT', "CAN'T"):
+            availability = 0       # Not available
+            reply_doc['parsed_response'] = 'unavailable'
+        else:
+            reply_doc['parsed_response'] = 'unknown'   # free text, needs manual review
+
+        reply_doc['availability'] = availability
+
+        # ── Save the reply to DB ───────────────────────────────────
+        db.sms_replies.insert_one(reply_doc)
+
+        # ── If we know the user, update their shift assignment ─────
+        if user and availability is not None:
+            # Find their most recent shift assignment (or match via sms_log)
+            recent_sms_log = db.sms_log.find_one(
+                {"to_number": from_number},
+                sort=[("sent_at", -1)]
+            )
+
+            if recent_sms_log:
+                shift_id = recent_sms_log.get('shift_id')
+                db.shifts_users.update_one(
+                    {
+                        "shift_id": ObjectId(shift_id),
+                        "user_id":  user['_id']
+                    },
+                    {
+                        "$set": {
+                            "availability": availability,
+                            "sms_reply":    body,
+                            "replied_at":   datetime.utcnow()
+                        }
+                    }
+                )
+                reply_doc['shift_id'] = shift_id
+                db.sms_replies.update_one(
+                    {"message_sid": message_sid},
+                    {"$set": {"shift_id": shift_id}}
+                )
+
+        # ── Optional: send auto-reply back ─────────────────────────
+        # (remove this block if you don't want auto-replies)
+        from twilio.twiml.messaging_response import MessagingResponse
+        resp = MessagingResponse()
+        if availability == 1:
+            resp.message("Thank you! Your availability has been recorded as: Available ✅")
+        elif availability == 0:
+            resp.message("Thank you! Your availability has been recorded as: Unavailable ❌")
+        else:
+            resp.message("Thank you for your reply. Our team will review it shortly.")
+
+        return str(resp), 200, {'Content-Type': 'text/xml'}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        # Always return 200 to Twilio — otherwise it will retry
+        return '<Response></Response>', 200, {'Content-Type': 'text/xml'}

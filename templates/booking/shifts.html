@@ -546,18 +546,18 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body p-4">
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Search & Add Staff</label>
-                    <select class="form-select" id="assign_user_search"><option></option></select>
-                </div>
-                <div class="mb-2 fw-bold text-muted small">Currently Assigned:</div>
-                <div id="assign_modal_user_list" class="list-group mb-3"></div>
-                <div id="assign_modal_empty" class="text-muted text-center py-3 d-none">No staff assigned yet</div>
-                <div id="assign_modal_loading" class="text-muted text-center py-3">
-                    <div class="spinner-border spinner-border-sm me-2"></div> Loading...
-                </div>
-            </div>
+           <div class="modal-body p-4">
+    <div class="mb-3">
+        <label class="form-label fw-bold">Search & Add Staff</label>
+        <select class="form-select" id="assign_user_search"><option></option></select>
+    </div>
+    <div class="mb-2 fw-bold text-muted small">Currently Assigned:</div>
+    <div id="assign_modal_user_list" class="list-group mb-3"></div>
+    <div id="assign_modal_empty" class="text-muted text-center py-3 d-none">No staff assigned yet</div>
+    <div id="assign_modal_loading" class="text-muted text-center py-3">
+        <div class="spinner-border spinner-border-sm me-2"></div> Loading...
+    </div>
+</div>
             <div class="modal-footer border-0">
                 <button type="button" class="btn btn-secondary" id="btn_assign_modal_skip">
                     Skip — change status only
@@ -583,21 +583,41 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-                <label class="form-label fw-bold">Message <span class="text-danger">*</span></label>
-                <textarea
-                    id="sms_message_input"
-                    class="form-control"
-                    rows="5"
-                    maxlength="1600"
-                    placeholder="Type your message here..."
-                    style="resize: vertical; font-size: 1rem;"
-                ></textarea>
-                <div class="invalid-feedback">Please enter a message before sending.</div>
-                <div class="d-flex justify-content-between mt-2">
-                    <span class="small text-muted">Max 1600 characters</span>
-                    <span id="sms_char_count" class="small text-muted">0 / 160</span>
-                </div>
-            </div>
+
+    <div id="sms_shift_preview" class="rounded-3 p-3 mb-3"
+         style="background: var(--bs-light, #f8f9fa); border: 1px solid #dee2e6; font-size: 0.875rem;">
+        <div class="fw-bold text-secondary mb-1" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">
+            Shift Details
+        </div>
+        <div class="d-flex flex-wrap gap-3 mt-2">
+            <span><i class="bi bi-hash text-muted me-1"></i><strong id="sms_preview_xnid">—</strong></span>
+            <span><i class="bi bi-building text-muted me-1"></i><span id="sms_preview_name">—</span></span>
+            <span><i class="bi bi-geo-alt text-muted me-1"></i><span id="sms_preview_location">—</span></span>
+        </div>
+        <div class="d-flex flex-wrap gap-3 mt-1">
+            <span><i class="bi bi-calendar3 text-muted me-1"></i><span id="sms_preview_date">—</span></span>
+            <span><i class="bi bi-clock text-muted me-1"></i><span id="sms_preview_time">—</span></span>
+            <span><i class="bi bi-person text-muted me-1"></i><span id="sms_preview_client">—</span></span>
+        </div>
+    </div>
+
+    <label class="form-label fw-bold">Message <span class="text-danger">*</span></label>
+    <textarea
+        id="sms_message_input"
+        class="form-control"
+        rows="6"
+        maxlength="1600"
+        placeholder="Type your message here..."
+        style="resize: vertical; font-size: 1rem;"
+    ></textarea>
+    <div class="invalid-feedback">Please enter a message before sending.</div>
+    <div class="d-flex justify-content-between align-items-center mt-2 gap-2 flex-wrap">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn_sms_use_template">
+            <i class="bi bi-magic me-1"></i> Use availability template
+        </button>
+        <span id="sms_char_count" class="small text-muted">0 / 160</span>
+    </div>
+</div>
             <div class="modal-footer border-0">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-success" id="btn_sms_send_confirm">
@@ -1220,11 +1240,37 @@ document.getElementById('btn_send_sms')?.addEventListener('click', async () => {
         return;
     }
 
-    // ── Show custom SMS compose modal ──
-    document.getElementById('sms_recipient_count').textContent = selectedUserIds.length;
-    document.getElementById('sms_message_input').value = '';
-    document.getElementById('sms_char_count').textContent = '0 / 160';
-    document.getElementById('sms_char_count').className = 'small text-muted';
+    // ── Populate shift preview in SMS modal ──
+// Read data-* attributes from the view button that opened this modal
+const viewBtn = document.querySelector(`.btn-view[data-id="${currentShiftId}"]`);
+
+const shiftName     = viewBtn?.dataset.name     || document.getElementById('view_name')?.textContent     || '—';
+const shiftXnid     = viewBtn?.dataset.xnid     || document.getElementById('view_shift_xn_id')?.textContent || '—';
+const shiftLocation = viewBtn?.dataset.location || document.getElementById('view_location')?.textContent  || '—';
+const shiftClient   = viewBtn?.dataset.client   || document.getElementById('view_client')?.textContent   || '—';
+const shiftDate     = document.getElementById('view_date')?.textContent  || '—';
+const shiftTime     = document.getElementById('view_time')?.textContent  || '—';
+
+document.getElementById('sms_preview_xnid').textContent     = shiftXnid;
+document.getElementById('sms_preview_name').textContent     = shiftName;
+document.getElementById('sms_preview_location').textContent = shiftLocation;
+document.getElementById('sms_preview_client').textContent   = shiftClient;
+document.getElementById('sms_preview_date').textContent     = shiftDate;
+document.getElementById('sms_preview_time').textContent     = shiftTime;
+
+// Store for template use
+document.getElementById('smsComposeModal').dataset.shiftName     = shiftName;
+document.getElementById('smsComposeModal').dataset.shiftXnid     = shiftXnid;
+document.getElementById('smsComposeModal').dataset.shiftLocation = shiftLocation;
+document.getElementById('smsComposeModal').dataset.shiftDate     = shiftDate;
+document.getElementById('smsComposeModal').dataset.shiftTime     = shiftTime;
+document.getElementById('smsComposeModal').dataset.shiftClient   = shiftClient;
+
+// Clear message box
+document.getElementById('sms_message_input').value = '';
+document.getElementById('sms_char_count').textContent = '0 / 160';
+document.getElementById('sms_char_count').className = 'small text-muted';
+
 
     const smsModal = new bootstrap.Modal(document.getElementById('smsComposeModal'), {
         backdrop: false   // ← prevents backdrop conflict with viewShiftModal
@@ -1233,6 +1279,36 @@ document.getElementById('btn_send_sms')?.addEventListener('click', async () => {
 
     // Store selected IDs for the send button to pick up
     document.getElementById('smsComposeModal').dataset.userIds = JSON.stringify(selectedUserIds);
+});
+
+
+// ── SMS availability template filler ────────────────────────────────
+document.getElementById('btn_sms_use_template')?.addEventListener('click', function () {
+    const modal    = document.getElementById('smsComposeModal');
+    const name     = modal.dataset.shiftName     || '—';
+    const xnid     = modal.dataset.shiftXnid     || '—';
+    const location = modal.dataset.shiftLocation || '—';
+    const date     = modal.dataset.shiftDate     || '—';
+    const time     = modal.dataset.shiftTime     || '—';
+    const client   = modal.dataset.shiftClient   || '—';
+
+    const template =
+`Hi, this is a shift availability check.
+
+Shift: ${xnid} — ${name}
+Client: ${client}
+Date: ${date}
+Time: ${time}
+Location: ${location}
+
+Please reply YES if you are available or NO if you are unavailable for this shift.
+
+Thank you.`;
+
+    const textarea = document.getElementById('sms_message_input');
+    textarea.value = template;
+    textarea.classList.remove('is-invalid');
+    textarea.dispatchEvent(new Event('input'));
 });
 
 // ── SMS Compose Modal: Send button ──────────────────────────────────
