@@ -17,6 +17,7 @@ client_model = Client(db.clients)
 shift_user_model = ShiftUser(db.shifts_users)
 
 from . import bp
+from admin.views import admin_required
 
 def serialize_doc(doc):
     """Convert MongoDB document to JSON-serializable dict"""
@@ -32,6 +33,7 @@ def serialize_doc(doc):
         return doc
 
 @bp.route('/shifts')
+@admin_required
 def shifts():
     page = int(request.args.get('page', 1))
     search = request.args.get('search', '').strip()
@@ -761,6 +763,119 @@ def recall_call_for_shift():
             ),
             "updated_count": update_result.modified_count,
             "transcripts_deleted": transcript_deleted
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@bp.route('/shifts/send-sms', methods=['POST'])
+def send_sms_to_staff():
+    """
+    Send a Twilio SMS to selected assigned staff.
+    Expects: { shift_id, user_ids: [...], message: "..." }
+    """
+    import os
+    from twilio.rest import Client as TwilioClient
+    from twilio.base.exceptions import TwilioRestException
+
+    try:
+        data = request.get_json()
+        shift_id   = data.get('shift_id')
+        user_ids   = data.get('user_ids', [])
+        message    = (data.get('message') or '').strip()
+
+        # ── Validation ────────────────────────────────────────────────
+        if not shift_id:
+            return jsonify({"success": False, "error": "Missing shift_id"}), 400
+        if not user_ids:
+            return jsonify({"success": False, "error": "No users selected"}), 400
+        if not message:
+            return jsonify({"success": False, "error": "Message cannot be empty"}), 400
+        if len(message) > 1600:
+            return jsonify({"success": False, "error": "Message too long (max 1600 chars)"}), 400
+
+        # ── Twilio credentials from environment ───────────────────────
+        account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+        auth_token  = os.environ.get('TWILIO_AUTH_TOKEN')
+        from_number = os.environ.get('TWILIO_FROM_NUMBER')   # e.g. "+14155552671"
+
+        if not all([account_sid, auth_token, from_number]):
+            return jsonify({
+                "success": False,
+                "error": "Twilio credentials not configured (check TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER)"
+            }), 500
+
+        twilio_client = TwilioClient(account_sid, auth_token)
+
+        # ── Fetch user phone numbers from DB ──────────────────────────
+        user_oids = [ObjectId(uid) for uid in user_ids]
+        users = list(db.users.find(
+            {"_id": {"$in": user_oids}},
+            {"_id": 1, "name": 1, "first_name": 1, "last_name": 1, "phone": 1, "mobile": 1}
+        ))
+
+        sent   = 0
+        failed = 0
+        errors = []
+
+        for user in users:
+            uid_str   = str(user['_id'])
+            full_name = (
+                user.get('name') or
+                f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or
+                uid_str
+            )
+            # Try 'phone' first, then 'mobile'
+            to_number = (user.get('phone') or user.get('mobile') or '').strip()
+
+            if not to_number:
+                failed += 1
+                errors.append({
+                    "user_id": uid_str,
+                    "name": full_name,
+                    "error": "No phone number on file"
+                })
+                continue
+
+            # Normalise: ensure E.164 format (basic check — adjust for your region)
+            if not to_number.startswith('+'):
+                # Default to India (+91) — change as needed
+                to_number = '+91' + to_number.lstrip('0')
+
+            try:
+                twilio_client.messages.create(
+                    body=message,
+                    from_=from_number,
+                    to=to_number
+                )
+                sent += 1
+
+                # Optional: log the SMS in a collection for audit
+                db.sms_log.insert_one({
+                    "shift_id":   shift_id,
+                    "user_id":    uid_str,
+                    "to_number":  to_number,
+                    "message":    message,
+                    "status":     "sent",
+                    "sent_at":    datetime.utcnow()
+                })
+
+            except TwilioRestException as te:
+                failed += 1
+                errors.append({
+                    "user_id": uid_str,
+                    "name": full_name,
+                    "error": str(te.msg)
+                })
+
+        return jsonify({
+            "success": True,
+            "sent":    sent,
+            "failed":  failed,
+            "errors":  errors,
+            "message": f"SMS dispatched: {sent} sent, {failed} failed"
         })
 
     except Exception as e:

@@ -267,6 +267,7 @@ select.parsley-success {
     </div>
 
     <!-- Main Navigation -->
+     {% if session.get('email') != 'booking@admin.com' %}
     <div class="menu-header">Main</div>
     <a class="nav-link {% if request.path == '/admin' or request.path == '/admin/' %}active{% endif %}"
        href="{{ url_for('admin.dashboard') }}">
@@ -349,7 +350,7 @@ select.parsley-success {
             <span>Professional Reference</span>
         </a>
     </div>
-
+{% endif %}
      <!-- System -->
     <div class="menu-header mt-4">Booking</div>
     <!-- Transcriptions Menu (Parent + Collapsible Submenu) -->

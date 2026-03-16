@@ -517,11 +517,15 @@
 </div>
                 </div>
             </div>
-            <div class="modal-footer">
+           <!-- AFTER — add the SMS button between Recall and Trigger Call -->
+<div class="modal-footer">
     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-    <!-- NEW: Recall Selected -->
     <button type="button" class="btn btn-warning" id="btn_recall_selected" disabled>
         <i class="bi bi-telephone-forward-fill me-1"></i> Recall Selected
+    </button>
+    <!-- NEW SMS button -->
+    <button type="button" class="btn btn-success" id="btn_send_sms" disabled>
+        <i class="bi bi-chat-dots-fill me-1"></i> Send SMS
     </button>
     <button type="button" class="btn btn-primary" id="btn_trigger_call">
         <i class="bi bi-telephone-fill me-1"></i> Trigger Call
@@ -560,6 +564,44 @@
                 </button>
                 <button type="button" class="btn btn-primary" id="btn_assign_modal_confirm">
                     <i class="bi bi-check-lg me-1"></i> Done & Set Assigned
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- SMS Compose Modal -->
+<div class="modal fade" id="smsComposeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-chat-dots-fill me-2"></i>
+                    Send SMS to <span id="sms_recipient_count">0</span> staff member(s)
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="form-label fw-bold">Message <span class="text-danger">*</span></label>
+                <textarea
+                    id="sms_message_input"
+                    class="form-control"
+                    rows="5"
+                    maxlength="1600"
+                    placeholder="Type your message here..."
+                    style="resize: vertical; font-size: 1rem;"
+                ></textarea>
+                <div class="invalid-feedback">Please enter a message before sending.</div>
+                <div class="d-flex justify-content-between mt-2">
+                    <span class="small text-muted">Max 1600 characters</span>
+                    <span id="sms_char_count" class="small text-muted">0 / 160</span>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="btn_sms_send_confirm">
+                    <i class="bi bi-send-fill me-1"></i> Send SMS
                 </button>
             </div>
         </div>
@@ -953,6 +995,8 @@ async function loadAssignedUsers(shiftId) {
     emptyEl.classList.add('d-none');
     if (selectAllWrapper) selectAllWrapper.style.display = 'none';
     if (recallBtn) { recallBtn.disabled = true; }
+    const smsBtnReset = document.getElementById('btn_send_sms');
+    if (smsBtnReset) smsBtnReset.disabled = true;
     if (recallBadge) recallBadge.style.display = 'none';
 
     // Reset conflict state
@@ -1068,6 +1112,8 @@ async function loadAssignedUsers(shiftId) {
             const checked = container.querySelectorAll('.staff-recall-cb:checked');
             const count = checked.length;
             if (recallBtn) recallBtn.disabled = count === 0;
+            const smsBtn = document.getElementById('btn_send_sms');
+        if (smsBtn) smsBtn.disabled = count === 0;
             if (recallBadge) {
                 recallBadge.textContent = count;
                 recallBadge.style.display = count > 0 ? '' : 'none';
@@ -1156,6 +1202,100 @@ document.getElementById('btn_recall_selected')?.addEventListener('click', async 
             await loadAssignedUsers(currentShiftId);
         } else {
             Swal.fire('Error', result.error || 'Failed to trigger recall', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    }
+});
+
+// ── Send SMS to Selected Staff ────────────────────────────────────────
+document.getElementById('btn_send_sms')?.addEventListener('click', async () => {
+    if (!currentShiftId) return;
+
+    const checkedBoxes = document.querySelectorAll('#view_assigned_users .staff-recall-cb:checked');
+    const selectedUserIds = Array.from(checkedBoxes).map(cb => cb.dataset.userId);
+
+    if (selectedUserIds.length === 0) {
+        Swal.fire('No staff selected', 'Please check at least one staff member to send SMS.', 'warning');
+        return;
+    }
+
+    // ── Show custom SMS compose modal ──
+    document.getElementById('sms_recipient_count').textContent = selectedUserIds.length;
+    document.getElementById('sms_message_input').value = '';
+    document.getElementById('sms_char_count').textContent = '0 / 160';
+    document.getElementById('sms_char_count').className = 'small text-muted';
+
+    const smsModal = new bootstrap.Modal(document.getElementById('smsComposeModal'), {
+        backdrop: false   // ← prevents backdrop conflict with viewShiftModal
+    });
+    smsModal.show();
+
+    // Store selected IDs for the send button to pick up
+    document.getElementById('smsComposeModal').dataset.userIds = JSON.stringify(selectedUserIds);
+});
+
+// ── SMS Compose Modal: Send button ──────────────────────────────────
+document.getElementById('btn_sms_send_confirm')?.addEventListener('click', async () => {
+    const modal     = document.getElementById('smsComposeModal');
+    const message   = document.getElementById('sms_message_input').value.trim();
+    const userIds   = JSON.parse(modal.dataset.userIds || '[]');
+
+    if (!message) {
+        document.getElementById('sms_message_input').classList.add('is-invalid');
+        return;
+    }
+    document.getElementById('sms_message_input').classList.remove('is-invalid');
+
+    if (!currentShiftId || userIds.length === 0) return;
+
+    // Close compose modal, show loading
+    bootstrap.Modal.getInstance(modal).hide();
+
+    Swal.fire({
+        title: 'Sending SMS...',
+        text: `Dispatching to ${userIds.length} recipient(s)`,
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const res = await fetch('/booking/shifts/send-sms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                shift_id: currentShiftId,
+                user_ids: userIds,
+                message:  message
+            })
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+            const sentCount   = result.sent   || 0;
+            const failedCount = result.failed  || 0;
+            const failDetails = (result.errors || [])
+                .map(e => `• ${e.name || e.user_id}: ${e.error}`)
+                .join('\n');
+
+            Swal.fire({
+                icon: failedCount === 0 ? 'success' : 'warning',
+                title: failedCount === 0 ? 'SMS Sent!' : 'Partially Sent',
+                html: `
+                    <div class="text-start">
+                        <p><strong>${sentCount}</strong> message(s) sent successfully.</p>
+                        ${failedCount > 0 ? `
+                            <p class="text-danger"><strong>${failedCount}</strong> failed:</p>
+                            <pre class="small text-muted">${failDetails}</pre>
+                        ` : ''}
+                    </div>
+                `,
+                confirmButtonColor: '#28a745'
+            });
+        } else {
+            Swal.fire('Error', result.error || 'Failed to send SMS', 'error');
         }
     } catch (err) {
         Swal.fire('Error', 'Network error – please try again', 'error');
@@ -2239,6 +2379,18 @@ async function loadShiftSlots(shiftId) {
         loadingEl.innerHTML = '<span class="text-danger small">Failed to load slots</span>';
     }
 }
+
+// ── SMS character counter ────────────────────────────────────────────
+document.getElementById('sms_message_input')?.addEventListener('input', function () {
+    const len     = this.value.length;
+    const counter = document.getElementById('sms_char_count');
+    const smsLen  = 160;
+    const parts   = Math.ceil(len / smsLen) || 1;
+    counter.textContent = `${len} / ${parts * smsLen} (${parts} SMS)`;
+    counter.className   = len > smsLen ? 'small text-warning fw-semibold' : 'small text-muted';
+    // Clear validation state while typing
+    if (len > 0) this.classList.remove('is-invalid');
+});
 </script>
 
 {% endblock %}

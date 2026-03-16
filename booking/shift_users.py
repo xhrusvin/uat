@@ -22,25 +22,70 @@ from flask import send_file
 import io
 
 from . import bp
+from admin.views import admin_required
+
 
 
 
 
 
 @bp.route('/assignments')
+@admin_required
 def all_assignments_list():
 
-    page = int(request.args.get('page', 1))
-    per_page = 25
-    q = request.args.get('q', '').strip()
-    date_str = request.args.get('date', '').strip()
+    page        = int(request.args.get('page', 1))
+    per_page    = 25
+    q           = request.args.get('q', '').strip()
+    date_str    = request.args.get('date', '').strip()
+    avail_filter = request.args.get('avail', '').strip()
 
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    pipeline = []
+    # ─────────────────────────────────────────────
+    # STEP 1: Pre-filter shift IDs by date (hits index on shifts.date)
+    # ─────────────────────────────────────────────
+    if date_str:
+        try:
+            selected_date = datetime.strptime(date_str, "%Y-%m-%d")
+            day_start = selected_date.replace(hour=0,  minute=0,  second=0,  microsecond=0)
+            day_end   = selected_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            date_match = {"date": {"$gte": day_start, "$lte": day_end}}
+        except ValueError:
+            date_match = {"date": {"$gte": today}}
+    else:
+        date_match = {"date": {"$gte": today}}
 
-    # 🔹 1. Join shifts
+    relevant_shift_ids = db.shifts.distinct("_id", date_match)
+
+    if not relevant_shift_ids:
+        # No shifts in range → return empty immediately, no aggregation needed
+        return render_template(
+            'booking/assignments_list.html',
+            assignments=[], page=1, pages=1, total=0, q=q,
+        )
+
+    # ─────────────────────────────────────────────
+    # STEP 2: Build base pipeline — match on shifts_users first
+    # ─────────────────────────────────────────────
+    base_match = {"shift_id": {"$in": relevant_shift_ids}}
+
+    # Availability filter before any joins
+    if avail_filter == "unknown":
+        base_match["$or"] = [
+            {"availability": {"$exists": False}},
+            {"availability": None},
+            {"availability": {"$nin": [0, 1, 3, 4, 6]}},
+        ]
+    elif avail_filter in ["0", "1", "3", "4", "6"]:
+        base_match["availability"] = int(avail_filter)
+
+    pipeline = [{"$match": base_match}]
+
+    # ─────────────────────────────────────────────
+    # STEP 3: Joins (now on already-filtered small set)
+    # ─────────────────────────────────────────────
     pipeline.extend([
+        # Join shifts
         {
             "$lookup": {
                 "from": "shifts",
@@ -51,7 +96,21 @@ def all_assignments_list():
         },
         {"$unwind": {"path": "$shift", "preserveNullAndEmptyArrays": True}},
 
-        # 🔹 2. Join clients
+        # Join users
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "user_id",
+                "foreignField": "_id",
+                "as": "user"
+            }
+        },
+        {"$unwind": {"path": "$user", "preserveNullAndEmptyArrays": True}},
+
+        # Drop records with no matching user
+        {"$match": {"user._id": {"$exists": True}}},
+
+        # Join clients (string-based client_id)
         {
             "$lookup": {
                 "from": "clients",
@@ -69,163 +128,89 @@ def all_assignments_list():
             }
         },
         {"$unwind": {"path": "$client", "preserveNullAndEmptyArrays": True}},
-
-        # 🔹 3. Join users
-        {
-            "$lookup": {
-                "from": "users",
-                "localField": "user_id",
-                "foreignField": "_id",
-                "as": "user"
-            }
-        },
-        {"$unwind": {"path": "$user", "preserveNullAndEmptyArrays": True}},
-        {"$match": {"user._id": {"$exists": True}}},
     ])
 
-
-    if date_str:
-        try:
-            selected_date = datetime.strptime(date_str, "%Y-%m-%d")
-            next_day = selected_date.replace(hour=23, minute=59, second=59)
-            pipeline.append({
-                "$match": {
-                    "shift.date": {
-                        "$gte": selected_date,
-                        "$lte": next_day
-                    }
-                }
-            })
-        except ValueError:
-            pass  # invalid date → no date filter
-    else:
-        # Default behavior: only future + today
-        pipeline.append({
-            "$match": {
-                "shift.date": {"$gte": today}
-            }
-        })
-
-    # 🔍 Global Search
+    # ─────────────────────────────────────────────
+    # STEP 4: Search filter (after joins, needs joined fields)
+    # ─────────────────────────────────────────────
     if q:
         pipeline.append({
             "$match": {
                 "$or": [
-                    {"agent_id": {"$regex": q, "$options": "i"}},
-                    {"conversation_id": {"$regex": q, "$options": "i"}},
-                    {"user.name": {"$regex": q, "$options": "i"}},
-                    {"user.first_name": {"$regex": q, "$options": "i"}},
-                    {"user.last_name": {"$regex": q, "$options": "i"}},
-                    {"client.name": {"$regex": q, "$options": "i"}},
-                    {"client.county": {"$regex": q, "$options": "i"}},
-                    {"shift.shift_xn_id": {"$regex": q, "$options": "i"}},
+                    {"user.name":        {"$regex": q, "$options": "i"}},
+                    {"user.first_name":  {"$regex": q, "$options": "i"}},
+                    {"user.last_name":   {"$regex": q, "$options": "i"}},
+                    {"client.name":      {"$regex": q, "$options": "i"}},
+                    {"client.county":    {"$regex": q, "$options": "i"}},
+                    {"shift.shift_xn_id":{"$regex": q, "$options": "i"}},
                 ]
             }
         })
 
-    # 📅 Date Filter
-    if date_str:
-        try:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-            next_day = date_obj.replace(hour=23, minute=59, second=59)
+    # ─────────────────────────────────────────────
+    # STEP 5: $facet — single query for data + count
+    # ─────────────────────────────────────────────
+    projection = {
+        "assignment_id": "$_id",
+        "shift_id":   1,
+        "user_id":    1,
+        "created_at": 1,
+        "availability": 1,
+        "assigned_at":  1,
 
-            pipeline.append({
-                "$match": {
-                    "shift.date": {
-                        "$gte": date_obj,
-                        "$lte": next_day
-                    }
-                }
-            })
-        except ValueError:
-            pass
+        "shift_name":       {"$ifNull": ["$shift.name", "—"]},
+        "shift_date":       "$shift.date",
+        "shift_start_time": "$shift.start_time",
+        "shift_end_time":   "$shift.end_time",
+        "shift_xn_id":      "$shift.shift_xn_id",
 
-    # Availability Filter
-    avail_filter = request.args.get('avail', '').strip()
+        "client_name":   {"$ifNull": ["$client.name",   "—"]},
+        "client_county": {"$ifNull": ["$client.county", "—"]},
 
-    if avail_filter == "unknown":
-      pipeline.append({
-        "$match": {
-            "$or": [
-                {"availability": {"$exists": False}},
-                {"availability": None},
-                {"availability": {"$nin": [0, 1, 3, 4]}}
+        "staff_name": {
+            "$ifNull": [
+                "$user.name",
+                {"$trim": {"input": {"$concat": [
+                    {"$ifNull": ["$user.first_name", ""]},
+                    " ",
+                    {"$ifNull": ["$user.last_name",  ""]}
+                ]}}}
+            ]
+        },
+        "staff_email": {"$ifNull": ["$user.email", "—"]},
+        "staff_phone": {"$ifNull": ["$user.phone", "—"]},
+    }
+
+    pipeline.append({
+        "$facet": {
+            "data": [
+                {"$sort":    {"assigned_at": -1}},
+                {"$skip":    (page - 1) * per_page},
+                {"$limit":   per_page},
+                {"$project": projection},
+            ],
+            "total": [
+                {"$count": "count"}
             ]
         }
     })
 
-    elif avail_filter in ["0", "1", "3", "4"]:
-      pipeline.append({
-          "$match": {"availability": int(avail_filter)}
-      })
+    # ─────────────────────────────────────────────
+    # STEP 6: Execute + unpack
+    # ─────────────────────────────────────────────
+    result      = list(db.shifts_users.aggregate(pipeline, allowDiskUse=True))
+    assignments = result[0]["data"]        if result else []
+    total       = result[0]["total"][0]["count"] if result and result[0]["total"] else 0
+    pages       = max(1, (total + per_page - 1) // per_page)
 
-    # 🔄 Sort + Pagination
-    pipeline.extend([
-        {"$sort": {"assigned_at": -1}},
-        #{"$sort": {"shift.date": 1}},
-        {"$skip": (page - 1) * per_page},
-        {"$limit": per_page},
-
-        # 📦 Projection
-        {
-            "$project": {
-                "assignment_id": "$_id",
-                "shift_id": 1,
-                "user_id": 1,
-                "created_at": 1,
-                "availability": 1,
-
-                "shift_name": {"$ifNull": ["$shift.name", "—"]},
-                "shift_date": "$shift.date",
-                "shift_start_time": "$shift.start_time",
-                "shift_end_time": "$shift.end_time",
-                "shift_xn_id": "$shift.shift_xn_id",
-
-                "client_name": {"$ifNull": ["$client.name", "—"]},
-                "client_county": {"$ifNull": ["$client.county", "—"]},
-
-                "staff_name": {
-                    "$ifNull": [
-                        "$user.name",
-                        {
-                            "$trim": {
-                                "input": {
-                                    "$concat": [
-                                        {"$ifNull": ["$user.first_name", ""]},
-                                        " ",
-                                        {"$ifNull": ["$user.last_name", ""]}
-                                    ]
-                                }
-                            }
-                        }
-                    ]
-                },
-
-                "staff_email": {"$ifNull": ["$user.email", "—"]},
-                "staff_phone": {"$ifNull": ["$user.phone", "—"]},
-                "assigned_at": 1,
-            }
-        }
-    ])
-
-    assignments = list(db.shifts_users.aggregate(pipeline))
-
-    # 🕒 Format Dates
+    # ─────────────────────────────────────────────
+    # STEP 7: Format dates in Python
+    # ─────────────────────────────────────────────
     for a in assignments:
-        if a.get('created_at') and isinstance(a['created_at'], datetime):
+        if isinstance(a.get('created_at'), datetime):
             a['created_at_formatted'] = a['created_at'].strftime('%Y-%m-%d %H:%M')
-
-        if a.get('shift_date') and isinstance(a['shift_date'], datetime):
+        if isinstance(a.get('shift_date'), datetime):
             a['shift_date_formatted'] = a['shift_date'].strftime('%d %b %Y')
-
-    # 🔢 Count (remove skip, limit, project)
-    count_pipeline = pipeline[:-3]
-    count_pipeline.append({"$count": "total"})
-
-    count_result = list(db.shifts_users.aggregate(count_pipeline))
-    total = count_result[0]["total"] if count_result else 0
-
-    pages = (total + per_page - 1) // per_page if total > 0 else 1
 
     return render_template(
         'booking/assignments_list.html',
@@ -432,17 +417,17 @@ def export_assignments_excel():
         {"$match": {"user._id": {"$exists": True}}},
     ]
 
-    if date_str:
-        try:
-            selected_date = datetime.strptime(date_str, "%Y-%m-%d")
-            day_start = selected_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            day_end   = selected_date.replace(hour=23, minute=59, second=59, microsecond=999999)
-            pipeline.append({"$match": {"shift.date": {"$gte": day_start, "$lte": day_end}}})
-        except ValueError:
-            # Invalid date string — fall back to today onwards
-            pipeline.append({"$match": {"shift.date": {"$gte": today}}})
-    else:
-        pipeline.append({"$match": {"shift.date": {"$gte": today}}})
+    # if date_str:
+    #     try:
+    #         selected_date = datetime.strptime(date_str, "%Y-%m-%d")
+    #         day_start = selected_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    #         day_end   = selected_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+    #         pipeline.append({"$match": {"shift.date": {"$gte": day_start, "$lte": day_end}}})
+    #     except ValueError:
+    #         # Invalid date string — fall back to today onwards
+    #         pipeline.append({"$match": {"shift.date": {"$gte": today}}})
+    # else:
+    #     pipeline.append({"$match": {"shift.date": {"$gte": today}}})
 
     if q:
         pipeline.append({"$match": {"$or": [

@@ -11,9 +11,11 @@ from booking.models.client import Client
 client_model = Client(db.clients)
 
 from . import bp   # assuming same blueprint as shifts
+from admin.views import admin_required
 
 
 @bp.route('/clients')
+@admin_required
 def clients():
     page = int(request.args.get('page', 1))
     search = request.args.get('search', '').strip()
@@ -41,6 +43,7 @@ def clients():
 
 
 @bp.route('/clients/add', methods=['POST'])
+@admin_required
 def client_add():
     data = request.get_json()
 
@@ -76,6 +79,7 @@ def client_add():
 
 
 @bp.route('/clients/edit', methods=['POST'])
+@admin_required
 def client_edit():
     data = request.get_json()
     client_id = data.get('client_id')
@@ -109,6 +113,7 @@ def client_edit():
 
 
 @bp.route('/clients/delete', methods=['POST'])
+@admin_required
 def client_delete():
     data = request.get_json()
     client_id = data.get('client_id')
@@ -124,6 +129,7 @@ def client_delete():
 
 
 @bp.route('/clients/import', methods=['POST'])
+@admin_required
 def client_import():
     if 'file' not in request.files:
         return jsonify({"success": False, "error": "No file uploaded"}), 400
