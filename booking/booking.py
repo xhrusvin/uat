@@ -983,3 +983,32 @@ def sms_reply_webhook():
         traceback.print_exc()
         # Always return 200 to Twilio — otherwise it will retry
         return '<Response></Response>', 200, {'Content-Type': 'text/xml'}
+
+
+@bp.route('/sms/replies', methods=['GET'])
+@admin_required
+def sms_replies():
+    q        = request.args.get('q', '').strip()
+    response = request.args.get('response', '').strip()
+
+    query = {}
+    if q:
+        regex = {'$regex': q, '$options': 'i'}
+        query['$or'] = [
+            {'from_number': regex},
+            {'user_name': regex},
+            {'body': regex},
+        ]
+    if response:
+        query['parsed_response'] = response
+
+    replies = list(db.sms_replies.find(
+        query,
+        sort=[("received_at", -1)],
+        limit=200
+    ))
+
+    return render_template(
+        'booking/sms_replies.html',
+        replies=serialize_doc(replies)
+    )
