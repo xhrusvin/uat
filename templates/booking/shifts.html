@@ -1481,8 +1481,8 @@ function addShiftRow(initialData = {}) {
                    name="shifts[${index}].end_time" placeholder="HH:MM" required>
         </div>
         <div class="col-md-6">
-            <label class="form-label small fw-bold">Shift Type</label>
-            <select class="form-select shift-type-select" name="shifts[${index}].shift_type">
+            <label class="form-label small fw-bold">Shift Type<span class="text-danger">*</span></label>
+            <select class="form-select shift-type-select" name="shifts[${index}].shift_type" required>
                 <option value="">— Select type —</option>
                 <option value="Morning">🌅 Morning</option>
                 <option value="Day">☀️ Day</option>
