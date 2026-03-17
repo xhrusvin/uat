@@ -1,0 +1,275 @@
+{% extends "admin/base.html" %}
+{% block title %}Designations • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">Designation Management</h2>
+        <div class="d-flex gap-3 flex-wrap">
+            <button class="btn btn-primary" onclick="prepareAddModal()"
+                    data-bs-toggle="modal" data-bs-target="#designationModal">
+                <i class="bi bi-plus-lg"></i> Add Designation
+            </button>
+            <a href="{{ url_for('booking.designations') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-repeat"></i> Refresh
+            </a>
+            <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">
+                {{ total }} Designation{{ 's' if total != 1 }}
+            </span>
+        </div>
+    </div>
+
+    <!-- Search -->
+    <form method="get" class="mb-5">
+        <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+            <span class="input-group-text bg-white border-0">Search</span>
+            <input type="text" name="search" class="form-control border-0 ps-0"
+                   placeholder="Search designations..." value="{{ search }}" autofocus>
+            <button class="btn btn-primary px-4" type="submit">Search</button>
+            {% if search %}
+            <a href="{{ url_for('booking.designations') }}" class="btn btn-outline-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+
+    <!-- Table -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="text-white"
+                           style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                        <tr>
+                            <th class="ps-4">#</th>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Status</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in designations %}
+                        <tr>
+                            <td class="ps-4 text-muted small">
+                                {{ loop.index + (page - 1) * per_page }}
+                            </td>
+                            <td class="fw-semibold">{{ d.name }}</td>
+                            <td class="text-muted">{{ d.description or '—' }}</td>
+                            <td>
+                                {% if d.is_active %}
+                                <span class="badge bg-success rounded-pill px-3">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary rounded-pill px-3">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 btn-edit"
+                                        data-id="{{ d._id }}"
+                                        data-name="{{ d.name | e }}"
+                                        data-description="{{ d.description or '' | e }}"
+                                        data-active="{{ d.is_active | tojson }}">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
+                                        data-id="{{ d._id | string }}"
+                                        data-name="{{ d.name | e }}">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center py-5 text-muted">
+                                <i class="bi bi-tag display-1 opacity-25 d-block mb-3"></i>
+                                <h5>No designations found</h5>
+                                {% if search %}<p class="mb-0">Try a different search term</p>{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if total > per_page %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center pagination-lg">
+            {% if page > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page-1 }}&search={{ search }}">Previous</a>
+            </li>
+            {% endif %}
+            {% set pages = ((total / per_page) | round(0,'ceil')) | int %}
+            {% for p in range([page-2,1]|max, [page+3,pages+1]|min) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}&search={{ search }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+            {% if page < pages %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page+1 }}&search={{ search }}">Next</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
+</div>
+
+<!-- Add / Edit Modal -->
+<div class="modal fade" id="designationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title fw-bold" id="designationModalLabel">Add Designation</h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <form id="designationForm">
+                <div class="modal-body">
+                    <input type="hidden" id="designation_id" name="designation_id">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            Name <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="desig_name"
+                               name="name" required autofocus maxlength="80"
+                               placeholder="e.g. Nurse, HCA, Support Worker">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Description</label>
+                        <textarea class="form-control" id="desig_description"
+                                  name="description" rows="2"
+                                  placeholder="Optional short description"></textarea>
+                    </div>
+
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox"
+                               id="desig_is_active" checked>
+                        <label class="form-check-label fw-bold" for="desig_is_active">
+                            Active (visible in filters & dropdowns)
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold"
+                            id="designationSubmitBtn">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────
+function prepareAddModal() {
+    document.getElementById('designationModalLabel').textContent = 'Add Designation';
+    document.getElementById('designationSubmitBtn').textContent  = 'Create';
+    document.getElementById('designation_id').value      = '';
+    document.getElementById('desig_name').value          = '';
+    document.getElementById('desig_description').value   = '';
+    document.getElementById('desig_is_active').checked   = true;
+}
+
+// ── Edit buttons ─────────────────────────────────────────────────────
+document.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('designationModalLabel').textContent = 'Edit Designation';
+        document.getElementById('designationSubmitBtn').textContent  = 'Save Changes';
+        document.getElementById('designation_id').value    = btn.dataset.id;
+        document.getElementById('desig_name').value        = btn.dataset.name;
+        document.getElementById('desig_description').value = btn.dataset.description || '';
+        document.getElementById('desig_is_active').checked = btn.dataset.active === 'true';
+        new bootstrap.Modal(document.getElementById('designationModal')).show();
+    });
+});
+
+// ── Form submit ──────────────────────────────────────────────────────
+document.getElementById('designationForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const btn    = document.getElementById('designationSubmitBtn');
+    const isEdit = !!document.getElementById('designation_id').value;
+    const url    = isEdit
+        ? "{{ url_for('booking.designation_edit') }}"
+        : "{{ url_for('booking.designation_add') }}";
+
+    btn.disabled    = true;
+    btn.textContent = isEdit ? 'Saving...' : 'Creating...';
+
+    const payload = {
+        designation_id: document.getElementById('designation_id').value,
+        name:           document.getElementById('desig_name').value.trim(),
+        description:    document.getElementById('desig_description').value.trim(),
+        is_active:      document.getElementById('desig_is_active').checked,
+    };
+
+    try {
+        const res    = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success', title: 'Saved!',
+                text: result.message,
+                timer: 1500, showConfirmButton: false
+            }).then(() => {
+                bootstrap.Modal.getInstance(
+                    document.getElementById('designationModal')).hide();
+                location.reload();
+            });
+        } else {
+            Swal.fire('Error', result.error || 'Operation failed', 'error');
+        }
+    } catch {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    } finally {
+        btn.disabled    = false;
+        btn.textContent = isEdit ? 'Save Changes' : 'Create';
+    }
+});
+
+// ── Delete buttons ───────────────────────────────────────────────────
+document.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const { isConfirmed } = await Swal.fire({
+            title: 'Delete Designation?',
+            html: `Delete <strong>${btn.dataset.name}</strong>? This cannot be undone.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Yes, delete'
+        });
+        if (!isConfirmed) return;
+
+        try {
+            const res    = await fetch("{{ url_for('booking.designation_delete') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ designation_id: btn.dataset.id })
+            });
+            const result = await res.json();
+
+            if (result.success) {
+                Swal.fire('Deleted!', '', 'success').then(() => location.reload());
+            } else {
+                Swal.fire('Error', result.error || 'Delete failed', 'error');
+            }
+        } catch {
+            Swal.fire('Error', 'Network error', 'error');
+        }
+    });
+});
+</script>
+{% endblock %}

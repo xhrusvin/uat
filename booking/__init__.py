@@ -16,3 +16,4 @@ from . import booking
 from . import client 
 from . import shift_users
 from . import shift_multiple
+from . import designation

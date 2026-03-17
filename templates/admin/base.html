@@ -362,12 +362,12 @@ select.parsley-success {
     </a>
     
 
-    <div class="nav-link parent-menu {% if request.path.startswith('/booking/shifts') or request.path.startswith('/booking/clients') or request.path.startswith('/booking/shifts_multiple') %}active{% endif %}">
+    <div class="nav-link parent-menu {% if request.path.startswith('/booking/shifts') or request.path.startswith('/booking/clients') or request.path.startswith('/booking/shifts_multiple') or request.path.startswith('/booking/designations') %}active{% endif %}">
         <i class="bi bi-database"></i>
         <span>Master</span>
         <i class="bi bi-chevron-down ms-auto toggle-icon"></i>
     </div>
-    <div class="submenu {% if request.path.startswith('/booking/shifts') or request.path.startswith('/booking/clients') or request.path.startswith('/booking/shifts_multiple') %}open{% endif %}">
+    <div class="submenu {% if request.path.startswith('/booking/shifts') or request.path.startswith('/booking/clients') or request.path.startswith('/booking/shifts_multiple') or request.path.startswith('/booking/designations') %}open{% endif %}">
         <a class="nav-link {% if request.path.startswith('/booking/shifts') %}active{% endif %}"
            href="{{ url_for('booking.shifts') }}">
             <i class="bi bi-calendar3"></i>
@@ -378,6 +378,12 @@ select.parsley-success {
            href="{{ url_for('booking.clients') }}">
             <i class="bi bi-person"></i>
             <span>Clients</span>
+        </a>
+
+        <a class="nav-link {% if request.path.startswith('/booking/designations') %}active{% endif %}"
+           href="{{ url_for('booking.designations') }}">
+            <i class="bi bi-tags"></i>
+            <span>Designations</span>
         </a>
 
         <!-- <a class="nav-link {% if request.path.startswith('/booking/shifts_multiple') %}active{% endif %}"

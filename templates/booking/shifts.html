@@ -1563,45 +1563,118 @@ $(document).ready(function() {
 
 
 
-        // Copy from last shift button
 document.getElementById('btn_copy_last_shift')?.addEventListener('click', async () => {
     if (!currentShiftId) {
         Swal.fire('Error', 'No shift selected', 'error');
         return;
     }
 
-    const confirmed = await Swal.fire({
-        title: 'Copy staff?',
-        text: 'Copy all staff from the most recent previous shift of the same client?',
-        icon: 'question',
+    // ── Step 1: Fetch active designations from master ──
+    let designationOptions = [];
+    try {
+        const dRes  = await fetch('/booking/designations/list');
+        const dData = await dRes.json();
+        if (dData.success) designationOptions = dData.designations;
+    } catch (err) {
+        console.warn('Could not load designations:', err);
+    }
+
+    // ── Step 2: Build checkbox HTML from fetched designations ──
+    const checkboxHtml = designationOptions.length
+        ? designationOptions.map(d => `
+            <div class="form-check mb-2">
+                <input class="form-check-input desig-cb" type="checkbox"
+                       value="${d.name}" id="d_${d._id}">
+                <label class="form-check-label" for="d_${d._id}">${d.name}</label>
+            </div>`).join('')
+        : '<p class="text-muted small">No designations found — all staff will be copied.</p>';
+
+    // ── Step 3: Show Swal with checkboxes ──
+    const { value: selectedDesignations, isConfirmed } = await Swal.fire({
+        title: 'Copy staff from last shift',
+        html: `
+            <p class="text-muted mb-3" style="font-size:0.9rem;">
+                Optionally filter by designation. Leave all unchecked to copy everyone.
+            </p>
+            <div class="text-start ps-2" id="desig-checkbox-group">
+                ${checkboxHtml}
+            </div>
+            ${designationOptions.length ? `
+            <div class="mt-3 text-start">
+                <button type="button" class="btn btn-link btn-sm p-0 text-muted"
+                        id="swal-select-all-desig">
+                    Select all / Deselect all
+                </button>
+            </div>` : ''}
+            <div class="mt-3 text-muted small border-top pt-2">
+                <i class="bi bi-info-circle me-1"></i>
+                No boxes checked = copy all staff regardless of designation.
+            </div>
+        `,
         showCancelButton: true,
-        confirmButtonText: 'Yes, copy',
-        cancelButtonText: 'No'
+        confirmButtonText: '<i class="bi bi-people-fill me-1"></i> Copy Staff',
+        cancelButtonText:  'Cancel',
+        confirmButtonColor: '#198754',
+        cancelButtonColor:  '#6c757d',
+        didOpen: () => {
+            // Wire up select-all toggle inside Swal
+            document.getElementById('swal-select-all-desig')
+                ?.addEventListener('click', function () {
+                    const cbs  = document.querySelectorAll('.desig-cb');
+                    const allChecked = Array.from(cbs).every(c => c.checked);
+                    cbs.forEach(c => { c.checked = !allChecked; });
+                });
+        },
+        preConfirm: () => {
+            return Array.from(
+                document.querySelectorAll('.desig-cb:checked')
+            ).map(cb => cb.value);
+        }
     });
 
-    if (!confirmed.isConfirmed) return;
+    if (!isConfirmed) return;
 
+    const filterLabel = selectedDesignations.length
+        ? selectedDesignations.join(', ')
+        : 'all designations';
+
+    const { isConfirmed: confirmed } = await Swal.fire({
+        title: 'Confirm copy?',
+        html: `Copy <strong>${filterLabel}</strong> staff from the most recent
+               previous shift of the same client?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText:  'Yes, copy',
+        confirmButtonColor: '#198754',
+        cancelButtonColor:  '#6c757d',
+    });
+
+    if (!confirmed) return;
+
+    // ── Step 4: Call backend ──
     try {
-        const res = await fetch(`/booking/shifts/${currentShiftId}/copy-last-client-staff`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-
+        const res    = await fetch(
+            `/booking/shifts/${currentShiftId}/copy-last-client-staff`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ designations: selectedDesignations })
+            }
+        );
         const result = await res.json();
 
         if (result.success) {
             Swal.fire({
-                icon: 'success',
+                icon:  'success',
                 title: 'Done',
-                text: result.message || 'Staff copied successfully',
-                timer: 2000
+                text:  result.message || 'Staff copied successfully',
+                timer: 2500, showConfirmButton: false
             });
-            // Refresh the list
             await loadAssignedUsers(currentShiftId);
         } else {
-            Swal.fire('Info / Error', result.error || 'Nothing to copy', result.success ? 'info' : 'error');
+            Swal.fire('Info', result.error || 'Nothing to copy', 'info');
         }
-    } catch (err) {
+    } catch {
         Swal.fire('Error', 'Network error – please try again', 'error');
     }
 });

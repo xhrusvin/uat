@@ -433,6 +433,9 @@ def user_search():
 @bp.route('/shifts/<shift_id>/copy-last-client-staff', methods=['POST'])
 def copy_staff_from_last_shift(shift_id):
     try:
+        data = request.get_json() or {}
+        designations = data.get('designations', [])  # ← new: list of designation strings
+
         current_shift = shift_model.get_by_id(shift_id)
         if not current_shift:
             return jsonify({"success": False, "error": "Shift not found"}), 404
@@ -445,44 +448,43 @@ def copy_staff_from_last_shift(shift_id):
         if not current_date:
             return jsonify({"success": False, "error": "Current shift has no date"}), 400
 
-        # Find the most recent previous shift of the same client
         previous_shift = db.shifts.find_one(
-            {
-                "client_id": client_id,
-                "date": {"$lt": current_date},          # strictly before
-                # Optional: "is_active": True
-            },
-            sort=[("date", -1)],                        # latest first
+            {"client_id": client_id, "date": {"$lt": current_date}},
+            sort=[("date", -1)],
             projection={"_id": 1}
         )
 
         if not previous_shift:
-            return jsonify({
-                "success": False,
-                "error": "No previous shift found for this client"
-            }), 200
+            return jsonify({"success": False, "error": "No previous shift found for this client"}), 200
 
         prev_shift_id = previous_shift['_id']
-
-        # Get users from previous shift
         prev_users = shift_user_model.get_users_for_shift(prev_shift_id)
         if not prev_users:
+            return jsonify({"success": True, "message": "Previous shift had no assigned users", "copied": 0})
+
+        # ── Filter by designation if provided ──
+        if designations:
+            desig_lower = [d.strip().lower() for d in designations]
+            prev_users = [
+                u for u in prev_users
+                if (u.get('designation') or '').strip().lower() in desig_lower
+            ]
+
+        if not prev_users:
             return jsonify({
-                "success": True,
-                "message": "Previous shift had no assigned users",
-                "copied": 0
-            })
+                "success": False,
+                "error": "No staff found matching the selected designation(s) in the previous shift"
+            }), 200
 
         copied_count = 0
         for user in prev_users:
-            user_id = user['_id']
-            # assign returns True if newly inserted
-            if shift_user_model.assign(shift_id, user_id):
+            if shift_user_model.assign(shift_id, user['_id']):
                 copied_count += 1
 
         return jsonify({
             "success": True,
-            "message": f"Copied {copied_count} users from previous shift",
+            "message": f"Copied {copied_count} staff from previous shift"
+            + (f" (filtered by: {', '.join(designations)})" if designations else ""),
             "copied": copied_count
         })
 
