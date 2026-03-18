@@ -1077,14 +1077,19 @@ async function loadAssignedUsers(shiftId) {
                 : '';
 
             let callBadgeHtml = '';
-            if (user.call_processed === 1) {
-                const processedTime = user.call_processed_at
-                    ? new Date(user.call_processed_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
-                    : 'unknown time';
-                callBadgeHtml = `<span class="badge bg-success ms-2" title="Processed: ${processedTime}"><i class="bi bi-telephone-check-fill"></i> Call Processed</span>`;
-            } else if (user.call_enabled === 1) {
-                callBadgeHtml = `<span class="badge bg-warning text-dark ms-2"><i class="bi bi-telephone-outbound-fill"></i> Call Triggered</span>`;
-            }
+if (user.call_processed === 1) {
+    const processedTime = user.call_processed_at
+        ? new Date(user.call_processed_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+        : 'unknown time';
+    callBadgeHtml = `<span class="badge bg-success ms-2" title="Processed: ${processedTime}"><i class="bi bi-telephone-check-fill"></i> Call Processed</span>`;
+} else if (user.call_enabled === 1) {
+    callBadgeHtml = `<span class="badge bg-warning text-dark ms-2"><i class="bi bi-telephone-outbound-fill"></i> Call Triggered</span>`;
+}
+
+// SMS sent badge — shown independently of call status
+const smsBadgeHtml = user.sms_sent === 1
+    ? `<span class="badge bg-info text-dark ms-2" title="${user.sms_sent_at ? 'Sent: ' + new Date(user.sms_sent_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'SMS sent'}"><i class="bi bi-chat-dots-fill"></i> SMS Sent</span>`
+    : '';
 
             let availabilityBadgeHtml = '';
             if ('availability' in user) {
@@ -1106,7 +1111,7 @@ async function loadAssignedUsers(shiftId) {
                         <div>
                             <div class="d-flex align-items-center flex-wrap gap-1">
                                 <strong>${fullName}</strong>
-                                ${warningHtml}${callBadgeHtml}${availabilityBadgeHtml}
+                                ${warningHtml}${callBadgeHtml}${smsBadgeHtml}${availabilityBadgeHtml}
                             </div>
                             <div class="small text-muted">
                                 ${user.designation ? user.designation + ' • ' : ''}${user.email || '—'}

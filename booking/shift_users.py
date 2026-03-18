@@ -157,6 +157,8 @@ def all_assignments_list():
         "created_at": 1,
         "availability": 1,
         "assigned_at":  1,
+        "sms_sent":     1,     
+        "sms_sent_at":  1,         
 
         "shift_name":       {"$ifNull": ["$shift.name", "—"]},
         "shift_date":       "$shift.date",
@@ -609,3 +611,37 @@ def export_assignments_excel():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+@bp.route('/assignment-sms-history', methods=['GET'])
+def get_assignment_sms_history():
+    shift_id = request.args.get('shift_id')
+    user_id  = request.args.get('user_id')
+
+    if not shift_id or not user_id:
+        return jsonify({"error": "Missing shift_id or user_id"}), 400
+
+    # ── Sent SMS logs ──────────────────────────────────────────
+    sent_logs = list(db.sms_log.find(
+        {"shift_id": shift_id, "user_id": user_id},
+        {"_id": 0}
+    ).sort("sent_at", 1))
+
+    # ── Replies from this user for this shift ──────────────────
+    replies = list(db.sms_replies.find(
+        {"shift_id": shift_id, "user_id": user_id},
+        {"_id": 0}
+    ).sort("received_at", 1))
+
+    # ── Serialise datetimes ────────────────────────────────────
+    for log in sent_logs:
+        if isinstance(log.get('sent_at'), datetime):
+            log['sent_at'] = log['sent_at'].isoformat()
+
+    for reply in replies:
+        if isinstance(reply.get('received_at'), datetime):
+            reply['received_at'] = reply['received_at'].isoformat()
+
+    return jsonify({
+        "sent":    sent_logs,
+        "replies": replies,
+    })

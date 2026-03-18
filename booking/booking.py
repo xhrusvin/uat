@@ -342,10 +342,29 @@ def shift_delete():
 def get_shift_users(shift_id):
     try:
         raw_users = shift_user_model.get_users_for_shift(shift_id)
-        
-        # Convert everything to serializable format
         serialized_users = serialize_doc(raw_users)
-        
+
+        # ── Enrich each user with sms_sent fields from shifts_users ──
+        try:
+            shift_oid = ObjectId(shift_id)
+            for user in serialized_users:
+                uid = user.get('_id')
+                if not uid:
+                    continue
+                assignment = db.shifts_users.find_one(
+                    {
+                        "shift_id": shift_oid,
+                        "user_id":  ObjectId(uid)
+                    },
+                    {"sms_sent": 1, "sms_sent_at": 1, "_id": 0}
+                )
+                if assignment:
+                    user['sms_sent']    = assignment.get('sms_sent', 0)
+                    user['sms_sent_at'] = assignment.get('sms_sent_at')
+        except Exception as enrich_err:
+            print(f"[get_shift_users] SMS enrich error: {enrich_err}")
+            # Non-fatal — users still returned without sms fields
+
         return jsonify({
             "success": True,
             "users": serialized_users
@@ -862,6 +881,19 @@ def send_sms_to_staff():
                     "message":    message,
                     "status":     "sent",
                     "sent_at":    datetime.utcnow()
+                })
+
+                # Flag the assignment so we know SMS was sent to this user
+                db.shifts_users.update_one(
+                {
+                 "shift_id": ObjectId(shift_id),
+                 "user_id":  ObjectId(uid_str)
+                },
+                {
+                 "$set": {
+                    "sms_sent":    1,
+                    "sms_sent_at": datetime.utcnow()
+                }
                 })
 
             except TwilioRestException as te:
