@@ -866,7 +866,26 @@ def send_sms_to_staff():
                 # Default to India (+91) — change as needed
                 to_number = '+91' + to_number.lstrip('0')
                 
+            number_variants = [
+                to_number,                          # '+447412824071'
+                to_number.replace('+44', '+44 '),   # '+44 7412824071' (with space)
+                uid_str,                            # match by user_id string too
+            ]
 
+            deleted_logs = db.sms_log.delete_many({
+             "$or": [
+                {"user_id":   uid_str},
+                 {"to_number": {"$in": number_variants}},
+            ]
+            }).deleted_count
+
+            deleted_replies = db.sms_replies.delete_many({
+             "$or": [
+               {"user_id":    uid_str},
+               {"from_number": {"$in": number_variants}},
+            ]
+            }).deleted_count
+            
             try:
                 msg = twilio_client.messages.create(
                     body=message,
