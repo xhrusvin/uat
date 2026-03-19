@@ -975,7 +975,7 @@ def api_brief_summary_cov():
             eir_code = value
 
           if field_id == "years_experience_ireland" and value:
-            years_experience_ireland = value
+            years_experience_ireland = int(float(value))
 
           if field_id == "county" and value:
             location_in_ireland = value
