@@ -963,6 +963,7 @@ def sms_reply_webhook():
                 f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
             ) if user else None,
             "received_at": datetime.utcnow(),
+            'in_response_to': in_response_to,
             "processed":   False,
         }
 
