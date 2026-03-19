@@ -866,7 +866,7 @@ def send_sms_to_staff():
                 to_number = '+91' + to_number.lstrip('0')
 
             try:
-                twilio_client.messages.create(
+                msg = twilio_client.messages.create(
                     body=message,
                     from_=from_number,
                     to=to_number
@@ -875,12 +875,13 @@ def send_sms_to_staff():
 
                 # Optional: log the SMS in a collection for audit
                 db.sms_log.insert_one({
-                    "shift_id":   shift_id,
-                    "user_id":    uid_str,
-                    "to_number":  to_number,
-                    "message":    message,
-                    "status":     "sent",
-                    "sent_at":    datetime.utcnow()
+                   "shift_id":    shift_id,
+                   "user_id":     uid_str,
+                   "to_number":   to_number,
+                   "message":     message,
+                   "message_sid": msg.sid,   # ← ADD THIS
+                   "status":      "sent",
+                   "sent_at":     datetime.utcnow()
                 })
 
                 # Flag the assignment so we know SMS was sent to this user
@@ -928,6 +929,18 @@ def sms_reply_webhook():
         to_number   = request.form.get('To', '').strip()        # your Twilio number
         body        = request.form.get('Body', '').strip()      # the reply message text
         message_sid = request.form.get('MessageSid', '')        # unique Twilio message ID
+        in_response_to = request.form.get('InResponseTo', '')   # the original message SID
+
+
+        original_sms = db.sms_log.find_one({"message_sid": in_response_to}) if in_response_to else None
+
+        if not original_sms and user:
+            # Fallback: most recent (existing behavior)
+            original_sms = db.sms_log.find_one(
+                {"to_number": from_number},
+                sort=[("sent_at", -1)]
+            )
+
         
         print(f"[SMS REPLY] From: {from_number} | Body: {body}")
 
@@ -937,6 +950,7 @@ def sms_reply_webhook():
                 {"phone": from_number},
                 {"phone": from_number.lstrip('+91')},   # strip country code
                 {"mobile": from_number},
+                {"mobile": from_number.lstrip('+91')},   # strip country code
             ]
         })
 
@@ -997,6 +1011,10 @@ def sms_reply_webhook():
                 db.sms_replies.update_one(
                     {"message_sid": message_sid},
                     {"$set": {"shift_id": shift_id}}
+                )
+                db.sms_replies.update_one(
+                    {"message_sid": message_sid},
+                    {"$set": {"processed": True}}
                 )
 
         # ── Optional: send auto-reply back ─────────────────────────

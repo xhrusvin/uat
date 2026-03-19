@@ -261,10 +261,12 @@ def shift_users_list():
         }},
         {"$lookup": {
     "from": "clients",
-    "let": {"client_id_obj": {"$toObjectId": "$shift.client_id"}},  # may fail if string is invalid
+    "let": {"cid": "$client_id"},  # may fail if string is invalid
     "pipeline": [
-        {"$match": {"$expr": {"$eq": ["$_id", "$$client_id_obj"]}}},
-    ],
+            {"$match": {"$expr": {
+                "$eq": [{"$toString": "$_id"}, "$$cid"]
+            }}}
+        ],
     "as": "client"
 }},
 {"$unwind": {"path": "$client", "preserveNullAndEmptyArrays": True}},
