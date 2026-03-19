@@ -628,9 +628,27 @@ def get_assignment_sms_history():
         {"_id": 0}
     ).sort("sent_at", 1))
 
-    # ── Replies from this user for this shift ──────────────────
+    # ── Normalise to_number from sent logs (strip spaces) ──────
+    # e.g. '+44 7412824071' → '+447412824071'
+    normalised_numbers = list({
+        log['to_number'].replace(' ', '')
+        for log in sent_logs
+        if log.get('to_number')
+    })
+
+    # ── Replies: match by shift_id+user_id OR by normalised number
+    reply_query = {"$or": [
+        {"shift_id": shift_id, "user_id": user_id},   # exact match (already linked)
+    ]}
+
+    # Also match by any normalised phone number from sent logs
+    if normalised_numbers:
+        reply_query["$or"].append(
+            {"from_number": {"$in": normalised_numbers}}
+        )
+
     replies = list(db.sms_replies.find(
-        {"shift_id": shift_id, "user_id": user_id},
+        reply_query,
         {"_id": 0}
     ).sort("received_at", 1))
 

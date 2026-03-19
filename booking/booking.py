@@ -850,6 +850,7 @@ def send_sms_to_staff():
             )
             # Try 'phone' first, then 'mobile'
             to_number = (user.get('phone') or user.get('mobile') or '').strip()
+            to_number = to_number.replace(' ', '')
 
             if not to_number:
                 failed += 1
@@ -864,6 +865,7 @@ def send_sms_to_staff():
             if not to_number.startswith('+'):
                 # Default to India (+91) — change as needed
                 to_number = '+91' + to_number.lstrip('0')
+                
 
             try:
                 msg = twilio_client.messages.create(
@@ -921,7 +923,7 @@ def send_sms_to_staff():
 @bp.route('/sms/reply', methods=['POST'])
 def sms_reply_webhook():
     try:
-        from_number    = request.form.get('From', '').strip()
+        from_number    = request.form.get('From', '').strip().replace(' ', '')
         to_number      = request.form.get('To', '').strip()
         body           = request.form.get('Body', '').strip()
         message_sid    = request.form.get('MessageSid', '')
