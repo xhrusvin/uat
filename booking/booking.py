@@ -928,7 +928,7 @@ def sms_reply_webhook():
         in_response_to = request.form.get('InResponseTo', '')
 
         print(f"[SMS REPLY] From: {from_number} | Body: {body} | InResponseTo: {in_response_to}")
-
+       
         # ── 1. Find user FIRST ─────────────────────────────────────
         user = db.users.find_one({
             "$or": [
@@ -965,6 +965,7 @@ def sms_reply_webhook():
             "received_at": datetime.utcnow(),
             'in_response_to': in_response_to,
             "processed":   False,
+            "raw_request":    request.form.to_dict(),
         }
 
         # ── 4. Parse availability ──────────────────────────────────
