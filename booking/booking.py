@@ -885,7 +885,7 @@ def send_sms_to_staff():
                {"from_number": {"$in": number_variants}},
             ]
             }).deleted_count
-            
+
             try:
                 msg = twilio_client.messages.create(
                     body=message,
@@ -952,12 +952,14 @@ def sms_reply_webhook():
        
         # ── 1. Find user FIRST ─────────────────────────────────────
         user = db.users.find_one({
-            "$or": [
-                {"phone":  from_number},
-                {"phone":  from_number.lstrip('+91')},
-                {"mobile": from_number},
-                {"mobile": from_number.lstrip('+91')},
-            ]
+           "$or": [
+             {"phone":  from_number},
+             {"phone":  from_number.lstrip('+91')},
+             {"phone":  from_number.lstrip('+44')},
+             {"mobile": from_number},
+             {"mobile": from_number.lstrip('+91')},
+             {"mobile": from_number.lstrip('+44')},
+           ]
         })
 
         # ── 2. Find original SMS (now user exists for fallback) ────
@@ -965,8 +967,9 @@ def sms_reply_webhook():
         if in_response_to:
             original_sms = db.sms_log.find_one({"message_sid": in_response_to})
 
-        if not original_sms and user:
-            # Fallback: most recent SMS sent to this number
+
+        if not original_sms:
+            # Fallback: find by normalised to_number in sms_log
             original_sms = db.sms_log.find_one(
                 {"to_number": from_number},
                 sort=[("sent_at", -1)]
@@ -1008,27 +1011,43 @@ def sms_reply_webhook():
         db.sms_replies.insert_one(reply_doc)
 
         # ── 6. Update shift assignment if possible ─────────────────
-        if user and availability is not None and original_sms:
-            shift_id = original_sms.get('shift_id')
-            if shift_id:
-                db.shifts_users.update_one(
-                    {
-                        "shift_id": ObjectId(shift_id),
-                        "user_id":  user['_id']
-                    },
-                    {
-                        "$set": {
-                            "availability": availability,
-                            "sms_reply":    body,
-                            "replied_at":   datetime.utcnow()
-                        }
-                    }
-                )
-                # Single update for both shift_id + processed flag
-                db.sms_replies.update_one(
-                    {"message_sid": message_sid},
-                    {"$set": {"shift_id": shift_id, "processed": True}}
-                )
+        if availability is not None and original_sms:
+          shift_id  = original_sms.get('shift_id')
+          # Use user from lookup, or fall back to user_id stored in sms_log
+          target_user_id = user['_id'] if user else None
+          if not target_user_id:
+              raw_uid = original_sms.get('user_id')
+              if raw_uid:
+                  try:
+                      target_user_id = ObjectId(raw_uid)
+                  except Exception:
+                      pass
+
+          if shift_id and target_user_id:
+             db.shifts_users.update_one(
+             {
+                "shift_id": ObjectId(shift_id),
+                "user_id":  target_user_id
+             },
+             {
+                "$set": {
+                    "availability": availability,
+                    "sms_reply":    body,
+                    "replied_at":   datetime.utcnow()
+                }
+             }
+             )
+             db.sms_replies.update_one(
+              {"message_sid": message_sid},
+               {"$set": {
+                "shift_id":  shift_id,
+                "user_id":   str(target_user_id),   # ← backfill user_id if it was null
+                "processed": True
+              }}
+             )
+             print(f"[SMS REPLY] Updated shift_id={shift_id} user_id={target_user_id} availability={availability}")
+          else:
+             print(f"[SMS REPLY] Could not update — shift_id={shift_id} target_user_id={target_user_id}")
 
         # ── 7. Auto-reply ──────────────────────────────────────────
         from twilio.twiml.messaging_response import MessagingResponse
