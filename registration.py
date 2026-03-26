@@ -66,19 +66,30 @@ def generate_twiml(user_doc: dict):
   </Connect>
 </Response>'''
 
+import requests
+
 def make_ai_call(app, phone: str, user_doc: dict, user_object_id):
     params = urllib.parse.urlencode(user_doc, doseq=True)
     try:
         with app.app_context():
-            e164_phone = phone.replace(" ", "")  # "+353 871234567" → "+353871234567"
+            e164_phone = phone.replace(" ", "")
             
-            call = telnyx_client.calls.dial(
-                to=e164_phone,
-                from_=CALLER_ID.replace(" ", ""),  # sanitize caller ID too
-                connection_id=os.getenv('TELNYX_CONNECTION_ID'),
-                webhook_url=f'https://app.expresshealth.ie/voice?{params}',
+            response = requests.post(
+                f"https://api.telnyx.com/v2/texml/Accounts/{os.getenv('TELNYX_ACCOUNT_SID')}/Calls",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('TELNYX_API_KEY')}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "To": e164_phone,
+                    "From": CALLER_ID.replace(" ", ""),
+                    "Url": f'https://app.expresshealth.ie/voice?{params}',
+                    "StatusCallback": f'https://app.expresshealth.ie/call/completed'
+                }
             )
-            print(f"Telnyx call initiated: {call.data.call_control_id} for {e164_phone}")
+            response.raise_for_status()
+            data = response.json()
+            print(f"TeXML call initiated: {data['call_sid']} for {e164_phone}")
 
             app.db.users.update_one(
                 {"_id": user_object_id},
