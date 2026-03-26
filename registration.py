@@ -1,6 +1,6 @@
 # registration.py
 from flask import request, jsonify, session
-import telnyx                          # replaces: from twilio.rest import Client
+from telnyx import Telnyx                        # replaces: from twilio.rest import Client
 from dotenv import load_dotenv
 import os
 import threading
@@ -14,7 +14,7 @@ from flask import current_app
 load_dotenv()
 
 # Telnyx setup
-telnyx.api_key = os.getenv('TELNYX_API_KEY')   # replaces: TwilioClient(SID, TOKEN)
+telnyx_client = Telnyx(api_key=os.getenv('TELNYX_API_KEY'))
 CALLER_ID = os.getenv('TELNYX_CALLER_ID')
 TELNYX_CONNECTION_ID = os.getenv('TELNYX_CONNECTION_ID')  # required by Telnyx
 BASE_URL = os.getenv('BASE_URL', 'https://app.expresshealth.ie').rstrip('/')
@@ -70,14 +70,15 @@ def make_ai_call(app, phone: str, user_doc: dict, user_object_id):
     params = urllib.parse.urlencode(user_doc, doseq=True)
     try:
         with app.app_context():
-            call = telnyx.Call.create(
+            # Old (broken): telnyx.Call.create(...)
+            # New (correct):
+            call = telnyx_client.calls.dial(
                 to=phone,
                 from_=CALLER_ID,
-                connection_id=TELNYX_CONNECTION_ID,           # new — required
-                webhook_url=f'{BASE_URL}/voice?{params}',     # replaces: url=
-                webhook_url_method='POST'
+                connection_id=os.getenv('TELNYX_CONNECTION_ID'),
+                webhook_url=f'{BASE_URL}/voice?{params}',
             )
-            print(f"Telnyx call initiated: {call.call_control_id} for {phone}")  # .sid → .call_control_id
+            print(f"Telnyx call initiated: {call.data.call_control_id} for {phone}")
 
             app.db.users.update_one(
                 {"_id": user_object_id},
