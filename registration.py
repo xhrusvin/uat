@@ -73,9 +73,10 @@ def make_ai_call(app, phone: str, user_doc: dict, user_object_id):
     try:
         with app.app_context():
             e164_phone = phone.replace(" ", "")
+            connection_id = os.getenv('TELNYX_CONNECTION_ID')
             
             response = requests.post(
-                f"https://api.telnyx.com/v2/texml/calls/{os.getenv('TELNYX_ACCOUNT_SID')}",
+                f"https://api.telnyx.com/v2/texml/calls/{connection_id}",
                 headers={
                     "Authorization": f"Bearer {os.getenv('TELNYX_API_KEY')}",
                     "Content-Type": "application/json"
