@@ -84,7 +84,7 @@ def make_ai_call(app, phone: str, user_doc: dict, user_object_id):
                 json={
                     "To": e164_phone,
                     "From": CALLER_ID.replace(" ", ""),
-                    "Url": f'https://app.expresshealth.ie/voice?{params}',
+                    "Url": f'https://app.expresshealth.ie/voice-uat?{params}',
                     "StatusCallback": f'https://app.expresshealth.ie/call/completed'
                 }
             )
