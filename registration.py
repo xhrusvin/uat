@@ -1,7 +1,6 @@
 # registration.py
 from flask import request, jsonify, session
-from twilio.rest import Client as TwilioClient
-from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
+import telnyx                          # replaces: from twilio.rest import Client
 from dotenv import load_dotenv
 import os
 import threading
@@ -14,12 +13,10 @@ from flask import current_app
 
 load_dotenv()
 
-# Twilio
-twilio_client = TwilioClient(
-    os.getenv('TWILIO_ACCOUNT_SID'),
-    os.getenv('TWILIO_AUTH_TOKEN')
-)
-CALLER_ID = os.getenv('TWILIO_CALLER_ID')
+# Telnyx setup
+telnyx.api_key = os.getenv('TELNYX_API_KEY')   # replaces: TwilioClient(SID, TOKEN)
+CALLER_ID = os.getenv('TELNYX_CALLER_ID')
+TELNYX_CONNECTION_ID = os.getenv('TELNYX_CONNECTION_ID')  # required by Telnyx
 BASE_URL = os.getenv('BASE_URL', 'https://app.expresshealth.ie').rstrip('/')
 
 # ElevenLabs
@@ -61,35 +58,33 @@ def schedule_calls(app):
     thread.start()
 
 def generate_twiml(user_doc: dict):
-    resp = VoiceResponse()
-    connect = Connect()
-    connect.stream(url="wss://app.expresshealth.ie/wss")
-    resp.append(connect)
-    return str(resp)
+    # TeXML syntax is identical to TwiML — no library needed
+    return '''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="wss://app.expresshealth.ie/wss"/>
+  </Connect>
+</Response>'''
 
 def make_ai_call(app, phone: str, user_doc: dict, user_object_id):
-    """Initiate AI call and mark call_sent = 1 on success"""
-    print('calls rusvin')
     params = urllib.parse.urlencode(user_doc, doseq=True)
     try:
         with app.app_context():
-            call = twilio_client.calls.create(
+            call = telnyx.Call.create(
                 to=phone,
                 from_=CALLER_ID,
-                url=f'https://app.expresshealth.ie/voice?{params}'
+                connection_id=TELNYX_CONNECTION_ID,           # new — required
+                webhook_url=f'{BASE_URL}/voice?{params}',     # replaces: url=
+                webhook_url_method='POST'
             )
-            print(f"AI Call initiated: {call.sid} for {phone}")
+            print(f"Telnyx call initiated: {call.call_control_id} for {phone}")  # .sid → .call_control_id
 
-            # Mark as sent
             app.db.users.update_one(
                 {"_id": user_object_id},
                 {"$set": {"call_sent": 1, "updated_at": datetime.utcnow()}}
             )
-            print(f"call_sent = 1 for user {user_object_id}")
-
     except Exception as e:
         print(f"Call failed: {e}")
-        # Do NOT mark as sent if call failed
 
 # === MAIN ROUTE REGISTRATION ===
 def register_registration_routes(app):
@@ -200,9 +195,8 @@ def register_registration_routes(app):
 
     @app.route("/call/completed", methods=["POST"])
     def call_completed():
-        data = request.form.to_dict()
+        data = request.get_json()   # Telnyx sends JSON, not form data
         print("Call completed:", data)
-        # Optional: log or trigger post-call actions
         return "", 200
 
 # Auto-start scheduler when module is imported

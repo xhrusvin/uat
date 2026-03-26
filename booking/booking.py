@@ -1094,3 +1094,158 @@ def sms_replies():
         'booking/sms_replies.html',
         replies=serialize_doc(replies)
     )
+
+@bp.route('/shifts/send-email', methods=['POST'])
+def send_email_to_staff():
+    """
+    Send an email to selected assigned staff via SMTP.
+    Expects: { shift_id, user_ids: [...], subject: "...", message: "..." }
+    """
+    import os
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    try:
+        data     = request.get_json()
+        shift_id = data.get('shift_id')
+        user_ids = data.get('user_ids', [])
+        subject  = (data.get('subject') or '').strip()
+        message  = (data.get('message') or '').strip()
+
+        # ── Validation ────────────────────────────────────────────────
+        if not shift_id:
+            return jsonify({"success": False, "error": "Missing shift_id"}), 400
+        if not user_ids:
+            return jsonify({"success": False, "error": "No users selected"}), 400
+        if not subject:
+            return jsonify({"success": False, "error": "Subject cannot be empty"}), 400
+        if not message:
+            return jsonify({"success": False, "error": "Message cannot be empty"}), 400
+
+        # ── SMTP credentials from environment ─────────────────────────
+        smtp_host     = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+        smtp_port     = int(os.environ.get('SMTP_PORT', 587))
+        smtp_user     = os.environ.get('SMTP_USER')       # e.g. noreply@yourcompany.com
+        smtp_password = os.environ.get('SMTP_PASSWORD')
+        from_email    = os.environ.get('FROM_EMAIL', smtp_user)
+        from_name     = os.environ.get('SMTP_FROM_NAME', 'Scheduling Team')
+
+        if not all([smtp_user, smtp_password]):
+            return jsonify({
+                "success": False,
+                "error": "Email credentials not configured (check SMTP_USER, SMTP_PASSWORD)"
+            }), 500
+
+        # ── Fetch user emails from DB ──────────────────────────────────
+        user_oids = [ObjectId(uid) for uid in user_ids]
+        users = list(db.users.find(
+            {"_id": {"$in": user_oids}},
+            {"_id": 1, "name": 1, "first_name": 1, "last_name": 1, "email": 1}
+        ))
+
+        sent   = 0
+        failed = 0
+        errors = []
+
+        # ── Open one SMTP connection for all recipients ────────────────
+        try:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
+            server.ehlo()
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+        except Exception as conn_err:
+            return jsonify({
+                "success": False,
+                "error": f"Could not connect to mail server: {str(conn_err)}"
+            }), 500
+
+        for user in users:
+            uid_str   = str(user['_id'])
+            full_name = (
+                user.get('name') or
+                f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or
+                uid_str
+            )
+            to_email = (user.get('email') or '').strip()
+
+            if not to_email:
+                failed += 1
+                errors.append({
+                    "user_id": uid_str,
+                    "name": full_name,
+                    "error": "No email address on file"
+                })
+                continue
+
+            try:
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = subject
+                msg['From']    = f"{from_name} <{from_email}>"
+                msg['To']      = to_email
+
+                # Plain text part
+                plain_body = message
+                # HTML part — wrap plain text in simple HTML with line breaks
+                html_body = f"""
+                <html><body style="font-family: Arial, sans-serif; font-size: 15px; color: #222;">
+                    {''.join(f'<p style="margin:0 0 8px">{line}</p>' for line in message.splitlines())}
+                </body></html>
+                """
+
+                msg.attach(MIMEText(plain_body, 'plain'))
+                msg.attach(MIMEText(html_body, 'html'))
+
+                server.sendmail(from_email, to_email, msg.as_string())
+                sent += 1
+
+                # Log the email
+                db.email_log.insert_one({
+                    "shift_id":  shift_id,
+                    "user_id":   uid_str,
+                    "to_email":  to_email,
+                    "subject":   subject,
+                    "message":   message,
+                    "status":    "sent",
+                    "sent_at":   datetime.utcnow()
+                })
+
+                # Flag the assignment
+                db.shifts_users.update_one(
+                    {
+                        "shift_id": ObjectId(shift_id),
+                        "user_id":  ObjectId(uid_str)
+                    },
+                    {
+                        "$set": {
+                            "email_sent":    1,
+                            "email_sent_at": datetime.utcnow()
+                        }
+                    }
+                )
+
+            except Exception as send_err:
+                failed += 1
+                errors.append({
+                    "user_id": uid_str,
+                    "name": full_name,
+                    "error": str(send_err)
+                })
+
+        try:
+            server.quit()
+        except Exception:
+            pass
+
+        return jsonify({
+            "success": True,
+            "sent":    sent,
+            "failed":  failed,
+            "errors":  errors,
+            "message": f"Email dispatched: {sent} sent, {failed} failed"
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
