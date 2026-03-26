@@ -76,7 +76,7 @@ def make_ai_call(app, phone: str, user_doc: dict, user_object_id):
                 to=e164_phone,
                 from_=CALLER_ID.replace(" ", ""),  # sanitize caller ID too
                 connection_id=os.getenv('TELNYX_CONNECTION_ID'),
-                webhook_url=f'{BASE_URL}/voice?{params}',
+                webhook_url=f'https://app.expresshealth.ie/voice?{params}',
             )
             print(f"Telnyx call initiated: {call.data.call_control_id} for {e164_phone}")
 
