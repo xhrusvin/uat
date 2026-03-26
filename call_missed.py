@@ -71,7 +71,7 @@ def register_missed_call_routes(app):
             }), 200
 
         user_id = user["_id"]
-
+        #if user.get("call_sent") == 1:
         if user.get("call_sent") == 0:
             return jsonify({
                 **response_base,

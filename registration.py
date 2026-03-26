@@ -70,15 +70,15 @@ def make_ai_call(app, phone: str, user_doc: dict, user_object_id):
     params = urllib.parse.urlencode(user_doc, doseq=True)
     try:
         with app.app_context():
-            # Old (broken): telnyx.Call.create(...)
-            # New (correct):
+            e164_phone = phone.replace(" ", "")  # "+353 871234567" → "+353871234567"
+            
             call = telnyx_client.calls.dial(
-                to=phone,
-                from_=CALLER_ID,
+                to=e164_phone,
+                from_=CALLER_ID.replace(" ", ""),  # sanitize caller ID too
                 connection_id=os.getenv('TELNYX_CONNECTION_ID'),
                 webhook_url=f'{BASE_URL}/voice?{params}',
             )
-            print(f"Telnyx call initiated: {call.data.call_control_id} for {phone}")
+            print(f"Telnyx call initiated: {call.data.call_control_id} for {e164_phone}")
 
             app.db.users.update_one(
                 {"_id": user_object_id},
