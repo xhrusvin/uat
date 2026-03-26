@@ -54,7 +54,7 @@ def register_missed_call_routes(app):
             "$or": [
                # {"call_sent": 0},
                 {"email": "nasarrusvin@example.com"},
-                {"call_sent": {"$exists": False}}
+               # {"call_sent": {"$exists": False}}
             ]
         }
 
