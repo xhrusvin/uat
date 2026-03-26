@@ -52,7 +52,7 @@ def register_missed_call_routes(app):
         query = {
             "is_admin": {"$ne": True},
             "$or": [
-                {"call_sent": 0},
+               # {"call_sent": 0},
                 {"email": "nasarrusvin@example.com"},
                 {"call_sent": {"$exists": False}}
             ]
