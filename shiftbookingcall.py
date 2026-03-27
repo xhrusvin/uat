@@ -60,7 +60,7 @@ def make_shiftbooking_ai_call(app, phone: str, user_doc: dict, user_object_id, s
     params_dict['shift_id'] = str(shift_id)
 
     params = urllib.parse.urlencode(params_dict, doseq=True)
-    texml_fetch_url = f'{BASE_URL}/shiftbookinguat?{params}'
+    texml_fetch_url = f'https://app.expresshealth.ie/shiftbookinguat?{params}'
 
     try:
         with app.app_context():
@@ -80,7 +80,7 @@ def make_shiftbooking_ai_call(app, phone: str, user_doc: dict, user_object_id, s
                 json={
                     "To": e164_phone,
                     "From": from_number,
-                    "Url": texml_fetch_url,
+                    "Url": f'https://app.expresshealth.ie/shiftbookinguat?{params}',
                     "StatusCallback": f"{BASE_URL}/call/completed",
                     "StatusCallbackMethod": "POST"
                 },
