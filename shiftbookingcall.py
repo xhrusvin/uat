@@ -12,7 +12,7 @@ import requests
 # Load environment variables
 TELNYX_API_KEY = os.getenv('TELNYX_API_KEY')
 TELNYX_CONNECTION_ID = os.getenv('TELNYX_CONNECTION_ID')
-TELNYX_FROM_NUMBER = os.getenv('TELNYX_FROM_NUMBER')   # ← Must be set!
+TELNYX_FROM_NUMBER = os.getenv('TELNYX_CALLER_ID')   # ← Must be set!
 BASE_URL = os.getenv('BASE_URL', 'https://app.expresshealth.ie').rstrip('/')
 
 # Dublin timezone
