@@ -1,5 +1,7 @@
 # registration.py
 from flask import request, jsonify, session
+from twilio.rest import Client as TwilioClient
+from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
 from dotenv import load_dotenv
 import os
 import threading
@@ -9,27 +11,20 @@ import urllib
 from datetime import datetime, time
 import pytz
 from flask import current_app
-import requests
 
 load_dotenv()
 
-# ==================== TELNYX CONFIG ====================
-TELNYX_API_KEY = os.getenv('TELNYX_API_KEY')
-TELNYX_CONNECTION_ID = os.getenv('TELNYX_CONNECTION_ID')
-TELNYX_FROM_NUMBER = os.getenv('TELNYX_CALLER_ID')   # Must be set!
-
+# Twilio
+twilio_client = TwilioClient(
+    os.getenv('TWILIO_ACCOUNT_SID'),
+    os.getenv('TWILIO_AUTH_TOKEN')
+)
+CALLER_ID = os.getenv('TWILIO_CALLER_ID')
 BASE_URL = os.getenv('BASE_URL', 'https://app.expresshealth.ie').rstrip('/')
 
-# Validate Telnyx settings at import time
-if not TELNYX_API_KEY:
-    print("WARNING: TELNYX_API_KEY is not set!")
-if not TELNYX_CONNECTION_ID:
-    print("WARNING: TELNYX_CONNECTION_ID is not set!")
-if not TELNYX_FROM_NUMBER:
-    print("ERROR: TELNYX_FROM_NUMBER is not set! Calls will fail.")
-
-# Dublin timezone
-DUBLIN_TZ = pytz.timezone('Europe/Dublin')
+# ElevenLabs
+AGENT_ID = os.getenv('ELEVENLABS_AGENT_ID')
+EL_API_KEY = os.getenv('ELEVENLABS_API_KEY')
 
 # Allowed designations
 ALLOWED_DESIGNATIONS = [
@@ -41,98 +36,18 @@ ALLOWED_DESIGNATIONS = [
     "Midwives", "Psychologists", "Kitchen Assistant"
 ]
 
-# Global queue: (phone, user_doc, user_id) - kept for future use if needed
+# Global queue: (phone, user_doc, user_id)
 CALL_QUEUE = []
-
-def generate_texml(user_doc: dict):
-    """Generate TeXML to connect call to WebSocket stream (same as shift booking)"""
-    from xml.etree.ElementTree import Element, SubElement, tostring
-    import xml.dom.minidom as minidom
-
-    response = Element('Response')
-    connect = SubElement(response, 'Connect')
-
-    stream = SubElement(connect, 'Stream')
-    stream.set('url', f"wss://{BASE_URL.replace('https://', '')}/follow_up")  # Your existing WS endpoint
-    stream.set('bidirectionalMode', 'rtp')
-    stream.set('track', 'both_tracks')
-
-    rough_string = tostring(response, 'utf-8')
-    reparsed = minidom.parseString(rough_string)
-    return reparsed.toprettyxml(indent="  ")
-
-
-def make_ai_call(app, phone: str, user_doc: dict, user_object_id):
-    """Initiate AI registration call using Telnyx TeXML"""
-    print(f'[Registration] Initiating Telnyx AI call to {phone}')
-
-    if not TELNYX_FROM_NUMBER:
-        print(f"[Registration] ERROR: TELNYX_FROM_NUMBER is not configured.")
-        return
-    if not TELNYX_CONNECTION_ID:
-        print(f"[Registration] ERROR: TELNYX_CONNECTION_ID is not configured.")
-        return
-
-    try:
-        with app.app_context():
-            # Clean phone numbers
-            e164_phone = phone.replace(" ", "").strip()
-            from_number = TELNYX_FROM_NUMBER.replace(" ", "").strip()
-
-            if not e164_phone.startswith('+'):
-                e164_phone = '+' + e164_phone
-
-            params = urllib.parse.urlencode(user_doc, doseq=True)
-            texml_url = f'https://app.expresshealth.ie/lead-ai?{params}'
-
-            response = requests.post(
-                f"https://api.telnyx.com/v2/texml/calls/{TELNYX_CONNECTION_ID}",
-                headers={
-                    "Authorization": f"Bearer {TELNYX_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "To": e164_phone,
-                    "From": from_number,
-                    "Url": texml_url,
-                    "StatusCallback": f"{BASE_URL}/call/completed",
-                    "StatusCallbackMethod": "POST"
-                },
-                timeout=15
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            call_id = data.get('call_sid') or data.get('id') or "unknown"
-            print(f"[Registration] Telnyx call initiated successfully. Call ID: {call_id} for {e164_phone}")
-
-            # Mark as sent
-            app.db.users.update_one(
-                {"_id": user_object_id},
-                {"$set": {"call_sent": 1, "updated_at": datetime.utcnow()}}
-            )
-            print(f"call_sent = 1 for user {user_object_id}")
-
-    except requests.exceptions.RequestException as e:
-        print(f"[Registration] Telnyx API request failed for {phone}: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            try:
-                print(f"Response body: {e.response.text}")
-            except:
-                pass
-    except Exception as e:
-        print(f"[Registration] Unexpected error calling {phone}: {e}")
-
 
 def schedule_calls(app):
     """Background thread: call queued users after 8:00 AM Ireland time"""
     def runner():
         while True:
             try:
-                now = datetime.now(DUBLIN_TZ)
+                now = datetime.now(pytz.timezone('Europe/Dublin'))
                 current_time = now.time()
 
-                if current_time >= time(8, 0):   # Changed to 8 AM as per your original logic
+                if current_time >= time(11, 0):
                     with app.app_context():
                         while CALL_QUEUE:
                             phone, user_doc, user_id = CALL_QUEUE.pop(0)
@@ -144,8 +59,37 @@ def schedule_calls(app):
 
     thread = threading.Thread(target=runner, daemon=True)
     thread.start()
-    print("[Registration Scheduler] Started successfully with Telnyx.")
 
+def generate_twiml(user_doc: dict):
+    resp = VoiceResponse()
+    connect = Connect()
+    connect.stream(url="wss://app.expresshealth.ie/follow_up")
+    resp.append(connect)
+    return str(resp)
+
+def make_ai_call(app, phone: str, user_doc: dict, user_object_id):
+    """Initiate AI call and mark call_sent = 1 on success"""
+    print('calls rusvin')
+    params = urllib.parse.urlencode(user_doc, doseq=True)
+    try:
+        with app.app_context():
+            call = twilio_client.calls.create(
+                to=phone,
+                from_=CALLER_ID,
+                url=f'https://app.expresshealth.ie/lead-ai?{params}'
+            )
+            print(f"AI Call initiated: {call.sid} for {phone}")
+
+            # Mark as sent
+            app.db.users.update_one(
+                {"_id": user_object_id},
+                {"$set": {"call_sent": 1, "updated_at": datetime.utcnow()}}
+            )
+            print(f"call_sent = 1 for user {user_object_id}")
+
+    except Exception as e:
+        print(f"Call failed: {e}")
+        # Do NOT mark as sent if call failed
 
 # === MAIN ROUTE REGISTRATION ===
 def register_registration_routes(app):
@@ -187,18 +131,17 @@ def register_registration_routes(app):
                 "country": data['country'],
                 "designation": data['designation'],
                 "password": hashed,
-                "call_sent": 0,
+                "call_sent": 0,  # Default
                 "created_at": datetime.utcnow().isoformat() + 'Z'
             }
 
             # Insert user
             result = users.insert_one(user_doc)
-            user_object_id = result.inserted_id
-            user_id = str(user_object_id)
+            user_id = str(result.inserted_id)
 
             if data['country'] != 'Ireland':
                 app.db.users.update_one(
-                    {"_id": user_object_id},
+                    {"_id": result.inserted_id},
                     {"$set": {"call_sent": 1, "updated_at": datetime.utcnow()}}
                 )
 
@@ -207,15 +150,16 @@ def register_registration_routes(app):
             session['email'] = data['email']
             session['name'] = f"{data['first_name']} {data['last_name']}"
 
-            # === Admin toggle + Ireland only restriction ===
+            # === Admin toggle ===
             settings = app.db.settings.find_one({"_id": "global"})
             allow_call = settings.get("allow_registration_call", False) if settings else False
 
+            # === RESTRICT CALL TO IRELAND ONLY ===
             if data['country'] != 'Ireland':
-                allow_call = False
+                allow_call = False  # No call for UK, NI, Australia, etc.
 
             # === Dublin time check ===
-            now = datetime.now(DUBLIN_TZ)
+            now = datetime.now(pytz.timezone('Europe/Dublin'))
             current_time = now.time()
             is_business_hours = time(8, 0) <= current_time <= time(20, 0)
 
@@ -225,23 +169,23 @@ def register_registration_routes(app):
 
             if allow_call and user_doc["call_sent"] == 0:
                 if is_business_hours:
-                    # Call immediately
+                    # Call now
                     threading.Thread(
                         target=make_ai_call,
-                        args=(app, data['phone'], user_doc, user_object_id),
+                        args=(app, data['phone'], user_doc, result.inserted_id),
                         daemon=True
                     ).start()
                     message = "Success! AI calling you now..."
                     call_scheduled = True
                 else:
-                    # Queue for next business hours
-                    # CALL_QUEUE.append((data['phone'], user_doc, user_object_id))  # Uncomment if you want queuing
+                    # Queue for tomorrow
+                    #CALL_QUEUE.append((data['phone'], user_doc, result.inserted_id))
                     message = "Success! We'll call you tomorrow after 8:00 AM."
                     call_scheduled = True
             else:
                 if not allow_call:
                     message = "Success! Registration complete. Call disabled by admin."
-                elif user_doc.get("call_sent") == 1:
+                elif user_doc["call_sent"] == 1:
                     message = "Success! Registration complete. (Call already sent)"
 
             return jsonify({
@@ -258,9 +202,10 @@ def register_registration_routes(app):
     def call_completed():
         data = request.form.to_dict()
         print("Call completed:", data)
+        # Optional: log or trigger post-call actions
         return "", 200
 
-
-# Auto-start scheduler
+# Auto-start scheduler when module is imported
+# Ensure this runs only once (e.g., in app factory)
 def init_scheduler(app):
     schedule_calls(app)
