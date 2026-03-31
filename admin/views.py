@@ -643,6 +643,7 @@ def transcriptions():
             "phone": 1,
             "started_at": 1,
             "ended_at": 1,
+            "call_status": 1,
             "elevenlabs_conversation_id": 1,
             "user_info.first_name": 1,
             "user_info.last_name": 1,
