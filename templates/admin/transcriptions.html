@@ -94,7 +94,9 @@
                             <td>
                                 {% if c.ended_at != 'Ongoing' and c.ended_at != '—' %}
                                 {% if c.call_status == 'User Busy' %}
-                                <span class="text-danger fw-bold">User Busy</span>
+                                <span class="text-warning fw-bold">User Busy</span>
+                                {% else %}if {% if c.call_status == 'Empty' %}
+                                <span class="text-muted fw-bold">{{ c.call_status }}</span>
                                 {% else %}
                                 <span class="text-success fw-bold">{{ c.call_status }}</span>
                                 {% endif %}
