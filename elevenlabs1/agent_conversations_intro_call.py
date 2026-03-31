@@ -163,8 +163,7 @@ def sync_agent_conversations_intro_call():
 
                 conversations_collection.update_one(
                     {"elevenlabs_conversation_id": conversation_id},     # or {"elevenlabs_conversation_id": conversation_id} if you prefer
-                    {"$set": conv_doc},
-                    upsert=True
+                    {"$set": conv_doc}
                 )
 
                 processed += 1
