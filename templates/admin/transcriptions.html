@@ -230,12 +230,12 @@
         <small class="text-muted">Started</small>
         <h6 class="mb-0" id="modal-started"></h6>
     </div>
-    <div class="col-md-4">
-        <small class="text-muted">Status</small>
-        <h6 class="mb-0">
-            <span id="modal-status" class="badge bg-success">Completed</span>
-        </h6>
-    </div>
+   <div class="col-md-4">
+    <small class="text-muted">Status</small>
+    <h6 class="mb-0">
+        <span id="modal-status" class="badge"></span>
+    </h6>
+</div>
 </div>
     <hr class="my-4">
 
@@ -614,40 +614,34 @@ document.querySelectorAll('.transcript-row').forEach(row => {
     
 });
 
-// === UPDATED: Better Status Logic for Modal ===
-    function updateModalStatus(callStatus, isOngoing) {
-        const statusEl = document.getElementById('modal-status');
-        
-        if (isOngoing) {
-            statusEl.textContent = 'Ongoing';
-            statusEl.className = 'badge bg-warning';
-            return;
-        }
-
-        switch(callStatus) {
-            case 'User Busy':
-                statusEl.textContent = 'User Busy';
-                statusEl.className = 'badge bg-warning';
-                break;
-            case 'Empty':
-                statusEl.textContent = 'Empty';
-                statusEl.className = 'badge bg-secondary';
-                break;
-            case 'Voice call Detected':
-                statusEl.textContent = 'Voice call Detected';
-                statusEl.className = 'badge bg-info';
-                break;
-            case 'Completed':
-            case 'Success':
-                statusEl.textContent = 'Completed';
-                statusEl.className = 'badge bg-success';
-                break;
-            default:
-                statusEl.textContent = callStatus || 'Completed';
-                statusEl.className = 'badge bg-success';
-        }
+// ====================== STATUS UPDATE FUNCTION ======================
+function updateModalStatus(callStatus, isOngoing) {
+    const statusEl = document.getElementById('modal-status');
+    
+    if (isOngoing) {
+        statusEl.textContent = 'Ongoing';
+        statusEl.className = 'badge bg-warning';
+        return;
     }
 
+    switch (callStatus?.trim()) {
+        case 'User Busy':
+            statusEl.textContent = 'User Busy';
+            statusEl.className = 'badge bg-warning';
+            break;
+        case 'Empty':
+            statusEl.textContent = 'Empty';
+            statusEl.className = 'badge bg-secondary';
+            break;
+        case 'Voice call Detected':
+            statusEl.textContent = 'Voice call Detected';
+            statusEl.className = 'badge bg-info';
+            break;
+        default:
+            statusEl.textContent = callStatus || 'Completed';
+            statusEl.className = 'badge bg-success';
+    }
+}
 
     async function loadTranscript() {
         resetTranscriptUI();
@@ -668,50 +662,7 @@ document.querySelectorAll('.transcript-row').forEach(row => {
         }
     }
 
-    // ══════════════════════════════════════════════════════════
-    // ROW CLICK — open modal
-    // ══════════════════════════════════════════════════════════
-    document.querySelectorAll('.transcript-row').forEach(row => {
-        row.addEventListener('click', () => {
-            currentConvId       = row.dataset.convId;
-            currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
-            currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
-
-            // Populate header fields from data attributes (no window.TRANSCRIPTIONS needed)
-            document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
-            document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
-            document.getElementById('modal-started').textContent = row.dataset.started || '—';
-
-            const statusEl = document.getElementById('modal-status');
-            statusEl.textContent = currentIsCompleted ? 'Completed' : 'Ongoing';
-            statusEl.className   = currentIsCompleted ? 'badge bg-success' : 'badge bg-warning';
-
-            // Show action buttons only for completed calls with ElevenLabs ID
-            const showBtns = currentIsCompleted && !!currentElevenLabsId;
-            dataBtn.classList.toggle('d-none', !showBtns);
-            briefBtn.classList.toggle('d-none', !showBtns);
-
-            // Reset UI states
-            resetAudioUI();
-            resetTranscriptUI();
-
-            transcriptModal.show();
-
-            // Fire both requests in parallel — transcript + audio
-            loadTranscript();
-
-            if (currentIsCompleted) {
-                loadAudio();
-            } else {
-                audioContainer.innerHTML = `
-                    <div class="text-center py-4 text-muted">
-                        <i class="bi bi-hourglass-split display-4"></i>
-                        <p class="mt-2">Call ongoing — audio available when finished</p>
-                    </div>`;
-                audioContainer.classList.remove('d-none');
-            }
-        });
-    });
+   
 
     function renderTurns(turns) {
         turnsDiv.innerHTML = '';
