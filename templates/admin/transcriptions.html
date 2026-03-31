@@ -568,7 +568,8 @@ document.querySelectorAll('.transcript-row').forEach(row => {
     row.addEventListener('click', () => {
         currentConvId       = row.dataset.convId;
         currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
-        currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
+        currentCallStatus   = row.dataset.callStatus || '';
+        const isOngoing = ['Ongoing', '—', ''].includes(row.dataset.ended);
 
         // === UPDATED: Populate fields in correct order ===
         document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
