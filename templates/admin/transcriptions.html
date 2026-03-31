@@ -68,6 +68,7 @@
                             data-conv-id="{{ c.conv_id }}"
                             data-phone="{{ c.phone }}"
                             data-name="{{ c.name }}"
+                            data-email="{{ c.email or '' }}"
                             data-started="{{ c.started_at }}"
                             data-ended="{{ c.ended_at }}"
                             data-turn-count="{{ c.turn_count }}"
@@ -195,13 +196,32 @@
             </div>
 
             <div class="modal-body">
-    <!-- Meta Info -->
-    <div class="row g-4 mb-4">
-        <div class="col-md-6"><small class="text-muted">Phone</small><h6 class="mb-0 fw-bold" id="modal-phone"></h6></div>
-        <div class="col-md-6"><small class="text-muted">Caller</small><h6 class="mb-0" id="modal-name"></h6></div>
-        <div class="col-md-6"><small class="text-muted">Started</small><h6 class="mb-0" id="modal-started"></h6></div>
-        <div class="col-md-6"><small class="text-muted">Status</small><h6 class="mb-0"><span id="modal-status" class="badge bg-success">Completed</span></h6></div>
+   <!-- Meta Info -->
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <small class="text-muted">Caller Name</small>
+        <h6 class="mb-0 fw-bold" id="modal-name"></h6>
     </div>
+    <div class="col-md-4">
+        <small class="text-muted">Email</small>
+        <h6 class="mb-0 fw-semibold text-primary" id="modal-email">—</h6>
+    </div>
+    <div class="col-md-4">
+        <small class="text-muted">Phone</small>
+        <h6 class="mb-0 fw-bold text-primary" id="modal-phone"></h6>
+    </div>
+    
+    <div class="col-md-4">
+        <small class="text-muted">Started</small>
+        <h6 class="mb-0" id="modal-started"></h6>
+    </div>
+    <div class="col-md-4">
+        <small class="text-muted">Status</small>
+        <h6 class="mb-0">
+            <span id="modal-status" class="badge bg-success">Completed</span>
+        </h6>
+    </div>
+</div>
     <hr class="my-4">
 
    
@@ -528,50 +548,52 @@ document.querySelectorAll('.info-btn').forEach(btn => {
         }
     }
 
-    // ====================== ROW CLICK (Main Change) ======================
-    document.querySelectorAll('.transcript-row').forEach(row => {
-        row.addEventListener('click', () => {
-            currentConvId       = row.dataset.convId;
-            currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
-            currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
+    // ====================== ROW CLICK (Main Modal) ======================
+document.querySelectorAll('.transcript-row').forEach(row => {
+    row.addEventListener('click', () => {
+        currentConvId       = row.dataset.convId;
+        currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
+        currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
 
-            // Populate basic info
-            document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
-            document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
-            document.getElementById('modal-started').textContent = row.dataset.started || '—';
+        // === UPDATED: Populate fields in correct order ===
+        document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
+        document.getElementById('modal-email').textContent   = row.dataset.email   || '—';
+        document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
+        
+        document.getElementById('modal-started').textContent = row.dataset.started || '—';
 
-            const statusEl = document.getElementById('modal-status');
-            statusEl.textContent = currentIsCompleted ? 'Completed' : 'Ongoing';
-            statusEl.className   = currentIsCompleted ? 'badge bg-success' : 'badge bg-warning';
+        const statusEl = document.getElementById('modal-status');
+        statusEl.textContent = currentIsCompleted ? 'Completed' : 'Ongoing';
+        statusEl.className   = currentIsCompleted ? 'badge bg-success' : 'badge bg-warning';
 
-            // Show action buttons only for completed calls
-            const showBtns = currentIsCompleted && !!currentElevenLabsId;
-            dataBtn.classList.toggle('d-none', !showBtns);
-            briefBtn.classList.toggle('d-none', !showBtns);
+        // Show action buttons only for completed calls with ElevenLabs ID
+        const showBtns = currentIsCompleted && !!currentElevenLabsId;
+        dataBtn.classList.toggle('d-none', !showBtns);
+        briefBtn.classList.toggle('d-none', !showBtns);
 
-            // Reset all UIs
-            resetAudioUI();
-            resetTranscriptUI();
-            resetBriefSummaryUI();
+        // Reset UIs
+        resetAudioUI();
+        resetTranscriptUI();
+        resetBriefSummaryUI();
 
-            transcriptModal.show();
+        transcriptModal.show();
 
-            // Load everything in parallel
-            loadTranscript();
-            loadBriefSummaryIntoModal();        // ← NEW: Auto load summary
+        // Load data
+        loadTranscript();
+        loadBriefSummaryIntoModal();
 
-            if (currentIsCompleted) {
-                loadAudio();
-            } else {
-                audioContainer.innerHTML = `
-                    <div class="text-center py-4 text-muted">
-                        <i class="bi bi-hourglass-split display-4"></i>
-                        <p class="mt-2">Call ongoing — audio available when finished</p>
-                    </div>`;
-                audioContainer.classList.remove('d-none');
-            }
-        });
+        if (currentIsCompleted) {
+            loadAudio();
+        } else {
+            audioContainer.innerHTML = `
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-hourglass-split display-4"></i>
+                    <p class="mt-2">Call ongoing — audio available when finished</p>
+                </div>`;
+            audioContainer.classList.remove('d-none');
+        }
     });
+});
 
     async function loadTranscript() {
         resetTranscriptUI();

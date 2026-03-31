@@ -446,6 +446,7 @@ def _format_conv(conv):
 
     full_name = " ".join(filter(None, [first_name, last_name])).strip()
     conv['name'] = full_name or "Unknown User"
+    conv['email'] = safe_str(user.get('email'), '—')          # ← ADD THIS LINE
     conv['designation'] = safe_str(user.get('designation'), '-')
     conv['country'] = safe_str(user.get('country'), '-')
 
@@ -499,6 +500,7 @@ def _format_conv(conv):
         'conv_id': conv_id,
         'phone': conv.get('phone', ''),
         'name': conv['name'],
+        'email': conv.get('email', '—'),
         'designation': conv['designation'],
         'country': conv['country'],
         'started_at': conv['started_at'],
@@ -644,6 +646,7 @@ def transcriptions():
             "elevenlabs_conversation_id": 1,
             "user_info.first_name": 1,
             "user_info.last_name": 1,
+            "user_info.email": 1,
             "user_info.designation": 1,
             "user_info.country": 1,
         }
