@@ -200,23 +200,77 @@ def users():
     page = int(request.args.get('page', 1))
     per_page = 10
     search = request.args.get('search', '').strip()
+    joined_from = request.args.get('joined_from', '').strip()
+    joined_to = request.args.get('joined_to', '').strip()
+    
+    sort_order = request.args.get('sort', 'desc')
+    sort_direction = -1 if sort_order == 'desc' else 1
 
     query = {"is_admin": {"$ne": True}}
+
     if search:
-        query["email"] = {"$regex": search, "$options": "i"}
+        # === SAFE ESCAPING FOR ALL REGEX FIELDS ===
+        escaped_search = re.escape(search)   # This escapes +, *, ?, ., (, ), [, ], etc.
+
+        regex_pattern = {"$regex": escaped_search, "$options": "i"}
+
+        # Full name search using $regexMatch (also needs escaping)
+        full_name_condition = {
+            "$expr": {
+                "$regexMatch": {
+                    "input": {
+                        "$concat": [
+                            {"$ifNull": ["$first_name", ""]},
+                            " ",
+                            {"$ifNull": ["$last_name", ""]}
+                        ]
+                    },
+                    "regex": escaped_search,      # Use the escaped version here too
+                    "options": "i"
+                }
+            }
+        }
+
+        query["$or"] = [
+            {"email": regex_pattern},
+            {"phone": regex_pattern},
+            {"first_name": regex_pattern},
+            {"last_name": regex_pattern},
+            full_name_condition
+        ]
+
+    # Date range filter (unchanged)
+    if joined_from or joined_to:
+        date_filter = {}
+        try:
+            if joined_from:
+                from_dt = datetime.strptime(joined_from, '%Y-%m-%d')
+                date_filter["$gte"] = from_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            if joined_to:
+                to_dt = datetime.strptime(joined_to, '%Y-%m-%d')
+                date_filter["$lte"] = to_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+            if date_filter:
+                query["created_at"] = date_filter
+        except ValueError:
+            pass
 
     total = current_app.db.users.count_documents(query)
+
     users_list = list(
         current_app.db.users.find(query)
-        .sort("created_at", -1)
+        .sort("created_at", sort_direction)
         .skip((page - 1) * per_page)
         .limit(per_page)
     )
 
+    # Formatting loop (unchanged - keep your existing code here)
     for u in users_list:
         u['call_sent'] = u.get('call_sent', 1)
         u['garda_email_sent_status'] = "Sent" if u.get('garda_email_sent') == 1 else "No"
         u['missed_call_email_sent_status'] = "Sent" if u.get('missed_call_email_sent') == 1 else "No"
+
         created = u.get('created_at')
         if isinstance(created, datetime):
             u['created_at_formatted'] = created.strftime('%d %b %Y')
@@ -238,8 +292,10 @@ def users():
                            page=page,
                            total=total,
                            per_page=per_page,
-                           search=search)
-
+                           search=search,
+                           joined_from=joined_from,
+                           joined_to=joined_to,
+                           sort=sort_order)
 
 @admin_bp.route('/change_password', methods=['GET', 'POST'])
 @admin_required
@@ -474,61 +530,92 @@ def transcriptions():
     page = int(request.args.get('page', 1))
     per_page = 10
     search = request.args.get('search', '').strip()
+    date_range = request.args.get('date_range', '').strip()
 
-    # ── Build match stage BEFORE lookup when possible ──
     pre_match = {}
     post_match = None
+    name_search_active = False
 
+    # ====================== DATE RANGE FILTER ======================
+    date_filter = {}
+    if date_range:
+        try:
+            parts = [p.strip() for p in date_range.split('to')]
+            if len(parts) == 2:
+                from_date = datetime.strptime(parts[0], '%Y-%m-%d').replace(tzinfo=utc)
+                to_date = datetime.strptime(parts[1], '%Y-%m-%d') \
+                            .replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=utc)
+                
+                date_filter = {"started_at": {"$gte": from_date, "$lte": to_date}}
+            elif len(parts) == 1:
+                single_date = datetime.strptime(parts[0], '%Y-%m-%d').replace(tzinfo=utc)
+                date_filter = {"started_at": {"$gte": single_date, "$lt": single_date + timedelta(days=1)}}
+        except Exception as e:
+            current_app.logger.warning(f"Invalid date_range: {date_range} | {e}")
+
+    # ====================== SEARCH FILTER (Phone + Name) ======================
     if search:
         phone_pattern = safe_regex_pattern(search)
-        # Try to match phone BEFORE the expensive $lookup
-        pre_match = {"phone": {"$regex": phone_pattern, "$options": "i"}}
 
-        # Name matching happens AFTER lookup (needs user_info)
+        # Check if search looks like a phone number (simple heuristic)
+        is_phone_like = re.match(r'^\+?[\d\s\-\(\)]+$', search) is not None
+
+        if is_phone_like:
+            # Phone-only search → can be done early (before lookup)
+            pre_match = {"phone": {"$regex": phone_pattern, "$options": "i"}}
+        else:
+            # Name search → must be done after $lookup
+            name_search_active = True
+
+        # Always prepare post_match for name search (safer approach)
         tokens = [t.strip() for t in search.split() if len(t.strip()) >= 2]
         name_or_conditions = []
         for token in tokens:
             tp = safe_regex_pattern(token)
             name_or_conditions.extend([
                 {"user_info.first_name": {"$regex": tp, "$options": "i"}},
-                {"user_info.last_name":  {"$regex": tp, "$options": "i"}},
+                {"user_info.last_name": {"$regex": tp, "$options": "i"}},
             ])
 
         full_name_condition = {
             "$expr": {
                 "$regexMatch": {
-                    "input": {
-                        "$concat": [
-                            {"$ifNull": ["$user_info.first_name", ""]}, " ",
-                            {"$ifNull": ["$user_info.last_name", ""]}
-                        ]
-                    },
+                    "input": {"$concat": [
+                        {"$ifNull": ["$user_info.first_name", ""]}, " ",
+                        {"$ifNull": ["$user_info.last_name", ""]}
+                    ]},
                     "regex": safe_regex_pattern(search),
                     "options": "i"
                 }
             }
         }
 
-        # Post-lookup OR: phone OR name match
         post_match = {
             "$or": [
-                {"phone": {"$regex": phone_pattern, "$options": "i"}},
+                {"phone": {"$regex": phone_pattern, "$options": "i"}},   # always allow phone match after lookup too
                 *name_or_conditions,
                 full_name_condition
             ]
         }
 
-    # ── Build base pipeline ──
+    # ====================== MERGE DATE + PHONE FILTER ======================
+    if date_filter:
+        if pre_match:
+            pre_match.update(date_filter)
+        else:
+            pre_match = date_filter
+
+    # ── Build Aggregation Pipeline ──
     pipeline = []
 
-    # 1. Match phone early (skips non-matching docs before lookup)
+    # 1. Early filtering (Date + Phone)
     if pre_match:
         pipeline.append({"$match": pre_match})
 
-    # 2. Sort early on indexed field
+    # 2. Sort by newest calls
     pipeline.append({"$sort": {"started_at": -1}})
 
-    # 3. Lookup only after early filter
+    # 3. Lookup user info (needed for name search)
     pipeline.append({
         "$lookup": {
             "from": "users",
@@ -538,17 +625,17 @@ def transcriptions():
         }
     })
 
-    # 4. Unwind with null preservation
+    # 4. Unwind
     pipeline.append({
         "$unwind": {"path": "$user_info", "preserveNullAndEmptyArrays": True}
     })
 
-    # 5. Post-lookup match (name search OR refine phone match)
+    # 5. Post-lookup filtering (Name search)
     if post_match:
         pipeline.append({"$match": post_match})
 
-    # ── PROJECT early: drop turns for count + list (huge field) ──
-    slim_project = {
+    # 6. Project only needed fields
+    pipeline.append({
         "$project": {
             "_id": 1,
             "phone": 1,
@@ -559,30 +646,26 @@ def transcriptions():
             "user_info.last_name": 1,
             "user_info.designation": 1,
             "user_info.country": 1,
-            # turns excluded — not needed for list view
         }
-    }
-    pipeline.append(slim_project)
+    })
 
-    # ── Single aggregation with $facet (count + paginated results in 1 query) ──
+    # 7. Facet for total count + pagination
     facet_pipeline = pipeline + [
         {
             "$facet": {
                 "total": [{"$count": "count"}],
                 "results": [
                     {"$skip": (page - 1) * per_page},
-                    {"$limit": per_page},
+                    {"$limit": per_page}
                 ]
             }
         }
     ]
 
-    facet_result = list(
-        current_app.db.conversations.aggregate(facet_pipeline, allowDiskUse=True)
-    )[0]
+    facet_result = list(current_app.db.conversations.aggregate(facet_pipeline, allowDiskUse=True))[0]
 
-    total = facet_result["total"][0]["count"] if facet_result["total"] else 0
-    raw_convs = facet_result["results"]
+    total = facet_result["total"][0]["count"] if facet_result.get("total") else 0
+    raw_convs = facet_result.get("results", [])
 
     convs = [_format_conv(c) for c in raw_convs]
 
@@ -592,7 +675,8 @@ def transcriptions():
         page=page,
         total=total,
         per_page=per_page,
-        search=search
+        search=search,
+        date_range=date_range
     )
 
 @admin_bp.route('/conversation/<conv_id>/audio')

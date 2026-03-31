@@ -277,8 +277,38 @@ select.parsley-success {
     <a class="nav-link {% if request.path.startswith('/admin/users') %}active{% endif %}"
        href="{{ url_for('admin.users') }}">
         <i class="bi bi-people"></i>
-        <span>Users</span>
+        <span>Recruitment Leads</span>
     </a>
+
+
+     <!-- Transcriptions Menu (Parent + Collapsible Submenu) -->
+    <div class="nav-link parent-menu {% if request.path.startswith('/admin/transcriptions') or request.path.startswith('/admin/followup_tr') or request.path.startswith('/admin/level_four') or request.path.startswith('/admin/level_five') %}active{% endif %}">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>AI Calls</span>
+        <i class="bi bi-chevron-down ms-auto toggle-icon"></i>
+    </div>
+    <div class="submenu {% if request.path.startswith('/admin/transcriptions') or request.path.startswith('/admin/followup_tr') or request.path.startswith('/admin/level_four') or request.path.startswith('/admin/level_five') %}open{% endif %}">
+        <a class="nav-link {% if request.path.startswith('/admin/transcriptions') %}active{% endif %}"
+           href="{{ url_for('admin.transcriptions') }}">
+            <i class="bi bi-calendar3"></i>
+            <span>Intro Calls</span>
+        </a>
+        <a class="nav-link {% if request.path.startswith('/admin/followup_tr') %}active{% endif %}"
+           href="{{ url_for('admin.followup_tr') }}">
+            <i class="bi bi-calendar3"></i>
+            <span>Follow up</span>
+        </a>
+        <a class="nav-link {% if request.path.startswith('/admin/level_four') %}active{% endif %}"
+           href="{{ url_for('admin.level_four_tr') }}">
+            <i class="bi bi-calendar3"></i>
+            <span>Compliance Document</span>
+        </a>
+        <a class="nav-link {% if request.path.startswith('/admin/level_five') %}active{% endif %}"
+           href="{{ url_for('admin.level_five_tr') }}">
+            <i class="bi bi-calendar3"></i>
+            <span>Professional Reference</span>
+        </a>
+    </div>
 
     <a class="nav-link {% if request.path.startswith('/admin/staff') %}active{% endif %}"
        href="{{ url_for('admin.staff') }}">
@@ -309,47 +339,20 @@ select.parsley-success {
         </a>
     </li>
 
-    <li class="nav-item">
+    <!-- <li class="nav-item">
         <a class="nav-link" href="{{ url_for('gemini_call.trigger_call') }}">
             <i class="bi bi-telephone me-2"></i> Gemini Call
         </a>
-    </li>
+    </li> -->
 
 
-    <li class="nav-item">
+    <!-- <li class="nav-item">
         <a class="nav-link" href="{{ url_for('admin.garda_vetting') }}">
             <i class="bi bi-shield-check me-2"></i> GARDA Vetting
         </a>
-    </li>
+    </li> -->
 
-    <!-- Transcriptions Menu (Parent + Collapsible Submenu) -->
-    <div class="nav-link parent-menu {% if request.path.startswith('/admin/transcriptions') or request.path.startswith('/admin/followup_tr') or request.path.startswith('/admin/level_four') or request.path.startswith('/admin/level_five') %}active{% endif %}">
-        <i class="bi bi-file-earmark-text"></i>
-        <span>Transcriptions</span>
-        <i class="bi bi-chevron-down ms-auto toggle-icon"></i>
-    </div>
-    <div class="submenu {% if request.path.startswith('/admin/transcriptions') or request.path.startswith('/admin/followup_tr') or request.path.startswith('/admin/level_four') or request.path.startswith('/admin/level_five') %}open{% endif %}">
-        <a class="nav-link {% if request.path.startswith('/admin/transcriptions') %}active{% endif %}"
-           href="{{ url_for('admin.transcriptions') }}">
-            <i class="bi bi-calendar3"></i>
-            <span>Intro</span>
-        </a>
-        <a class="nav-link {% if request.path.startswith('/admin/followup_tr') %}active{% endif %}"
-           href="{{ url_for('admin.followup_tr') }}">
-            <i class="bi bi-calendar3"></i>
-            <span>Follow up</span>
-        </a>
-        <a class="nav-link {% if request.path.startswith('/admin/level_four') %}active{% endif %}"
-           href="{{ url_for('admin.level_four_tr') }}">
-            <i class="bi bi-calendar3"></i>
-            <span>Compliance Document</span>
-        </a>
-        <a class="nav-link {% if request.path.startswith('/admin/level_five') %}active{% endif %}"
-           href="{{ url_for('admin.level_five_tr') }}">
-            <i class="bi bi-calendar3"></i>
-            <span>Professional Reference</span>
-        </a>
-    </div>
+   
 {% endif %}
      <!-- System -->
     <div class="menu-header mt-4">Booking</div>
