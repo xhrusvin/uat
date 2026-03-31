@@ -1356,7 +1356,10 @@ def elevenlabs_summary_proxy(conversation_id):
     headers = {"xi-api-key": api_key}
 
     # ── Field IDs that store county _id values ──
-    COUNTY_FIELDS = {"location_in_ireland", "previous_work_county"}
+    COUNTY_FIELDS = {"location_in_ireland", "previous_work_county", "county"}
+
+    # ── Field IDs that store gender _id values ──
+    GENDER_FIELDS = {"gender"}
 
     try:
         resp = requests.get(url, headers=headers, timeout=15)
@@ -1367,14 +1370,21 @@ def elevenlabs_summary_proxy(conversation_id):
         analysis = data.get("analysis") or {}
         dcr = analysis.get("data_collection_results") or {}
 
-        # ── Pre-load all counties from MongoDB into a lookup dict ──
+        # ── Pre-load counties from MongoDB ──
         county_map = {}
         try:
-            counties = current_app.db.county.find({}, {"_id": 1, "name": 1})
-            for c in counties:
+            for c in current_app.db.county.find({}, {"_id": 1, "name": 1}):
                 county_map[str(c["_id"])] = c["name"]
         except Exception as e:
             current_app.logger.warning(f"Could not load counties: {e}")
+
+        # ── Pre-load genders from MongoDB ──
+        gender_map = {}
+        try:
+            for g in current_app.db.genders.find({}, {"_id": 1, "name": 1}):
+                gender_map[str(g["_id"])] = g["name"]
+        except Exception as e:
+            current_app.logger.warning(f"Could not load genders: {e}")
 
         # ── Build structured display rows on the backend ──
         rows = []
@@ -1382,12 +1392,17 @@ def elevenlabs_summary_proxy(conversation_id):
             field_id = item.get("data_collection_id", key)
             value    = item.get("value")
 
-            # Resolve county _id → name if applicable
             display_value = None
-            if field_id in COUNTY_FIELDS and value:
-                display_value = county_map.get(str(value))  # None if not found
 
-            # Fall back to raw value if no county match
+            # Resolve county _id → name
+            if field_id in COUNTY_FIELDS and value:
+                display_value = county_map.get(str(value))
+
+            # Resolve gender _id → name
+            elif field_id in GENDER_FIELDS and value:
+                display_value = gender_map.get(str(value))
+
+            # Fall back to raw value if no match or not a lookup field
             if display_value is None:
                 display_value = str(value) if value is not None else "—"
 
