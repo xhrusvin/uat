@@ -16,7 +16,7 @@ from pymongo import MongoClient
 load_dotenv()
 
 # ==================== BLUEPRINT ====================
-bp = Blueprint("elevenlabs_bp", __name__)
+bp = Blueprint("elevenlabs_bp_intro_call", __name__)
 
 # ==================== CONFIG ====================
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
@@ -102,7 +102,7 @@ def is_call_status_value(value):
 
 # ==================== ROUTE ====================
 @bp.route("/api/elevenlabs/agent/conversations_intro_call", methods=["GET", "POST"])
-def sync_agent_conversations():
+def sync_agent_conversations_intro_call():
     key = request.args.get("key")
     agent_id = request.args.get("agent_id")
     limit = int(request.args.get("limit", 20))
