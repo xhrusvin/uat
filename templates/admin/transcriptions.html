@@ -100,6 +100,9 @@
         {% elif c.call_status == 'Empty' %}
             <span class="text-muted fw-bold">{{ c.call_status }}</span>
         
+        {% elif c.call_status == 'Voice call Detected' %}
+            <span class="text-info fw-bold">Voice call Detected</span>
+        
         {% else %}
             <span class="text-success fw-bold">{{ c.call_status }}</span>
         
