@@ -71,6 +71,7 @@
                             data-email="{{ c.email or '' }}"
                             data-started="{{ c.started_at }}"
                             data-ended="{{ c.ended_at }}"
+                            data-call-status="{{ c.call_status }}"
                             data-turn-count="{{ c.turn_count }}"
                             data-elevenlabs-id="{{ c.elevenlabs_conversation_id or '' }}">
                             <td class="ps-4 fw-bold text-primary">{{ c.phone }}</td>
