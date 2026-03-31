@@ -1344,7 +1344,45 @@ def elevenlabs_api_proxy(conversation_id):
         return jsonify(resp.json())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+        
+@admin_bp.route('/elevenlabs/api/conversation/<conversation_id>/summary')
+@admin_required
+def elevenlabs_summary_proxy(conversation_id):
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        return jsonify({"error": "API key missing"}), 500
 
+    url = f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}"
+    headers = {"xi-api-key": api_key}
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            return jsonify({"error": "ElevenLabs API error", "details": resp.text}), resp.status_code
+
+        data = resp.json()
+        analysis = data.get("analysis") or {}
+        dcr = analysis.get("data_collection_results") or {}
+
+        # ── Build structured display rows on the backend ──
+        rows = []
+        for key, item in dcr.items():
+            value = item.get("value")
+            rows.append({
+                "id":    item.get("data_collection_id", key),
+                "label": item.get("data_collection_id", key).replace("_", " ").title(),
+                "value": str(value) if value is not None else "—",
+                "is_null": value is None,
+            })
+
+        return jsonify({
+            "call_summary": analysis.get("call_summary_title") or "",
+            "rows": rows,
+            "total": len(rows)
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @admin_bp.route('/preview_excel_import', methods=['POST'])
 @admin_required
