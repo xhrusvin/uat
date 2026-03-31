@@ -85,18 +85,21 @@
                         {% for u in users %}
                         <tr class="user-row">
                             <td class="ps-4">
-                                <div class="d-flex align-items-center">
-                                    <div class="avatar avatar-sm bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
-                                        {{ u.first_name[0] if u.first_name else 'U' }}{{ u.last_name[0] if u.last_name else '' }}
-                                    </div>
-                                    <div>
-                                        <div class="fw-semibold">{{ u.first_name }} {{ u.last_name }}</div>
-                                        {% if not u.first_name and not u.last_name %}
-                                        <small class="text-muted">Name not set</small>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </td>
+    <div class="d-flex align-items-center">
+        {% set first = u.first_name | default(u.get('first_name', '')) | default('') %}
+        {% set last  = u.last_name  | default(u.get('last_name', ''))  | default('') %}
+
+        <div class="avatar avatar-sm bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
+            {{ first[0] if first else 'U' }}{{ last[0] if last else '' }}
+        </div>
+        <div>
+            <div class="fw-semibold">{{ first }} {{ last }}</div>
+            {% if not first and not last %}
+            <small class="text-muted">Name not set</small>
+            {% endif %}
+        </div>
+    </div>
+</td>
                             <td><span class="text-primary fw-medium">{{ u.email }}</span></td>
                             <td>{{ u.phone or '<span class="text-muted">—</span>'|safe }}</td>
                             <td>
