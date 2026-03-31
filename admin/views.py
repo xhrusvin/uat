@@ -1355,11 +1355,10 @@ def elevenlabs_summary_proxy(conversation_id):
     url = f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}"
     headers = {"xi-api-key": api_key}
 
-    # ── Field IDs that store county _id values ──
-    COUNTY_FIELDS = {"location_in_ireland", "previous_work_county", "county"}
-
-    # ── Field IDs that store gender _id values ──
-    GENDER_FIELDS = {"gender"}
+    COUNTY_FIELDS  = {"location_in_ireland", "previous_work_county"}
+    GENDER_FIELDS  = {"gender"}
+    VISA_FIELDS    = {"visa_type"}
+    UNIFORM_FIELDS = {"uniform_size"}
 
     try:
         resp = requests.get(url, headers=headers, timeout=15)
@@ -1370,7 +1369,7 @@ def elevenlabs_summary_proxy(conversation_id):
         analysis = data.get("analysis") or {}
         dcr = analysis.get("data_collection_results") or {}
 
-        # ── Pre-load counties from MongoDB ──
+        # ── Pre-load counties (_id → name) ──
         county_map = {}
         try:
             for c in current_app.db.county.find({}, {"_id": 1, "name": 1}):
@@ -1378,7 +1377,7 @@ def elevenlabs_summary_proxy(conversation_id):
         except Exception as e:
             current_app.logger.warning(f"Could not load counties: {e}")
 
-        # ── Pre-load genders from MongoDB ──
+        # ── Pre-load genders (_id → name) ──
         gender_map = {}
         try:
             for g in current_app.db.genders.find({}, {"_id": 1, "name": 1}):
@@ -1386,7 +1385,25 @@ def elevenlabs_summary_proxy(conversation_id):
         except Exception as e:
             current_app.logger.warning(f"Could not load genders: {e}")
 
-        # ── Build structured display rows on the backend ──
+        # ── Pre-load visa types (_id → name) ──
+        visa_map = {}
+        try:
+            for v in current_app.db.visa_types.find({}, {"_id": 1, "name": 1}):
+                visa_map[str(v["_id"])] = v["name"]
+        except Exception as e:
+            current_app.logger.warning(f"Could not load visa types: {e}")
+
+        # ── Pre-load uniform sizes (id integer → name) ──
+        # Collection uses `id` field (int) as lookup key, not `_id`
+        uniform_map = {}
+        try:
+            for u in current_app.db.uniform_sizes.find({}, {"id": 1, "name": 1}):
+                if "id" in u:
+                    uniform_map[str(u["id"])] = u["name"]   # key as string for safe comparison
+        except Exception as e:
+            current_app.logger.warning(f"Could not load uniform sizes: {e}")
+
+        # ── Build structured display rows ──
         rows = []
         for key, item in dcr.items():
             field_id = item.get("data_collection_id", key)
@@ -1394,13 +1411,18 @@ def elevenlabs_summary_proxy(conversation_id):
 
             display_value = None
 
-            # Resolve county _id → name
             if field_id in COUNTY_FIELDS and value:
                 display_value = county_map.get(str(value))
 
-            # Resolve gender _id → name
             elif field_id in GENDER_FIELDS and value:
                 display_value = gender_map.get(str(value))
+
+            elif field_id in VISA_FIELDS and value:
+                display_value = visa_map.get(str(value))
+
+            elif field_id in UNIFORM_FIELDS and value:
+                # ElevenLabs returns the integer id (e.g. 6), match against `id` field
+                display_value = uniform_map.get(str(value))
 
             # Fall back to raw value if no match or not a lookup field
             if display_value is None:
