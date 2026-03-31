@@ -503,6 +503,7 @@ def _format_conv(conv):
         'name': conv['name'],
         'email': conv.get('email', '—'),
         'designation': conv['designation'],
+        'call_status': conv['call_status'],
         'country': conv['country'],
         'started_at': conv['started_at'],
         'ended_at': conv['ended_at'],
