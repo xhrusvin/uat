@@ -1417,8 +1417,11 @@ def elevenlabs_summary_proxy(conversation_id):
             elif field_id in GENDER_FIELDS and value:
                 display_value = gender_map.get(str(value))
 
-            elif field_id in VISA_FIELDS and value:
-                display_value = visa_map
+            elif field_id in VISA_FIELDS:
+                display_value = [
+                    {"id": k, "name": v}
+                    for k, v in visa_map.items()
+                ]
 
             elif field_id in UNIFORM_FIELDS and value:
                 # ElevenLabs returns the integer id (e.g. 6), match against `id` field
