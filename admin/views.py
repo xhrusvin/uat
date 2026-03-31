@@ -1357,7 +1357,7 @@ def elevenlabs_summary_proxy(conversation_id):
 
     COUNTY_FIELDS  = {"location_in_ireland", "previous_work_county"}
     GENDER_FIELDS  = {"gender"}
-    VISA_FIELDS    = {"visa_type"}
+    VISA_FIELDS    = {"Visa Type"}
     UNIFORM_FIELDS = {"uniform_size"}
 
     try:
