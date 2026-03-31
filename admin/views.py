@@ -1344,7 +1344,7 @@ def elevenlabs_api_proxy(conversation_id):
         return jsonify(resp.json())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-        
+
 @admin_bp.route('/elevenlabs/api/conversation/<conversation_id>/summary')
 @admin_required
 def elevenlabs_summary_proxy(conversation_id):
@@ -1355,6 +1355,9 @@ def elevenlabs_summary_proxy(conversation_id):
     url = f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}"
     headers = {"xi-api-key": api_key}
 
+    # ── Field IDs that store county _id values ──
+    COUNTY_FIELDS = {"location_in_ireland", "previous_work_county"}
+
     try:
         resp = requests.get(url, headers=headers, timeout=15)
         if resp.status_code != 200:
@@ -1364,21 +1367,41 @@ def elevenlabs_summary_proxy(conversation_id):
         analysis = data.get("analysis") or {}
         dcr = analysis.get("data_collection_results") or {}
 
+        # ── Pre-load all counties from MongoDB into a lookup dict ──
+        county_map = {}
+        try:
+            counties = current_app.db.county.find({}, {"_id": 1, "name": 1})
+            for c in counties:
+                county_map[str(c["_id"])] = c["name"]
+        except Exception as e:
+            current_app.logger.warning(f"Could not load counties: {e}")
+
         # ── Build structured display rows on the backend ──
         rows = []
         for key, item in dcr.items():
-            value = item.get("value")
+            field_id = item.get("data_collection_id", key)
+            value    = item.get("value")
+
+            # Resolve county _id → name if applicable
+            display_value = None
+            if field_id in COUNTY_FIELDS and value:
+                display_value = county_map.get(str(value))  # None if not found
+
+            # Fall back to raw value if no county match
+            if display_value is None:
+                display_value = str(value) if value is not None else "—"
+
             rows.append({
-                "id":    item.get("data_collection_id", key),
-                "label": item.get("data_collection_id", key).replace("_", " ").title(),
-                "value": str(value) if value is not None else "—",
+                "id":      field_id,
+                "label":   field_id.replace("_", " ").title(),
+                "value":   display_value,
                 "is_null": value is None,
             })
 
         return jsonify({
             "call_summary": analysis.get("call_summary_title") or "",
-            "rows": rows,
-            "total": len(rows)
+            "rows":         rows,
+            "total":        len(rows)
         })
 
     except Exception as e:
