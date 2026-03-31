@@ -14,7 +14,6 @@
   <!-- Search Bar + Date Range -->
 <form method="get" class="mb-4">
     <div class="row g-3">
-        <!-- Text Search -->
         <div class="col-lg-5">
             <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
                 <span class="input-group-text bg-white border-0">Search</span>
@@ -22,8 +21,6 @@
                        placeholder="Search by phone number or name..." value="{{ search }}" autofocus>
             </div>
         </div>
-
-        <!-- Date Range Picker -->
         <div class="col-lg-5">
             <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
                 <span class="input-group-text bg-white border-0">Started</span>
@@ -33,8 +30,6 @@
                        value="{{ date_range }}">
             </div>
         </div>
-
-        <!-- Buttons -->
         <div class="col-lg-2">
             <div class="d-flex gap-2">
                 <button class="btn btn-primary flex-fill" type="submit">Filter</button>
@@ -57,6 +52,7 @@
                             <th>Designation</th>
                             <th>Country</th>
                             <th>Status</th>
+                            <th>Lead Status</th>
                             <th>Summary</th>
                             <th>Time</th>
                             <th class="text-end pe-4">Date</th>
@@ -73,6 +69,7 @@
                             data-ended="{{ c.ended_at }}"
                             data-call-status="{{ c.call_status }}"
                             data-turn-count="{{ c.turn_count }}"
+                            data-lead-status="{{ c.lead_status or '' }}"
                             data-elevenlabs-id="{{ c.elevenlabs_conversation_id or '' }}">
                             <td class="ps-4 fw-bold text-primary">{{ c.phone }}</td>
                             <td>
@@ -92,39 +89,46 @@
                                 {% endif %}
                             </td>
                             <td>
-    {% if c.ended_at != 'Ongoing' and c.ended_at != '—' %}
-        
-        {% if c.call_status == 'User Busy' %}
-            <span class="text-warning fw-bold">User Busy</span>
-        
-        {% elif c.call_status == 'Empty' %}
-            <span class="text-muted fw-bold">{{ c.call_status }}</span>
-        
-        {% elif c.call_status == 'Voice call Detected' %}
-            <span class="text-info fw-bold">Voice call Detected</span>
-        
-        {% else %}
-            <span class="text-success fw-bold">{{ c.call_status }}</span>
-        
-        {% endif %}
-    
-    {% else %}
-        <span class="text-warning fw-bold">Ongoing</span>
-    {% endif %}
-</td>
+                                {% if c.ended_at != 'Ongoing' and c.ended_at != '—' %}
+                                    {% if c.call_status == 'User Busy' %}
+                                        <span class="text-warning fw-bold">User Busy</span>
+                                    {% elif c.call_status == 'Empty' %}
+                                        <span class="text-muted fw-bold">{{ c.call_status }}</span>
+                                    {% elif c.call_status == 'Voice call Detected' %}
+                                        <span class="text-info fw-bold">Voice call Detected</span>
+                                    {% else %}
+                                        <span class="text-success fw-bold">{{ c.call_status }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-warning fw-bold">Ongoing</span>
+                                {% endif %}
+                            </td>
+                            <!-- Lead Status Column -->
                             <td>
-                         
-    {% if c.elevenlabs_conversation_id %}
-    <button class="btn btn-sm btn-outline-info rounded-circle info-btn mt-1"
-            title="Brief Summary"
-            data-elevenlabs-id="{{ c.elevenlabs_conversation_id }}"
-            style="width:32px;height:32px;padding:0;line-height:1;">
-        <i class="bi bi-info-lg"></i>
-    </button>
-    {% endif %}
+                                {% set ls = c.lead_status or '' %}
+                                {% if ls == 'Interested' %}
+                                    <span class="badge bg-success">Interested</span>
+                                {% elif ls == 'Not Interested' %}
+                                    <span class="badge bg-danger">Not Interested</span>
+                                {% elif ls == 'Follow Up' %}
+                                    <span class="badge bg-warning text-dark">Follow Up</span>
+                                {% elif ls == 'Converted' %}
+                                    <span class="badge bg-primary">Converted</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Unset</span>
+                                {% endif %}
                             </td>
                             <td>
-                                <!-- <span class="badge rounded-pill bg-info text-dark">{{ c.turn_count }} turns</span> -->
+                                {% if c.elevenlabs_conversation_id %}
+                                <button class="btn btn-sm btn-outline-info rounded-circle info-btn mt-1"
+                                        title="Brief Summary"
+                                        data-elevenlabs-id="{{ c.elevenlabs_conversation_id }}"
+                                        style="width:32px;height:32px;padding:0;line-height:1;">
+                                    <i class="bi bi-info-lg"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                            <td>
                                 <br>
                                 {% if c.ended_at and c.ended_at not in ['Ongoing', '—', ''] %}
                                     {% set start_dt = c.started_at | strptime('%Y-%m-%d %H:%M:%S') %}
@@ -141,7 +145,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center py-6">
+                            <td colspan="9" class="text-center py-6">
                                 <div class="py-5">
                                     <i class="bi bi-headset display-1 text-muted opacity-25 d-block mb-3"></i>
                                     <h5 class="text-muted">No transcriptions found</h5>
@@ -211,110 +215,148 @@
             </div>
 
             <div class="modal-body">
-   <!-- Meta Info -->
-<div class="row g-4 mb-4">
-    <div class="col-md-4">
-        <small class="text-muted">Caller Name</small>
-        <h6 class="mb-0 fw-bold" id="modal-name"></h6>
-    </div>
-    <div class="col-md-4">
-        <small class="text-muted">Email</small>
-        <h6 class="mb-0 fw-semibold text-primary" id="modal-email">—</h6>
-    </div>
-    <div class="col-md-4">
-        <small class="text-muted">Phone</small>
-        <h6 class="mb-0 fw-bold text-primary" id="modal-phone"></h6>
-    </div>
-    
-    <div class="col-md-4">
-        <small class="text-muted">Started</small>
-        <h6 class="mb-0" id="modal-started"></h6>
-    </div>
-    <div class="col-md-4">
-        <small class="text-muted">Status</small>
-        <h6 class="mb-0">
-            <span id="modal-status" class="badge bg-success">Completed</span>
-        </h6>
-    </div>
-</div>
-    <hr class="my-4">
-
-   
-    <!-- TWO COLUMN LAYOUT: Transcript + Brief Summary -->
-    <div class="row g-4">
-
-     
-        
-        <!-- LEFT COLUMN: Conversation Transcript -->
-        <div class="col-lg-7">
-                <!-- Audio Player -->
-    <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
-    <div id="audio-player-container" class="mb-4 d-none">
-        <audio id="call-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
-        <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
-    </div>
-    <div id="audio-loading" class="text-primary mb-3 d-none">
-        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-        <strong>Loading audio recording...</strong>
-    </div>
-    <div id="audio-error" class="alert alert-danger d-none" role="alert">
-        <strong>Audio unavailable:</strong> <span id="error-message"></span>
-        <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="retry-audio">Retry</button>
-    </div>
-            <h6 class="fw-bold text-primary mb-3">Conversation Transcript</h6>
-            
-            <!-- Transcript Loading -->
-            <div id="transcript-loading" class="text-center py-5 d-none">
-                <div class="spinner-border text-primary" style="width:2.5rem;height:2.5rem;" role="status"></div>
-                <p class="mt-3 text-muted">Loading transcript...</p>
-            </div>
-
-            <!-- Transcript Error -->
-            <div id="transcript-error" class="alert alert-danger d-none" role="alert">
-                <strong>Failed to load transcript:</strong> <span id="transcript-error-msg"></span>
-                <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="retry-transcript">Retry</button>
-            </div>
-
-            <!-- Transcript Empty -->
-            <div id="transcript-empty" class="text-center py-5 d-none">
-                <i class="bi bi-chat-square-dots display-4 text-muted opacity-50"></i>
-                <p class="mt-3 text-muted">No transcript available for this call.</p>
-            </div>
-
-            <!-- Turns -->
-            <div id="modal-turns" class="border-start border-4 border-primary ps-4" style="max-height: 520px; overflow-y: auto;"></div>
-        </div>
-
-        <!-- RIGHT COLUMN: Brief Lead Summary -->
-        <div class="col-lg-5">
-            <h6 class="fw-bold text-primary mb-3">Brief Lead Summary</h6>
-            
-            <div id="modal-brief-summary" class="border-start border-4 border-info ps-4" style="max-height: 520px; overflow-y: auto;">
-                
-                <!-- Loading -->
-                <div id="brief-summary-loading" class="text-center py-5">
-                    <div class="spinner-border text-primary" style="width:2rem;height:2rem;" role="status"></div>
-                    <p class="mt-3 text-muted">Loading brief summary...</p>
+                <!-- Meta Info -->
+                <div class="row g-4 mb-4">
+                    <div class="col-md-3">
+                        <small class="text-muted">Caller Name</small>
+                        <h6 class="mb-0 fw-bold" id="modal-name"></h6>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Email</small>
+                        <h6 class="mb-0 fw-semibold text-primary" id="modal-email">—</h6>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Phone</small>
+                        <h6 class="mb-0 fw-bold text-primary" id="modal-phone"></h6>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Started</small>
+                        <h6 class="mb-0" id="modal-started"></h6>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Call Status</small>
+                        <h6 class="mb-0">
+                            <span id="modal-status" class="badge bg-success">Completed</span>
+                        </h6>
+                    </div>
+                    <!-- Lead Status display in meta -->
+                    <div class="col-md-3">
+                        <small class="text-muted">Lead Status</small>
+                        <h6 class="mb-0">
+                            <span id="modal-lead-status-badge" class="badge bg-secondary">Unset</span>
+                        </h6>
+                    </div>
                 </div>
+                <hr class="my-4">
 
-                <!-- Content -->
-                <div id="brief-summary-content" class="d-none"></div>
+                <!-- TWO COLUMN LAYOUT: Transcript + Brief Summary -->
+                <div class="row g-4">
 
-                <!-- Empty -->
-                <div id="brief-summary-empty" class="text-center py-5 text-muted d-none">
-                    <i class="bi bi-info-circle display-4 opacity-50"></i>
-                    <p class="mt-3 mb-0">No summary data available for this call.</p>
+                    <!-- LEFT COLUMN: Conversation Transcript -->
+                    <div class="col-lg-7">
+                        <!-- Audio Player -->
+                        <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
+                        <div id="audio-player-container" class="mb-4 d-none">
+                            <audio id="call-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
+                            <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
+                        </div>
+                        <div id="audio-loading" class="text-primary mb-3 d-none">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            <strong>Loading audio recording...</strong>
+                        </div>
+                        <div id="audio-error" class="alert alert-danger d-none" role="alert">
+                            <strong>Audio unavailable:</strong> <span id="error-message"></span>
+                            <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="retry-audio">Retry</button>
+                        </div>
+
+                        <h6 class="fw-bold text-primary mb-3">Conversation Transcript</h6>
+
+                        <div id="transcript-loading" class="text-center py-5 d-none">
+                            <div class="spinner-border text-primary" style="width:2.5rem;height:2.5rem;" role="status"></div>
+                            <p class="mt-3 text-muted">Loading transcript...</p>
+                        </div>
+                        <div id="transcript-error" class="alert alert-danger d-none" role="alert">
+                            <strong>Failed to load transcript:</strong> <span id="transcript-error-msg"></span>
+                            <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="retry-transcript">Retry</button>
+                        </div>
+                        <div id="transcript-empty" class="text-center py-5 d-none">
+                            <i class="bi bi-chat-square-dots display-4 text-muted opacity-50"></i>
+                            <p class="mt-3 text-muted">No transcript available for this call.</p>
+                        </div>
+                        <div id="modal-turns" class="border-start border-4 border-primary ps-4" style="max-height: 520px; overflow-y: auto;"></div>
+                    </div>
+
+                    <!-- RIGHT COLUMN: Brief Lead Summary -->
+                    <div class="col-lg-5">
+                        <h6 class="fw-bold text-primary mb-3">Brief Lead Summary</h6>
+                        <div id="modal-brief-summary" class="border-start border-4 border-info ps-4" style="max-height: 520px; overflow-y: auto;">
+                            <div id="brief-summary-loading" class="text-center py-5">
+                                <div class="spinner-border text-primary" style="width:2rem;height:2rem;" role="status"></div>
+                                <p class="mt-3 text-muted">Loading brief summary...</p>
+                            </div>
+                            <div id="brief-summary-content" class="d-none"></div>
+                            <div id="brief-summary-empty" class="text-center py-5 text-muted d-none">
+                                <i class="bi bi-info-circle display-4 opacity-50"></i>
+                                <p class="mt-3 mb-0">No summary data available for this call.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
 
-            <div class="modal-footer border-0 d-flex justify-content-between">
-                <div>
-                    <button type="button" id="data-collected-btn" class="btn btn-success d-none me-2">Data Collected</button>
+            <div class="modal-footer border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <!-- Left: action buttons -->
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <button type="button" id="data-collected-btn" class="btn btn-success d-none">Data Collected</button>
                     <button type="button" id="brief-summary-btn" class="btn btn-outline-info d-none">Brief Summary</button>
+
+                    <!-- ══ UPDATE LEAD STATUS ══ -->
+                    <div class="dropdown" id="lead-status-dropdown" style="display:none!important;">
+                        <button class="btn btn-outline-primary dropdown-toggle" type="button"
+                                id="leadStatusDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-tag me-1"></i> Update Lead Status
+                        </button>
+                        <ul class="dropdown-menu shadow-sm" aria-labelledby="leadStatusDropdownBtn">
+                            <li><h6 class="dropdown-header">Set Lead Status</h6></li>
+                            <li>
+                                <a class="dropdown-item lead-status-option d-flex align-items-center gap-2"
+                                   href="#" data-status="Interested">
+                                    <span class="badge bg-success">Interested</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item lead-status-option d-flex align-items-center gap-2"
+                                   href="#" data-status="Not Interested">
+                                    <span class="badge bg-danger">Not Interested</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item lead-status-option d-flex align-items-center gap-2"
+                                   href="#" data-status="Follow Up">
+                                    <span class="badge bg-warning text-dark">Follow Up</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item lead-status-option d-flex align-items-center gap-2"
+                                   href="#" data-status="Converted">
+                                    <span class="badge bg-primary">Converted</span>
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item lead-status-option d-flex align-items-center gap-2 text-muted"
+                                   href="#" data-status="">
+                                    <span class="badge bg-secondary">Clear / Unset</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Inline feedback after update -->
+                    <span id="lead-status-feedback" class="d-none small fw-semibold"></span>
                 </div>
+
+                <!-- Right: close -->
                 <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
@@ -382,7 +424,6 @@
     }
     #audio-error { max-width: 100%; margin: 1rem 0; }
 
-    /* Transcript bubble animation */
     #modal-turns .turn-bubble {
         animation: fadeSlideIn 0.2s ease both;
     }
@@ -390,14 +431,30 @@
         from { opacity: 0; transform: translateY(6px); }
         to   { opacity: 1; transform: translateY(0); }
     }
+
+    /* Lead status dropdown item hover */
+    .lead-status-option:hover { background-color: #f0f4ff; }
+
+    /* Feedback pulse */
+    @keyframes feedbackPulse {
+        0%   { opacity: 0; transform: scale(0.9); }
+        30%  { opacity: 1; transform: scale(1.05); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+    #lead-status-feedback.show {
+        display: inline-block !important;
+        animation: feedbackPulse 0.3s ease both;
+    }
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
 <!-- ═══════════════════════════════════════════════
      SCRIPTS
 ════════════════════════════════════════════════ -->
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 
+    // ── Flatpickr date range ──────────────────────────────────
     const dateRangeInput = document.getElementById('date-range');
     if (dateRangeInput) {
         flatpickr(dateRangeInput, {
@@ -428,36 +485,124 @@ document.addEventListener('DOMContentLoaded', () => {
     const transcriptErrorMsg    = document.getElementById('transcript-error-msg');
     const transcriptEmpty       = document.getElementById('transcript-empty');
 
-    // ── Action buttons ─────────────────────────────────────────
-   
-    const retryAudioBtn      = document.getElementById('retry-audio');
-    const retryTranscriptBtn = document.getElementById('retry-transcript');
-
-    // New: Brief Summary elements inside main modal
     const briefSummaryLoading   = document.getElementById('brief-summary-loading');
     const briefSummaryContent   = document.getElementById('brief-summary-content');
     const briefSummaryEmpty     = document.getElementById('brief-summary-empty');
 
-    const dataBtn   = document.getElementById('data-collected-btn');
-    const briefBtn  = document.getElementById('brief-summary-btn');
+    const dataBtn               = document.getElementById('data-collected-btn');
+    const briefBtn              = document.getElementById('brief-summary-btn');
 
-    // State
+    // ── Lead Status elements ──
+    const leadStatusDropdown    = document.getElementById('lead-status-dropdown');
+    const leadStatusBadge       = document.getElementById('modal-lead-status-badge');
+    const leadStatusFeedback    = document.getElementById('lead-status-feedback');
+
+    // ── State ──
     let currentConvId       = null;
     let currentElevenLabsId = null;
     let currentIsCompleted  = false;
-
+    let currentLeadStatus   = '';
 
     // ══════════════════════════════════════════════════════════
-// ⓘ INFO BUTTON — open Brief Summary modal directly
-// ══════════════════════════════════════════════════════════
-document.querySelectorAll('.info-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        e.stopPropagation(); // prevent row click from firing
-        currentElevenLabsId = btn.dataset.elevenlabsId?.trim() || null;
-        loadBriefSummary();
-        briefSummaryModal.show();
+    // LEAD STATUS — helpers
+    // ══════════════════════════════════════════════════════════
+    const STATUS_CONFIG = {
+        'Interested':     { cls: 'bg-success',            label: 'Interested' },
+        'Not Interested': { cls: 'bg-danger',             label: 'Not Interested' },
+        'Follow Up':      { cls: 'bg-warning text-dark',  label: 'Follow Up' },
+        'Converted':      { cls: 'bg-primary',            label: 'Converted' },
+        '':               { cls: 'bg-secondary',          label: 'Unset' },
+    };
+
+    function applyLeadStatusBadge(status) {
+        const cfg = STATUS_CONFIG[status] || STATUS_CONFIG[''];
+        leadStatusBadge.className = `badge ${cfg.cls}`;
+        leadStatusBadge.textContent = cfg.label;
+    }
+
+    function showFeedback(msg, isError = false) {
+        leadStatusFeedback.textContent = msg;
+        leadStatusFeedback.className = `small fw-semibold show ${isError ? 'text-danger' : 'text-success'}`;
+        clearTimeout(leadStatusFeedback._timer);
+        leadStatusFeedback._timer = setTimeout(() => {
+            leadStatusFeedback.classList.remove('show');
+            leadStatusFeedback.classList.add('d-none');
+        }, 3000);
+    }
+
+    /**
+     * Update lead status via PATCH /admin/api/conversation/<conv_id>/lead-status
+     * Expected request body: { "lead_status": "<value>" }
+     * Expected response:     { "success": true, "lead_status": "<value>" }
+     *                     or { "error": "<message>" }
+     */
+    async function updateLeadStatus(newStatus) {
+        // Optimistically update UI
+        applyLeadStatusBadge(newStatus);
+        currentLeadStatus = newStatus;
+
+        try {
+            const resp = await fetch(`/admin/api/conversation/${currentConvId}/lead-status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lead_status: newStatus }),
+            });
+
+            if (!resp.ok) {
+                const body = await resp.json().catch(() => ({}));
+                throw new Error(body.error || `Server error ${resp.status}`);
+            }
+
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+
+            // Reflect confirmed value (server may normalise it)
+            const confirmed = data.lead_status ?? newStatus;
+            currentLeadStatus = confirmed;
+            applyLeadStatusBadge(confirmed);
+            showFeedback(`✓ Status updated to "${confirmed || 'Unset'}"`);
+
+            // Also update the table row's data attribute + badge so the table
+            // stays in sync without a full page reload
+            const row = document.querySelector(`.transcript-row[data-conv-id="${currentConvId}"]`);
+            if (row) {
+                row.dataset.leadStatus = confirmed;
+                const cfg = STATUS_CONFIG[confirmed] || STATUS_CONFIG[''];
+                const tdBadge = row.querySelector('td .badge[class*="bg-"]');
+                // Find the lead-status cell (6th td, index 5)
+                const cells = row.querySelectorAll('td');
+                if (cells[5]) {
+                    cells[5].innerHTML = `<span class="badge ${cfg.cls}">${cfg.label}</span>`;
+                }
+            }
+
+        } catch (err) {
+            // Revert badge on failure
+            applyLeadStatusBadge(currentLeadStatus);
+            showFeedback(`✗ ${err.message}`, true);
+        }
+    }
+
+    // ── Wire up dropdown items ──
+    document.querySelectorAll('.lead-status-option').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            const newStatus = item.dataset.status; // '' means clear/unset
+            updateLeadStatus(newStatus);
+        });
     });
-});
+
+    // ══════════════════════════════════════════════════════════
+    // ⓘ INFO BUTTON — open Brief Summary modal directly
+    // ══════════════════════════════════════════════════════════
+    document.querySelectorAll('.info-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            currentElevenLabsId = btn.dataset.elevenlabsId?.trim() || null;
+            loadBriefSummary();
+            briefSummaryModal.show();
+        });
+    });
 
     // ══════════════════════════════════════════════════════════
     // AUDIO HELPERS
@@ -484,7 +629,6 @@ document.querySelectorAll('.info-btn').forEach(btn => {
                     ? 'Audio is still being generated by ElevenLabs'
                     : 'Audio not available yet');
             }
-            // Revoke previous blob URL to free memory
             if (audioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(audioPlayer.src);
             const blob = await res.blob();
             audioPlayer.src = URL.createObjectURL(blob);
@@ -509,25 +653,23 @@ document.querySelectorAll('.info-btn').forEach(btn => {
         briefSummaryContent.innerHTML = '';
     }
 
-    // ====================== LOAD BRIEF SUMMARY ======================
+    // ══════════════════════════════════════════════════════════
+    // LOAD BRIEF SUMMARY (into main modal right column)
+    // ══════════════════════════════════════════════════════════
     async function loadBriefSummaryIntoModal() {
         if (!currentElevenLabsId) {
             briefSummaryLoading.classList.add('d-none');
             briefSummaryEmpty.classList.remove('d-none');
             return;
         }
-
         resetBriefSummaryUI();
-
         try {
             const resp = await fetch(`/admin/elevenlabs/api/conversation/${currentElevenLabsId}`);
             if (!resp.ok) throw new Error('Failed to fetch summary');
-
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
 
             const dcr = data.analysis?.data_collection_results || {};
-
             if (Object.keys(dcr).length === 0) {
                 briefSummaryLoading.classList.add('d-none');
                 briefSummaryEmpty.classList.remove('d-none');
@@ -535,11 +677,9 @@ document.querySelectorAll('.info-btn').forEach(btn => {
             }
 
             let html = `<div class="alert alert-info"><strong>Call Summary:</strong> ${data.analysis?.call_summary_title || 'N/A'}</div>`;
-
             html += '<h6 class="text-success mt-3 mb-3">Collected Information</h6>';
-
             for (const key in dcr) {
-                const item = dcr[key];
+                const item  = dcr[key];
                 const value = item.value ?? '—';
                 html += `
                     <div class="row mb-3">
@@ -551,11 +691,9 @@ document.querySelectorAll('.info-btn').forEach(btn => {
                         </div>
                     </div>`;
             }
-
             briefSummaryContent.innerHTML = html;
             briefSummaryLoading.classList.add('d-none');
             briefSummaryContent.classList.remove('d-none');
-
         } catch (err) {
             console.error(err);
             briefSummaryLoading.classList.add('d-none');
@@ -563,55 +701,69 @@ document.querySelectorAll('.info-btn').forEach(btn => {
         }
     }
 
-    // ====================== ROW CLICK (Main Modal) ======================
-document.querySelectorAll('.transcript-row').forEach(row => {
-    row.addEventListener('click', () => {
-        currentConvId       = row.dataset.convId;
-        currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
-        currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
+    // ══════════════════════════════════════════════════════════
+    // ROW CLICK — open main modal
+    // ══════════════════════════════════════════════════════════
+    document.querySelectorAll('.transcript-row').forEach(row => {
+        row.addEventListener('click', () => {
+            currentConvId       = row.dataset.convId;
+            currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
+            currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
+            currentLeadStatus   = row.dataset.leadStatus || '';
 
-        // === UPDATED: Populate fields in correct order ===
-        document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
-        document.getElementById('modal-email').textContent   = row.dataset.email   || '—';
-        document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
-        
-        document.getElementById('modal-started').textContent = row.dataset.started || '—';
+            // Populate meta fields
+            document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
+            document.getElementById('modal-email').textContent   = row.dataset.email   || '—';
+            document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
+            document.getElementById('modal-started').textContent = row.dataset.started || '—';
 
-        
+            const statusEl = document.getElementById('modal-status');
+            statusEl.textContent = currentIsCompleted ? 'Completed' : 'Ongoing';
+            statusEl.className   = currentIsCompleted ? 'badge bg-success' : 'badge bg-warning';
 
-        const statusEl = document.getElementById('modal-status');
-        statusEl.textContent = currentIsCompleted ? 'Completed' : 'Ongoing';
-        statusEl.className   = currentIsCompleted ? 'badge bg-success' : 'badge bg-warning';
+            // Lead status badge
+            applyLeadStatusBadge(currentLeadStatus);
 
-        // Show action buttons only for completed calls with ElevenLabs ID
-        const showBtns = currentIsCompleted && !!currentElevenLabsId;
-        dataBtn.classList.toggle('d-none', !showBtns);
-        briefBtn.classList.toggle('d-none', !showBtns);
+            // Show/hide action buttons
+            const showBtns = currentIsCompleted && !!currentElevenLabsId;
+            dataBtn.classList.toggle('d-none', !showBtns);
+            briefBtn.classList.toggle('d-none', !showBtns);
 
-        // Reset UIs
-        resetAudioUI();
-        resetTranscriptUI();
-        resetBriefSummaryUI();
+            // Show lead-status dropdown for all calls (completed or ongoing)
+            leadStatusDropdown.style.removeProperty('display');
+            leadStatusDropdown.style.display = 'block';
 
-        transcriptModal.show();
+            // Hide feedback
+            leadStatusFeedback.classList.add('d-none');
+            leadStatusFeedback.classList.remove('show');
 
-        // Load data
-        loadTranscript();
-        loadBriefSummaryIntoModal();
+            // Reset transcript / audio UIs
+            resetAudioUI();
+            resetTranscriptUI();
+            resetBriefSummaryUI();
 
-        if (currentIsCompleted) {
-            loadAudio();
-        } else {
-            audioContainer.innerHTML = `
-                <div class="text-center py-4 text-muted">
-                    <i class="bi bi-hourglass-split display-4"></i>
-                    <p class="mt-2">Call ongoing — audio available when finished</p>
-                </div>`;
-            audioContainer.classList.remove('d-none');
-        }
+            transcriptModal.show();
+
+            // Kick off data loading
+            loadTranscript();
+            loadBriefSummaryIntoModal();
+
+            if (currentIsCompleted) {
+                loadAudio();
+            } else {
+                audioContainer.innerHTML = `
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-hourglass-split display-4"></i>
+                        <p class="mt-2">Call ongoing — audio available when finished</p>
+                    </div>`;
+                audioContainer.classList.remove('d-none');
+            }
+        });
     });
-});
 
+    // ══════════════════════════════════════════════════════════
+    // LOAD TRANSCRIPT
+    // ══════════════════════════════════════════════════════════
     async function loadTranscript() {
         resetTranscriptUI();
         transcriptLoading.classList.remove('d-none');
@@ -631,51 +783,6 @@ document.querySelectorAll('.transcript-row').forEach(row => {
         }
     }
 
-    // ══════════════════════════════════════════════════════════
-    // ROW CLICK — open modal
-    // ══════════════════════════════════════════════════════════
-    document.querySelectorAll('.transcript-row').forEach(row => {
-        row.addEventListener('click', () => {
-            currentConvId       = row.dataset.convId;
-            currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
-            currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
-
-            // Populate header fields from data attributes (no window.TRANSCRIPTIONS needed)
-            document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
-            document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
-            document.getElementById('modal-started').textContent = row.dataset.started || '—';
-
-            const statusEl = document.getElementById('modal-status');
-            statusEl.textContent = currentIsCompleted ? 'Completed' : 'Ongoing';
-            statusEl.className   = currentIsCompleted ? 'badge bg-success' : 'badge bg-warning';
-
-            // Show action buttons only for completed calls with ElevenLabs ID
-            const showBtns = currentIsCompleted && !!currentElevenLabsId;
-            dataBtn.classList.toggle('d-none', !showBtns);
-            briefBtn.classList.toggle('d-none', !showBtns);
-
-            // Reset UI states
-            resetAudioUI();
-            resetTranscriptUI();
-
-            transcriptModal.show();
-
-            // Fire both requests in parallel — transcript + audio
-            loadTranscript();
-
-            if (currentIsCompleted) {
-                loadAudio();
-            } else {
-                audioContainer.innerHTML = `
-                    <div class="text-center py-4 text-muted">
-                        <i class="bi bi-hourglass-split display-4"></i>
-                        <p class="mt-2">Call ongoing — audio available when finished</p>
-                    </div>`;
-                audioContainer.classList.remove('d-none');
-            }
-        });
-    });
-
     function renderTurns(turns) {
         turnsDiv.innerHTML = '';
         if (!turns || turns.length === 0) {
@@ -686,7 +793,7 @@ document.querySelectorAll('.transcript-row').forEach(row => {
             const isAgent = turn.role === 'agent';
             const bubble  = document.createElement('div');
             bubble.className = `turn-bubble mb-4 ${isAgent ? 'text-end' : ''}`;
-            bubble.style.animationDelay = `${idx * 30}ms`;   // stagger effect
+            bubble.style.animationDelay = `${idx * 30}ms`;
             bubble.innerHTML = `
                 <div class="d-inline-block p-3 rounded-3 shadow-sm
                             ${isAgent ? 'bg-primary text-white' : 'bg-light'}"
@@ -706,8 +813,8 @@ document.querySelectorAll('.transcript-row').forEach(row => {
     // ══════════════════════════════════════════════════════════
     // RETRY BUTTONS
     // ══════════════════════════════════════════════════════════
-    retryAudioBtn.addEventListener('click', loadAudio);
-    retryTranscriptBtn.addEventListener('click', loadTranscript);
+    document.getElementById('retry-audio').addEventListener('click', loadAudio);
+    document.getElementById('retry-transcript').addEventListener('click', loadTranscript);
 
     // ══════════════════════════════════════════════════════════
     // DATA COLLECTED MODAL
@@ -764,7 +871,6 @@ document.querySelectorAll('.transcript-row').forEach(row => {
                         </div>
                     </div>`;
             }
-
             const summary = data.analysis?.call_summary_title
                 ? `<div class="alert alert-success mb-4">
                        <strong>Summary:</strong> ${data.analysis.call_summary_title}
@@ -774,7 +880,6 @@ document.querySelectorAll('.transcript-row').forEach(row => {
                 summary +
                 `<h5 class="text-success mb-4">Collected Lead Data</h5>
                  <div style="max-width:800px;margin:auto">${rows}</div>`;
-
         } catch (err) {
             document.getElementById('data-collected-body').innerHTML =
                 `<div class="alert alert-danger">Failed to load data: ${err.message}</div>`;
@@ -827,7 +932,6 @@ document.querySelectorAll('.transcript-row').forEach(row => {
             }
             document.getElementById('brief-summary-body').innerHTML =
                 `<div class="px-3">${rows}</div>`;
-
         } catch (err) {
             document.getElementById('brief-summary-body').innerHTML =
                 `<div class="alert alert-danger">Error: ${err.message}</div>`;
@@ -848,6 +952,7 @@ document.querySelectorAll('.transcript-row').forEach(row => {
         }
         resetAudioUI();
         resetTranscriptUI();
+        leadStatusDropdown.style.display = 'none';
     });
 });
 </script>
