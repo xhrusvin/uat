@@ -449,6 +449,7 @@ def _format_conv(conv):
     conv['email'] = safe_str(user.get('email'), '—')          # ← ADD THIS LINE
     conv['designation'] = safe_str(user.get('designation'), '-')
     conv['country'] = safe_str(user.get('country'), '-')
+    conv['call_status'] = safe_str(conv.get('call_status'), '—')
 
     # === DATE FORMATTING (also make safe) ===
     try:
