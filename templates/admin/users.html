@@ -86,8 +86,8 @@
                         <tr class="user-row">
                             <td class="ps-4">
     <div class="d-flex align-items-center">
-        {% set first = u.first_name | default(u.get('first_name', '')) | default('') %}
-        {% set last  = u.last_name  | default(u.get('last_name', ''))  | default('') %}
+       {% set first = u.get('first_name', '') or '' %}
+{% set last  = u.get('last_name', '')  or '' %}
 
         <div class="avatar avatar-sm bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
             {{ first[0] if first else 'U' }}{{ last[0] if last else '' }}
