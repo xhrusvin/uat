@@ -230,12 +230,12 @@
         <small class="text-muted">Started</small>
         <h6 class="mb-0" id="modal-started"></h6>
     </div>
-   <div class="col-md-4">
-    <small class="text-muted">Status</small>
-    <h6 class="mb-0">
-        <span id="modal-status" class="badge"></span>
-    </h6>
-</div>
+    <div class="col-md-4">
+        <small class="text-muted">Status</small>
+        <h6 class="mb-0">
+            <span id="modal-status" class="badge bg-success">Completed</span>
+        </h6>
+    </div>
 </div>
     <hr class="my-4">
 
@@ -568,8 +568,7 @@ document.querySelectorAll('.transcript-row').forEach(row => {
     row.addEventListener('click', () => {
         currentConvId       = row.dataset.convId;
         currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
-        currentCallStatus   = row.dataset.callStatus || '';
-        const isOngoing = ['Ongoing', '—', ''].includes(row.dataset.ended);
+        currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
 
         // === UPDATED: Populate fields in correct order ===
         document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
@@ -578,7 +577,7 @@ document.querySelectorAll('.transcript-row').forEach(row => {
         
         document.getElementById('modal-started').textContent = row.dataset.started || '—';
 
-        updateModalStatus(currentCallStatus, isOngoing);
+        
 
         const statusEl = document.getElementById('modal-status');
         statusEl.textContent = currentIsCompleted ? 'Completed' : 'Ongoing';
@@ -611,37 +610,7 @@ document.querySelectorAll('.transcript-row').forEach(row => {
             audioContainer.classList.remove('d-none');
         }
     });
-    
 });
-
-// ====================== STATUS UPDATE FUNCTION ======================
-function updateModalStatus(callStatus, isOngoing) {
-    const statusEl = document.getElementById('modal-status');
-    
-    if (isOngoing) {
-        statusEl.textContent = 'Ongoing';
-        statusEl.className = 'badge bg-warning';
-        return;
-    }
-
-    switch (callStatus?.trim()) {
-        case 'User Busy':
-            statusEl.textContent = 'User Busy';
-            statusEl.className = 'badge bg-warning';
-            break;
-        case 'Empty':
-            statusEl.textContent = 'Empty';
-            statusEl.className = 'badge bg-secondary';
-            break;
-        case 'Voice call Detected':
-            statusEl.textContent = 'Voice call Detected';
-            statusEl.className = 'badge bg-info';
-            break;
-        default:
-            statusEl.textContent = callStatus || 'Completed';
-            statusEl.className = 'badge bg-success';
-    }
-}
 
     async function loadTranscript() {
         resetTranscriptUI();
