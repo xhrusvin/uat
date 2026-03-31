@@ -662,7 +662,50 @@ function updateModalStatus(callStatus, isOngoing) {
         }
     }
 
-   
+    // ══════════════════════════════════════════════════════════
+    // ROW CLICK — open modal
+    // ══════════════════════════════════════════════════════════
+    document.querySelectorAll('.transcript-row').forEach(row => {
+        row.addEventListener('click', () => {
+            currentConvId       = row.dataset.convId;
+            currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
+            currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
+
+            // Populate header fields from data attributes (no window.TRANSCRIPTIONS needed)
+            document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
+            document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
+            document.getElementById('modal-started').textContent = row.dataset.started || '—';
+
+            const statusEl = document.getElementById('modal-status');
+            statusEl.textContent = currentIsCompleted ? 'Completed' : 'Ongoing';
+            statusEl.className   = currentIsCompleted ? 'badge bg-success' : 'badge bg-warning';
+
+            // Show action buttons only for completed calls with ElevenLabs ID
+            const showBtns = currentIsCompleted && !!currentElevenLabsId;
+            dataBtn.classList.toggle('d-none', !showBtns);
+            briefBtn.classList.toggle('d-none', !showBtns);
+
+            // Reset UI states
+            resetAudioUI();
+            resetTranscriptUI();
+
+            transcriptModal.show();
+
+            // Fire both requests in parallel — transcript + audio
+            loadTranscript();
+
+            if (currentIsCompleted) {
+                loadAudio();
+            } else {
+                audioContainer.innerHTML = `
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-hourglass-split display-4"></i>
+                        <p class="mt-2">Call ongoing — audio available when finished</p>
+                    </div>`;
+                audioContainer.classList.remove('d-none');
+            }
+        });
+    });
 
     function renderTurns(turns) {
         turnsDiv.innerHTML = '';
