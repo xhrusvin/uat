@@ -142,7 +142,7 @@
                             <td class="text-center">
                                 <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
                                         data-id="{{ u._id|string }}"
-                                        data-name="{{ (u.first_name + ' ' + (u.last_name or ''))|trim or u.email }}">
+                                        data-name="{{ ((u.get('first_name', '') or '') + ' ' + (u.get('last_name', '') or ''))|trim or u.email }}">
                                     Delete
                                 </button>
                             </td>
