@@ -1357,7 +1357,7 @@ def elevenlabs_summary_proxy(conversation_id):
 
     COUNTY_FIELDS  = {"location_in_ireland", "previous_work_county"}
     GENDER_FIELDS  = {"gender"}
-    VISA_FIELDS    = {"Visa Type"}
+    VISA_FIELDS    = {"visa_type"}
     UNIFORM_FIELDS = {"uniform_size"}
 
     try:
@@ -1418,7 +1418,7 @@ def elevenlabs_summary_proxy(conversation_id):
                 display_value = gender_map.get(str(value))
 
             elif field_id in VISA_FIELDS and value:
-                display_value = "rusvin"
+                display_value = 'rusvin'
 
             elif field_id in UNIFORM_FIELDS and value:
                 # ElevenLabs returns the integer id (e.g. 6), match against `id` field
