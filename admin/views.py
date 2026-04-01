@@ -1418,7 +1418,7 @@ def elevenlabs_summary_proxy(conversation_id):
                 elif value == 0:
                     display_value = "No"
                 else:
-                    display_value = '-'   # keep null/empty for missing or other values
+                    display_value = '—'   # keep null/empty for missing or other values
 
             if field_id in COUNTY_FIELDS and value:
                 display_value = county_map.get(str(value))
