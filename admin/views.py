@@ -1381,6 +1381,12 @@ def elevenlabs_summary_proxy(conversation_id):
     GENDER_FIELDS  = {"gender"}
     VISA_FIELDS    = {"visa_type"}
     UNIFORM_FIELDS = {"uniform_size"}
+    BOOLEAN_FIELDS = {
+       "right_to_work_ireland",
+       "covid_vaccination",
+       "hepatitis_b_antibodies",
+       "mmr_varicella_vaccination",
+     }
 
     try:
         resp = requests.get(url, headers=headers, timeout=15)
@@ -1433,14 +1439,14 @@ def elevenlabs_summary_proxy(conversation_id):
 
             display_value = None
 
-            # === SPECIAL HANDLING FOR RIGHT TO WORK IRELAND ===
-            if field_id == "right_to_work_ireland":
-                if value == "1":
-                    display_value = "Yes"
-                elif value == "0":
-                    display_value = "No"
-                else:
-                    display_value = '—'  # keep null/empty for missing or other values
+            # === BOOLEAN FIELD HANDLING (YES / NO) ===
+            if field_id in BOOLEAN_FIELDS:
+              if str(value) == "1":
+               display_value = "Yes"
+              elif str(value) == "0":
+               display_value = "No"
+              else:
+               display_value = "—"
 
             if field_id in COUNTY_FIELDS and value:
                 display_value = county_map.get(str(value))
