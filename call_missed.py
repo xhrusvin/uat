@@ -52,9 +52,8 @@ def register_missed_call_routes(app):
         query = {
             "is_admin": {"$ne": True},
             "$or": [
-               # {"call_sent": 0},
-                {"email": "nasarrusvin@example.com"},
-               # {"call_sent": {"$exists": False}}
+                {"call_sent": 0},
+                {"call_sent": {"$exists": False}}
             ]
         }
 
@@ -71,8 +70,7 @@ def register_missed_call_routes(app):
             }), 200
 
         user_id = user["_id"]
-        #if user.get("call_sent") == 1:
-        if user.get("call_sent") == 0:
+        if user.get("call_sent") == 1:
             return jsonify({
                 **response_base,
                 "status": "already_sent",
