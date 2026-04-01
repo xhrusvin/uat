@@ -307,7 +307,7 @@ def users():
     # Attach last_conv_id to each user
     for u in users_list:
         el_id = u.get("last_elevenlabs_conversation_id") or ""
-        u["last_conv_id"] = el_id
+        u["last_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
 
     return render_template('admin/users.html',
                            users=users_list,
