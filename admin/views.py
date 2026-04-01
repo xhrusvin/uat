@@ -1448,7 +1448,7 @@ def elevenlabs_summary_proxy(conversation_id):
               else:
                display_value = "—"
 
-            if field_id in COUNTY_FIELDS and value:
+            elif field_id in COUNTY_FIELDS and value:
                 display_value = county_map.get(str(value))
 
             elif field_id in GENDER_FIELDS and value:
