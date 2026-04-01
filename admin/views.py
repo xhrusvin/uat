@@ -1473,8 +1473,12 @@ def elevenlabs_summary_proxy(conversation_id):
                 "is_null": value is None,
             })
 
+            call_status_item = dcr.get("call_status") or {}
+            call_status = call_status_item.get("value") or ""
+
         return jsonify({
             "call_summary": analysis.get("call_summary_title") or "",
+            "call_status" : call_status,
             "rows":         rows,
             "total":        len(rows)
         })
