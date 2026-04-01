@@ -341,7 +341,22 @@
           </div>
         </div>
 
-        <hr class="my-3">
+        <!-- ── Tabs ── -->
+        <ul class="nav nav-tabs px-4 border-bottom" id="userDetailTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active fw-semibold" id="intro-call-tab"
+                    data-bs-toggle="tab" data-bs-target="#intro-call-pane"
+                    type="button" role="tab">
+              <i class="bi bi-telephone-inbound me-2"></i>Intro Call
+            </button>
+          </li>
+        </ul>
+
+        <!-- ── Tab Panes ── -->
+        <div class="tab-content px-4 pt-4 pb-3" id="userDetailTabContent">
+
+          <!-- ══ INTRO CALL PANE ══ -->
+          <div class="tab-pane fade show active" id="intro-call-pane" role="tabpanel">
 
         <!-- ── No ElevenLabs ID notice ── -->
         <div id="ud-no-call" class="text-center py-5 d-none">
@@ -421,7 +436,8 @@
     </div>
   </div>
 </div>
-
+</div><!-- /.tab-content -->
+      </div>
 
 <style>
     .avatar-sm { width: 40px; height: 40px; font-size: 1rem; }
