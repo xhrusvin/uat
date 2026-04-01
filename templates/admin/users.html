@@ -796,7 +796,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 noCallNotice.classList.add('d-none');
                 callSection.classList.remove('d-none');
 
-                resetAudio();
+                resetAudioUI();
                 resetTranscript();
                 resetBrief();
 
@@ -822,7 +822,7 @@ document.addEventListener('DOMContentLoaded', () => {
             URL.revokeObjectURL(audioEl.src);
             audioEl.src = '';
         }
-        resetAudio();
+        resetAudioUI();
         resetTranscript();
     });
 });
