@@ -287,6 +287,28 @@ def users():
             u['created_at_formatted'] = '—'
             u['created_at_time'] = ''
 
+    # Fetch last conversation _id using elevenlabs_conversation_id match
+    elevenlabs_ids = [
+        u.get('last_elevenlabs_conversation_id')
+        for u in users_list
+        if u.get('last_elevenlabs_conversation_id')
+    ]
+
+    conv_by_elevenlabs_id = {}
+    if elevenlabs_ids:
+        for doc in current_app.db.conversations.find(
+            {"elevenlabs_conversation_id": {"$in": elevenlabs_ids}},
+            {"_id": 1, "elevenlabs_conversation_id": 1}
+        ):
+            el_key = doc.get("elevenlabs_conversation_id")
+            if el_key:
+                conv_by_elevenlabs_id[el_key] = str(doc["_id"])
+
+    # Attach last_conv_id to each user
+    for u in users_list:
+        el_id = u.get("last_elevenlabs_conversation_id") or ""
+        u["last_conv_id"] = el_id
+
     return render_template('admin/users.html',
                            users=users_list,
                            page=page,
