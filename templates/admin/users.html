@@ -770,6 +770,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             <strong>Call Summary:</strong> ${data.call_summary}
                          </div>`;
             }
+            if (data.call_status) {
+                html += `<div class="alert alert-info mb-3">
+                            <strong>Call Status:</strong> ${data.call_status}
+                         </div>`;
+            }
             html += '<h6 class="text-success mt-2 mb-3">Collected Information</h6>';
             html += data.rows.map(row => `
                 <div class="row mb-3">
