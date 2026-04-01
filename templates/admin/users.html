@@ -596,11 +596,12 @@ $(document).ready(function () {
 document.addEventListener('DOMContentLoaded', () => {
 
     // ── Element refs ──
-    const audioEl          = document.getElementById('call-audio');
+    const audioPlayer          = document.getElementById('call-audio');
     const audioContainer   = document.getElementById('audio-player-container');
     const audioLoading     = document.getElementById('audio-loading');
     const audioError       = document.getElementById('audio-error');
     const audioErrorMsg    = document.getElementById('error-message');
+    
 
     const turnsDiv         = document.getElementById('ud-turns');
     const txLoading        = document.getElementById('ud-transcript-loading');
@@ -823,10 +824,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // MODAL CLOSE — cleanup audio
     // ══════════════════════════════════
     document.getElementById('userDetailModal').addEventListener('hidden.bs.modal', () => {
-        audioEl.pause();
-        if (audioEl.src?.startsWith('blob:')) {
-            URL.revokeObjectURL(audioEl.src);
-            audioEl.src = '';
+        audioPlayer.pause();
+        if (audioPlayer.src?.startsWith('blob:')) {
+            URL.revokeObjectURL(audioPlayer.src);
+            audioPlayer.src = '';
         }
         resetAudioUI();
         resetTranscript();
