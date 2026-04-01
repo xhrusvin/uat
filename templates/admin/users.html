@@ -641,6 +641,12 @@ document.addEventListener('DOMContentLoaded', () => {
         briefEmpty.classList.add('d-none');
     }
 
+    function showAudioError(msg) {
+        errorMessageEl.textContent = msg;
+        audioError.classList.remove('d-none');
+        audioLoading.classList.add('d-none');
+    }
+
     // ══════════════════════════════════
     // AUDIO
     // ══════════════════════════════════
