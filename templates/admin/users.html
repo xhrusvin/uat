@@ -355,20 +355,20 @@
           <!-- LEFT: Full Call Recording -->
           <div class="col-lg-7">
 
-            <!-- Audio Player -->
-            <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
-            <div id="ud-audio-container" class="mb-4 d-none">
-              <audio id="ud-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
-              <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
-            </div>
-            <div id="ud-audio-loading" class="text-primary mb-3 d-none">
-              <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-              <strong>Loading audio recording...</strong>
-            </div>
-            <div id="ud-audio-error" class="alert alert-danger d-none" role="alert">
-              <strong>Audio unavailable:</strong> <span id="ud-audio-error-msg"></span>
-              <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="ud-retry-audio">Retry</button>
-            </div>
+             <!-- Audio Player -->
+    <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
+    <div id="audio-player-container" class="mb-4 d-none">
+        <audio id="call-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
+        <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
+    </div>
+    <div id="audio-loading" class="text-primary mb-3 d-none">
+        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+        <strong>Loading audio recording...</strong>
+    </div>
+    <div id="audio-error" class="alert alert-danger d-none" role="alert">
+        <strong>Audio unavailable:</strong> <span id="error-message"></span>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="retry-audio">Retry</button>
+    </div>
 
             <hr class="my-3">
 
