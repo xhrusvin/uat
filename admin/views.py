@@ -1411,6 +1411,15 @@ def elevenlabs_summary_proxy(conversation_id):
 
             display_value = None
 
+            # === SPECIAL HANDLING FOR RIGHT TO WORK IRELAND ===
+            if field_id == "right_to_work_ireland":
+                if value == 1:
+                    display_value = "Yes"
+                elif value == 0:
+                    display_value = "No"
+                else:
+                    display_value = '-'   # keep null/empty for missing or other values
+
             if field_id in COUNTY_FIELDS and value:
                 display_value = county_map.get(str(value))
 
