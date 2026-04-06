@@ -8,11 +8,8 @@ from call_missed import register_missed_call_routes
 from lead_call import register_lead_call_routes
 from follow_up_call import register_follow_up_call_routes
 from shift_booking_call import register_shift_booking_call_routes
-from followupcall import schedule_followup_calls
 from compliance_document_call import register_compliance_doc_call_routes
-from compliancedocumentcall import schedule_compliance_doc_call_calls
 from professional_reference_call import register_professional_reference_call_routes
-from professionalreferencecall import schedule_professional_reference_call_calls
 from registration import register_registration_routes, schedule_calls
 from scrap_users import register_scrap_users_route
 from lead_webhook import register_lead_webhook_routes
@@ -172,9 +169,6 @@ register_registration_routes(app)
 
 with app.app_context():
     schedule_calls(app)
-    schedule_followup_calls(app)
-    schedule_compliance_doc_call_calls(app)
-    schedule_professional_reference_call_calls(app)
 @app.template_filter('strftime')
 def _jinja2_filter_strftime(date, fmt='%Y-%m-%d %H:%M'):
     if isinstance(date, str):
