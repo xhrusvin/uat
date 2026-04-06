@@ -83,7 +83,13 @@
                     </thead>
                     <tbody>
                         {% for u in users %}
-                        <tr class="user-row" data-id="{{ u._id|string }}" data-conv-id="{{ u.get('last_conv_id', '') }}"  data-elevenlabs-id="{{ u.get('last_elevenlabs_conversation_id', '') }}" style="cursor: pointer;">
+                        <tr class="user-row" 
+    data-id="{{ u._id|string }}" 
+    data-conv-id="{{ u.get('last_conv_id', '') }}"  
+    data-elevenlabs-id="{{ u.get('last_elevenlabs_conversation_id', '') }}"
+    data-followup-conv-id="{{ u.get('last_followup_conv_id', '') }}"
+    data-followup-elevenlabs-id="{{ u.get('last_followup_elevenlabs_conversation_id', '') }}"
+    style="cursor: pointer;">
                             <td class="ps-4">
     <div class="d-flex align-items-center">
        {% set first = u.get('first_name', '') or '' %}
@@ -343,14 +349,21 @@
 
         <!-- ── Tabs ── -->
         <ul class="nav nav-tabs px-4 border-bottom" id="userDetailTabs" role="tablist">
-          <li class="nav-item" role="presentation">
-            <button class="nav-link active fw-semibold" id="intro-call-tab"
-                    data-bs-toggle="tab" data-bs-target="#intro-call-pane"
-                    type="button" role="tab">
-              <i class="bi bi-telephone-inbound me-2"></i>Intro Call
-            </button>
-          </li>
-        </ul>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active fw-semibold" id="intro-call-tab"
+            data-bs-toggle="tab" data-bs-target="#intro-call-pane"
+            type="button" role="tab">
+      <i class="bi bi-telephone-inbound me-2"></i>Intro Call
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link fw-semibold" id="followup-call-tab"
+            data-bs-toggle="tab" data-bs-target="#followup-call-pane"
+            type="button" role="tab">
+      <i class="bi bi-telephone-forward me-2"></i>Follow Up Call
+    </button>
+  </li>
+</ul>
 
         <!-- ── Tab Panes ── -->
         <div class="tab-content px-4 pt-4 pb-3" id="userDetailTabContent">
@@ -429,6 +442,72 @@
 
         </div><!-- /.row -->
       </div><!-- /#userDetailBody -->
+
+      <!-- ══ FOLLOW UP CALL PANE ══ -->
+<div class="tab-pane fade" id="followup-call-pane" role="tabpanel">
+
+  <div id="fu-no-call" class="text-center py-5 d-none">
+    <i class="bi bi-telephone-x display-4 text-muted opacity-50"></i>
+    <p class="mt-3 text-muted">No follow up call recording available for this user.</p>
+  </div>
+
+  <div id="fu-call-section" class="row g-4 d-none">
+
+    <!-- LEFT: Full Call Recording -->
+    <div class="col-lg-7">
+      <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
+      <div id="fu-audio-player-container" class="mb-4 d-none">
+        <audio id="fu-call-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
+        <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
+      </div>
+      <div id="fu-audio-loading" class="text-primary mb-3 d-none">
+        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+        <strong>Loading audio recording...</strong>
+      </div>
+      <div id="fu-audio-error" class="alert alert-danger d-none" role="alert">
+        <strong>Audio unavailable:</strong> <span id="fu-error-message"></span>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="fu-retry-audio">Retry</button>
+      </div>
+
+      <hr class="my-3">
+
+      <h6 class="fw-bold text-primary mb-3">Conversation Transcript</h6>
+
+      <div id="fu-transcript-loading" class="text-center py-5 d-none">
+        <div class="spinner-border text-primary" style="width:2.5rem;height:2.5rem;" role="status"></div>
+        <p class="mt-3 text-muted">Loading transcript...</p>
+      </div>
+      <div id="fu-transcript-error" class="alert alert-danger d-none" role="alert">
+        <strong>Failed to load transcript:</strong> <span id="fu-transcript-error-msg"></span>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="fu-retry-transcript">Retry</button>
+      </div>
+      <div id="fu-transcript-empty" class="text-center py-5 d-none">
+        <i class="bi bi-chat-square-dots display-4 text-muted opacity-50"></i>
+        <p class="mt-3 text-muted">No transcript available for this call.</p>
+      </div>
+      <div id="fu-turns" class="border-start border-4 border-primary ps-4"
+           style="max-height: 460px; overflow-y: auto;"></div>
+    </div>
+
+    <!-- RIGHT: Brief Lead Summary -->
+    <div class="col-lg-5">
+      <h6 class="fw-bold text-primary mb-3">Brief Lead Summary</h6>
+      <div id="fu-brief-summary" class="border-start border-4 border-info ps-4"
+           style="max-height: 580px; overflow-y: auto;">
+        <div id="fu-brief-loading" class="text-center py-5">
+          <div class="spinner-border text-primary" style="width:2rem;height:2rem;" role="status"></div>
+          <p class="mt-3 text-muted">Loading brief summary...</p>
+        </div>
+        <div id="fu-brief-content" class="d-none"></div>
+        <div id="fu-brief-empty" class="text-center py-5 text-muted d-none">
+          <i class="bi bi-info-circle display-4 opacity-50"></i>
+          <p class="mt-3 mb-0">No summary data available for this call.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.row -->
+</div><!-- /#followup-call-pane -->
 
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Close</button>
@@ -611,13 +690,12 @@ $(document).ready(function () {
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 
-    // ── Element refs ──
+    // ── Element refs — INTRO CALL ──
     const audioPlayer      = document.getElementById('call-audio');
     const audioContainer   = document.getElementById('audio-player-container');
     const audioLoading     = document.getElementById('audio-loading');
     const audioError       = document.getElementById('audio-error');
     const audioErrorMsg    = document.getElementById('error-message');
-    
 
     const turnsDiv         = document.getElementById('ud-turns');
     const txLoading        = document.getElementById('ud-transcript-loading');
@@ -632,13 +710,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const callSection      = document.getElementById('ud-call-section');
     const noCallNotice     = document.getElementById('ud-no-call');
 
+    // ── Element refs — FOLLOW UP CALL ──
+    const fuAudioPlayer    = document.getElementById('fu-call-audio');
+    const fuAudioContainer = document.getElementById('fu-audio-player-container');
+    const fuAudioLoading   = document.getElementById('fu-audio-loading');
+    const fuAudioError     = document.getElementById('fu-audio-error');
+    const fuAudioErrorMsg  = document.getElementById('fu-error-message');
+
+    const fuTurnsDiv       = document.getElementById('fu-turns');
+    const fuTxLoading      = document.getElementById('fu-transcript-loading');
+    const fuTxError        = document.getElementById('fu-transcript-error');
+    const fuTxErrorMsg     = document.getElementById('fu-transcript-error-msg');
+    const fuTxEmpty        = document.getElementById('fu-transcript-empty');
+
+    const fuBriefLoading   = document.getElementById('fu-brief-loading');
+    const fuBriefContent   = document.getElementById('fu-brief-content');
+    const fuBriefEmpty     = document.getElementById('fu-brief-empty');
+
+    const fuCallSection    = document.getElementById('fu-call-section');
+    const fuNoCallNotice   = document.getElementById('fu-no-call');
+
     // ── State ──
-    let currentUserId        = null;
-    let currentConvId        = null;
-    let currentElevenLabsId  = null;
+    let currentUserId              = null;
+    let currentConvId              = null;
+    let currentElevenLabsId        = null;
+    let currentFollowupConvId      = null;
+    let currentFollowupElevenLabsId = null;
 
     // ══════════════════════════════════
-    // HELPERS — reset UI states
+    // HELPERS — INTRO CALL
     // ══════════════════════════════════
     function resetAudioUI() {
         audioLoading.classList.add('d-none');
@@ -657,7 +757,6 @@ document.addEventListener('DOMContentLoaded', () => {
         briefContent.innerHTML = '';
         briefEmpty.classList.add('d-none');
     }
-
     function showAudioError(msg) {
         audioErrorMsg.textContent = msg;
         audioError.classList.remove('d-none');
@@ -665,19 +764,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ══════════════════════════════════
-    // AUDIO
+    // HELPERS — FOLLOW UP CALL
+    // ══════════════════════════════════
+    function fuResetAudioUI() {
+        fuAudioLoading.classList.add('d-none');
+        fuAudioError.classList.add('d-none');
+        fuAudioContainer.classList.add('d-none');
+    }
+    function fuResetTranscript() {
+        fuTurnsDiv.innerHTML = '';
+        fuTxLoading.classList.add('d-none');
+        fuTxError.classList.add('d-none');
+        fuTxEmpty.classList.add('d-none');
+    }
+    function fuResetBrief() {
+        fuBriefLoading.classList.remove('d-none');
+        fuBriefContent.classList.add('d-none');
+        fuBriefContent.innerHTML = '';
+        fuBriefEmpty.classList.add('d-none');
+    }
+    function fuShowAudioError(msg) {
+        fuAudioErrorMsg.textContent = msg;
+        fuAudioError.classList.remove('d-none');
+        fuAudioLoading.classList.add('d-none');
+    }
+
+    // ══════════════════════════════════
+    // AUDIO — INTRO
     // ══════════════════════════════════
     async function loadAudio() {
         resetAudioUI();
         audioLoading.classList.remove('d-none');
         try {
             const res = await fetch(`/admin/conversation/${currentConvId}/audio`);
-            if (!res.ok) {
-                throw new Error(res.status === 404
-                    ? 'Audio is still being generated by ElevenLabs'
-                    : 'Audio not available yet');
-            }
-            // Revoke previous blob URL to free memory
+            if (!res.ok) throw new Error(res.status === 404 ? 'Audio is still being generated by ElevenLabs' : 'Audio not available yet');
             if (audioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(audioPlayer.src);
             const blob = await res.blob();
             audioPlayer.src = URL.createObjectURL(blob);
@@ -687,20 +807,35 @@ document.addEventListener('DOMContentLoaded', () => {
             showAudioError(err.message);
         }
     }
-
-    
-
     document.getElementById('retry-audio').addEventListener('click', loadAudio);
 
     // ══════════════════════════════════
-    // TRANSCRIPT
+    // AUDIO — FOLLOW UP
+    // ══════════════════════════════════
+    async function fuLoadAudio() {
+        fuResetAudioUI();
+        fuAudioLoading.classList.remove('d-none');
+        try {
+            const res = await fetch(`/admin/followup_tr/${currentFollowupConvId}/audio`);
+            if (!res.ok) throw new Error(res.status === 404 ? 'Audio is still being generated by ElevenLabs' : 'Audio not available yet');
+            if (fuAudioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(fuAudioPlayer.src);
+            const blob = await res.blob();
+            fuAudioPlayer.src = URL.createObjectURL(blob);
+            fuAudioContainer.classList.remove('d-none');
+            fuAudioLoading.classList.add('d-none');
+        } catch (err) {
+            fuShowAudioError(err.message);
+        }
+    }
+    document.getElementById('fu-retry-audio').addEventListener('click', fuLoadAudio);
+
+    // ══════════════════════════════════
+    // TRANSCRIPT — INTRO
     // ══════════════════════════════════
     async function loadTranscript() {
         resetTranscript();
         txLoading.classList.remove('d-none');
         try {
-            // Fetches transcript by user's last ElevenLabs conversation ID.
-            // The route below mirrors the one used in transcriptions.html but may need adjusting.
             const res = await fetch(`/admin/api/conversation/${currentConvId}/transcript`);
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
@@ -708,20 +843,45 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const data = await res.json();
             txLoading.classList.add('d-none');
-            renderTurns(data.turns || []);
+            renderTurns(turnsDiv, txEmpty, data.turns || []);
         } catch (err) {
             txLoading.classList.add('d-none');
             txErrorMsg.textContent = err.message;
             txError.classList.remove('d-none');
         }
     }
-
     document.getElementById('ud-retry-transcript').addEventListener('click', loadTranscript);
 
-    function renderTurns(turns) {
-        turnsDiv.innerHTML = '';
+    // ══════════════════════════════════
+    // TRANSCRIPT — FOLLOW UP
+    // ══════════════════════════════════
+    async function fuLoadTranscript() {
+        fuResetTranscript();
+        fuTxLoading.classList.remove('d-none');
+        try {
+            const res = await fetch(`/admin/api/followup_tr/${currentFollowupConvId}/transcript`);
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `Server error ${res.status}`);
+            }
+            const data = await res.json();
+            fuTxLoading.classList.add('d-none');
+            renderTurns(fuTurnsDiv, fuTxEmpty, data.turns || []);
+        } catch (err) {
+            fuTxLoading.classList.add('d-none');
+            fuTxErrorMsg.textContent = err.message;
+            fuTxError.classList.remove('d-none');
+        }
+    }
+    document.getElementById('fu-retry-transcript').addEventListener('click', fuLoadTranscript);
+
+    // ══════════════════════════════════
+    // RENDER TURNS (shared)
+    // ══════════════════════════════════
+    function renderTurns(container, emptyEl, turns) {
+        container.innerHTML = '';
         if (!turns || turns.length === 0) {
-            txEmpty.classList.remove('d-none');
+            emptyEl.classList.remove('d-none');
             return;
         }
         turns.forEach((turn, idx) => {
@@ -738,12 +898,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div style="white-space:pre-wrap;">${(turn.text || '').replace(/\n/g, '<br>')}</div>
                 </div>`;
-            turnsDiv.appendChild(bubble);
+            container.appendChild(bubble);
         });
     }
 
     // ══════════════════════════════════
-    // BRIEF SUMMARY
+    // BRIEF SUMMARY — INTRO
     // ══════════════════════════════════
     async function loadBriefSummary() {
         resetBrief();
@@ -757,46 +917,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!resp.ok) throw new Error('Failed to fetch summary');
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
-
-            if (!data.rows || data.rows.length === 0) {
-                briefLoading.classList.add('d-none');
-                briefEmpty.classList.remove('d-none');
-                return;
-            }
-
-            let html = '';
-
-            if (data.call_summary || data.call_status) {
-    html += `<div class="alert alert-info mb-3">`;
-
-    if (data.call_summary) {
-        html += `<div><strong>Call Summary:</strong> ${data.call_summary}</div>`;
-    }
-
-    if (data.call_status) {
-        html += `<div><strong>Call Status:</strong> ${data.call_status}</div>`;
-    }
-
-    html += `</div>`;
-}
-            html += '<h6 class="text-success mt-2 mb-3">Collected Information</h6>';
-            html += data.rows.map(row => `
-                <div class="row mb-3">
-                    <div class="col-md-5">
-                        <strong class="text-muted">${row.label}</strong>
-                    </div>
-                    <div class="col-md-7">
-                        <span class="fw-semibold ${row.is_null ? 'text-muted fst-italic' : ''}">
-                            ${row.value}
-                        </span>
-                    </div>
-                </div>`
-            ).join('');
-
-            briefContent.innerHTML = html;
-            briefLoading.classList.add('d-none');
-            briefContent.classList.remove('d-none');
-
+            renderBriefSummary(briefLoading, briefContent, briefEmpty, data);
         } catch (err) {
             console.error(err);
             briefLoading.classList.add('d-none');
@@ -805,57 +926,130 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ══════════════════════════════════
+    // BRIEF SUMMARY — FOLLOW UP
+    // ══════════════════════════════════
+    async function fuLoadBriefSummary() {
+        fuResetBrief();
+        if (!currentFollowupElevenLabsId) {
+            fuBriefLoading.classList.add('d-none');
+            fuBriefEmpty.classList.remove('d-none');
+            return;
+        }
+        try {
+            const resp = await fetch(`/admin/elevenlabs/api/followup_tr/${currentFollowupElevenLabsId}/summary`);
+            if (!resp.ok) throw new Error('Failed to fetch summary');
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            renderBriefSummary(fuBriefLoading, fuBriefContent, fuBriefEmpty, data);
+        } catch (err) {
+            console.error(err);
+            fuBriefLoading.classList.add('d-none');
+            fuBriefEmpty.classList.remove('d-none');
+        }
+    }
+
+    // ══════════════════════════════════
+    // RENDER BRIEF SUMMARY (shared)
+    // ══════════════════════════════════
+    function renderBriefSummary(loadingEl, contentEl, emptyEl, data) {
+        if (!data.rows || data.rows.length === 0) {
+            loadingEl.classList.add('d-none');
+            emptyEl.classList.remove('d-none');
+            return;
+        }
+        let html = '';
+        if (data.call_summary || data.call_status) {
+            html += `<div class="alert alert-info mb-3">`;
+            if (data.call_summary) html += `<div><strong>Call Summary:</strong> ${data.call_summary}</div>`;
+            if (data.call_status)  html += `<div><strong>Call Status:</strong> ${data.call_status}</div>`;
+            html += `</div>`;
+        }
+        html += '<h6 class="text-success mt-2 mb-3">Collected Information</h6>';
+        html += data.rows.map(row => `
+            <div class="row mb-3">
+                <div class="col-md-5"><strong class="text-muted">${row.label}</strong></div>
+                <div class="col-md-7">
+                    <span class="fw-semibold ${row.is_null ? 'text-muted fst-italic' : ''}">${row.value}</span>
+                </div>
+            </div>`
+        ).join('');
+        contentEl.innerHTML = html;
+        loadingEl.classList.add('d-none');
+        contentEl.classList.remove('d-none');
+    }
+
+    // ══════════════════════════════════
+    // TAB CLICK — lazy-load Follow Up
+    // ══════════════════════════════════
+    document.getElementById('followup-call-tab').addEventListener('shown.bs.tab', () => {
+        if (!currentFollowupConvId && !currentFollowupElevenLabsId) {
+            fuCallSection.classList.add('d-none');
+            fuNoCallNotice.classList.remove('d-none');
+            return;
+        }
+        fuCallSection.classList.remove('d-none');
+        fuNoCallNotice.classList.add('d-none');
+        fuResetAudioUI();
+        fuResetTranscript();
+        fuResetBrief();
+        if (currentFollowupConvId) { fuLoadAudio(); fuLoadTranscript(); }
+        fuLoadBriefSummary();
+    });
+
+    // ══════════════════════════════════
     // ROW CLICK — open modal
     // ══════════════════════════════════
     document.querySelectorAll('.user-row').forEach(row => {
         row.addEventListener('click', function (e) {
             if (e.target.closest('.btn-delete')) return;
 
-            currentUserId       = this.dataset.id;
-            currentConvId       = (this.dataset.convId || '').trim() || null;        // ← MongoDB _id
-            currentElevenLabsId = (this.dataset.elevenlabsId || '').trim() || null;  // ← ElevenLabs ID
+            currentUserId               = this.dataset.id;
+            currentConvId               = (this.dataset.convId || '').trim() || null;
+            currentElevenLabsId         = (this.dataset.elevenlabsId || '').trim() || null;
+            currentFollowupConvId       = (this.dataset.followupConvId || '').trim() || null;
+            currentFollowupElevenLabsId = (this.dataset.followupElevenlabsId || '').trim() || null;
 
-            // Populate meta fields from the table cells
+            // Populate meta
             const cells = this.querySelectorAll('td');
-            // cells[0] = Name, [1] = Email, [2] = Phone, [3] = Country
             document.getElementById('ud-name').textContent    = cells[0]?.querySelector('.fw-semibold')?.textContent?.trim() || '—';
             document.getElementById('ud-email').textContent   = cells[1]?.textContent?.trim() || '—';
             document.getElementById('ud-phone').textContent   = cells[2]?.textContent?.trim() || '—';
             document.getElementById('ud-country').textContent = cells[3]?.textContent?.trim() || '—';
 
-            // Show/hide sections based on whether there's a call
+            // Reset to Intro Call tab
+            const introTab = document.getElementById('intro-call-tab');
+            bootstrap.Tab.getOrCreateInstance(introTab).show();
+
+            // Intro Call
             if (currentElevenLabsId) {
                 noCallNotice.classList.add('d-none');
                 callSection.classList.remove('d-none');
-
-                resetAudioUI();
-                resetTranscript();
-                resetBrief();
-
-                loadAudio();
-                loadTranscript();
-                loadBriefSummary();
+                resetAudioUI(); resetTranscript(); resetBrief();
+                loadAudio(); loadTranscript(); loadBriefSummary();
             } else {
                 callSection.classList.add('d-none');
                 noCallNotice.classList.remove('d-none');
             }
 
-            const modal = new bootstrap.Modal(document.getElementById('userDetailModal'));
-            modal.show();
+            // Follow Up tab — reset to blank; loads on tab click
+            fuResetAudioUI(); fuResetTranscript(); fuResetBrief();
+            fuCallSection.classList.add('d-none');
+            fuNoCallNotice.classList.add('d-none');
+
+            new bootstrap.Modal(document.getElementById('userDetailModal')).show();
         });
     });
 
     // ══════════════════════════════════
-    // MODAL CLOSE — cleanup audio
+    // MODAL CLOSE — cleanup
     // ══════════════════════════════════
     document.getElementById('userDetailModal').addEventListener('hidden.bs.modal', () => {
         audioPlayer.pause();
-        if (audioPlayer.src?.startsWith('blob:')) {
-            URL.revokeObjectURL(audioPlayer.src);
-            audioPlayer.src = '';
-        }
-        resetAudioUI();
-        resetTranscript();
+        if (audioPlayer.src?.startsWith('blob:')) { URL.revokeObjectURL(audioPlayer.src); audioPlayer.src = ''; }
+        fuAudioPlayer.pause();
+        if (fuAudioPlayer.src?.startsWith('blob:')) { URL.revokeObjectURL(fuAudioPlayer.src); fuAudioPlayer.src = ''; }
+        resetAudioUI(); resetTranscript();
+        fuResetAudioUI(); fuResetTranscript();
     });
 });
 </script>
