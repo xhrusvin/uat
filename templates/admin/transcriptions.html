@@ -103,6 +103,10 @@
         
         {% elif c.call_status == 'Voice call Detected' %}
             <span class="text-info fw-bold">Voice call Detected</span>
+
+        {% elif c.call_status == 'No Required Experience' %}
+            <span class="text-primary fw-bold">No Required Experience</span>
+        
         
         {% else %}
             <span class="text-success fw-bold">{{ c.call_status }}</span>
@@ -676,6 +680,9 @@ if (!currentIsCompleted) {
 } else if (callStatus === 'Voice call Detected') {
     statusEl.textContent = 'Voice call Detected';
     statusEl.className   = 'badge bg-info text-dark';
+} else if (callStatus === 'No Required Experience') {
+    statusEl.textContent = 'No Required Experience';
+    statusEl.className   = 'badge bg-primary';  
 } else if (callStatus) {
     statusEl.textContent = callStatus;
     statusEl.className   = 'badge bg-success';
