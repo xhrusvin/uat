@@ -182,7 +182,7 @@ def register_compliance_doc_call_routes(app):
             "created_at": created_at_str,
             "next_follow_up_at": next_follow_up_str,
             "triggered_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "message": "Follow-up call triggered successfully."
+            "message": "Compliance document call triggered successfully."
           }), 200
 
     
