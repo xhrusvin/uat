@@ -40,7 +40,7 @@ client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 
 
-conversations_collection = db["follow_up_conv"]  # UI TRANSCRIPTS ONLY
+conversations_collection = db["level_four_cov"]  # UI TRANSCRIPTS ONLY
 
 # ==================== CONSTANTS ====================
 CALL_STATUS_VALUES = {
@@ -101,8 +101,8 @@ def is_call_status_value(value):
 
 
 # ==================== ROUTE ====================
-@bp.route("/api/elevenlabs/agent/conversations_followup_call", methods=["GET", "POST"])
-def sync_agent_conversations_followup_call():
+@bp.route("/api/elevenlabs/agent/conversations_levelfour_call", methods=["GET", "POST"])
+def sync_agent_conversations_levelfour_call():
     key = request.args.get("key")
     agent_id = request.args.get("agent_id")
     limit = int(request.args.get("limit", 20))
