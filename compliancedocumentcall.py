@@ -1,22 +1,26 @@
 # compliancedocumentcall.py
 
-from flask import current_app
-from twilio.rest import Client as TwilioClient
-from datetime import datetime, time
-from threading import Thread
-import threading
-import pytz
-import urllib
+from flask import request, jsonify, session
+from telnyx import Telnyx                        # replaces: from twilio.rest import Client
+from dotenv import load_dotenv
 import os
+import threading
+from threading import Thread
+import requests
+import bcrypt
+import re
+import urllib
+from datetime import datetime, time
+import pytz
+from flask import current_app
 
 # Load environment variables (assuming .env is loaded in main app)
-TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
-TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
-CALLER_ID = os.getenv('TWILIO_CALLER_ID')
+# Telnyx setup
+telnyx_client = Telnyx(api_key=os.getenv('TELNYX_API_KEY'))
+CALLER_ID = os.getenv('TELNYX_CALLER_ID')
+TELNYX_CONNECTION_ID = os.getenv('TELNYX_CONNECTION_ID')  # required by Telnyx
 BASE_URL = os.getenv('BASE_URL', 'https://app.expresshealth.ie').rstrip('/')
 
-# Twilio Client (will be used inside app context)
-twilio_client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 # Dublin timezone
 DUBLIN_TZ = pytz.timezone('Europe/Dublin')
@@ -31,29 +35,33 @@ def generate_twiml(user_doc: dict):
     return str(resp)
 
 def make_compliance_document_ai_call(app, phone: str, user_doc: dict, user_object_id):
-    """Initiate AI call and mark call_sent = 1 on success"""
-    print('calls rusvin')
     params = urllib.parse.urlencode(user_doc, doseq=True)
     try:
         with app.app_context():
-            call = twilio_client.calls.create(
-                to=phone,
-                from_=CALLER_ID,
-                url=f'https://app.expresshealth.ie/voice2?{params}'
+            e164_phone = phone.replace(" ", "")
+            connection_id = os.getenv('TELNYX_CONNECTION_ID')
+            
+            response = requests.post(
+                f"https://api.telnyx.com/v2/texml/calls/{connection_id}",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('TELNYX_API_KEY')}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "To": e164_phone,
+                    "From": CALLER_ID.replace(" ", ""),
+                    "Url": f'https://app.expresshealth.ie/voice2?{params}',
+                    "StatusCallback": f'https://app.expresshealth.ie/call/completed'
+                }
             )
-            print(f"AI Call initiated: {call.sid} for {phone}")
+            response.raise_for_status()
+            data = response.json()
+            print(f"TeXML call initiated: {data['call_sid']} for {e164_phone}")
 
-            # Mark as sent
             app.db.users.update_one(
                 {"_id": user_object_id},
                 {"$set": {"call_sent": 1, "updated_at": datetime.utcnow()}}
             )
-            print(f"call_sent = 1 for user {user_object_id}")
-
     except Exception as e:
         print(f"Call failed: {e}")
-        # Do NOT mark as sent if call failed
 
-# Call this once during app initialization
-def init_followup_scheduler(app):
-    schedule_followup_calls(app)

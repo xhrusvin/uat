@@ -5,6 +5,8 @@ from flask import current_app, jsonify
 from bson import ObjectId
 from compliancedocumentcall import make_compliance_document_ai_call
 from datetime import datetime
+import requests
+
 
 # --------------------------------------------------
 # Logging setup
@@ -63,11 +65,12 @@ def register_compliance_doc_call_routes(app):
         current_time = datetime.utcnow() 
         query = {
             "is_admin": {"$ne": True},
-            "xn_user_id": {"$ne": None},
-            "call_sent": {"$ne": 0},
-            "follow_up_sent": {"$ne": 0},  # 0 or missing
-            "compliance_documents_status": {"$ne": 1},
-            "xn_user_id": "69452f8cf84265e6fd0a11b9",
+            #"xn_user_id": {"$ne": None},
+            #"call_sent": {"$ne": 0},
+            #"follow_up_sent": {"$ne": 0},  # 0 or missing
+            #"compliance_documents_status": {"$ne": 1},
+            "xn_user_id": "69d7984a855b3aa3030e8986",
+            "email": "rusvin@xpresshealth.ie"
             }
 
         user = app.db.users.find_one(
