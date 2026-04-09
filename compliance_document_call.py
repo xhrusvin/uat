@@ -6,6 +6,7 @@ from bson import ObjectId
 from compliancedocumentcall import make_compliance_document_ai_call
 from datetime import datetime
 import requests
+import os
 
 
 # --------------------------------------------------
@@ -20,6 +21,8 @@ log = logging.getLogger(__name__)
 # --------------------------------------------------
 ALLOWED_START_HOUR = 0
 ALLOWED_END_HOUR = 23
+
+XN_PORTAL_BASE_URL = os.getenv("XN_PORTAL_BASE_URL")
 
 
 def is_within_call_window():
@@ -90,10 +93,10 @@ def register_compliance_doc_call_routes(app):
         xn_user_id = user.get("xn_user_id")
 
         # === Fetch document list from external API ===
-        api_url = "https://user.xpresshealthapp.com/api/ai/recruitments/user-document-list"
+        api_url = XN_PORTAL_BASE_URL + "/ai/recruitments/user-document-list"
         headers = {
-         "Api-Key": "XN_PORTAL_API_KEY",      # Replace with env var in production
-          "X-App-Country": "XN_APP_COUNTRY"    # Replace with env var in production
+         "Api-Key": os.getenv("XN_PORTAL_API_KEY"),      # Replace with env var in production
+          "X-App-Country": os.getenv("XN_APP_COUNTRY")    # Replace with env var in production
         }
         payload = {"_id": str(xn_user_id)}
 
