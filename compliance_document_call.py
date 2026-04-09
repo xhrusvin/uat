@@ -112,7 +112,7 @@ def register_compliance_doc_call_routes(app):
             "user_id": str(user_id)
         }), 200
 
-          if not api_data.get("success") or "data" not in api_data:
+        if not api_data.get("success") or "data" not in api_data:
              return jsonify({
                **response_base,
                "status": "api_error",
@@ -120,11 +120,11 @@ def register_compliance_doc_call_routes(app):
                "user_id": str(user_id)
               }), 200
 
-          documents = api_data["data"]
-          pending_count = sum(1 for doc in documents if doc.get("status") == "pending")
-          has_pending = pending_count > 0
+        documents = api_data["data"]
+        pending_count = sum(1 for doc in documents if doc.get("status") == "pending")
+        has_pending = pending_count > 0
 
-           # === Only proceed if there are pending documents ===
+        # === Only proceed if there are pending documents ===
         if not has_pending:
            return jsonify({
             **response_base,
@@ -134,7 +134,7 @@ def register_compliance_doc_call_routes(app):
             "pending_documents_count": 0
         }), 200
 
-         # Prevent double-triggering (in case of concurrent requests)
+        # Prevent double-triggering (in case of concurrent requests)
         update_result = app.db.users.update_one(
           {
             "_id": user_id
