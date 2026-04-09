@@ -69,8 +69,10 @@ def _format_conv(conv):
 
     full_name = " ".join(filter(None, [first_name, last_name])).strip()
     conv['name'] = full_name or "Unknown User"
+    conv['email'] = safe_str(user.get('email'), '—')          # ← ADD THIS LINE
     conv['designation'] = safe_str(user.get('designation'), '-')
     conv['country'] = safe_str(user.get('country'), '-')
+    conv['call_status'] = safe_str(conv.get('call_status'), '—')
 
     # === DATE FORMATTING (also make safe) ===
     try:
@@ -122,7 +124,9 @@ def _format_conv(conv):
         'conv_id': conv_id,
         'phone': conv.get('phone', ''),
         'name': conv['name'],
+        'email': conv.get('email', '—'),
         'designation': conv['designation'],
+        'call_status': conv['call_status'],
         'country': conv['country'],
         'started_at': conv['started_at'],
         'ended_at': conv['ended_at'],
