@@ -9,8 +9,8 @@ import os
 import aiohttp
 import asyncio
 from pytz import utc
-import pytz
 import requests
+import pytz
 import re
 
 from .views import admin_bp, admin_required
@@ -312,7 +312,9 @@ def level_four_tr():
         date_range=date_range
     )
 
-
+# ===============================
+# FETCH TRANSCRIPT (MODAL)
+# ===============================
 @admin_bp.route('/level_four_tr/<conv_id>/audio')
 @admin_required
 def get_level_four_tr_audio(conv_id):
@@ -360,9 +362,8 @@ def get_level_four_tr_audio(conv_id):
     # except Exception as e:
     #     current_app.logger.error(f"Error fetching audio for {conv_id}: {e}", exc_info=True)
     #     return "Internal server error", 500
-# ===============================
-# FETCH TRANSCRIPT (MODAL)
-# ===============================
+
+
 @admin_bp.route('/elevenlabs/api/level_four_tr/<conversation_id>/summary')
 @admin_required
 def elevenlabs_summary_proxy_level_four_tr(conversation_id):
@@ -495,6 +496,9 @@ def elevenlabs_summary_proxy_level_four_tr(conversation_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ===============================
+# AUDIO ENDPOINT
+# ===============================
 @admin_bp.route('/elevenlabs/api/level_four_tr/<conversation_id>')
 @admin_required
 def elevenlabs_level_four_api_proxy(conversation_id):
@@ -514,9 +518,6 @@ def elevenlabs_level_four_api_proxy(conversation_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ===============================
-# AUDIO ENDPOINT
-# ===============================
 @admin_bp.route('/api/level_four_tr/<conv_id>/transcript')
 @admin_required
 def get_level_four_transcript(conv_id):
