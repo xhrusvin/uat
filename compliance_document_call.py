@@ -93,7 +93,7 @@ def register_compliance_doc_call_routes(app):
         xn_user_id = user.get("xn_user_id")
 
         # === Fetch document list from external API ===
-        api_url = XN_PORTAL_BASE_URL + "/ai/recruitments/user-document-list"
+        api_url = XN_PORTAL_BASE_URL.rstrip("/") + "/ai/recruitments/user-document-list"
         headers = {
          "Api-Key": os.getenv("XN_PORTAL_API_KEY"),      # Replace with env var in production
           "X-App-Country": os.getenv("XN_APP_COUNTRY")    # Replace with env var in production
@@ -101,7 +101,7 @@ def register_compliance_doc_call_routes(app):
         payload = {"_id": str(xn_user_id)}
 
         try:
-             response = requests.post(api_url, json=payload, headers=headers, timeout=10)
+             response = requests.get(api_url, params=payload, headers=headers, timeout=10)
              response.raise_for_status()
              api_data = response.json()
         except Exception as e:
