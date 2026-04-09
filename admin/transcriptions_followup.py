@@ -374,7 +374,7 @@ def elevenlabs_summary_proxy_tr(conversation_id):
     url = f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}"
     headers = {"xi-api-key": api_key}
 
-    COUNTY_FIELDS  = {"years_experience_ireland", "previous_work_county"}
+    COUNTY_FIELDS  = {"county", "previous_work_county"}
     GENDER_FIELDS  = {"gender"}
     VISA_FIELDS    = {"visa_type"}
     UNIFORM_FIELDS = {"uniform_size"}
