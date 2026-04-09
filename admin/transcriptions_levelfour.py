@@ -310,14 +310,12 @@ def level_four_tr():
         date_range=date_range
     )
 
-# ===============================
-# FETCH TRANSCRIPT (MODAL)
-# ===============================
+
 @admin_bp.route('/level_four_tr/<conv_id>/audio')
 @admin_required
 def get_level_four_tr_audio(conv_id):
     #try:
-        conv = current_app.db.follow_up_conv.find_one({"_id": ObjectId(conv_id)})
+        conv = current_app.db.level_four_cov.find_one({"_id": ObjectId(conv_id)})
         if not conv:
             return "Conversation not found", 404
 
@@ -360,13 +358,144 @@ def get_level_four_tr_audio(conv_id):
     # except Exception as e:
     #     current_app.logger.error(f"Error fetching audio for {conv_id}: {e}", exc_info=True)
     #     return "Internal server error", 500
+# ===============================
+# FETCH TRANSCRIPT (MODAL)
+# ===============================
+@admin_bp.route('/elevenlabs/api/level_four_tr/<conversation_id>/summary')
+@admin_required
+def elevenlabs_summary_proxy_tr(conversation_id):
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        return jsonify({"error": "API key missing"}), 500
 
-# ===============================
-# AUDIO ENDPOINT
-# ===============================
+    url = f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}"
+    headers = {"xi-api-key": api_key}
+
+    COUNTY_FIELDS  = {"county", "previous_work_county"}
+    GENDER_FIELDS  = {"gender"}
+    VISA_FIELDS    = {"visa_type"}
+    UNIFORM_FIELDS = {"uniform_size"}
+    TRAVEL_FIELDS  = {"commute_plan"}
+    BOOLEAN_FIELDS = {
+       "right_to_work_ireland",
+       "covid_vaccination",
+       "hepatitis_b_antibodies",
+       "mmr_varicella_vaccination",
+     }
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            return jsonify({"error": "ElevenLabs API error", "details": resp.text}), resp.status_code
+
+        data = resp.json()
+        analysis = data.get("analysis") or {}
+        dcr = analysis.get("data_collection_results") or {}
+
+        # ── Pre-load counties (_id → name) ──
+        county_map = {}
+        try:
+            for c in current_app.db.county.find({}, {"_id": 1, "name": 1}):
+                county_map[str(c["_id"])] = c["name"]
+        except Exception as e:
+            current_app.logger.warning(f"Could not load counties: {e}")
+
+        # ── Pre-load genders (_id → name) ──
+        gender_map = {}
+        try:
+            for g in current_app.db.genders.find({}, {"_id": 1, "name": 1}):
+                gender_map[str(g["_id"])] = g["name"]
+        except Exception as e:
+            current_app.logger.warning(f"Could not load genders: {e}")
+
+        # ── Pre-load visa types (_id → name) ──
+        visa_map = {}
+        try:
+            for v in current_app.db.visa_types.find({}, {"_id": 1, "name": 1}):
+                visa_map[str(v["_id"])] = v["name"]
+        except Exception as e:
+            current_app.logger.warning(f"Could not load visa types: {e}")
+
+        # ── Pre-load uniform sizes (id integer → name) ──
+        # Collection uses `id` field (int) as lookup key, not `_id`
+        uniform_map = {}
+        try:
+            for u in current_app.db.uniform_sizes.find({}, {"id": 1, "name": 1}):
+                if "id" in u:
+                    uniform_map[str(u["id"])] = u["name"]   # key as string for safe comparison
+        except Exception as e:
+            current_app.logger.warning(f"Could not load uniform sizes: {e}")
+
+        # ── Pre-load travel modes (id integer → name) ──
+        travel_map = {}
+        try:
+            for t in current_app.db.travel_mode.find({}, {"id": 1, "name": 1}):
+                if "id" in t:
+                    travel_map[str(t["id"])] = t["name"]
+        except Exception as e:
+            current_app.logger.warning(f"Could not load travel modes: {e}")
+
+        # ── Build structured display rows ──
+        rows = []
+        for key, item in dcr.items():
+            field_id = item.get("data_collection_id", key)
+            value    = item.get("value")
+
+            display_value = None
+
+            # === BOOLEAN FIELD HANDLING (YES / NO) ===
+            if field_id in BOOLEAN_FIELDS:
+              if str(value) == "1":
+               display_value = "Yes"
+              elif str(value) == "0":
+               display_value = "No"
+              else:
+               display_value = "—"
+
+            elif field_id in COUNTY_FIELDS and value:
+                display_value = county_map.get(str(value))
+
+            elif field_id in GENDER_FIELDS and value:
+                display_value = gender_map.get(str(value))
+
+            elif field_id in VISA_FIELDS and value:
+                display_value = visa_map.get(str(value))
+
+
+            elif field_id in UNIFORM_FIELDS and value:
+                # ElevenLabs returns the integer id (e.g. 6), match against `id` field
+                display_value = uniform_map.get(str(value))
+
+            elif field_id in TRAVEL_FIELDS and value:       # ← add this
+                display_value = travel_map.get(str(value))
+
+            # Fall back to raw value if no match or not a lookup field
+            if display_value is None:
+                display_value = str(value) if value is not None else "—"
+
+            rows.append({
+                "id":      field_id,
+                "label":   field_id.replace("_", " ").title(),
+                "value":   display_value,
+                "is_null": value is None,
+            })
+
+            call_status_item = dcr.get("call_status") or {}
+            call_status = call_status_item.get("value") or ""
+
+        return jsonify({
+            "call_summary": analysis.get("call_summary_title") or "",
+            "call_status" : call_status,
+            "rows":         rows,
+            "total":        len(rows)
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @admin_bp.route('/elevenlabs/api/level_four_tr/<conversation_id>')
 @admin_required
-def elevenlabs_level_four_tr_api_proxy(conversation_id):
+def elevenlabs_level_four_api_proxy(conversation_id):
     api_key = os.getenv("ELEVENLABS_API_KEY")
     if not api_key:
         return jsonify({"error": "API key missing"}), 500
@@ -382,3 +511,40 @@ def elevenlabs_level_four_tr_api_proxy(conversation_id):
         return jsonify(resp.json())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ===============================
+# AUDIO ENDPOINT
+# ===============================
+@admin_bp.route('/api/level_four_tr/<conv_id>/transcript')
+@admin_required
+def get_level_four_transcript(conv_id):
+    """Lightweight endpoint — returns only transcript turns for a single conversation."""
+    if not ObjectId.is_valid(conv_id):
+        return jsonify({"error": "Invalid conversation ID"}), 400
+
+    conv = current_app.db.level_four_cov.find_one(
+        {"_id": ObjectId(conv_id)},
+        {"turns": 1, "phone": 1, "started_at": 1, "ended_at": 1}  # only fetch what we need
+    )
+
+    if not conv:
+        return jsonify({"error": "Conversation not found"}), 404
+
+    tz_utc = pytz.UTC
+    formatted_turns = []
+    for turn in conv.get('turns', []):
+        try:
+            time_str = turn['ts'].astimezone(tz_utc).strftime('%H:%M:%S') if turn.get('ts') else '—'
+        except Exception:
+            time_str = '—'
+        formatted_turns.append({
+            'role': turn.get('role', 'unknown'),
+            'text': turn.get('text', ''),
+            'time': time_str
+        })
+
+    return jsonify({
+        "conv_id": conv_id,
+        "turns": formatted_turns,
+        "turn_count": len(formatted_turns)
+    }), 200
