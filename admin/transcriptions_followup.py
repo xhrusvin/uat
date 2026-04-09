@@ -374,10 +374,11 @@ def elevenlabs_summary_proxy_tr(conversation_id):
     url = f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}"
     headers = {"xi-api-key": api_key}
 
-    COUNTY_FIELDS  = {"location_in_ireland", "previous_work_county"}
+    COUNTY_FIELDS  = {"years_experience_ireland", "previous_work_county"}
     GENDER_FIELDS  = {"gender"}
     VISA_FIELDS    = {"visa_type"}
     UNIFORM_FIELDS = {"uniform_size"}
+    TRAVEL_FIELDS  = {"commute_plan"}
     BOOLEAN_FIELDS = {
        "right_to_work_ireland",
        "covid_vaccination",
@@ -428,6 +429,15 @@ def elevenlabs_summary_proxy_tr(conversation_id):
         except Exception as e:
             current_app.logger.warning(f"Could not load uniform sizes: {e}")
 
+        # ── Pre-load travel modes (id integer → name) ──
+        travel_map = {}
+        try:
+            for t in current_app.db.travel_mode.find({}, {"id": 1, "name": 1}):
+                if "id" in t:
+                    travel_map[str(t["id"])] = t["name"]
+        except Exception as e:
+            current_app.logger.warning(f"Could not load travel modes: {e}")
+
         # ── Build structured display rows ──
         rows = []
         for key, item in dcr.items():
@@ -458,6 +468,9 @@ def elevenlabs_summary_proxy_tr(conversation_id):
             elif field_id in UNIFORM_FIELDS and value:
                 # ElevenLabs returns the integer id (e.g. 6), match against `id` field
                 display_value = uniform_map.get(str(value))
+
+            elif field_id in TRAVEL_FIELDS and value:       # ← add this
+                display_value = travel_map.get(str(value))
 
             # Fall back to raw value if no match or not a lookup field
             if display_value is None:
