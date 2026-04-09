@@ -363,7 +363,7 @@ def get_level_four_tr_audio(conv_id):
 # ===============================
 @admin_bp.route('/elevenlabs/api/level_four_tr/<conversation_id>/summary')
 @admin_required
-def elevenlabs_summary_proxy_tr(conversation_id):
+def elevenlabs_summary_proxy_level_four_tr(conversation_id):
     api_key = os.getenv("ELEVENLABS_API_KEY")
     if not api_key:
         return jsonify({"error": "API key missing"}), 500
