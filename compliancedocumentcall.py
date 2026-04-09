@@ -50,7 +50,7 @@ def make_compliance_document_ai_call(app, phone: str, user_doc: dict, user_objec
                 json={
                     "To": e164_phone,
                     "From": CALLER_ID.replace(" ", ""),
-                    "Url": f'https://app.expresshealth.ie/voice2?{params}',
+                    "Url": f'https://app.expresshealth.ie/voice2_uat?{params}',
                     "StatusCallback": f'https://app.expresshealth.ie/call/completed'
                 }
             )
