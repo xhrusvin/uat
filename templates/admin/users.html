@@ -363,6 +363,14 @@
       <i class="bi bi-telephone-forward me-2"></i>Follow Up Call
     </button>
   </li>
+  <!-- NEW: Compliance Document Tab -->
+          <li class="nav-item" role="presentation">
+            <button class="nav-link fw-semibold" id="compliance-call-tab"
+                    data-bs-toggle="tab" data-bs-target="#compliance-call-pane"
+                    type="button" role="tab">
+              <i class="bi bi-file-earmark-check me-2"></i> Compliance Document
+            </button>
+          </li>
 </ul>
 
         <!-- ── Tab Panes ── -->
@@ -508,6 +516,82 @@
 
   </div><!-- /.row -->
 </div><!-- /#followup-call-pane -->
+
+
+<!-- ==================== NEW: COMPLIANCE DOCUMENT CALL PANE ==================== -->
+          <div class="tab-pane fade" id="compliance-call-pane" role="tabpanel">
+
+            <!-- No Call Notice -->
+            <div id="comp-no-call" class="text-center py-5 d-none">
+              <i class="bi bi-telephone-x display-4 text-muted opacity-50"></i>
+              <h5 class="mt-3 text-muted">No Compliance Call Available</h5>
+              <p class="text-muted">This user has not completed the Compliance Document call yet.</p>
+            </div>
+
+            <!-- Main Content -->
+            <div id="comp-call-section" class="row g-4 d-none">
+
+              <!-- LEFT COLUMN: Audio + Transcript -->
+              <div class="col-lg-7">
+
+                <!-- Audio Player -->
+                <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
+                <div id="comp-audio-player-container" class="mb-4 d-none">
+                  <audio id="comp-call-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
+                  <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
+                </div>
+                <div id="comp-audio-loading" class="text-primary mb-3 d-none">
+                  <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                  <strong>Loading audio recording...</strong>
+                </div>
+                <div id="comp-audio-error" class="alert alert-danger d-none" role="alert">
+                  <strong>Audio unavailable:</strong> <span id="comp-error-message"></span>
+                  <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="comp-retry-audio">Retry</button>
+                </div>
+
+                <hr class="my-3">
+
+                <!-- Transcript -->
+                <h6 class="fw-bold text-primary mb-3">Conversation Transcript</h6>
+                <div id="comp-transcript-loading" class="text-center py-5 d-none">
+                  <div class="spinner-border text-primary" style="width:2.5rem;height:2.5rem;" role="status"></div>
+                  <p class="mt-3 text-muted">Loading transcript...</p>
+                </div>
+                <div id="comp-transcript-error" class="alert alert-danger d-none" role="alert">
+                  <strong>Failed to load transcript:</strong> <span id="comp-transcript-error-msg"></span>
+                  <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="comp-retry-transcript">Retry</button>
+                </div>
+                <div id="comp-transcript-empty" class="text-center py-5 d-none">
+                  <i class="bi bi-chat-square-dots display-4 text-muted opacity-50"></i>
+                  <p class="mt-3 text-muted">No transcript available for this call.</p>
+                </div>
+                <div id="comp-turns" class="border-start border-4 border-primary ps-4"
+                     style="max-height: 460px; overflow-y: auto;"></div>
+              </div>
+
+              <!-- RIGHT COLUMN: Brief Lead Summary -->
+              <div class="col-lg-5">
+                <h6 class="fw-bold text-primary mb-3">Brief Lead Summary</h6>
+                <div id="comp-brief-summary" class="border-start border-4 border-info ps-4"
+                     style="max-height: 580px; overflow-y: auto;">
+
+                  <div id="comp-brief-loading" class="text-center py-5">
+                    <div class="spinner-border text-primary" style="width:2rem;height:2rem;" role="status"></div>
+                    <p class="mt-3 text-muted">Loading brief summary...</p>
+                  </div>
+
+                  <div id="comp-brief-content" class="d-none"></div>
+
+                  <div id="comp-brief-empty" class="text-center py-5 text-muted d-none">
+                    <i class="bi bi-info-circle display-4 opacity-50"></i>
+                    <p class="mt-3 mb-0">No summary data available for this call.</p>
+                  </div>
+                </div>
+              </div>
+
+            </div><!-- /#comp-call-section -->
+
+          </div><!-- /#compliance-call-pane -->
 
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Close</button>
@@ -1051,6 +1135,136 @@ document.addEventListener('DOMContentLoaded', () => {
         resetAudioUI(); resetTranscript();
         fuResetAudioUI(); fuResetTranscript();
     });
+});
+document.addEventListener('DOMContentLoaded', () => {
+
+    // === Compliance Call Elements ===
+    const compAudioPlayer     = document.getElementById('comp-call-audio');
+    const compAudioContainer  = document.getElementById('comp-audio-player-container');
+    const compAudioLoading    = document.getElementById('comp-audio-loading');
+    const compAudioError      = document.getElementById('comp-audio-error');
+    const compErrorMsg        = document.getElementById('comp-error-message');
+
+    const compTurnsDiv        = document.getElementById('comp-turns');
+    const compTxLoading       = document.getElementById('comp-transcript-loading');
+    const compTxError         = document.getElementById('comp-transcript-error');
+    const compTxErrorMsg      = document.getElementById('comp-transcript-error-msg');
+    const compTxEmpty         = document.getElementById('comp-transcript-empty');
+
+    const compBriefLoading    = document.getElementById('comp-brief-loading');
+    const compBriefContent    = document.getElementById('comp-brief-content');
+    const compBriefEmpty      = document.getElementById('comp-brief-empty');
+
+    const compCallSection     = document.getElementById('comp-call-section');
+    const compNoCallNotice    = document.getElementById('comp-no-call');
+
+    // State
+    let currentComplianceConvId = null;
+    let currentComplianceElevenLabsId = null;
+
+    // Reset functions
+    function compResetAudioUI() {
+        compAudioLoading.classList.add('d-none');
+        compAudioError.classList.add('d-none');
+        compAudioContainer.classList.add('d-none');
+    }
+
+    function compResetTranscript() {
+        compTurnsDiv.innerHTML = '';
+        compTxLoading.classList.add('d-none');
+        compTxError.classList.add('d-none');
+        compTxEmpty.classList.add('d-none');
+    }
+
+    function compResetBrief() {
+        compBriefLoading.classList.remove('d-none');
+        compBriefContent.classList.add('d-none');
+        compBriefContent.innerHTML = '';
+        compBriefEmpty.classList.add('d-none');
+    }
+
+    function compShowAudioError(msg) {
+        compErrorMsg.textContent = msg;
+        compAudioError.classList.remove('d-none');
+        compAudioLoading.classList.add('d-none');
+    }
+
+    // Load Audio
+    async function compLoadAudio() {
+        compResetAudioUI();
+        compAudioLoading.classList.remove('d-none');
+        try {
+            const res = await fetch(`/admin/compliance_tr/${currentComplianceConvId}/audio`);
+            if (!res.ok) throw new Error('Audio not available yet or still processing');
+            if (compAudioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(compAudioPlayer.src);
+            const blob = await res.blob();
+            compAudioPlayer.src = URL.createObjectURL(blob);
+            compAudioContainer.classList.remove('d-none');
+            compAudioLoading.classList.add('d-none');
+        } catch (err) {
+            compShowAudioError(err.message);
+        }
+    }
+
+    // Load Transcript
+    async function compLoadTranscript() {
+        compResetTranscript();
+        compTxLoading.classList.remove('d-none');
+        try {
+            const res = await fetch(`/admin/api/compliance_tr/${currentComplianceConvId}/transcript`);
+            if (!res.ok) throw new Error('Failed to load transcript');
+            const data = await res.json();
+            compTxLoading.classList.add('d-none');
+            renderTurns(compTurnsDiv, compTxEmpty, data.turns || []);
+        } catch (err) {
+            compTxErrorMsg.textContent = err.message;
+            compTxError.classList.remove('d-none');
+        }
+    }
+
+    // Load Brief Summary
+    async function compLoadBriefSummary() {
+        compResetBrief();
+        if (!currentComplianceElevenLabsId) {
+            compBriefEmpty.classList.remove('d-none');
+            compBriefLoading.classList.add('d-none');
+            return;
+        }
+        try {
+            const resp = await fetch(`/admin/elevenlabs/api/compliance_tr/${currentComplianceElevenLabsId}/summary`);
+            if (!resp.ok) throw new Error('Failed to fetch summary');
+            const data = await resp.json();
+            renderBriefSummary(compBriefLoading, compBriefContent, compBriefEmpty, data);
+        } catch (err) {
+            compBriefLoading.classList.add('d-none');
+            compBriefEmpty.classList.remove('d-none');
+        }
+    }
+
+    // Tab shown event
+    document.getElementById('compliance-call-tab').addEventListener('shown.bs.tab', () => {
+        if (!currentComplianceConvId) {
+            compCallSection.classList.add('d-none');
+            compNoCallNotice.classList.remove('d-none');
+            return;
+        }
+
+        compCallSection.classList.remove('d-none');
+        compNoCallNotice.classList.add('d-none');
+
+        compResetAudioUI();
+        compResetTranscript();
+        compResetBrief();
+
+        compLoadAudio();
+        compLoadTranscript();
+        compLoadBriefSummary();
+    });
+
+    // Retry buttons
+    document.getElementById('comp-retry-audio').addEventListener('click', compLoadAudio);
+    document.getElementById('comp-retry-transcript').addEventListener('click', compLoadTranscript);
+
 });
 </script>
 {% endblock %}
