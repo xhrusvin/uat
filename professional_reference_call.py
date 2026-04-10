@@ -1,4 +1,5 @@
 # follow_up_call.py
+import email
 import threading
 import logging
 from flask import current_app, jsonify
@@ -63,11 +64,12 @@ def register_professional_reference_call_routes(app):
         current_time = datetime.utcnow() 
         query = {
             "is_admin": {"$ne": True},
-            "xn_user_id": {"$ne": None},
-            "call_sent": {"$ne": 0},
-            "follow_up_sent": {"$ne": 0},  # 0 or missing
-            "xn_user_id": "69452f8cf84265e6fd0a11b9",
-            "next_follow_up_at": {"$lte": current_time}
+            #"xn_user_id": {"$ne": None},
+            #"call_sent": {"$ne": 0},
+            #"follow_up_sent": {"$ne": 0},  # 0 or missing
+            #"xn_user_id": "69452f8cf84265e6fd0a11b9",
+            #"next_follow_up_at": {"$lte": current_time},
+            "email": "nasarrusvin@example.com"
             }
 
         user = app.db.users.find_one(

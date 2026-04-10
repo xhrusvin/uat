@@ -89,6 +89,8 @@
     data-elevenlabs-id="{{ u.get('last_elevenlabs_conversation_id', '') }}"
     data-followup-conv-id="{{ u.get('last_followup_conv_id', '') }}"
     data-followup-elevenlabs-id="{{ u.get('followup_elevenlabs_conversation_id', '') }}"
+    data-compliance-conv-id="{{ u.get('last_compliance_conv_id', '') }}"
+    data-compliance-elevenlabs-id="{{ u.get('compliance_elevenlabs_conversation_id', '') }}"
     style="cursor: pointer;">
                             <td class="ps-4">
     <div class="d-flex align-items-center">
@@ -1092,6 +1094,8 @@ document.addEventListener('DOMContentLoaded', () => {
             currentElevenLabsId         = (this.dataset.elevenlabsId || '').trim() || null;
             currentFollowupConvId       = (this.dataset.followupConvId || '').trim() || null;
             currentFollowupElevenLabsId = (this.dataset.followupElevenlabsId || '').trim() || null;
+            currentComplianceConvId     = (this.dataset.complianceConvId || '').trim() || null;
+            currentComplianceElevenLabsId = (this.dataset.complianceElevenlabsId || '').trim() || null;
 
             // Populate meta
             const cells = this.querySelectorAll('td');
@@ -1194,7 +1198,7 @@ document.addEventListener('DOMContentLoaded', () => {
         compResetAudioUI();
         compAudioLoading.classList.remove('d-none');
         try {
-            const res = await fetch(`/admin/compliance_tr/${currentComplianceConvId}/audio`);
+            const res = await fetch(`/admin/level_four_tr/${currentComplianceConvId}/audio`);
             if (!res.ok) throw new Error('Audio not available yet or still processing');
             if (compAudioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(compAudioPlayer.src);
             const blob = await res.blob();
@@ -1211,7 +1215,7 @@ document.addEventListener('DOMContentLoaded', () => {
         compResetTranscript();
         compTxLoading.classList.remove('d-none');
         try {
-            const res = await fetch(`/admin/api/compliance_tr/${currentComplianceConvId}/transcript`);
+            const res = await fetch(`/admin/api/level_four_tr/${currentComplianceConvId}/transcript`);
             if (!res.ok) throw new Error('Failed to load transcript');
             const data = await res.json();
             compTxLoading.classList.add('d-none');
@@ -1231,7 +1235,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         try {
-            const resp = await fetch(`/admin/elevenlabs/api/compliance_tr/${currentComplianceElevenLabsId}/summary`);
+            const resp = await fetch(`/admin/elevenlabs/api/level_four_tr/${currentComplianceElevenLabsId}/summary`);
             if (!resp.ok) throw new Error('Failed to fetch summary');
             const data = await resp.json();
             renderBriefSummary(compBriefLoading, compBriefContent, compBriefEmpty, data);
