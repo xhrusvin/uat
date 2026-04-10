@@ -384,6 +384,7 @@ def elevenlabs_summary_proxy_tr(conversation_id):
        "covid_vaccination",
        "hepatitis_b_antibodies",
        "mmr_varicella_vaccination",
+       "masters",
      }
 
     try:
