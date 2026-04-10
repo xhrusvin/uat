@@ -50,7 +50,7 @@ def make_professional_reference_ai_call(app, phone: str, user_doc: dict, user_ob
                 json={
                     "To": e164_phone,
                     "From": CALLER_ID.replace(" ", ""),
-                    "Url": f'https://app.expresshealth.ie/voice3?{params}',
+                    "Url": f'https://app.expresshealth.ie/voice3_uat?{params}',
                     "StatusCallback": f'https://app.expresshealth.ie/call/completed'
                 }
             )

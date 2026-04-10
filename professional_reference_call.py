@@ -135,7 +135,7 @@ def register_professional_reference_call_routes(app):
             "created_at": created_at_str,
             "next_follow_up_at": next_follow_up_str,
             "triggered_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "message": "Follow-up call triggered successfully."
+            "message": "Professional reference call triggered successfully."
           }), 200
 
     
