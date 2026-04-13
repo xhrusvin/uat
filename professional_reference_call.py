@@ -89,21 +89,18 @@ def register_professional_reference_call_routes(app):
           sort=[("next_follow_up_at", 1)]  # Oldest due first (ascending)
           )
 
-        if user:
-         
+        if not user or not user.get("xn_user_id"):
             return jsonify({
                 **response_base,
-                "user": serialize_doc(user)
+                "status": "no_user_or_no_xn_user_id",
+                "message": "No user found or xn_user_id is missing"
             }), 200
-            
 
-        if not user:
-        # Optional: fallback message if no follow-up due
-          return jsonify({
-              **response_base,
-              "status": "no_pending",
-            "message": "No users need a follow-up call at this time."
-          }), 200
+        # Return ONLY xn_user_id
+        return jsonify({
+            **response_base,
+            "xn_user_id": str(user["xn_user_id"])   # ensure it's a string
+        }), 200
 
         user_id = user["_id"]
 
