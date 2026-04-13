@@ -168,7 +168,8 @@ def register_professional_reference_call_routes(app):
                             current_app._get_current_object(), 
                             full_phone,                    # Use reference's phone
                             user,                          # original user (if needed inside function)
-                            ref_id                         # reference ID of each references
+                            ref_id,
+                            triggered_count + 1            
                         ),
                         daemon=True
                     ).start()

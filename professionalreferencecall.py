@@ -35,12 +35,13 @@ def generate_twiml(user_doc: dict):
     resp.append(connect)
     return str(resp)
 
-def make_professional_reference_ai_call(app, phone: str, user_doc: dict, ref_id: str):
+def make_professional_reference_ai_call(app, phone: str, user_doc: dict, ref_id: str, ref_count: int):
     params_dict = {}
 
     # Add ref_id FIRST (as requested)
     if ref_id:
         params_dict["ref_id"] = ref_id
+        params_dict["ref_count"] = ref_count
 
     # Add user document fields (handle ObjectId and other non-serializable types)
     for key, value in user_doc.items():
