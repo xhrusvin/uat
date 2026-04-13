@@ -34,8 +34,24 @@ def generate_twiml(user_doc: dict):
     resp.append(connect)
     return str(resp)
 
-def make_professional_reference_ai_call(app, phone: str, user_doc: dict, user_object_id):
-    params = urllib.parse.urlencode(user_doc, doseq=True)
+def make_professional_reference_ai_call(app, phone: str, user_doc: dict, ref_id: str):
+    params_dict = {}
+
+    # Add ref_id FIRST (as requested)
+    if ref_id:
+        params_dict["ref_id"] = ref_id
+
+    # Add user document fields (handle ObjectId and other non-serializable types)
+    for key, value in user_doc.items():
+                if isinstance(value, ObjectId):
+                    params_dict[key] = str(value)
+                elif isinstance(value, datetime):
+                    params_dict[key] = value.isoformat()
+                else:
+                    params_dict[key] = value
+
+    # Convert to query string
+    query_string = urllib.parse.urlencode(params_dict, doseq=True)
     try:
         with app.app_context():
             e164_phone = phone.replace(" ", "")
@@ -50,7 +66,7 @@ def make_professional_reference_ai_call(app, phone: str, user_doc: dict, user_ob
                 json={
                     "To": e164_phone,
                     "From": CALLER_ID.replace(" ", ""),
-                    "Url": f'https://app.expresshealth.ie/voice3_uat?{params}',
+                    "Url": f'https://app.expresshealth.ie/voice3_uat?{query_string}',
                     "StatusCallback": f'https://app.expresshealth.ie/call/completed'
                 }
             )

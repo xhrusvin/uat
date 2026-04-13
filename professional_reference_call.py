@@ -114,119 +114,93 @@ def register_professional_reference_call_routes(app):
 
         # ====================== CALL XN PORTAL API ======================
         try:
-            xn_base_url = XN_PORTAL_BASE_URL
-            api_key     = XN_PORTAL_API_KEY
-            app_country = XN_APP_COUNTRY
-
-            if not xn_base_url or not api_key or not app_country:
-                return jsonify({
-                    **response_base,
-                    "status": "config_error",
-                    "message": "XN Portal configuration is missing"
-                }), 500
-
-            url = f"{xn_base_url.rstrip('/')}/ai/recruitments/detail"
+            url = f"{XN_PORTAL_BASE_URL.rstrip('/')}/ai/recruitments/detail"
 
             headers = {
-                "Api-Key": api_key,
-                "X-App-Country": app_country,
+                "Api-Key": XN_PORTAL_API_KEY,
+                "X-App-Country": XN_APP_COUNTRY,
                 "Content-Type": "application/json"
             }
 
-            payload = {
-                "_id": str(xn_user_id)   # ensure it's string
-            }
+            payload = {"_id": str(xn_user_id)}
 
-            response = requests.get(
-                url,
-                headers=headers,
-                json=payload,      # sends as JSON body (even for GET)
-                timeout=30
-            )
+            api_response = requests.get(url, headers=headers, json=payload, timeout=30)
 
-            if response.status_code == 200:
-                xn_data = response.json()
-                
-                # Extract only the references array
-                references = xn_data.get("data", {}).get("references", [])
-                
+            if api_response.status_code != 200:
                 return jsonify({
                     **response_base,
-                    "xn_user_id": str(xn_user_id),
-                    "status": "success",
-                    "references": references          # ← Only this array
-                }), 200
-
-            else:
-                return jsonify({
-                    **response_base,
-                    "xn_user_id": str(xn_user_id),
-                    "status": "failed",
-                    "message": f"API returned status {response.status_code}",
+                    "status": "api_failed",
+                    "message": f"XN API returned {api_response.status_code}",
                     "references": []
                 }), 200
+
+            xn_data = api_response.json()
+            references = xn_data.get("data", {}).get("references", [])
 
         except Exception as e:
             log.error(f"XN Portal API error: {str(e)}")
             return jsonify({
                 **response_base,
-                "xn_user_id": str(xn_user_id),
-                "status": "error",
-                "message": "Failed to fetch data from XN Portal",
+                "status": "api_error",
+                "message": "Failed to fetch references from XN Portal",
                 "references": []
             }), 200
 
-        user_id = user["_id"]
+        # ------------------- Trigger Call for Each Pending Reference -------------------
+        triggered_count = 0
+        triggered_refs = []
 
-         # Prevent double-triggering (in case of concurrent requests)
-        update_result = app.db.users.update_one(
-          {
-            "_id": user_id
-          },
-          {
-            "$set": {
-                "follow_up_sent": 1,
+        for ref in references:
+            if ref.get("status") == "pending":
+                try:
+                    ref_id = ref.get("id")
+                    ref_name = ref.get("name", "")
+                    ref_phone = ref.get("phone", "")
+                    ref_dial_code = ref.get("dial_code", "+353")
+
+                    #full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
+                    full_phone = "+917034526952"
+
+                    # Trigger AI call for this reference
+                    threading.Thread(
+                        target=make_professional_reference_ai_call,
+                        args=(
+                            current_app._get_current_object(), 
+                            full_phone,                    # Use reference's phone
+                            user,                          # original user (if needed inside function)
+                            ref_id                         # reference ID of each references
+                        ),
+                        daemon=True
+                    ).start()
+
+                    triggered_count += 1
+                    triggered_refs.append({
+                        "ref_id": ref_id,
+                        "name": ref_name,
+                        "phone": full_phone
+                    })
+
+                except Exception as ref_error:
+                    log.error(f"Failed to trigger call for reference {ref.get('id')}: {ref_error}")
+
+        # Mark as sent (optional - you can decide)
+        app.db.users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "professional_reference_call_sent": 1,
                 "updated_at": datetime.utcnow()
-            }
-          }
+            }}
         )
 
-        if update_result.modified_count == 0:
-             return jsonify({
-            **response_base,
-            "status": "already_triggered_or_failed",
-            "message": "Follow-up already triggered or no longer eligible."
-         }), 200
-
-        # Trigger background follow-up AI call
-        threading.Thread(
-           target=make_professional_reference_ai_call,
-           args=(current_app._get_current_object(), user.get("phone"), user, user_id),
-           daemon=True
-         ).start()
-
-        next_follow_up_str = (
-            user.get("next_follow_up_at").strftime("%Y-%m-%d %H:%M:%S UTC")
-            if user.get("next_follow_up_at")
-            else "unknown"
-            )
-
-        created_at_str = (
-            user.get("created_at").strftime("%Y-%m-%d %H:%M:%S UTC")
-            if isinstance(user.get("created_at"), datetime)
-            else "unknown"
-         )
-
+        # ------------------- Final Response -------------------
         return jsonify({
-           **response_base,
-           "status": "triggered",
-            "user_id": str(user_id),
-           "phone": user.get("phone"),
-            "name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
-            "created_at": created_at_str,
-            "next_follow_up_at": next_follow_up_str,
-            "triggered_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "message": "Professional reference call triggered successfully."
-          }), 200
+            **response_base,
+            "xn_user_id": str(xn_user_id),
+            "status": "success",
+            "total_pending_references": len([r for r in references if r.get("status") == "pending"]),
+            "triggered_count": triggered_count,
+            "triggered_references": triggered_refs,
+            "message": f"Successfully triggered {triggered_count} professional reference call(s)."
+        }), 200
 
     
