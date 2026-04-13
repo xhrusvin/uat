@@ -21,6 +21,17 @@ log = logging.getLogger(__name__)
 ALLOWED_START_HOUR = 0
 ALLOWED_END_HOUR = 23
 
+def serialize_doc(doc):
+    if not doc:
+        return None
+    doc = dict(doc)  # make a copy
+    if "_id" in doc:
+        doc["_id"] = str(doc["_id"])
+    # Convert any other datetime fields if needed
+    for key, value in list(doc.items()):
+        if isinstance(value, datetime):
+            doc[key] = value.isoformat()
+    return doc
 
 def is_within_call_window():
     """
@@ -79,13 +90,10 @@ def register_professional_reference_call_routes(app):
           )
 
         if user:
-            # Convert the entire document (including _id and any datetimes) to a JSON-serializable dict
-            user_serialized = json_util.dumps(user)          # returns a JSON string
-            user_serialized = json_util.loads(user_serialized)  # back to Python dict with _id as string
-
+         
             return jsonify({
                 **response_base,
-                "user": user_serialized   # now safe
+                "user": serialize_doc(user)
             }), 200
             
 
