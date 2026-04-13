@@ -64,7 +64,7 @@ def register_professional_reference_call_routes(app):
         current_time = datetime.utcnow() 
         query = {
             "is_admin": {"$ne": True},
-            #"xn_user_id": {"$ne": None},
+            "xn_user_id": {"$ne": None},
             #"call_sent": {"$ne": 0},
             #"follow_up_sent": {"$ne": 0},  # 0 or missing
             #"xn_user_id": "69452f8cf84265e6fd0a11b9",
@@ -76,6 +76,11 @@ def register_professional_reference_call_routes(app):
           query,
           sort=[("next_follow_up_at", 1)]  # Oldest due first (ascending)
           )
+
+        return jsonify({
+          **response_base,
+          "user": user
+        }), 200
 
         if not user:
         # Optional: fallback message if no follow-up due
