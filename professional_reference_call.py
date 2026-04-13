@@ -7,6 +7,7 @@ from bson import ObjectId
 from professionalreferencecall import make_professional_reference_ai_call
 from datetime import datetime
 from bson import json_util
+import requests
 
 # --------------------------------------------------
 # Logging setup
@@ -89,17 +90,74 @@ def register_professional_reference_call_routes(app):
           sort=[("next_follow_up_at", 1)]  # Oldest due first (ascending)
           )
 
-        if not user or not user.get("xn_user_id"):
+        if not user:
             return jsonify({
                 **response_base,
-                "status": "no_user_or_no_xn_user_id",
-                "message": "No user found or xn_user_id is missing"
+                "status": "no_pending",
+                "message": "No users need a follow-up call at this time."
             }), 200
 
-        # Return ONLY xn_user_id
+        xn_user_id = user.get("xn_user_id")
+        if not xn_user_id:
+            return jsonify({
+                **response_base,
+                "status": "missing_xn_user_id",
+                "message": "xn_user_id is missing for this user"
+            }), 200
+
+        # ====================== CALL XN PORTAL API ======================
+        try:
+            xn_base_url = current_app.config.get('XN_PORTAL_BASE_URL')
+            api_key = current_app.config.get('XN_PORTAL_API_KEY')
+            app_country = current_app.config.get('XN_APP_COUNTRY')
+
+            if not xn_base_url or not api_key or not app_country:
+                return jsonify({
+                    **response_base,
+                    "status": "config_error",
+                    "message": "XN Portal configuration is missing"
+                }), 500
+
+            url = f"{xn_base_url.rstrip('/')}/ai/recruitments/detail"
+
+            headers = {
+                "Api-Key": api_key,
+                "X-App-Country": app_country,
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "_id": str(xn_user_id)   # ensure it's string
+            }
+
+            response = requests.get(
+                url,
+                headers=headers,
+                json=payload,      # sends as JSON body (even for GET)
+                timeout=30
+            )
+
+            # Log the status for debugging
+            log.info(f"XN Portal API call - Status: {response.status_code} | URL: {url}")
+
+            if response.status_code == 200:
+                xn_data = response.json()
+                status = "success"
+            else:
+                xn_data = response.text
+                status = "failed"
+
+        except requests.exceptions.RequestException as e:
+            log.error(f"XN Portal API request failed: {e}")
+            xn_data = None
+            status = "request_error"
+
+        # ====================== FINAL RESPONSE ======================
         return jsonify({
             **response_base,
-            "xn_user_id": str(user["xn_user_id"])   # ensure it's a string
+            "xn_user_id": str(xn_user_id),
+            "status": status,
+            "xn_portal_response": xn_data
         }), 200
 
         user_id = user["_id"]
