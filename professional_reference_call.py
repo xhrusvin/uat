@@ -8,7 +8,10 @@ from professionalreferencecall import make_professional_reference_ai_call
 from datetime import datetime
 from bson import json_util
 import requests
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 # --------------------------------------------------
 # Logging setup
 # --------------------------------------------------
@@ -21,6 +24,23 @@ log = logging.getLogger(__name__)
 # --------------------------------------------------
 ALLOWED_START_HOUR = 0
 ALLOWED_END_HOUR = 23
+
+def create_app():
+    app = Flask(__name__)
+
+    # Load config from environment variables
+    app.config['XN_PORTAL_BASE_URL'] = os.getenv('XN_PORTAL_BASE_URL')
+    app.config['XN_PORTAL_API_KEY'] = os.getenv('XN_PORTAL_API_KEY')
+    app.config['XN_APP_COUNTRY']   = os.getenv('XN_APP_COUNTRY')
+
+    # Optional: Add default values or validation
+    if not app.config['XN_PORTAL_BASE_URL']:
+        print("Warning: XN_PORTAL_BASE_URL is not set in .env")
+
+    # Register your routes here
+    register_professional_reference_call_routes(app)
+
+    return app
 
 def serialize_doc(doc):
     if not doc:
@@ -108,7 +128,7 @@ def register_professional_reference_call_routes(app):
         # ====================== CALL XN PORTAL API ======================
         try:
             xn_base_url = current_app.config.get('XN_PORTAL_BASE_URL')
-            api_key = current_app.config.get('XN_PORTAL_API_KEY')
+            api_key     = current_app.config.get('XN_PORTAL_API_KEY')
             app_country = current_app.config.get('XN_APP_COUNTRY')
 
             if not xn_base_url or not api_key or not app_country:
