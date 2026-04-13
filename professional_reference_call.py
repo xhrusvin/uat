@@ -159,7 +159,7 @@ def register_professional_reference_call_routes(app):
                     ref_dial_code = ref.get("dial_code", "+353")
 
                     #full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
-                    full_phone = "+917034526952"
+                    full_phone = "+91 7034526952"
 
                     # Trigger AI call for this reference
                     threading.Thread(
