@@ -74,10 +74,6 @@ def make_professional_reference_ai_call(app, phone: str, user_doc: dict, ref_id:
             data = response.json()
             print(f"TeXML call initiated: {data['call_sid']} for {e164_phone}")
 
-            app.db.users.update_one(
-                {"_id": user_object_id},
-                {"$set": {"call_sent": 1, "updated_at": datetime.utcnow()}}
-            )
     except Exception as e:
         print(f"Call failed: {e}")
 
