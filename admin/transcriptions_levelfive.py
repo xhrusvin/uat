@@ -258,7 +258,9 @@ def level_five_tr():
 
     # 4. Unwind
     pipeline.append({
-        "$unwind": {"path": "$user_info", "preserveNullAndEmptyArrays": True}
+    "$addFields": {
+        "user_info": { "$arrayElemAt": ["$user_info", 0] }   # Take only first match
+    }
     })
 
     # 5. Post-lookup filtering (Name search)
