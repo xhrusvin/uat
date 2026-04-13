@@ -6,6 +6,7 @@ from flask import current_app, jsonify
 from bson import ObjectId
 from professionalreferencecall import make_professional_reference_ai_call
 from datetime import datetime
+from bson import json_util
 
 # --------------------------------------------------
 # Logging setup
@@ -77,10 +78,16 @@ def register_professional_reference_call_routes(app):
           sort=[("next_follow_up_at", 1)]  # Oldest due first (ascending)
           )
 
-        return jsonify({
-          **response_base,
-          "user": user
-        }), 200
+        if user:
+            # Convert the entire document (including _id and any datetimes) to a JSON-serializable dict
+            user_serialized = json_util.dumps(user)          # returns a JSON string
+            user_serialized = json_util.loads(user_serialized)  # back to Python dict with _id as string
+
+            return jsonify({
+                **response_base,
+                "user": user_serialized   # now safe
+            }), 200
+            
 
         if not user:
         # Optional: fallback message if no follow-up due
