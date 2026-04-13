@@ -144,28 +144,37 @@ def register_professional_reference_call_routes(app):
                 timeout=30
             )
 
-            # Log the status for debugging
-            log.info(f"XN Portal API call - Status: {response.status_code} | URL: {url}")
-
             if response.status_code == 200:
                 xn_data = response.json()
-                status = "success"
+                
+                # Extract only the references array
+                references = xn_data.get("data", {}).get("references", [])
+                
+                return jsonify({
+                    **response_base,
+                    "xn_user_id": str(xn_user_id),
+                    "status": "success",
+                    "references": references          # ← Only this array
+                }), 200
+
             else:
-                xn_data = response.text
-                status = "failed"
+                return jsonify({
+                    **response_base,
+                    "xn_user_id": str(xn_user_id),
+                    "status": "failed",
+                    "message": f"API returned status {response.status_code}",
+                    "references": []
+                }), 200
 
-        except requests.exceptions.RequestException as e:
-            log.error(f"XN Portal API request failed: {e}")
-            xn_data = None
-            status = "request_error"
-
-        # ====================== FINAL RESPONSE ======================
-        return jsonify({
-            **response_base,
-            "xn_user_id": str(xn_user_id),
-            "status": status,
-            "xn_portal_response": xn_data
-        }), 200
+        except Exception as e:
+            log.error(f"XN Portal API error: {str(e)}")
+            return jsonify({
+                **response_base,
+                "xn_user_id": str(xn_user_id),
+                "status": "error",
+                "message": "Failed to fetch data from XN Portal",
+                "references": []
+            }), 200
 
         user_id = user["_id"]
 
