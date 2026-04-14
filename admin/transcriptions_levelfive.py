@@ -556,7 +556,7 @@ def get_level_five_transcript(conv_id):
 # ===============================
 # FETCH PROFESSIONAL REFERENCE DETAILS
 # ===============================
-@admin_bp.route('/admin/api/profref/<conv_id>/details')
+@admin_bp.route('/api/level_five_tr/<conv_id>/details')
 @admin_required
 def get_profref_details(conv_id):
     """Fetch reference details using last_profref_conv_id from level_five_cov"""

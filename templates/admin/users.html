@@ -1825,7 +1825,7 @@ async function loadProfrefDetails() {
         statusBadge.textContent = "Loading...";
         statusBadge.className = "badge bg-secondary";
 
-        const res = await fetch(`/admin/level_five_tr/${currentProfrefConvId}/details`);
+        const res = await fetch(`/api/level_five_tr/${currentProfrefConvId}/details`);
         
         if (!res.ok) throw new Error("Failed to fetch reference details");
 
