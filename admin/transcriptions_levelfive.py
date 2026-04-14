@@ -382,10 +382,9 @@ def elevenlabs_summary_proxy_level_five_tr(conversation_id):
     UNIFORM_FIELDS = {"uniform_size"}
     TRAVEL_FIELDS  = {"commute_plan"}
     BOOLEAN_FIELDS = {
-       "right_to_work_ireland",
-       "covid_vaccination",
-       "hepatitis_b_antibodies",
-       "mmr_varicella_vaccination",
+       "worked_more_than_three_month",
+       "safeguarding_issues",
+       "has_the_sufficient_skills"
      }
 
     try:
