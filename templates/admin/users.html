@@ -1087,35 +1087,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ══════════════════════════════════
-    // RENDER BRIEF SUMMARY (shared)
-    // ══════════════════════════════════
-    function renderBriefSummary(loadingEl, contentEl, emptyEl, data) {
-        if (!data.rows || data.rows.length === 0) {
-            loadingEl.classList.add('d-none');
-            emptyEl.classList.remove('d-none');
-            return;
-        }
-        let html = '';
-        if (data.call_summary || data.call_status) {
-            html += `<div class="alert alert-info mb-3">`;
-            if (data.call_summary) html += `<div><strong>Call Summary:</strong> ${data.call_summary}</div>`;
-            if (data.call_status)  html += `<div><strong>Call Status:</strong> ${data.call_status}</div>`;
-            html += `</div>`;
-        }
-        html += '<h6 class="text-success mt-2 mb-3">Collected Information</h6>';
-        html += data.rows.map(row => `
-            <div class="row mb-3">
-                <div class="col-md-5"><strong class="text-muted">${row.label}</strong></div>
-                <div class="col-md-7">
-                    <span class="fw-semibold ${row.is_null ? 'text-muted fst-italic' : ''}">${row.value}</span>
-                </div>
-            </div>`
-        ).join('');
-        contentEl.innerHTML = html;
-        loadingEl.classList.add('d-none');
-        contentEl.classList.remove('d-none');
-    }
+    
 
     // ══════════════════════════════════
     // TAB CLICK — lazy-load Follow Up
@@ -1528,6 +1500,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
             container.appendChild(bubble);
         });
+    }
+
+    // ══════════════════════════════════
+    // RENDER BRIEF SUMMARY (shared)
+    // ══════════════════════════════════
+    function renderBriefSummary(loadingEl, contentEl, emptyEl, data) {
+        if (!data.rows || data.rows.length === 0) {
+            loadingEl.classList.add('d-none');
+            emptyEl.classList.remove('d-none');
+            return;
+        }
+        let html = '';
+        if (data.call_summary || data.call_status) {
+            html += `<div class="alert alert-info mb-3">`;
+            if (data.call_summary) html += `<div><strong>Call Summary:</strong> ${data.call_summary}</div>`;
+            if (data.call_status)  html += `<div><strong>Call Status:</strong> ${data.call_status}</div>`;
+            html += `</div>`;
+        }
+        html += '<h6 class="text-success mt-2 mb-3">Collected Information</h6>';
+        html += data.rows.map(row => `
+            <div class="row mb-3">
+                <div class="col-md-5"><strong class="text-muted">${row.label}</strong></div>
+                <div class="col-md-7">
+                    <span class="fw-semibold ${row.is_null ? 'text-muted fst-italic' : ''}">${row.value}</span>
+                </div>
+            </div>`
+        ).join('');
+        contentEl.innerHTML = html;
+        loadingEl.classList.add('d-none');
+        contentEl.classList.remove('d-none');
     }
 </script>
 {% endblock %}
