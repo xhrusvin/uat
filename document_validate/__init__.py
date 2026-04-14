@@ -9,3 +9,4 @@ bp = Blueprint(
 
 
 from . import validate_nmbi  # noqa
+from . import document_upload
