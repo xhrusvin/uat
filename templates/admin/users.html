@@ -1039,32 +1039,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     document.getElementById('fu-retry-transcript').addEventListener('click', fuLoadTranscript);
 
-    // ══════════════════════════════════
-    // RENDER TURNS (shared)
-    // ══════════════════════════════════
-    function renderTurns(container, emptyEl, turns) {
-        container.innerHTML = '';
-        if (!turns || turns.length === 0) {
-            emptyEl.classList.remove('d-none');
-            return;
-        }
-        turns.forEach((turn, idx) => {
-            const isAgent = turn.role === 'agent';
-            const bubble  = document.createElement('div');
-            bubble.className = `turn-bubble mb-4 ${isAgent ? 'text-end' : ''}`;
-            bubble.style.animationDelay = `${idx * 30}ms`;
-            bubble.innerHTML = `
-                <div class="d-inline-block p-3 rounded-3 shadow-sm
-                            ${isAgent ? 'bg-primary text-white' : 'bg-light'}"
-                     style="max-width:80%;">
-                    <div class="small fw-bold mb-1 ${isAgent ? 'text-white opacity-75' : 'text-primary'}">
-                        ${isAgent ? 'Agent' : 'Caller'} &bull; ${turn.time || '—'}
-                    </div>
-                    <div style="white-space:pre-wrap;">${(turn.text || '').replace(/\n/g, '<br>')}</div>
-                </div>`;
-            container.appendChild(bubble);
-        });
-    }
+    
 
     // ══════════════════════════════════
     // BRIEF SUMMARY — INTRO
@@ -1500,5 +1475,32 @@ document.addEventListener('DOMContentLoaded', () => {
     window.profrefResetTranscript = profrefResetTranscript;
     window.profrefAudioPlayer = profrefAudioPlayer;
 });
+
+// ══════════════════════════════════
+    // RENDER TURNS (shared)
+    // ══════════════════════════════════
+    function renderTurns(container, emptyEl, turns) {
+        container.innerHTML = '';
+        if (!turns || turns.length === 0) {
+            emptyEl.classList.remove('d-none');
+            return;
+        }
+        turns.forEach((turn, idx) => {
+            const isAgent = turn.role === 'agent';
+            const bubble  = document.createElement('div');
+            bubble.className = `turn-bubble mb-4 ${isAgent ? 'text-end' : ''}`;
+            bubble.style.animationDelay = `${idx * 30}ms`;
+            bubble.innerHTML = `
+                <div class="d-inline-block p-3 rounded-3 shadow-sm
+                            ${isAgent ? 'bg-primary text-white' : 'bg-light'}"
+                     style="max-width:80%;">
+                    <div class="small fw-bold mb-1 ${isAgent ? 'text-white opacity-75' : 'text-primary'}">
+                        ${isAgent ? 'Agent' : 'Caller'} &bull; ${turn.time || '—'}
+                    </div>
+                    <div style="white-space:pre-wrap;">${(turn.text || '').replace(/\n/g, '<br>')}</div>
+                </div>`;
+            container.appendChild(bubble);
+        });
+    }
 </script>
 {% endblock %}
