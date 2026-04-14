@@ -78,23 +78,19 @@ def document_upload_webhook():
             }), 400
 
         # Optional: Validate if user exists in leads collection
-        lead = leads_collection.find_one({"xn_user_id": user_id})
-        if not lead:
-            return jsonify({
-                "status": "warning",
-                "message": "User not found in leads collection"
-            }), 200
+        # lead = leads_collection.find_one({"xn_user_id": user_id})
+        # if not lead:
+        #     return jsonify({
+        #         "status": "warning",
+        #         "message": "User not found in leads collection"
+        #     }), 200
 
         # 3. Prepare record for uploaded_documents collection
         record = {
             "user_id": str(user_id).strip(),           # xn_user_id from external system
             "document_id": str(document_id).strip(),
-            "lead_id": str(lead["_id"]) if lead else None,
             "uploaded_at": datetime.utcnow(),
-            "status": "uploaded",                      # you can expand this later
-            # Add more fields if your webhook sends them (e.g. document_type, filename, url, etc.)
-            # "document_type": data.get("document_type"),
-            # "file_name": data.get("file_name"),
+            "status": "uploaded"
         }
 
         # 4. Insert into uploaded_documents (use insert_one for webhook style)
