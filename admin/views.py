@@ -366,7 +366,7 @@ def users():
     if elevenlabs_ids:
         for doc in current_app.db.level_five_cov.find(
             {"elevenlabs_conversation_id": {"$in": elevenlabs_ids}
-            ,"ref_count": 1
+            ,"ref_count": "1"
             },
             {"_id": 1, "elevenlabs_conversation_id": 1, "ref_count": 1, "ref_name": 1}
         ):
@@ -384,7 +384,7 @@ def users():
     if elevenlabs_ids:
         for doc in current_app.db.level_five_cov.find(
             {"elevenlabs_conversation_id": {"$in": elevenlabs_ids}
-            ,"ref_count": 2
+            ,"ref_count": "2"
             },
             {"_id": 1, "elevenlabs_conversation_id": 1, "ref_count": 1, "ref_name": 1}
         ):
