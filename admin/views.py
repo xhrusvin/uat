@@ -365,8 +365,10 @@ def users():
     conv_by_elevenlabs_id = {}
     if elevenlabs_ids:
         for doc in current_app.db.level_five_cov.find(
-            {"elevenlabs_conversation_id": {"$in": elevenlabs_ids}},
-            {"_id": 1, "elevenlabs_conversation_id": 1}
+            {"elevenlabs_conversation_id": {"$in": elevenlabs_ids}
+            ,"ref_count": 1
+            },
+            {"_id": 1, "elevenlabs_conversation_id": 1, "ref_count": 1, "ref_name": 1}
         ):
             el_key = doc.get("elevenlabs_conversation_id")
             if el_key:
@@ -376,6 +378,24 @@ def users():
     for u in users_list:
         el_id = u.get("level_five_elevenlabs_conversation_id") or ""
         u["last_profref_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
+
+
+    conv_by_elevenlabs_id = {}
+    if elevenlabs_ids:
+        for doc in current_app.db.level_five_cov.find(
+            {"elevenlabs_conversation_id": {"$in": elevenlabs_ids}
+            ,"ref_count": 2
+            },
+            {"_id": 1, "elevenlabs_conversation_id": 1, "ref_count": 1, "ref_name": 1}
+        ):
+            el_key = doc.get("elevenlabs_conversation_id")
+            if el_key:
+                conv_by_elevenlabs_id[el_key] = str(doc["_id"])
+
+    # Attach last_conv_id to each user
+    for u in users_list:
+        el_id = u.get("level_five_elevenlabs_conversation_id") or ""
+        u["last_profref_conv_id2"] = conv_by_elevenlabs_id.get(el_id, "")
 
 
     
