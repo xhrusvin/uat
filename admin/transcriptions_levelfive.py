@@ -552,3 +552,46 @@ def get_level_five_transcript(conv_id):
         "turns": formatted_turns,
         "turn_count": len(formatted_turns)
     }), 200
+
+# ===============================
+# FETCH PROFESSIONAL REFERENCE DETAILS
+# ===============================
+@admin_bp.route('/admin/api/profref/<conv_id>/details')
+@admin_required
+def get_profref_details(conv_id):
+    """Fetch reference details using last_profref_conv_id from level_five_cov"""
+    if not ObjectId.is_valid(conv_id):
+        return jsonify({"error": "Invalid conversation ID"}), 400
+
+    conv = current_app.db.level_five_cov.find_one(
+        {"_id": ObjectId(conv_id)},
+        {
+            "ref_name": 1,
+            "ref_phone": 1,
+            "ref_email": 1,
+            "ref_relationship": 1,
+            "ref_company": 1,
+            "ref_designation": 1,
+            "ref_organisation": 1,
+            "phone": 1,           # candidate's phone (optional)
+            "created_at": 1
+        }
+    )
+
+    if not conv:
+        return jsonify({"error": "Conversation not found"}), 404
+
+    # Build clean response
+    details = {
+        "ref_name": conv.get("ref_name") or "—",
+        "ref_phone": conv.get("ref_phone") or "—",
+        "ref_email": conv.get("ref_email") or "—",
+        "ref_relationship": conv.get("ref_relationship") or conv.get("ref_designation") or "—",
+        "ref_company": conv.get("ref_company") or conv.get("ref_organisation") or "—",
+        "candidate_phone": conv.get("phone") or "—"
+    }
+
+    return jsonify({
+        "success": True,
+        "data": details
+    })

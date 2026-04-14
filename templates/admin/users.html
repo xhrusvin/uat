@@ -633,31 +633,32 @@
 
   <div id="profref-call-section" class="row g-4 d-none">
 
-    <!-- NEW: Professional Reference Details -->
-  <div id="profref-details" class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-light">
-      <strong><i class="bi bi-person-badge me-2"></i>Professional Reference Details</strong>
+    <!-- REFERENCE DETAILS CARD -->
+  <div id="profref-details-card" class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+      <strong><i class="bi bi-person-badge-fill me-2"></i>Professional Reference Information</strong>
+      <span id="profref-status" class="badge bg-secondary">Loading...</span>
     </div>
     <div class="card-body">
       <div class="row g-3">
         <div class="col-md-4">
-          <small class="text-muted">Reference Name</small>
-          <p class="mb-0 fw-semibold" id="profref-name">—</p>
+          <small class="text-muted d-block">Reference Name</small>
+          <h6 class="mb-0 fw-bold" id="profref-name">—</h6>
         </div>
         <div class="col-md-4">
-          <small class="text-muted">Phone</small>
-          <p class="mb-0 fw-semibold" id="profref-phone">—</p>
+          <small class="text-muted d-block">Phone</small>
+          <h6 class="mb-0 fw-bold text-primary" id="profref-phone">—</h6>
         </div>
         <div class="col-md-4">
-          <small class="text-muted">Email</small>
-          <p class="mb-0 fw-semibold text-primary" id="profref-email">—</p>
+          <small class="text-muted d-block">Email</small>
+          <h6 class="mb-0 fw-bold text-primary" id="profref-email">—</h6>
         </div>
         <div class="col-md-6">
-          <small class="text-muted">Relationship / Designation</small>
+          <small class="text-muted d-block">Relationship / Designation</small>
           <p class="mb-0" id="profref-relationship">—</p>
         </div>
         <div class="col-md-6">
-          <small class="text-muted">Company / Organisation</small>
+          <small class="text-muted d-block">Company / Organisation</small>
           <p class="mb-0" id="profref-company">—</p>
         </div>
       </div>
@@ -1237,6 +1238,8 @@ document.addEventListener('DOMContentLoaded', () => {
             window.currentProfref2ConvId        = (this.dataset.profref2ConvId || '').trim() || null;
             window.currentProfref2ElevenLabsId  = (this.dataset.profref2ElevenlabsId || '').trim() || null;
             
+            currentProfrefConvId = this.dataset.profrefConvId || null;
+            currentProfrefElevenLabsId = this.dataset.profrefElevenlabsId || null;
 
             window.currentProfrefName = this.dataset.refName || '';
    
@@ -1592,7 +1595,8 @@ document.addEventListener('DOMContentLoaded', () => {
         profrefResetTranscript();
         profrefResetBrief();
 
-        populateProfrefDetails();
+        loadProfrefDetails();
+
         profrefLoadAudio();
         profrefLoadTranscript();
         profrefLoadBriefSummary();
@@ -1802,6 +1806,51 @@ function populateProfrefDetails() {
     document.getElementById('profref-name').textContent = window.currentProfrefName || '—';
    
 }
+  // Add these variables in your DOMContentLoaded
+let currentProfrefConvId = null;
+let currentProfrefElevenLabsId = null;
+
+// NEW: Fetch Reference Details
+async function loadProfrefDetails() {
+    const detailsCard = document.getElementById('profref-details-card');
+    const statusBadge = document.getElementById('profref-status');
     
+    if (!currentProfrefConvId) {
+        statusBadge.textContent = "No Reference Data";
+        statusBadge.className = "badge bg-warning";
+        return;
+    }
+
+    try {
+        statusBadge.textContent = "Loading...";
+        statusBadge.className = "badge bg-secondary";
+
+        const res = await fetch(`/admin/api/profref/${currentProfrefConvId}/details`);
+        
+        if (!res.ok) throw new Error("Failed to fetch reference details");
+
+        const result = await res.json();
+        
+        if (result.success && result.data) {
+            const d = result.data;
+            
+            document.getElementById('profref-name').textContent = d.ref_name;
+            document.getElementById('profref-phone').textContent = d.ref_phone;
+            document.getElementById('profref-email').textContent = d.ref_email;
+            document.getElementById('profref-relationship').textContent = d.ref_relationship;
+            document.getElementById('profref-company').textContent = d.ref_company;
+
+            statusBadge.textContent = "Loaded";
+            statusBadge.className = "badge bg-success";
+        } else {
+            throw new Error(result.error || "No data returned");
+        }
+    } catch (err) {
+        console.error("Profref details error:", err);
+        document.getElementById('profref-name').textContent = "Error loading details";
+        statusBadge.textContent = "Failed";
+        statusBadge.className = "badge bg-danger";
+    }
+}  
 </script>
 {% endblock %}
