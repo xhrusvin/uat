@@ -1863,8 +1863,8 @@ async function loadProfrefDetails() {
             document.getElementById('profref-email').textContent = d.ref_email;
            
 
-            statusBadge.textContent = "Loaded";
-            statusBadge.className = "badge bg-success";
+            statusBadge.textContent = "";
+            statusBadge.className = "badge bg-default";
         } else {
             throw new Error(result.error || "No data returned");
         }
@@ -1901,8 +1901,8 @@ let currentProfref2ConvId = null;
                 document.getElementById('profref2-name').textContent = d.ref_name || '—';
                 document.getElementById('profref2-phone').textContent = d.ref_phone || '—';
                 document.getElementById('profref2-email').textContent = d.ref_email || '—';
-                statusBadge.textContent = "Loaded";
-                statusBadge.className = "badge bg-success";
+                statusBadge.textContent = "";
+                statusBadge.className = "badge bg-default";
             }
         } catch (err) {
             console.error(err);
