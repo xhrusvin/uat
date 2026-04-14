@@ -14,7 +14,7 @@ MONGO_URI = os.getenv('MONGO_URI')
 DB_NAME = os.getenv('DB_NAME')
 
 # Use the same API key and country as in validate_nmbi for consistency
-USER_EXTERNAL_API_KEY = os.getenv('XN_PORTAL_API_KEY')
+USER_EXTERNAL_API_KEY = os.getenv('XN_PORTAL_WEBHOOK_KEY')
 APP_COUNTRY = os.getenv('XN_APP_COUNTRY', 'ie')
 
 if not all([MONGO_URI, DB_NAME]):
@@ -51,7 +51,7 @@ def document_upload_webhook():
     try:
         # 1. Validate Headers (optional but recommended for security)
         api_key = request.headers.get("Api-Key")
-        app_country = request.headers.get("X-App-Country")
+        #app_country = request.headers.get("X-App-Country")
 
         if api_key != USER_EXTERNAL_API_KEY:
             return jsonify({
@@ -59,11 +59,11 @@ def document_upload_webhook():
                 "message": "Invalid or missing Api-Key"
             }), 401
 
-        if app_country and app_country.lower() != APP_COUNTRY.lower():
-            return jsonify({
-                "status": "error",
-                "message": "Invalid X-App-Country"
-            }), 400
+        # if app_country and app_country.lower() != APP_COUNTRY.lower():
+        #     return jsonify({
+        #         "status": "error",
+        #         "message": "Invalid X-App-Country"
+        #     }), 400
 
         # 2. Get JSON payload
         data = request.get_json(silent=True) or {}
