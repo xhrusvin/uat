@@ -51,7 +51,7 @@ def document_upload_webhook():
     try:
         # 1. Validate Headers (optional but recommended for security)
         api_key = request.headers.get("Api-Key")
-        #app_country = request.headers.get("X-App-Country")
+        app_country = request.headers.get("X-App-Country")
 
         if api_key != USER_EXTERNAL_API_KEY:
             return jsonify({
@@ -90,6 +90,7 @@ def document_upload_webhook():
             "user_id": str(user_id).strip(),           # xn_user_id from external system
             "document_id": str(document_id).strip(),
             "uploaded_at": datetime.utcnow(),
+            "cuntry": app_country,
             "status": "uploaded"
         }
 
