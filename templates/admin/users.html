@@ -95,6 +95,10 @@
     data-profref-elevenlabs-id="{{ u.get('level_five_elevenlabs_conversation_id', '') }}"
     data-profref2-conv-id="{{ u.get('last_profref_conv_id2', '') }}"
     data-profref2-elevenlabs-id="{{ u.get('level_five_elevenlabs_conversation_id', '') }}"
+
+    data-ref-name="{{ u.get('ref_name', '') | e }}"
+
+    data-ref-name2="{{ u.get('ref_name2', '') | e }}"
     style="cursor: pointer;">
                             <td class="ps-4">
     <div class="d-flex align-items-center">
@@ -628,6 +632,37 @@
   </div>
 
   <div id="profref-call-section" class="row g-4 d-none">
+
+    <!-- NEW: Professional Reference Details -->
+  <div id="profref-details" class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light">
+      <strong><i class="bi bi-person-badge me-2"></i>Professional Reference Details</strong>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <small class="text-muted">Reference Name</small>
+          <p class="mb-0 fw-semibold" id="profref-name">—</p>
+        </div>
+        <div class="col-md-4">
+          <small class="text-muted">Phone</small>
+          <p class="mb-0 fw-semibold" id="profref-phone">—</p>
+        </div>
+        <div class="col-md-4">
+          <small class="text-muted">Email</small>
+          <p class="mb-0 fw-semibold text-primary" id="profref-email">—</p>
+        </div>
+        <div class="col-md-6">
+          <small class="text-muted">Relationship / Designation</small>
+          <p class="mb-0" id="profref-relationship">—</p>
+        </div>
+        <div class="col-md-6">
+          <small class="text-muted">Company / Organisation</small>
+          <p class="mb-0" id="profref-company">—</p>
+        </div>
+      </div>
+    </div>
+  </div>
 
     <!-- LEFT COLUMN: Audio + Transcript -->
     <div class="col-lg-7">
@@ -1202,6 +1237,12 @@ document.addEventListener('DOMContentLoaded', () => {
             window.currentProfref2ConvId        = (this.dataset.profref2ConvId || '').trim() || null;
             window.currentProfref2ElevenLabsId  = (this.dataset.profref2ElevenlabsId || '').trim() || null;
             
+
+            window.currentProfrefName = this.dataset.refName || '';
+   
+
+            // Professional Reference 2 (if you have second reference)
+            window.currentProfref2Name = this.dataset.refName2 || '';
             // Populate meta
             const cells = this.querySelectorAll('td');
             document.getElementById('ud-name').textContent    = cells[0]?.querySelector('.fw-semibold')?.textContent?.trim() || '—';
@@ -1218,7 +1259,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 noCallNotice.classList.add('d-none');
                 callSection.classList.remove('d-none');
                 resetAudioUI(); resetTranscript(); resetBrief();
+                populateProfrefDetails();
                 loadAudio(); loadTranscript(); loadBriefSummary();
+                
             } else {
                 callSection.classList.add('d-none');
                 noCallNotice.classList.remove('d-none');
@@ -1549,6 +1592,7 @@ document.addEventListener('DOMContentLoaded', () => {
         profrefResetTranscript();
         profrefResetBrief();
 
+        populateProfrefDetails();
         profrefLoadAudio();
         profrefLoadTranscript();
         profrefLoadBriefSummary();
@@ -1682,6 +1726,7 @@ document.addEventListener('DOMContentLoaded', () => {
         profref2ResetAudioUI();
         profref2ResetTranscript();
         profref2ResetBrief();
+        populateProfrefDetails();
         profref2LoadAudio();
         profref2LoadTranscript();
         profref2LoadBriefSummary();
@@ -1752,7 +1797,11 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingEl.classList.add('d-none');
         contentEl.classList.remove('d-none');
     }
-
+function populateProfrefDetails() {
+    // Prof Ref 1
+    document.getElementById('profref-name').textContent = window.currentProfrefName || '—';
+   
+}
     
 </script>
 {% endblock %}
