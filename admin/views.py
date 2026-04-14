@@ -333,7 +333,7 @@ def users():
     conv_by_elevenlabs_id = {}
     if elevenlabs_ids:
         for doc in current_app.db.level_five_cov.find(
-            {"elevenlabs_conversation_id": {"$in": elevenlabs_ids}, "ref_count": "1"},
+            {"elevenlabs_conversation_id": {"$in": elevenlabs_ids}, "ref_count": "2"},
             {"_id": 1, "elevenlabs_conversation_id": 1, "ref_count": 1, "ref_name": 1}
         ):
             el_key = doc.get("elevenlabs_conversation_id")
@@ -352,7 +352,7 @@ def users():
         for doc in current_app.db.level_five_cov.find(
             {
                 "phone": {"$in": phones},
-                "ref_count": "2"
+                "ref_count": "1"
             },
             {
                 "_id": 1, 
