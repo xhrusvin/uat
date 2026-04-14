@@ -159,9 +159,9 @@ def register_professional_reference_call_routes(app):
                     ref_dial_code = ref.get("dial_code", "+353")
 
                     #full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
-                    if i == 0:
+                    if triggered_count == 0:
                       full_phone = "+91 7034526952"      # First reference
-                    elif i == 1:
+                    elif triggered_count == 1:
                       full_phone = "+91 9633392501"      # Second reference
                     else:
                       full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
