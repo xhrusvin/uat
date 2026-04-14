@@ -344,7 +344,7 @@ def users():
         el_id = u.get("level_five_elevenlabs_conversation_id") or ""
         u["last_profref_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
 
-    # 5. Professional Reference Level 2 (ref_count: "2") ← CHANGED TO PHONE MATCH
+    # 5. Professional Reference Level 2 (ref_count: "1") ← CHANGED TO PHONE MATCH
     conv_by_phone_ref2 = {}
     phones = [u.get('phone') for u in users_list if u.get('phone')]
 

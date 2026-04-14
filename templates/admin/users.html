@@ -724,6 +724,32 @@
 
   <div id="profref2-call-section" class="row g-4 d-none">
 
+    <!-- Reference Information Card -->
+              <div class="col-12">
+                <div class="card border-0 shadow-sm mb-4">
+                  <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <strong><i class="bi bi-person-badge-fill me-2"></i>Professional Reference 2 Information</strong>
+                    <span id="profref2-status" class="badge bg-secondary">Loading...</span>
+                  </div>
+                  <div class="card-body">
+                    <div class="row g-3">
+                      <div class="col-md-4">
+                        <small class="text-muted d-block">Reference Name</small>
+                        <h6 class="mb-0 fw-bold" id="profref2-name">—</h6>
+                      </div>
+                      <div class="col-md-4">
+                        <small class="text-muted d-block">Phone</small>
+                        <h6 class="mb-0 fw-bold text-primary" id="profref2-phone">—</h6>
+                      </div>
+                      <div class="col-md-4">
+                        <small class="text-muted d-block">Email</small>
+                        <h6 class="mb-0 fw-bold text-primary" id="profref2-email">—</h6>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
     <div class="col-lg-7">
       <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
       <div id="profref2-audio-player-container" class="mb-4 d-none">
@@ -1233,8 +1259,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             currentProfrefConvId = this.dataset.profrefConvId || null;
             currentProfrefElevenLabsId = this.dataset.profrefElevenlabsId || null;
+            
 
             window.currentProfrefName = this.dataset.refName || '';
+
+            window.currentProfref2ConvId = this.dataset.profref2ConvId || null;
+            window.currentProfref2ElevenLabsId = this.dataset.profref2ElevenlabsId || null;
+            window.currentProfref2Name = this.dataset.refName2 || '';
    
 
             // Professional Reference 2 (if you have second reference)
@@ -1844,5 +1875,62 @@ async function loadProfrefDetails() {
         statusBadge.className = "badge bg-danger";
     }
 }  
+
+let currentProfref2ConvId = null;
+    let currentProfref2ElevenLabsId = null;
+
+    // Populate Reference 2 Details
+    async function populateProfref2Details() {
+        const statusBadge = document.getElementById('profref2-status');
+        statusBadge.textContent = "Loading...";
+        statusBadge.className = "badge bg-secondary";
+
+        if (!currentProfref2ConvId) {
+            statusBadge.textContent = "No Data";
+            statusBadge.className = "badge bg-warning";
+            return;
+        }
+
+        try {
+            const res = await fetch(`/admin/api/level_five_tr/${currentProfref2ConvId}/details`);
+            if (!res.ok) throw new Error("Failed to load details");
+
+            const result = await res.json();
+            if (result.success && result.data) {
+                const d = result.data;
+                document.getElementById('profref2-name').textContent = d.ref_name || '—';
+                document.getElementById('profref2-phone').textContent = d.ref_phone || '—';
+                document.getElementById('profref2-email').textContent = d.ref_email || '—';
+                statusBadge.textContent = "Loaded";
+                statusBadge.className = "badge bg-success";
+            }
+        } catch (err) {
+            console.error(err);
+            document.getElementById('profref2-name').textContent = "Error";
+            statusBadge.textContent = "Failed";
+            statusBadge.className = "badge bg-danger";
+        }
+    }
+
+    // Tab shown for Prof Ref 2
+    document.getElementById('profref2-call-tab').addEventListener('shown.bs.tab', () => {
+        currentProfref2ConvId = window.currentProfref2ConvId;
+        currentProfref2ElevenLabsId = window.currentProfref2ElevenLabsId;
+
+        if (!currentProfref2ConvId) {
+            document.getElementById('profref2-call-section').classList.add('d-none');
+            document.getElementById('profref2-no-call').classList.remove('d-none');
+            return;
+        }
+
+        document.getElementById('profref2-call-section').classList.remove('d-none');
+        document.getElementById('profref2-no-call').classList.add('d-none');
+
+        populateProfref2Details();
+        // Call your existing load functions for audio, transcript, brief summary for profref2
+        profref2LoadAudio();
+        profref2LoadTranscript();
+        profref2LoadBriefSummary();
+    });
 </script>
 {% endblock %}
