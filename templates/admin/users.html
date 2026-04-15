@@ -95,7 +95,8 @@
     data-profref-elevenlabs-id="{{ u.get('level_five_elevenlabs_conversation_id', '') }}"
     data-profref2-conv-id="{{ u.get('last_profref_conv_id2', '') }}"
     data-profref2-elevenlabs-id="{{ u.get('level_five_elevenlabs_conversation_id', '') }}"
-
+    data-onboarding-conv-id="{{ u.get('last_onboarding_conv_id', '') }}"
+    data-onboarding-elevenlabs-id="{{ u.get('onboarding_elevenlabs_conversation_id', '') }}"
     data-ref-name="{{ u.get('ref_name', '') | e }}"
 
     data-ref-name2="{{ u.get('ref_name2', '') | e }}"
@@ -396,6 +397,14 @@
           data-bs-toggle="tab" data-bs-target="#profref2-call-pane"
           type="button" role="tab">
     <i class="bi bi-person-check-fill me-2"></i> Professional Reference 2
+  </button>
+</li>
+
+<li class="nav-item" role="presentation">
+  <button class="nav-link fw-semibold" id="onboarding-call-tab"
+          data-bs-toggle="tab" data-bs-target="#onboarding-call-pane"
+          type="button" role="tab">
+    <i class="bi bi-telephone-inbound-fill me-2"></i> Onboarding Call
   </button>
 </li>
 
@@ -802,6 +811,72 @@
 
   </div>
 </div>
+
+<!-- ==================== ONBOARDING CALL PANE ==================== -->
+<div class="tab-pane fade" id="onboarding-call-pane" role="tabpanel">
+
+  <div id="onboarding-no-call" class="text-center py-5 d-none">
+    <i class="bi bi-telephone-x display-4 text-muted opacity-50"></i>
+    <h5 class="mt-3 text-muted">No Onboarding Call Available</h5>
+    <p class="text-muted">This user has not completed the Onboarding call yet.</p>
+  </div>
+
+  <div id="onboarding-call-section" class="row g-4 d-none">
+
+    <!-- LEFT COLUMN: Audio + Transcript -->
+    <div class="col-lg-7">
+      <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
+      <div id="onboarding-audio-player-container" class="mb-4 d-none">
+        <audio id="onboarding-call-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
+        <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
+      </div>
+      <div id="onboarding-audio-loading" class="text-primary mb-3 d-none">
+        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+        <strong>Loading audio recording...</strong>
+      </div>
+      <div id="onboarding-audio-error" class="alert alert-danger d-none" role="alert">
+        <strong>Audio unavailable:</strong> <span id="onboarding-error-message"></span>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="onboarding-retry-audio">Retry</button>
+      </div>
+
+      <hr class="my-3">
+
+      <h6 class="fw-bold text-primary mb-3">Conversation Transcript</h6>
+      <div id="onboarding-transcript-loading" class="text-center py-5 d-none">
+        <div class="spinner-border text-primary" style="width:2.5rem;height:2.5rem;" role="status"></div>
+        <p class="mt-3 text-muted">Loading transcript...</p>
+      </div>
+      <div id="onboarding-transcript-error" class="alert alert-danger d-none" role="alert">
+        <strong>Failed to load transcript:</strong> <span id="onboarding-transcript-error-msg"></span>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="onboarding-retry-transcript">Retry</button>
+      </div>
+      <div id="onboarding-transcript-empty" class="text-center py-5 d-none">
+        <i class="bi bi-chat-square-dots display-4 text-muted opacity-50"></i>
+        <p class="mt-3 text-muted">No transcript available for this call.</p>
+      </div>
+      <div id="onboarding-turns" class="border-start border-4 border-primary ps-4"
+           style="max-height: 460px; overflow-y: auto;"></div>
+    </div>
+
+    <!-- RIGHT COLUMN: Brief Lead Summary -->
+    <div class="col-lg-5">
+      <h6 class="fw-bold text-primary mb-3">Brief Lead Summary</h6>
+      <div id="onboarding-brief-summary" class="border-start border-4 border-info ps-4"
+           style="max-height: 580px; overflow-y: auto;">
+        <div id="onboarding-brief-loading" class="text-center py-5">
+          <div class="spinner-border text-primary" style="width:2rem;height:2rem;" role="status"></div>
+          <p class="mt-3 text-muted">Loading brief summary...</p>
+        </div>
+        <div id="onboarding-brief-content" class="d-none"></div>
+        <div id="onboarding-brief-empty" class="text-center py-5 text-muted d-none">
+          <i class="bi bi-info-circle display-4 opacity-50"></i>
+          <p class="mt-3 mb-0">No summary data available for this call.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /#onboarding-call-section -->
+</div><!-- /#onboarding-call-pane -->
 
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Close</button>
@@ -1256,7 +1331,9 @@ document.addEventListener('DOMContentLoaded', () => {
             window.currentProfrefElevenLabsId   = (this.dataset.profrefElevenlabsId || '').trim() || null;
             window.currentProfref2ConvId        = (this.dataset.profref2ConvId || '').trim() || null;
             window.currentProfref2ElevenLabsId  = (this.dataset.profref2ElevenlabsId || '').trim() || null;
-            
+            window.currentOnboardingConvId      = (this.dataset.onboardingConvId || '').trim() || null;
+            window.currentOnboardingElevenLabsId = (this.dataset.onboardingElevenlabsId || '').trim() || null;
+
             currentProfrefConvId = this.dataset.profrefConvId || null;
             currentProfrefElevenLabsId = this.dataset.profrefElevenlabsId || null;
             
@@ -1932,5 +2009,159 @@ let currentProfref2ConvId = null;
         profref2LoadTranscript();
         profref2LoadBriefSummary();
     });
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    const onboardingAudioPlayer    = document.getElementById('onboarding-call-audio');
+    const onboardingAudioContainer = document.getElementById('onboarding-audio-player-container');
+    const onboardingAudioLoading   = document.getElementById('onboarding-audio-loading');
+    const onboardingAudioError     = document.getElementById('onboarding-audio-error');
+    const onboardingErrorMsg       = document.getElementById('onboarding-error-message');
+
+    const onboardingTurnsDiv       = document.getElementById('onboarding-turns');
+    const onboardingTxLoading      = document.getElementById('onboarding-transcript-loading');
+    const onboardingTxError        = document.getElementById('onboarding-transcript-error');
+    const onboardingTxErrorMsg     = document.getElementById('onboarding-transcript-error-msg');
+    const onboardingTxEmpty        = document.getElementById('onboarding-transcript-empty');
+
+    const onboardingBriefLoading   = document.getElementById('onboarding-brief-loading');
+    const onboardingBriefContent   = document.getElementById('onboarding-brief-content');
+    const onboardingBriefEmpty     = document.getElementById('onboarding-brief-empty');
+    const onboardingCallSection    = document.getElementById('onboarding-call-section');
+    const onboardingNoCallNotice   = document.getElementById('onboarding-no-call');
+
+    // ── Reset helpers ──
+    function onboardingResetAudioUI() {
+        onboardingAudioLoading.classList.add('d-none');
+        onboardingAudioError.classList.add('d-none');
+        onboardingAudioContainer.classList.add('d-none');
+    }
+    function onboardingResetTranscript() {
+        onboardingTurnsDiv.innerHTML = '';
+        onboardingTxLoading.classList.add('d-none');
+        onboardingTxError.classList.add('d-none');
+        onboardingTxEmpty.classList.add('d-none');
+    }
+    function onboardingResetBrief() {
+        onboardingBriefLoading.classList.remove('d-none');
+        onboardingBriefContent.classList.add('d-none');
+        onboardingBriefContent.innerHTML = '';
+        onboardingBriefEmpty.classList.add('d-none');
+    }
+    function onboardingShowAudioError(msg) {
+        onboardingErrorMsg.textContent = msg;
+        onboardingAudioError.classList.remove('d-none');
+        onboardingAudioLoading.classList.add('d-none');
+    }
+
+    // ── Load audio ──
+    async function onboardingLoadAudio() {
+        onboardingResetAudioUI();
+        onboardingAudioLoading.classList.remove('d-none');
+        const convId = window.currentOnboardingConvId;
+        if (!convId) { onboardingShowAudioError('No conversation ID'); return; }
+        try {
+            const res = await fetch(`/admin/onboarding_tr/${convId}/audio`);
+            if (!res.ok) throw new Error(
+                res.status === 404 ? 'Audio is still being generated by ElevenLabs' : 'Audio not available yet'
+            );
+            if (onboardingAudioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(onboardingAudioPlayer.src);
+            const blob = await res.blob();
+            onboardingAudioPlayer.src = URL.createObjectURL(blob);
+            onboardingAudioContainer.classList.remove('d-none');
+            onboardingAudioLoading.classList.add('d-none');
+        } catch (err) {
+            onboardingShowAudioError(err.message);
+        }
+    }
+
+    // ── Load transcript ──
+    async function onboardingLoadTranscript() {
+        onboardingResetTranscript();
+        onboardingTxLoading.classList.remove('d-none');
+        const convId = window.currentOnboardingConvId;
+        if (!convId) {
+            onboardingTxErrorMsg.textContent = 'No conversation ID available';
+            onboardingTxError.classList.remove('d-none');
+            onboardingTxLoading.classList.add('d-none');
+            return;
+        }
+        try {
+            const res = await fetch(`/admin/api/onboarding_tr/${convId}/transcript`);
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `Server error ${res.status}`);
+            }
+            const data = await res.json();
+            onboardingTxLoading.classList.add('d-none');
+            const fn = window.renderTurns || renderTurns;
+            fn(onboardingTurnsDiv, onboardingTxEmpty, data.turns || []);
+        } catch (err) {
+            onboardingTxLoading.classList.add('d-none');
+            onboardingTxErrorMsg.textContent = err.message;
+            onboardingTxError.classList.remove('d-none');
+        }
+    }
+
+    // ── Load brief summary ──
+    async function onboardingLoadBriefSummary() {
+        onboardingResetBrief();
+        const elId = window.currentOnboardingElevenLabsId;
+        if (!elId) {
+            onboardingBriefLoading.classList.add('d-none');
+            onboardingBriefEmpty.classList.remove('d-none');
+            return;
+        }
+        try {
+            const resp = await fetch(`/admin/elevenlabs/api/onboarding_tr/${elId}/summary`);
+            if (!resp.ok) throw new Error('Failed to fetch summary');
+            const data = await resp.json();
+            const fn = window.renderBriefSummary || renderBriefSummary;
+            fn(onboardingBriefLoading, onboardingBriefContent, onboardingBriefEmpty, data);
+        } catch (err) {
+            onboardingBriefLoading.classList.add('d-none');
+            onboardingBriefEmpty.classList.remove('d-none');
+        }
+    }
+
+    // ── Tab shown event ──
+    document.getElementById('onboarding-call-tab').addEventListener('shown.bs.tab', () => {
+        const convId = window.currentOnboardingConvId;
+        if (!convId) {
+            onboardingCallSection.classList.add('d-none');
+            onboardingNoCallNotice.classList.remove('d-none');
+            return;
+        }
+        onboardingCallSection.classList.remove('d-none');
+        onboardingNoCallNotice.classList.add('d-none');
+        onboardingResetAudioUI();
+        onboardingResetTranscript();
+        onboardingResetBrief();
+        onboardingLoadAudio();
+        onboardingLoadTranscript();
+        onboardingLoadBriefSummary();
+    });
+
+    // ── Retry buttons ──
+    document.getElementById('onboarding-retry-audio').addEventListener('click', onboardingLoadAudio);
+    document.getElementById('onboarding-retry-transcript').addEventListener('click', onboardingLoadTranscript);
+
+    // ── Cleanup on modal close ──
+    document.getElementById('userDetailModal').addEventListener('hidden.bs.modal', () => {
+        onboardingAudioPlayer.pause();
+        if (onboardingAudioPlayer.src?.startsWith('blob:')) {
+            URL.revokeObjectURL(onboardingAudioPlayer.src);
+            onboardingAudioPlayer.src = '';
+        }
+        onboardingResetAudioUI();
+        onboardingResetTranscript();
+    }, { once: false });
+
+    // Expose for external reset
+    window.onboardingResetAudioUI    = onboardingResetAudioUI;
+    window.onboardingResetTranscript = onboardingResetTranscript;
+    window.onboardingAudioPlayer     = onboardingAudioPlayer;
+});
 </script>
 {% endblock %}
