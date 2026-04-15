@@ -308,6 +308,12 @@ select.parsley-success {
             <i class="bi bi-calendar3"></i>
             <span>Professional Reference</span>
         </a>
+
+        <a class="nav-link {% if request.path.startswith('/admin/onboarding_call') %}active{% endif %}"
+           href="{{ url_for('admin.onboarding_call') }}">
+            <i class="bi bi-calendar3"></i>
+            <span>Onboarding Call</span>
+        </a>
     </div>
 
     <a class="nav-link {% if request.path.startswith('/admin/staff') %}active{% endif %}"
