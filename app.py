@@ -10,6 +10,7 @@ from follow_up_call import register_follow_up_call_routes
 from shift_booking_call import register_shift_booking_call_routes
 from compliance_document_call import register_compliance_doc_call_routes
 from professional_reference_call import register_professional_reference_call_routes
+from onboarding_call import register_onboarding_call_routes
 from registration import register_registration_routes, schedule_calls
 from scrap_users import register_scrap_users_route
 from lead_webhook import register_lead_webhook_routes
@@ -147,6 +148,7 @@ register_follow_up_call_routes(app)
 register_shift_booking_call_routes(app)
 register_compliance_doc_call_routes(app)
 register_professional_reference_call_routes(app)
+register_onboarding_call_routes(app)
 app.register_blueprint(webhook_bp)
 register_lead_webhook_routes(app)
 register_fb_form_sync_routes(app)
