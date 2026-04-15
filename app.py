@@ -28,6 +28,7 @@ from elevenlabs1.agent_conversations_intro_call import bp as elevenlabs_bp_intro
 from elevenlabs1.agent_conversations_followup_call import bp as elevenlabs_bp_followup_call
 from elevenlabs1.agent_conversations_levelfour_call import bp as elevenlabs_bp_levelfour_call
 from elevenlabs1.agent_conversations_levelfive_call import bp as elevenlabs_bp_levelfive_call
+from elevenlabs1.agent_conversations_onboarding_call import bp as elevenlabs_bp_onboarding_call
 
 
 
@@ -165,6 +166,7 @@ app.register_blueprint(elevenlabs_bp_intro_call)
 app.register_blueprint(elevenlabs_bp_followup_call)
 app.register_blueprint(elevenlabs_bp_levelfour_call)
 app.register_blueprint(elevenlabs_bp_levelfive_call)
+app.register_blueprint(elevenlabs_bp_onboarding_call)
 app.register_blueprint(lead_registration_bp)
 app.register_blueprint(xpressgp_bp)
 app.register_blueprint(gemini_call_bp)

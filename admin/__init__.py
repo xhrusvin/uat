@@ -16,6 +16,7 @@ from . import ivr_calls
 from . import transcriptions_followup
 from . import transcriptions_levelfour
 from . import transcriptions_levelfive
+from . import transcriptions_onboarding
 from . import user_documents
 from . import staff
 
