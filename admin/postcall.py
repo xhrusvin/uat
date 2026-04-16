@@ -28,6 +28,7 @@ now_utc = datetime.now(pytz.UTC)
 XN_PORTAL_BASE_URL = os.getenv('XN_PORTAL_BASE_URL')
 NEXT_FOLLOW_UP_MINUTES = 2
 NEXT_FOLLOW_UP_HOURS = 24
+WEB_URL = os.getenv('WEB_URL')
 
 current_time = datetime.now(pytz.UTC).strftime("%Y-%m-%d %H:%M")
 
@@ -43,7 +44,7 @@ def to_str(value):
         return ""  # or return "null" if you prefer
     return str(value).strip()
 
-    
+
 @admin_bp.route('/api/brief-summary-conv-new')
 def api_brief_summary_cov_new():
     conv_id = request.args.get('conv_id')
@@ -100,7 +101,7 @@ def api_brief_summary_cov_new():
         # === NEW BLOCK START ===
         email_message = ""
         if collection in (None, "1", 1):
-            garda_url = f"https://expresshealth.ie/lead-registration/garda-vetting-email?id={user['_id']}"
+            garda_url = f"{WEB_URL}/lead-registration/garda-vetting-email?id={user['_id']}"
             try:
                 import requests
                 garda_resp = requests.get(garda_url, timeout=100)
