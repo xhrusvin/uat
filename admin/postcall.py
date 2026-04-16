@@ -31,7 +31,19 @@ NEXT_FOLLOW_UP_HOURS = 24
 
 current_time = datetime.now(pytz.UTC).strftime("%Y-%m-%d %H:%M")
 
+def to_str(value):
+    """
+    Convert any value to string.
+    - None → "null" or "" (your choice)
+    - int/float → str without scientific notation
+    - bool → "true"/"false" or "True"/"False"
+    - Already string → return as-is
+    """
+    if value is None:
+        return ""  # or return "null" if you prefer
+    return str(value).strip()
 
+    
 @admin_bp.route('/api/brief-summary-conv-new')
 def api_brief_summary_cov_new():
     conv_id = request.args.get('conv_id')
