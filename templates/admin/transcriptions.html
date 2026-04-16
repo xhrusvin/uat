@@ -107,6 +107,8 @@
         {% elif c.call_status == 'No Required Experience' %}
             <span class="text-primary fw-bold">No Required Experience</span>
         
+        {% elif c.call_status == 'Visa Expired' %}
+            <span class="text-primary fw-bold">Visa Expired</span>
         
         {% else %}
             <span class="text-success fw-bold">{{ c.call_status }}</span>
@@ -682,6 +684,9 @@ if (!currentIsCompleted) {
     statusEl.className   = 'badge bg-info text-dark';
 } else if (callStatus === 'No Required Experience') {
     statusEl.textContent = 'No Required Experience';
+    statusEl.className   = 'badge bg-primary';  
+} else if (callStatus === 'Visa Expired') {
+    statusEl.textContent = 'Visa Expired';
     statusEl.className   = 'badge bg-primary';  
 } else if (callStatus) {
     statusEl.textContent = callStatus;
