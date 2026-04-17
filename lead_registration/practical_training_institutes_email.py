@@ -130,8 +130,8 @@ def practical_training_institutes_email():
             website_leads_collection.update_one(
                 {"_id": lead["_id"]},
                 {"$set": {
-                    "garda_email_sent": 1,
-                    "garda_email_sent_at": datetime.utcnow().isoformat(),
+                    "practical_training_institutes_email_sent": 1,
+                    "practical_training_institutes_email_sent_at": datetime.utcnow().isoformat(),
                     "updated_at": datetime.utcnow().isoformat()
                 }}
             )
