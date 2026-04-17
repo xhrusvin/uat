@@ -30,6 +30,7 @@ NEXT_FOLLOW_UP_MINUTES = 2
 NEXT_FOLLOW_UP_HOURS = 24
 WEB_URL = os.getenv('WEB_URL')
 
+
 current_time = datetime.now(pytz.UTC).strftime("%Y-%m-%d %H:%M")
 
 def to_str(value):
@@ -261,6 +262,8 @@ def api_brief_summary_cov_new():
 
           if field_id == "county" and value:
             location_in_ireland = value
+
+            return location_in_ireland
             try:
                  county_doc = current_app.db.county.find_one({
                    "_id": ObjectId(value)
