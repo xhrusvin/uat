@@ -341,10 +341,11 @@ def api_brief_summary_cov_new():
                  else:
                    location_in_ireland_name = ""
 
-                 return json.dumps(county_doc)
+                 
 
          except Exception:
                 location_in_ireland_name = ""
+                return json.dumps({"error": "County not found"})
         email_message_practical_training_institutes = location_in_ireland_name      
         if location_in_ireland_name:
              # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK START ===
