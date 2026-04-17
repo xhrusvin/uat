@@ -4,19 +4,60 @@
     <meta charset="utf-8">
     <title>Next Steps for Your Application - Xpress Health</title>
     <style>
-        body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333333; background-color: #f4f4f4; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
-        .header { background-color: #eef3f7; padding: 30px; text-align: center; }
-        .header img { max-width: 220px; height: auto; }
-        .content { padding: 40px 30px; }
-        h3 { color: #007bff; margin-top: 0; }
-        .highlight-note { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #007bff; }
-        ul { margin: 20px 0; padding-left: 20px; }
-        ul li { margin-bottom: 12px; }
-        .footer { background-color: #f8f9fa; padding: 25px; text-align: center; font-size: 12px; color: #666666; }
+        body { 
+            font-family: Arial, Helvetica, sans-serif; 
+            line-height: 1.6; 
+            color: #333333; 
+            background-color: #f4f4f4; 
+            margin: 0; 
+            padding: 0; 
+        }
+        .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            background-color: #ffffff; 
+        }
+        .header { 
+            background-color: #eef3f7; 
+            padding: 30px; 
+            text-align: center; 
+        }
+        .header img { 
+            max-width: 220px; 
+            height: auto; 
+        }
+        .content { 
+            padding: 40px 30px; 
+        }
+        h3 { 
+            color: #007bff; 
+            margin-top: 0; 
+        }
+        .county-title {
+            color: #007bff;
+            font-size: 19px;
+            margin: 25px 0 12px 0;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 6px;
+        }
+        ul { 
+            margin: 15px 0 25px 0; 
+            padding-left: 20px; 
+        }
+        ul li { 
+            margin-bottom: 10px; 
+        }
+        .footer { 
+            background-color: #f8f9fa; 
+            padding: 25px; 
+            text-align: center; 
+            font-size: 12px; 
+            color: #666666; 
+        }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
     </style>
 </head>
-
 <body>
 <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4; padding:20px 0;">
 <tr>
@@ -26,7 +67,7 @@
 <!-- Header -->
 <tr>
 <td class="header" align="center">
-<img src="https://expresshealth.ie/static/image/logo.png" alt="Xpress Health Logo">
+    <img src="https://expresshealth.ie/static/image/logo.png" alt="Xpress Health Logo">
 </td>
 </tr>
 
@@ -34,155 +75,94 @@
 <tr>
 <td class="content">
 
-<h3>Hi {{ first_name }},</h3>
+    <h3>Hi {{ first_name }},</h3>
 
-<p>Hope you are doing well.</p>
+    <p>Hope you are doing well.</p>
+    <p>Here is the list of practical training institutes near your location:</p>
 
-<p>Wexford<br>
-1.	https://www.pulsemedical.ie/training/bls-for-healthcare-providers/ (CPR/BLS & MH)<br>
-2.	https://medicore.ie/training-courses/first-aid-courses/cpr-aed-course (CPR/BLS only)<br>
-3.	https://www.randrupskill.com/cardiac-first-responder-training/ (CPR/BLS)<br>
-4.	https://www.randrupskill.com/patient-moving-handling-training/ (MH)<br>
-5.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-6.	https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling (MH)<br>
-Mayo<br>
-1.	https://dorriantraining.ie/services/ (CPR/BLS & MH)<br>
-2.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-Cork<br>
-1.	https://www.healthcareireland.ie/patient-moving-and-handling-2/ (MH)<br>
-2.	https://www.rhythmfirstaid.com/patient-movement-handling/ (MH)<br>
-3.	https://www.rhythmfirstaid.com/heart-saver-cpr-aed-course/ (CPR)
-4.	https://www.optimatraining.ie/product/people-patient-moving-and-handling/ (MH)
-5.	https://www.optimatraining.ie/product/basic-life-support-cardiac-first-response-instructor/ (CPR/BLS)
-6.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-7.	https://vvmitraining.com/ (CPR/BLS & MH)<br>
-8.	https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/ (MH)<br>
-9.	https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling (MH)<br>
-10.	https://www.futureprooftraining.ie/product/people-manual-handling/ (MH)<br>
-Tipperary<br>
-1.	https://www.healthcareireland.ie/patient-moving-and-handling-2/ (MH)<br>
-2.	https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/ (MH)<br>
-3.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-Dublin<br>
-1.	https://www.healthcareireland.ie/patient-moving-and-handling-2/ (MH)<br>
-2.	https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/ (MH)<br>
-3.	https://www.allcoursesdublin.com/patient-handling (MH)<br>
-4.	https://www.allcoursesdublin.com/cpr-course (CPR/BLS)<br>
-5.	https://www.optimatraining.ie/product/people-patient-moving-and-handling/ (MH)<br>
-6.	https://www.optimatraining.ie/product/basic-life-support-cardiac-first-response-instructor/ (CPR/BLS)<br>
-7.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-8.	https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling (MH)<br>
-9.	https://medicore.ie/training-courses/healthcare-courses/patient-moving-handling (MH)<br>
-10.	https://www.edmart.ie/people-patient-handling/ (MH)<br>
-11.	https://wdtraining.ie/patient-manual-handling-training/ (MH)<br>
-12.	https://wdtraining.ie/ihf-heartsaver-cpr-aed-training/ (CPR/BLS)<br>
-13.	https://www.futureprooftraining.ie/product/people-manual-handling/ (MH)<br>
-14.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
+    <!-- ====================== WEXFORD ====================== -->
+    {% if county and county|lower == 'wexford' %}
+    <div>
+        <h4 class="county-title">Wexford</h4>
+        <ul>
+            <li><a href="https://www.pulsemedical.ie/training/bls-for-healthcare-providers/">Pulsemedical</a> (CPR/BLS & MH)</li>
+            <li><a href="https://medicore.ie/training-courses/first-aid-courses/cpr-aed-course">Medicore</a> (CPR/BLS only)</li>
+            <li><a href="https://www.randrupskill.com/cardiac-first-responder-training/">Randrup Skill</a> (CPR/BLS)</li>
+            <li><a href="https://www.randrupskill.com/patient-moving-handling-training/">Randrup Skill</a> (MH)</li>
+            <li><a href="https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates">Irish Heart Foundation</a> (CPR/BLS)</li>
+            <li><a href="https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling">Elevation Training Ireland</a> (MH)</li>
+        </ul>
+    </div>
+    {% endif %}
 
-Limerick<br>
-1.	https://www.optimatraining.ie/product/people-patient-moving-and-handling/ (MH)<br>
-2.	https://www.optimatraining.ie/product/basic-life-support-cardiac-first-response-instructor/ (CPR/BLS)<br>
-3.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-4.	https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/ (MH)<br>
-5.	https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling (MH)<br>
-Sligo<br>
-1.	https://www.optimatraining.ie/product/people-patient-moving-and-handling/ (MH)<br>
-2.	https://www.optimatraining.ie/product/basic-life-support-cardiac-first-response-instructor/ (CPR/BLS)<br>
-3.	https://www.safetech.ie/course/patient-moving-handling#course_dates (MH)<br>
-Waterford<br>
-1.	https://avalontraining.ie/courses/patient-handling/ (MH)<br>
-2.	https://avalontraining.ie/courses/phecc-cfr-cpr-aed/ (CPR)<br>
-3.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-4.	https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/ (MH)<br>
-Kerry<br>
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-2.	https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/ (MH)<br>
-3.	https://hickeysafety.ie/contact-page/ (MH)<br>
-Carlow<br>
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-2.	https://theartofcaring.ie/services (MH)<br>
-3.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Galway<br>
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)
-2.	https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/ (MH)
-3.	https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling (MH)
-4.	https://www.futureprooftraining.ie/product/people-manual-handling/ (MH)
-Kildare
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-2.	https://davidgrogantraining.ie/irish-heart-foundation-heart-saver-cpr-aed/ (CPR/BLS)<br>
-3.	https://davidgrogantraining.ie/manual-people-handling/ (MH)<br>
-4.	https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling (MH)<br>
-5.	https://joymactraining.ie/clinical-manual-handling-people (MH)<br>
-6.	https://joymactraining.ie/basic-life-support-for-healthcare-providers (CPR/BLS)<br>
-7.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Louth<br>
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-2.	https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling (MH)<br>
-3.	https://hickeysafety.ie/contact-page/ (MH)<br>
-4.	https://nbts.ie/courses/manual-handling (MH)<br>
-5.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Meath<br>
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-2.	https://medicore.ie/training-courses/healthcare-courses/patient-moving-handling (MH)<br>
-3.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Wicklow<br>
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-2.	https://davidgrogantraining.ie/manual-people-handling/ (MH)<br>
-3.	https://www.edmart.ie/people-patient-handling/ (MH)<br>
-4.	https://joymactraining.ie/clinical-manual-handling-people (MH)<br>
-5.	https://joymactraining.ie/basic-life-support-for-healthcare-providers (CPR/BLS)<br>
-Roscommon<br>
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-2.	https://www.edmart.ie/people-patient-handling/ (MH)<br>
-3.	https://lifelinetraining.ie/patient-moving-handling/ (MH)<br>
-4.	https://lifelinetraining.ie/first-aid-response-far-2/ (CPR/BLS)<br>
-5.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Kilkenny<br>
-1.	https://davidgrogantraining.ie/manual-people-handling/ (MH)<br>
-2.	https://davidgrogantraining.ie/irish-heart-foundation-heart-saver-cpr-aed/ (CPR/BLS)<br>
-Laois<br>
-1.	https://wdtraining.ie/patient-manual-handling-training/ (M&H)<br>
-2.	https://wdtraining.ie/ihf-heartsaver-cpr-aed-training/ (CPR/BLS)<br>
-3.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Westmeath<br>
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-2.	https://www.edmart.ie/people-patient-handling/ (MH)<br>
-3.	https://www.randrupskill.com/patient-moving-handling-training/ (MH)<br>
-4.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Offaly<br>
-1.	https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling (MH)<br>
-2.	https://www.edmart.ie/people-patient-handling/ (MH)<br>
-3.	https://medicore.ie/training-courses/healthcare-courses/patient-moving-handling (MH)<br>
-4.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-5.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Donegal<br>
-1.	https://dsts.ie/training-courses/#cardiac-first-responder (CPR/BLS & MH)<br>
-2.	https://www.safetech.ie/course/patient-moving-handling#course_dates (MH)<br>
-3.	https://www.safetech.ie/course/ihf-heartsaver-cpr-aed#course_dates (CPR/BLS)<br>
-Monaghan<br>
-1.	https://www.safetech.ie/course/patient-moving-handling#course_dates (MH)<br>
-2.	https://www.futureprooftraining.ie/product/people-manual-handling/ (MH)<br>
-3.	https://nbts.ie/courses/manual-handling (MH)<br>
-4.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Leitrim<br>
-1.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-2.	https://www.safetyinwork.ie/courses/people-handling/ (MH)<br>
-Longford<br>
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-2.	https://dsts.ie/training-courses/#cardiac-first-responder (CPR/BLS & MH)<br>
-3.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Cavan<br>
-1.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-2.	https://nbts.ie/courses/manual-handling (MH)<br>
-3.	https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator (CPR/BLS)<br>
-Clare<br>   
-1.	https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/ (MH)<br>
-2.	https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates (CPR/BLS)<br>
-</p>    
+    <!-- ====================== MAYO ====================== -->
+    {% if county and county|lower == 'mayo' %}
+    <div>
+        <h4 class="county-title">Mayo</h4>
+        <ul>
+            <li><a href="https://dorriantraining.ie/services/">Dorrian Training</a> (CPR/BLS & MH)</li>
+            <li><a href="https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates">Irish Heart Foundation</a> (CPR/BLS)</li>
+        </ul>
+    </div>
+    {% endif %}
 
-<p>If you have any questions, our team is available 24/7 at +353 1 211 8883.</p>
+    <!-- ====================== CORK ====================== -->
+    {% if county and county|lower == 'cork' %}
+    <div>
+        <h4 class="county-title">Cork</h4>
+        <ul>
+            <li><a href="https://www.healthcareireland.ie/patient-moving-and-handling-2/">Healthcare Ireland</a> (MH)</li>
+            <li><a href="https://www.rhythmfirstaid.com/patient-movement-handling/">Rhythm First Aid</a> (MH)</li>
+            <li><a href="https://www.rhythmfirstaid.com/heart-saver-cpr-aed-course/">Rhythm First Aid</a> (CPR)</li>
+            <li><a href="https://www.optimatraining.ie/product/people-patient-moving-and-handling/">Optima Training</a> (MH)</li>
+            <li><a href="https://www.optimatraining.ie/product/basic-life-support-cardiac-first-response-instructor/">Optima Training</a> (CPR/BLS)</li>
+            <li><a href="https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates">Irish Heart Foundation</a> (CPR/BLS)</li>
+            <li><a href="https://vvmitraining.com/">VVMI Training</a> (CPR/BLS & MH)</li>
+            <li><a href="https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/">Platinum Safety</a> (MH)</li>
+            <li><a href="https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling">Elevation Training</a> (MH)</li>
+            <li><a href="https://www.futureprooftraining.ie/product/people-manual-handling/">Futureproof Training</a> (MH)</li>
+        </ul>
+    </div>
+    {% endif %}
 
-<p>Best regards,<br><strong>Xpress Health Team</strong></p>
+    <!-- ====================== DUBLIN ====================== -->
+    {% if county and county|lower == 'dublin' %}
+    <div>
+        <h4 class="county-title">Dublin</h4>
+        <ul>
+            <li><a href="https://www.healthcareireland.ie/patient-moving-and-handling-2/">Healthcare Ireland</a> (MH)</li>
+            <li><a href="https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/">Platinum Safety</a> (MH)</li>
+            <li><a href="https://www.allcoursesdublin.com/patient-handling">All Courses Dublin</a> (MH)</li>
+            <li><a href="https://www.allcoursesdublin.com/cpr-course">All Courses Dublin</a> (CPR/BLS)</li>
+            <li><a href="https://www.optimatraining.ie/product/people-patient-moving-and-handling/">Optima Training</a> (MH)</li>
+            <li><a href="https://www.optimatraining.ie/product/basic-life-support-cardiac-first-response-instructor/">Optima Training</a> (CPR/BLS)</li>
+            <li><a href="https://irishheart.ie/what-is-cpr/healthcare-professionals/?cat=443&county=0&date=All+Dates">Irish Heart Foundation</a> (CPR/BLS)</li>
+            <li><a href="https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling">Elevation Training</a> (MH)</li>
+            <li><a href="https://medicore.ie/training-courses/healthcare-courses/patient-moving-handling">Medicore</a> (MH)</li>
+            <li><a href="https://www.edmart.ie/people-patient-handling/">Edmart</a> (MH)</li>
+            <li><a href="https://wdtraining.ie/patient-manual-handling-training/">WD Training</a> (MH)</li>
+            <li><a href="https://wdtraining.ie/ihf-heartsaver-cpr-aed-training/">WD Training</a> (CPR/BLS)</li>
+            <li><a href="https://www.futureprooftraining.ie/product/people-manual-handling/">Futureproof Training</a> (MH)</li>
+            <li><a href="https://nbts.ie/courses/cpr/heartsaver-aed-cpr-defibrillator">NBTS</a> (CPR/BLS)</li>
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Add more counties below following the same pattern -->
+
+    <!-- Fallback if county is not matched or not provided -->
+    {% if not county %}
+    <p><strong>Note:</strong> We couldn't determine your county. Here are some popular training providers across Ireland:</p>
+    <ul>
+        <li><a href="https://irishheart.ie/what-is-cpr/healthcare-professionals/">Irish Heart Foundation</a> (CPR/BLS)</li>
+        <li><a href="https://www.platinumsafety.ie/manual-handling-courses/patient-handling-training/">Platinum Safety</a> (MH)</li>
+        <li><a href="https://www.optimatraining.ie/">Optima Training</a></li>
+    </ul>
+    {% endif %}
+
+    <p>If you have any questions, our team is available 24/7 at <strong>+353 1 211 8883</strong>.</p>
+
+    <p>Best regards,<br><strong>Xpress Health Team</strong></p>
 
 </td>
 </tr>
@@ -190,8 +170,8 @@ Clare<br>
 <!-- Footer -->
 <tr>
 <td class="footer">
-<p>Xpress Health | Ireland's Trusted Healthcare Staffing Platform</p>
-<p>&copy; {{ current_year }} Xpress Health. All rights reserved.</p>
+    <p>Xpress Health | Ireland's Trusted Healthcare Staffing Platform</p>
+    <p>&copy; {{ current_year }} Xpress Health. All rights reserved.</p>
 </td>
 </tr>
 
