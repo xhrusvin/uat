@@ -333,7 +333,7 @@ def api_brief_summary_cov_new():
         if location_in_ireland:
          try:
                  county_doc = current_app.db.county.find_one({
-                   "_id": ObjectId(value)
+                   "_id": ObjectId(location_in_ireland)
                   })
 
                  if county_doc:
@@ -345,7 +345,7 @@ def api_brief_summary_cov_new():
 
          except Exception:
                 location_in_ireland_name = ""
-                return json.dumps({"error": "County not found"})
+               
         email_message_practical_training_institutes = location_in_ireland_name      
         if location_in_ireland_name:
              # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK START ===
