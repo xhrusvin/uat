@@ -122,7 +122,7 @@ def api_brief_summary_cov_new():
         # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK START ===
         email_message = ""
         if collection in (None, "1", 1):
-            garda_url = f"{WEB_URL}/lead-registration/practical-training-institutes-email?id={user['_id']}"
+            garda_url = f"{WEB_URL}/lead-registration/practical-training-institutes-email?id={user['_id']}&county=Dublin"
             try:
                 import requests
                 garda_resp = requests.get(garda_url, timeout=100)
