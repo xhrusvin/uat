@@ -160,6 +160,8 @@
             <li><a href="https://elevationtrainingireland.ie/learner-application-form/?type=ManualHandling">Elevation Training</a> (MH)</li>
         </ul>
     </div>
+    {% endif %}
+    
     <!-- ====================== LIMERICK ====================== -->
     {% if county and county|lower == 'sligo' %}
     <div>
@@ -183,17 +185,7 @@
         </ul>
     </div>
     {% endif %}
-    <!-- ====================== SLIGO ====================== -->
-    {% if county and county|lower == 'sligo' %}
-    <div>
-        <h4 class="county-title">Sligo</h4>
-        <ul>
-            <li><a href="https://www.optimatraining.ie/product/people-patient-moving-and-handling/">Optima Training</a> (MH)</li>
-            <li><a href="https://www.optimatraining.ie/product/basic-life-support-cardiac-first-response-instructor/">Optima Training</a> (CPR/BLS)</li>
-            <li><a href="https://www.safetech.ie/course/patient-moving-handling#course_dates">SafeTech</a> (MH)</li>
-        </ul>
-    </div>
-    {% endif %}
+    
     <!-- ====================== Kerry ====================== -->
     {% if county and county|lower == 'kerry' %}
     <div>
@@ -312,16 +304,7 @@
         </ul>
     </div>
     {% endif %}
-<!-- ====================== Kilkenny ====================== -->
-    {% if county and county|lower == 'kilkenny' %}
-    <div>
-        <h4 class="county-title">Kilkenny</h4>
-        <ul>
-            <li><a href="https://davidgrogantraining.ie/manual-people-handling/">David Grogan Training</a> (MH)</li>
-            <li><a href="https://davidgrogantraining.ie/irish-heart-foundation-heart-saver-cpr-aed/">David Grogan Training</a> (CPR/BLS)</li>
-        </ul>
-    </div>
-    {% endif %}
+
 <!-- ====================== Laois ====================== -->
     {% if county and county|lower == 'laois' %}
     <div>
@@ -429,12 +412,6 @@
     </div>
     {% endif %}
     
-
-            
-
-
-
-
 
     <!-- Fallback if county is not matched or not provided -->
     {% if not county %}
