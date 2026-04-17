@@ -15,6 +15,8 @@ from . import missed_call_smtp  # noqa
 from . import professional_reference_form  # noqa
 from . import professional_reference_smtp  # noqa
 from . import staff_details  # noqa
+from . import practical_training_institutes_email  # noqa
+
 
 
 
