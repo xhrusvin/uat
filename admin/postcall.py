@@ -261,7 +261,7 @@ def api_brief_summary_cov_new():
           if field_id == "years_experience_ireland" and value:
             years_experience_ireland = int(float(value))
           
-          if field_id == "county" and value:
+          if field_id == "location_in_ireland" and value:
             location_in_ireland = value
    
           if field_id == "last_employer_name" and value:
