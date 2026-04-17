@@ -2,44 +2,6 @@
 
 {% block title %}User Management • Admin{% endblock %}
 
-
-{% block extra_css %}
-<style>
-.sortable {
-    cursor: pointer;
-    user-select: none;
-}
-
-.sort-icon {
-    font-size: 0.75rem;
-    margin-left: 6px;
-    color: #bbb;
-}
-
-.sortable:hover .sort-icon {
-    color: #000;
-}
-
-.sortable.asc .sort-icon {
-    color: #000;
-}
-
-.sortable.desc .sort-icon {
-    color: #000;
-}
-
-
-.btn-delete {
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-}
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="container-fluid px-4 py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -107,32 +69,21 @@
                 <table class="table table-hover mb-0 align-middle">
                     <thead class="text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
                         <tr>
-                            <th class="ps-4 sortable" data-key="name">
-                                Name <i class="bi bi-arrow-down-up sort-icon"></i>
-                                </th>
-                            <th class="sortable" data-key="email">
-  Email <i class="bi bi-arrow-down-up sort-icon"></i>
-</th>
-                            <th>Phone</th>
-                            <th class="sortable" data-key="country">
-  Country <i class="bi bi-arrow-down-up sort-icon"></i>
-</th>
-                                            <th class="sortable" data-key="designation">
-                Designation <i class="bi bi-arrow-down-up sort-icon"></i>
-                </th>
-                            <!-- <th>Call Status</th>
+                            <th class="ps-4">Name</th>
                             <th>Email</th>
-                            <th>Missed Call Email</th> -->
-                            <th class="text-center">Documents</th>
-                            <th class="sortable" data-key="joined">
-                            Joined <i class="bi bi-arrow-down-up sort-icon"></i>
-                            </th>
+                            <th>Phone</th>
+                            <th>Country</th>
+                            <th>Designation</th>
+                            <th>Call Status</th>
+                            <th>Email</th>
+                            <th>Missed Call Email</th>
+                            <th>Joined</th>
                             <th class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for u in users %}
-        <tr class="user-row" 
+                        <tr class="user-row" 
     data-id="{{ u._id|string }}" 
     data-conv-id="{{ u.get('last_conv_id', '') }}"  
     data-elevenlabs-id="{{ u.get('last_elevenlabs_conversation_id', '') }}"
@@ -142,21 +93,6 @@
     data-compliance-elevenlabs-id="{{ u.get('compliance_elevenlabs_conversation_id', '') }}"
     data-profref-conv-id="{{ u.get('last_profref_conv_id', '') }}"
     data-profref-elevenlabs-id="{{ u.get('level_five_elevenlabs_conversation_id', '') }}"
-
-
-    data-name="{{ (u.get('first_name','') ~ ' ' ~ u.get('last_name','')) | lower }}"
-    data-email="{{ u.email | lower }}"
-    data-country="{{ (u.country or '') | lower }}"
-    data-designation="{{ (u.designation or '') | lower }}"
-    data-joined="{{ u.created_at }}"
-    
-    data-profref2-conv-id="{{ u.get('last_profref_conv_id2', '') }}"
-    data-profref2-elevenlabs-id="{{ u.get('level_five_elevenlabs_conversation_id2', '') }}"
-    data-onboarding-conv-id="{{ u.get('last_onboarding_conv_id', '') }}"
-    data-onboarding-elevenlabs-id="{{ u.get('onboarding_elevenlabs_conversation_id', '') }}"
-    data-ref-name="{{ u.get('ref_name', '') | e }}"
-    data-ref-name2="{{ u.get('ref_name2', '') | e }}"
-
     style="cursor: pointer;">
                             <td class="ps-4">
     <div class="d-flex align-items-center">
@@ -184,7 +120,7 @@
                                 {% endif %}
                             </td>
                             <td><span class="text-muted">{{ u.designation or '—' }}</span></td>
-                            <!-- <td>
+                            <td>
                                 {% if u.call_sent == 1 %}
                                 <span class="badge bg-success rounded-pill">Sent</span>
                                 {% else %}
@@ -204,17 +140,7 @@
                                 {% else %}
                                 <span class="badge bg-warning text-dark rounded-pill">Not Sent</span>
                                 {% endif %}
-                            </td> -->
-
-
-                            <td class="text-center">
-                            <button class="btn btn-outline-primary btn-sm rounded-circle view-docs-btn"
-                                data-user-id="{{ u._id|string }}"
-                                title="View Documents">
-                            <i class="bi bi-eye"></i>
-                        </button>
-                        </td>
-
+                            </td>
                             <td class="small text-muted">
                                 {{ u.created_at_formatted }}<br>
                                 {% if u.created_at_time %}
@@ -224,12 +150,11 @@
                                 {% endif %}
                             </td>
                             <td class="text-center">
-                                <button class="btn btn-danger btn-sm rounded-circle btn-delete"
-        data-id="{{ u._id|string }}"
-        data-name="{{ ((u.get('first_name', '') or '') + ' ' + (u.get('last_name', '') or ''))|trim or u.email }}"
-        title="Delete user">
-    <i class="bi bi-trash"></i>
-</button>
+                                <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
+                                        data-id="{{ u._id|string }}"
+                                        data-name="{{ ((u.get('first_name', '') or '') + ' ' + (u.get('last_name', '') or ''))|trim or u.email }}">
+                                    Delete
+                                </button>
                             </td>
                         </tr>
                         {% else %}
@@ -442,12 +367,12 @@
       <i class="bi bi-telephone-forward me-2"></i>Follow Up Call
     </button>
   </li>
-  
+  <!-- NEW: Compliance Document Tab -->
           <li class="nav-item" role="presentation">
             <button class="nav-link fw-semibold" id="compliance-call-tab"
                     data-bs-toggle="tab" data-bs-target="#compliance-call-pane"
                     type="button" role="tab">
-              <i class="bi bi-file-earmark-check me-2"></i> Document Status Call
+              <i class="bi bi-file-earmark-check me-2"></i> Compliance Document
             </button>
           </li>
 
@@ -456,23 +381,7 @@
   <button class="nav-link fw-semibold" id="profref-call-tab"
           data-bs-toggle="tab" data-bs-target="#profref-call-pane"
           type="button" role="tab">
-    <i class="bi bi-person-check me-2"></i> Professional Reference 1
-  </button>
-</li>
-
-<li class="nav-item" role="presentation">
-  <button class="nav-link fw-semibold" id="profref2-call-tab"
-          data-bs-toggle="tab" data-bs-target="#profref2-call-pane"
-          type="button" role="tab">
-    <i class="bi bi-person-check-fill me-2"></i> Professional Reference 2
-  </button>
-</li>
-
-<li class="nav-item" role="presentation">
-  <button class="nav-link fw-semibold" id="onboarding-call-tab"
-          data-bs-toggle="tab" data-bs-target="#onboarding-call-pane"
-          type="button" role="tab">
-    <i class="bi bi-telephone-inbound-fill me-2"></i> Onboarding Call
+    <i class="bi bi-person-check me-2"></i> Professional Reference
   </button>
 </li>
 <li class="nav-item">
@@ -480,7 +389,7 @@
           id="documents-accepted-tab"
           data-bs-toggle="tab"
           data-bs-target="#documents-accepted-pane">
-    <i class="bi bi-folder-check me-2"></i> Compliance Documents
+    <i class="bi bi-folder-check me-2"></i> Documents Accepted
   </button>
 </li>
 </ul>
@@ -715,9 +624,6 @@
     <p class="text-muted">This user has not completed the Professional Reference call yet.</p>
   </div>
 
-
-
-
   <div id="profref-call-section" class="row g-4 d-none">
 
     <!-- LEFT COLUMN: Audio + Transcript -->
@@ -775,13 +681,6 @@
   </div><!-- /#profref-call-section -->
 </div><!-- /#profref-call-pane -->
 
-<div class="tab-pane fade" id="profref2-call-pane" role="tabpanel">
-  <div class="text-center py-5 text-muted">
-    <i class="bi bi-person-x display-4 opacity-50"></i>
-    <p class="mt-3">Professional Reference 2 not implemented yet</p>
-  </div>
-</div>
-
 
 
 
@@ -806,8 +705,8 @@
         <tr>
           <th>Document</th>
           <th>Status</th>
-          <th>Date</th>
-          <th>File</th>
+          <th>Updated At</th>
+          <th>URL</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -827,50 +726,6 @@
 </div>
 </div><!-- /.tab-content -->
       </div>
-
-
-<div class="modal fade" id="documentsModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-
-      <!-- Header -->
-      <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title">Documents</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-
-      <!-- Body -->
-      <div class="modal-body">
-
-        <!-- Loading -->
-        <div id="doc-loading" class="text-center py-4">
-          <div class="spinner-border text-primary"></div>
-        </div>
-
-        <!-- Empty -->
-        <div id="doc-empty" class="text-center py-4 d-none">
-          <p class="text-muted mb-0">No documents found</p>
-        </div>
-
-        <!-- Table -->
-        <div id="doc-table-wrapper" class="d-none">
-          <table class="table table-bordered mb-0">
-            <thead>
-              <tr>
-                <th>Document</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="doc-table-body"></tbody>
-          </table>
-        </div>
-
-      </div>
-
-    </div>
-  </div>
-</div>
-
 
 <style>
     .avatar-sm { width: 40px; height: 40px; font-size: 1rem; }
@@ -901,83 +756,6 @@
 
 <!-- Delete handler -->
 <script>
-
-document.addEventListener('click', async (e) => {
-
-    const btn = e.target.closest('.view-docs-btn');
-    if (!btn) return;
-
-    e.stopPropagation(); // prevent row click
-
-    const userId = btn.dataset.userId;
-
-    const modal = new bootstrap.Modal(
-        document.getElementById('documentsModal')
-    );
-
-    const loading = document.getElementById('doc-loading');
-    const empty = document.getElementById('doc-empty');
-    const wrapper = document.getElementById('doc-table-wrapper');
-    const tbody = document.getElementById('doc-table-body');
-
-    // Reset UI
-    loading.classList.remove('d-none');
-    empty.classList.add('d-none');
-    wrapper.classList.add('d-none');
-    tbody.innerHTML = '';
-
-    modal.show();
-
-    try {
-        const res = await fetch(`/admin/api/user-documents/accepted?lead_id=${userId}`);
-        const result = await res.json();
-
-        console.log("API RESULT:", result);
-
-        loading.classList.add('d-none');
-
-        if (!result.documents || result.documents.length === 0) {
-            empty.classList.remove('d-none');
-            return;
-        }
-
-        wrapper.classList.remove('d-none');
-
-        result.documents.forEach(doc => {
-
-            const name = doc.document_type || '—';
-
-            // 🔥 Map status correctly
-            let statusText = 'Pending';
-            let statusClass = 'bg-secondary';
-
-            if (doc.status === 'completed') {
-                statusText = 'Validated';
-                statusClass = 'bg-success';
-            } else if (doc.status === 'failed') {
-                statusText = 'Rejected';
-                statusClass = 'bg-danger';
-            }
-
-            const row = document.createElement('tr');
-
-            row.innerHTML = `
-                <td>${name}</td>
-                <td><span class="badge ${statusClass}">${statusText}</span></td>
-            `;
-
-            tbody.appendChild(row);
-        });
-
-    } catch (err) {
-        console.error(err);
-        loading.classList.add('d-none');
-        empty.classList.remove('d-none');
-    }
-
-});
-
-
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.btn-delete').forEach(btn => {
         btn.addEventListener('click', async (e) => {
@@ -1020,74 +798,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
-
-
-const getCellValue = (row, key) => {
-    return row.dataset[key] || '';
-};
-
-let currentSort = {
-    key: null,
-    asc: true
-};
-
-document.querySelectorAll('.sortable').forEach(header => {
-    header.style.cursor = 'pointer';
-
-    header.addEventListener('click', () => {
-        const key = header.dataset.key;
-        const tbody = document.querySelector('tbody');
-        const rows = Array.from(tbody.querySelectorAll('tr.user-row'));
-
-        // Toggle direction
-        if (currentSort.key === key) {
-            currentSort.asc = !currentSort.asc;
-        } else {
-            currentSort.key = key;
-            currentSort.asc = true;
-        }
-
-        rows.sort((a, b) => {
-            let valA = getCellValue(a, key);
-            let valB = getCellValue(b, key);
-
-            // Special handling for date
-            if (key === 'joined') {
-                valA = new Date(valA);
-                valB = new Date(valB);
-                return currentSort.asc ? valA - valB : valB - valA;
-            }
-
-            return currentSort.asc
-                ? valA.localeCompare(valB)
-                : valB.localeCompare(valA);
-        });
-
-        // Re-append sorted rows
-        rows.forEach(row => tbody.appendChild(row));
-
-        // Update UI indicator
-        document.querySelectorAll('.sortable').forEach(th => th.classList.remove('asc', 'desc'));
-        header.classList.add(currentSort.asc ? 'asc' : 'desc');
-
-// Update icon manually
-const icon = header.querySelector('.sort-icon');
-if (icon) {
-    icon.textContent = currentSort.asc ? '↑' : '↓';
-}
-
-// document.querySelectorAll('.sortable').forEach(th => {
-//     th.classList.remove('asc', 'desc');
-//     const icon = th.querySelector('.sort-icon');
-//     if (icon) icon.textContent = '↕';
-// });
-
-    });
-});
-
-
-
-
 </script>
 
 <!-- Bootstrap Icons + Flatpickr -->
@@ -1502,11 +1212,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ══════════════════════════════════
     document.querySelectorAll('.user-row').forEach(row => {
         row.addEventListener('click', function (e) {
-
-            if (
-            e.target.closest('.btn-delete') ||
-            e.target.closest('.view-docs-btn')
-        ) return;
             if (e.target.closest('.btn-delete')) return;
 
             currentUserId               = this.dataset.id;
