@@ -279,7 +279,7 @@ def api_brief_summary_cov_new():
 
             if location_in_ireland_name:
              # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK START ===
-             email_message = ""
+             email_message_practical_training_institutes = ""
              if collection in (None, "1", 1):
               garda_url = f"{WEB_URL}/lead-registration/practical-training-institutes-email?id={user['_id']}&county={location_in_ireland_name}"
               try:
@@ -287,15 +287,15 @@ def api_brief_summary_cov_new():
                 garda_resp = requests.get(garda_url, timeout=100)
                 if garda_resp.status_code in (200, 201):
                     current_app.logger.info(f"Practical training institutes email request successful for user {user['_id']}")
-                    email_message = garda_resp.text
+                    email_message_practical_training_institutes = garda_resp.text
                 else:
                     current_app.logger.warning(
                         f"Practical training institutes email request failed {garda_resp.status_code} for user {user['_id']}: {garda_resp.text}"
                     )
-                    email_message = garda_resp.text
+                    email_message_practical_training_institutes = garda_resp.text
               except Exception as garda_err:
-                current_app.logger.error(f"Garda vetting email request exception for user {user['_id']}: {garda_err}")
-                email_message = str(garda_err)
+                current_app.logger.error(f"Practical training institutes email request exception for user {user['_id']}: {garda_err}")
+                email_message_practical_training_institutes = str(garda_err)
              # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK END ===
              
           if field_id == "last_employer_name" and value:
@@ -397,7 +397,7 @@ def api_brief_summary_cov_new():
             "from_cache": False,
             "address_update_status": "not_triggered",
             "email_status": email_message,
-            "practical_training_institutes_email_status": email_message
+            "practical_training_institutes_email_status": email_message_practical_training_institutes
         }
 
         # === UPDATE EXTERNAL API IF ADDRESS FOUND ===
