@@ -17,7 +17,9 @@ import subprocess
 from pathlib import Path
 from PyPDF2 import PdfReader
 from io import BytesIO
-import magic  # for real MIME detection
+import magic  
+
+import json
 
 load_dotenv()
 
@@ -43,6 +45,49 @@ SUPPORTED_MIME_TYPES = {
     'image/webp',
     # Add 'image/heic', 'image/heif' if your model supports them
 }
+
+DOC_TYPE_MAP = {
+    "INFECTION_PREVENTION_CONTROL_CERTIFICATE": "IPC",
+    "SAFEGUARDING_ADULTS_AT_RISK": "SAFEGUARDING_ADULTS",
+    "QQI_LEVEL_5_OR_EQUIVALENT": "QQI_LEVEL_5",
+    "CPR/BLS": "CPR_BLS",
+    "MANUAL_AND_PEOPLE_HANDLING_DOCUMENTS": "MANUAL_HANDLING",
+    "GARDA_VETTING_DOCUMENT": "GARDA_VETTING",
+    "EMPLOYMENT_CONTRACT_SIGNED": "EMPLOYMENT_CONTRACT",
+    "THE_OPEN_DISCLOSURE": "OPEN_DISCLOSURE",
+    "CPI/_MAPA/PMAV": "CPI_MAPA_PMAV",
+    "Nmbi Qualification": "NBMI",
+    "Covid Certificate": "COVID",
+    "Medication Management": "MEDICATION",
+    "Fire Safety": "FIRE_SAFETY",
+    "IPC": "IPC",
+    "Hand Hygiene": "HAND_HYGIENE",
+    "Children First": "CHILDREN_FIRST",
+    "Safeguarding Adults": "SAFEGUARDING_ADULTS",
+    "CV": "CV",
+    "CPR/BLS": "CPR_BLS",
+    "Manual Handling": "MANUAL_HANDLING",
+    "Garda Vetting": "GARDA_VETTING",
+    "PPE": "PPE",
+    "Employment Contract": "EMPLOYMENT_CONTRACT",
+    "Open Disclosure": "OPEN_DISCLOSURE",
+    "CPI/MAPA/PMAV": "CPI_MAPA_PMAV",
+    "Cyber Security": "CYBER_SECURITY",
+    "GDPR": "GDPR"
+}
+
+
+def safe_json_parse(text):
+    try:
+        return json.loads(text)
+    except:
+        return {
+            "is_valid": False,
+            "status": "invalid",
+            "failed_reason": "Invalid AI response format"
+        }
+
+
 
 
 @admin_bp.route('/user-documents')
@@ -184,21 +229,114 @@ def api_list_user_documents():
 
         fresh_documents = api_data.get("data", []) or []
 
+        # documents = []
+        # for doc in fresh_documents:
+        #     doc_name = (doc.get("document_type_name") or "").strip()
+        #     if not doc_name:
+        #         continue
+        #     documents.append({
+        #         "document_type_name": doc_name,
+        #         "url": doc.get("url"),
+        #         "fetched_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+        #     })
+
+        # documents = []
+        # for doc in fresh_documents:
+        #     doc_name = (doc.get("document_type_name") or "").strip()
+        #     doc_code = DOC_TYPE_MAP.get(doc_name, doc_name.upper().replace(" ", "_"))
+        #     if not doc_name:
+        #         continue
+
+        #     doc_url = doc.get("url")
+
+        #     # 🔹 Fetch latest validation
+        #     validation = current_app.db.validations.find_one(
+        #         {
+        #             "user_id": ObjectId(lead_id),
+        #             "document_type_code": doc_name,
+        #             "document_type_code": doc_code
+        #         },
+        #         sort=[("validated_at", -1)]
+        #     )
+
+        #     verification_data = None
+        #     if validation:
+        #         verification_data = {
+        #             "status": validation.get("status"),
+        #             "result": validation.get("result"),
+        #             "failed_reason": validation.get("failed_reason"),
+        #             "validation_id": str(validation["_id"])
+        #         }
+
+        #     documents.append({
+        #         "document_type_name": doc_name,
+        #         "document_type_code": doc_code,
+        #         "url": doc_url,
+        #         "fetched_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+        #         "verification": verification_data
+        #     })
+
         documents = []
+
         for doc in fresh_documents:
             doc_name = (doc.get("document_type_name") or "").strip()
             if not doc_name:
                 continue
+
+            doc_code = DOC_TYPE_MAP.get(doc_name, doc_name.upper().replace(" ", "_"))
+            doc_url = doc.get("url")
+
+            
+            current_app.db.documents.update_one(
+                {
+                    "user_id": ObjectId(lead_id),
+                    "document_type_code": doc_code,
+                    "status": { "$ne": "completed" }
+                },
+                {
+                    "$set": {
+                        "file_url": doc_url,
+                        "status": "pending",
+                        "updated_at": datetime.utcnow()
+                    },
+                    "$setOnInsert": {
+                        "created_at": datetime.utcnow()
+                    }
+                },
+                upsert=True
+            )
+
+            # 🔹 Existing validation fetch (keep this)
+            validation = current_app.db.validations.find_one(
+                {
+                    "user_id": ObjectId(lead_id),
+                    "document_type_code": doc_code
+                },
+                sort=[("validated_at", -1)]
+            )
+
+            verification_data = None
+            if validation:
+                verification_data = {
+                    "status": validation.get("status"),
+                    "result": validation.get("result"),
+                    "failed_reason": validation.get("failed_reason"),
+                    "validation_id": str(validation["_id"])
+                }
+
             documents.append({
                 "document_type_name": doc_name,
-                "url": doc.get("url"),
-                "fetched_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+                "document_type_code": doc_code,
+                "url": doc_url,
+                "fetched_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                "verification": verification_data
             })
 
         return jsonify({
             "status": "success",
             "lead_id": lead_id,
             "user_name": user_name,
+            "designation": user.get("designation", "—"),
             "documents": documents,
             "count": len(documents)
         })
@@ -212,6 +350,58 @@ def api_list_user_documents():
     except Exception as e:
         current_app.logger.exception("Unexpected error in list documents")
         return jsonify({"status": "error", "message": "Internal error"}), 500
+    
+
+@admin_bp.route('/api/prompts/types')
+@admin_required
+def get_prompt_types():
+    types = list(current_app.db.document_types.find({}, {"code": 1}))
+    return jsonify([t["code"] for t in types])
+
+
+@admin_bp.route('/api/prompts/get', methods=['GET'])
+@admin_required
+def get_prompt():
+    doc_type = request.args.get("document_type")
+
+    prompt = current_app.db.prompts.find_one(
+        {"document_type_code": doc_type, "is_active": True},
+        sort=[("version", -1)]
+    )
+
+    if not prompt:
+        return jsonify({"status": "error", "message": "Not found"}), 404
+
+    return jsonify({
+        "status": "success",
+        "prompt": prompt["prompt_text"],
+        "version": prompt["version"]
+    })
+
+@admin_bp.route('/api/prompts/update', methods=['POST'])
+@admin_required
+def update_prompt():
+    data = request.get_json()
+
+    doc_type = data.get("document_type")
+    new_prompt = data.get("prompt")
+
+    latest = current_app.db.prompts.find_one(
+        {"document_type_code": doc_type},
+        sort=[("version", -1)]
+    )
+
+    new_version = (latest["version"] + 1) if latest else 1
+
+    current_app.db.prompts.insert_one({
+        "document_type_code": doc_type,
+        "version": new_version,
+        "prompt_text": new_prompt,
+        "is_active": True,
+        "created_at": datetime.utcnow()
+    })
+
+    return jsonify({"status": "success"})
 
 
 @admin_bp.route('/api/verify-document', methods=['POST'])
@@ -219,16 +409,76 @@ def api_list_user_documents():
 def api_verify_document():
     data = request.get_json()
     doc_url = data.get('url')
-    user_prompt = data.get('prompt', '').strip()
+    document_type = data.get('document_type')
+
+    # prompt_doc = current_app.db.prompts.find_one(
+    #     {"document_type_code": document_type, "is_active": True},
+    #     sort=[("version", -1)]
+    # )
+
+    # if not prompt_doc:
+    #     return jsonify({"status": "error", "message": "Prompt not found"}), 404
+
+    # user_prompt = prompt_doc["prompt_text"]
+
+    # Get prompt from DB
+    prompt_doc = current_app.db.prompts.find_one(
+        {"document_type_code": document_type, "is_active": True},
+        sort=[("version", -1)]
+    )
+
+    # 🔥 FALLBACK LOGIC
+    if prompt_doc and prompt_doc.get("prompt_text"):
+        user_prompt = prompt_doc["prompt_text"]
+    else:
+        user_prompt = data.get("prompt", "").strip()
+
+        if not user_prompt:
+            return jsonify({
+                "status": "error",
+                "message": "No prompt available (DB or input)"
+            }), 400
+
+    print("Using prompt:", user_prompt[:100])
+
+
     document_type = data.get('document_type', 'document')
 
     if not doc_url or not user_prompt:
         return jsonify({"status": "error", "message": "Missing URL or prompt"}), 400
 
-    full_prompt = f"""Current date and time in IST: {date_str}
-Answer any date-related questions using this exact current time — do NOT guess or use outdated knowledge.
+#     full_prompt = f"""Current date and time in IST: {date_str}
+# Answer any date-related questions using this exact current time — do NOT guess or use outdated knowledge.
 
-{user_prompt}"""
+# {user_prompt}"""
+
+    full_prompt = f"""Current date and time in IST: {date_str}
+
+You are a document validation AI.
+
+STRICT INSTRUCTIONS:
+- You MUST return ONLY valid JSON
+- DO NOT return explanation, text, or markdown
+- DO NOT wrap in ```json
+- Output must be a single JSON object
+
+Required JSON format:
+{{
+  "is_valid": true or false,
+  "status": "valid" or "invalid",
+  "failed_reason": "string (empty if valid)",
+  "expiry_date": "YYYY-MM-DD or null"
+}}
+
+Rules:
+- If document is valid → is_valid = true, status = "valid"
+- If invalid → is_valid = false and include failed_reason
+- If expiry exists → include expiry_date
+
+Now validate the document.
+
+{user_prompt}
+"""
 
     model = genai.GenerativeModel('gemini-2.5-flash')
 
@@ -324,11 +574,84 @@ Answer any date-related questions using this exact current time — do NOT guess
             )
         )
 
-        result = response.text.strip() or "[No content extracted]"
+        # result = response.text.strip() or "[No content extracted]"
+        result_text = response.text.strip() or "{}"
+        parsed_result = safe_json_parse(result_text)
+
+        # return jsonify({
+        #     "status": "success",
+        #     "result": parsed_result,
+        #     "mime_type_used": detected_mime,
+        #     "source": "text fallback" if extracted_text else "direct file",
+        #     "document_type": document_type
+        # })
+
+
+        
+        user_id = data.get("user_id")  # send from frontend if possible
+
+        validation_id = None
+
+        try:
+            validation_doc = {
+                "user_id": ObjectId(user_id) if user_id and ObjectId.is_valid(user_id) else None,
+                "document_type_code": document_type,
+                "status": "success" if parsed_result.get("is_valid") else "failed",
+                "result": parsed_result,
+                "failed_reason": parsed_result.get("failed_reason"),
+                "raw_response": parsed_result,
+                "validated_at": datetime.utcnow()
+            }
+
+            inserted = current_app.db.validations.insert_one(validation_doc)
+            validation_id = str(inserted.inserted_id)
+
+
+            # 1. Update document
+            current_app.db.documents.update_one(
+                {
+                    "user_id": ObjectId(user_id),
+                    "document_type_code": document_type,
+                    "file_url": doc_url
+                },
+                {
+                    "$set": {
+                        "status": "completed" if parsed_result.get("is_valid") else "failed",
+                        "last_validation_id": validation_id,
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+
+            # 2. Update user_document_status
+            status_value = "valid" if parsed_result.get("is_valid") else "invalid"
+
+            if parsed_result.get("expired") == "expired":
+                status_value = "expired"
+
+            current_app.db.user_document_status.update_one(
+                {
+                    "user_id": ObjectId(user_id),
+                    "document_type_code": document_type
+                },
+                {
+                    "$set": {
+                        "status": status_value,
+                        "latest_validation_id": validation_id,
+                        "source": "ai",
+                        "last_updated": datetime.utcnow()
+                    }
+                },
+                upsert=True
+            )
+
+        except Exception as db_err:
+            current_app.logger.warning(f"Validation save failed: {db_err}")
 
         return jsonify({
             "status": "success",
-            "result": result,
+            "result": parsed_result,
+            "validation_id": validation_id,
             "mime_type_used": detected_mime,
             "source": "text fallback" if extracted_text else "direct file",
             "document_type": document_type
@@ -344,3 +667,42 @@ Answer any date-related questions using this exact current time — do NOT guess
             "status": "error",
             "message": f"Processing failed: {str(e)}. Check logs and /tmp/gemini_debug files."
         }), 500
+    
+
+
+@admin_bp.route('/api/user-documents/accepted', methods=['GET'])
+@admin_required
+def api_user_documents_accepted():
+    lead_id = request.args.get('lead_id')
+
+    if not lead_id or not ObjectId.is_valid(lead_id):
+        return jsonify({"status": "error", "message": "Invalid lead_id"}), 400
+
+    docs = list(current_app.db.documents.find(
+        {"user_id": ObjectId(lead_id)},
+        {
+            "document_type_code": 1,
+            "status": 1,
+            "updated_at": 1,
+            "file_url": 1
+        }
+    ).sort("updated_at", -1))
+
+    result = []
+    for d in docs:
+        updated = d.get("updated_at")
+        if isinstance(updated, datetime):
+            updated = updated.strftime("%d %b %Y %H:%M")
+
+        result.append({
+            "document_type": d.get("document_type_code"),
+            "status": d.get("status", "pending"),
+            "updated_at": updated or "—",
+            "url": d.get("file_url"),
+            "reason": d.get("reason", "")
+        })
+
+    return jsonify({
+        "status": "success",
+        "documents": result
+    })

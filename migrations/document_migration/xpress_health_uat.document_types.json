@@ -1,0 +1,144 @@
+[{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee588"
+  },
+  "code": "NBMI",
+  "name": "NBMI Qualification",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee589"
+  },
+  "code": "COVID",
+  "name": "COVID Certificate",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee58a"
+  },
+  "code": "MEDICATION",
+  "name": "Medication Management",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee58b"
+  },
+  "code": "FIRE_SAFETY",
+  "name": "Fire Safety",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee58c"
+  },
+  "code": "IPC",
+  "name": "IPC",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee58d"
+  },
+  "code": "HAND_HYGIENE",
+  "name": "Hand Hygiene",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee58e"
+  },
+  "code": "CHILDREN_FIRST",
+  "name": "Children First",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee58f"
+  },
+  "code": "SAFEGUARDING_ADULTS",
+  "name": "Safeguarding Adults",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee590"
+  },
+  "code": "CV",
+  "name": "CV",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee591"
+  },
+  "code": "CPR_BLS",
+  "name": "CPR/BLS",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee592"
+  },
+  "code": "MANUAL_HANDLING",
+  "name": "Manual Handling",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee593"
+  },
+  "code": "GARDA_VETTING",
+  "name": "Garda Vetting",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee594"
+  },
+  "code": "PPE",
+  "name": "PPE",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee595"
+  },
+  "code": "EMPLOYMENT_CONTRACT",
+  "name": "Employment Contract",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee596"
+  },
+  "code": "OPEN_DISCLOSURE",
+  "name": "Open Disclosure",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee597"
+  },
+  "code": "CPI_MAPA_PMAV",
+  "name": "CPI/MAPA/PMAV",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee598"
+  },
+  "code": "CYBER_SECURITY",
+  "name": "Cyber Security",
+  "is_active": true
+},
+{
+  "_id": {
+    "$oid": "69de3500cb815dbce39ee599"
+  },
+  "code": "GDPR",
+  "name": "GDPR",
+  "is_active": true
+}]

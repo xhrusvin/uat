@@ -1,0 +1,624 @@
+[{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2b9"
+  },
+  "document_type_code": "NBMI",
+  "version": 1,
+  "prompt_text": "You are a document validation assistant.\n\nExtract and validate details from the given certificate text.\n\nCompare each expiry_date with \"{today}\" (YYYY-MM-DD).\n\nRules:\n- expiry_date from \"Renewed Until\"\n- expired:\n    < today → \"expired\"\n    >= today → \"active\"\n    none → \"unknown\"\n\nValidation:\n- full_name_match (strict first + last match)\n- division extracted\n- certificate_valid = contains \"Annual Retention\"\n\nis_valid = active + name match + division present + certificate_valid\n\nReturn JSON:\n{\n  expiry_date: [],\n  expired: \"\",\n  today_date: \"\",\n  full_name_match: true/false,\n  division: \"\",\n  certificate_valid: true/false,\n  is_valid: true/false,\n  failed_reason: \"\"\n}",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2ba"
+  },
+  "document_type_code": "COVID",
+  "version": 1,
+  "prompt_text": "Validate COVID certificate.\n\nSteps:\n- Extract name from:\n  \"Name:\" OR certificate phrases\n- full_name_match rules (strict first + last)\n- covid_text_present:\n    must contain COVID indicators\n\nis_valid = name match + covid_text_present\n\nReturn JSON:\n{\n  extracted_name: \"\",\n  input_name: \"\",\n  full_name_match: true/false,\n  covid_text_present: true/false,\n  is_valid: true/false,\n  failed_reason: \"\"\n}",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2bb"
+  },
+  "document_type_code": "MEDICATION",
+  "version": 1,
+  "prompt_text": "Validate Medication Management certificate.\n\nRules:\n- Extract name\n- Match name\n- certificate_type_valid must match:\n  \"Medication Management\", \"Drug Administration\", etc.\n\nexpiry_date = []\n\nis_valid = name match + certificate_type_valid",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2bc"
+  },
+  "document_type_code": "FIRE_SAFETY",
+  "version": 1,
+  "prompt_text": "Validate Fire Safety certificate.\n\nKey checks:\n- Extract valid full name (strict rules)\n- certificate_type_valid:\n  Fire safety related keywords\n- expiry_date:\n  ONLY if explicit phrases exist\n- expired logic based on {today}\n\nis_valid = name match + type valid + expired = active",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2bd"
+  },
+  "document_type_code": "ATTACH_OTHER",
+  "version": 1,
+  "prompt_text": "Validate generic certificate.\n\nRules:\n- Extract name\n- full_name_match only\n\nis_valid = name match",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2be"
+  },
+  "document_type_code": "IPC",
+  "version": 1,
+  "prompt_text": "Validate IPC certificate.\n\nRules:\n- Extract name\n- Match name (strict)\n- expiry_date only if explicitly mentioned\n- certificate_valid = must NOT contain \"COVID\"\n\nis_valid = name match + certificate_valid + expired = active",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2bf"
+  },
+  "document_type_code": "HAND_HYGIENE",
+  "version": 1,
+  "prompt_text": "Validate Hand Hygiene certificate.\n\nRules:\n- Extract name (ignore signatories)\n- certificate_valid:\n  \"Hand Hygiene\" or equivalents\n- expiry_date STRICT extraction (no guessing)\n\nis_valid = name match + type valid + expired = active",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2c0"
+  },
+  "document_type_code": "CHILDREN_FIRST",
+  "version": 1,
+  "prompt_text": "Validate Children First certificate.\n\nRules:\n- Extract valid name\n- certificate_valid:\n  safeguarding / child protection\n- expiry_date only if explicit\n\nis_valid = name match + type valid + expired = active",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2c1"
+  },
+  "document_type_code": "SAFEGUARDING_ADULTS",
+  "version": 1,
+  "prompt_text": "Validate safeguarding adults certificate.\n\nRules:\n- Extract name\n- certificate_valid:\n  safeguarding adults keywords\n- expiry strict rules\n\nis_valid = name match + type valid + expired = active",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2c2"
+  },
+  "document_type_code": "CV",
+  "version": 1,
+  "prompt_text": "Validate CV.\n\nExtract:\n- Name\n- Ireland experience\n- Responsibilities\n- Career gap (STRICT rules)\n\nis_valid =\n  name match +\n  Ireland experience present +\n  responsibilities +\n  (no gap OR valid gap reason)",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2c3"
+  },
+  "document_type_code": "CPR_BLS",
+  "version": 1,
+  "prompt_text": "Validate CPR/BLS certificate.\n\nRules:\n- Extract name\n- certificate_valid:\n  CPR / BLS / AED etc.\n  MUST be practical (not theory)\n\nis_valid = name match + certificate_valid",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2c4"
+  },
+  "document_type_code": "MANUAL_HANDLING",
+  "version": 1,
+  "prompt_text": "Validate Manual Handling certificate.\n\nRules:\n- Extract name\n- certificate must:\n  - include practical training\n  - include allowed titles\n  - NOT from banned providers\n\nis_valid = name match + certificate_valid",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2c5"
+  },
+  "document_type_code": "GARDA_VETTING",
+  "version": 1,
+  "prompt_text": "Validate Garda Vetting.\n\nChecks:\n- extracted_name (after \"Re:\")\n- dob_match\n- disclosure_clear (all 4 categories = Nil)\n\nis_valid = name match + dob match + disclosure_clear",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2c6"
+  },
+  "document_type_code": "PPE",
+  "version": 1,
+  "prompt_text": "Validate PPE certificate.\n\nRules:\n- Extract name\n- document_type_valid = PPE keywords\n- expiry:\n  - HSE → no expiry\n  - others → must have expiry\n\nis_valid =\n  name match +\n  document_type_valid +\n  valid expiry logic",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2c7"
+  },
+  "document_type_code": "EMPLOYMENT_CONTRACT",
+  "version": 1,
+  "prompt_text": "Validate Employment Contract.\n\nRules:\n- Extract staff name\n- document_type_valid (Xpress Health keywords)\n- is_signed\n\nis_valid = name match + type valid + signed",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2c8"
+  },
+  "document_type_code": "OPEN_DISCLOSURE",
+  "version": 1,
+  "prompt_text": "Validate Open Disclosure certificate.\n\nRules:\n- Extract name\n- document_type_valid (Open Disclosure keywords)\n- expiry:\n  - HSELand → no expiry\n  - else → must exist\n\nis_valid = name match + type valid + expiry valid",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2c9"
+  },
+  "document_type_code": "CPI_MAPA_PMAV",
+  "version": 1,
+  "prompt_text": "Validate CPI/MAPA/PMAV certificate.\n\nRules:\n- Extract name\n- document_type_valid (keywords)\n\nis_valid = name match + document_type_valid",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2ca"
+  },
+  "document_type_code": "CYBER_SECURITY",
+  "version": 1,
+  "prompt_text": "Validate Cyber Security certificate.\n\nRules:\n- Extract name\n- document_type_valid\n- expiry:\n  - HSE → no expiry\n  - others → must be active\n\nis_valid depends on issuer logic",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de26b00ab1bf05f582f2cb"
+  },
+  "document_type_code": "GDPR",
+  "version": 1,
+  "prompt_text": "Validate GDPR certificate.\n\nRules:\n- Extract name\n- document_type_valid (GDPR / Data Protection)\n\nis_valid = name match + document_type_valid",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T11:36:16.752Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de3710942c89ea6ce13442"
+  },
+  "document_type_code": "GDPR",
+  "version": 2,
+  "prompt_text": "Validate GDPR Certificate.\nValidate\n\n\nRules:\n- Extract name\n- document_type_valid (GDPR / Data Protection)\n\nis_valid = name match + document_type_valid",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T12:46:08.876Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de3727942c89ea6ce13443"
+  },
+  "document_type_code": "NBMI",
+  "version": 2,
+  "prompt_text": "You are a document validation assistant.\n\n\n\nExtract and validate details from the given certificate text.\n\nCompare each expiry_date with \"{today}\" (YYYY-MM-DD).\n\nRules:\n- expiry_date from \"Renewed Until\"\n- expired:\n    < today → \"expired\"\n    >= today → \"active\"\n    none → \"unknown\"\n\nValidation:\n- full_name_match (strict first + last match)\n- division extracted\n- certificate_valid = contains \"Annual Retention\"\n\nis_valid = active + name match + division present + certificate_valid\n\nReturn JSON:\n{\n  expiry_date: [],\n  expired: \"\",\n  today_date: \"\",\n  full_name_match: true/false,\n  division: \"\",\n  certificate_valid: true/false,\n  is_valid: true/false,\n  failed_reason: \"\"\n}",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T12:46:31.618Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de3755942c89ea6ce13444"
+  },
+  "document_type_code": "COVID",
+  "version": 2,
+  "prompt_text": "Validate COVID certificate.\n\nSteps:\n- Extract name from:\n  \"Name:\" OR certificate phrases\n- full_name_match rules (strict first + last)\n- covid_text_present:\n    must contain COVID indicators\n\nis_valid = name match + covid_text_present\n\nReturn JSON:\n{\n  extracted_name: \"\",\n  input_name: \"\",\n  full_name_match: true/false,\n  covid_text_present: true/false,\n  is_valid: true/false,\n  failed_reason: \"\"\n}",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T12:47:17.585Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de38e0f10bc6b8ff3245f0"
+  },
+  "document_type_code": "MEDICATION",
+  "version": 2,
+  "prompt_text": "Validate Medication Management certificate.\nValidate.\n\nRules:\n- Extract name\n- Match name\n- certificate_type_valid must match:\n  \"Medication Management\", \"Drug Administration\", etc.\n\nexpiry_date = []\n\nis_valid = name match + certificate_type_valid",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T12:53:52.303Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de5ec7abc2368ae92bb00a"
+  },
+  "document_type_code": "GARDA_VETTING",
+  "version": 2,
+  "prompt_text": "Validate Garda Vetting.\n\nChecks:\n- extracted_name (after \"Re:\")\n- dob_match\n- disclosure_clear (all 4 categories = Nil)\n\nis_valid = name match + dob match + disclosure_clear",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T15:35:35.150Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de64a3cb815dbce39ee59a"
+  },
+  "document_type_code": "ATTACH_ANY_OTHER_CERTIFICATE",
+  "version": 1,
+  "prompt_text": "Validate this document and return JSON with is_valid, status, failed_reason.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:00:35.112Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de64a3cb815dbce39ee59b"
+  },
+  "document_type_code": "POLICE_CLEARANCE",
+  "version": 1,
+  "prompt_text": "Check if police clearance is valid and not expired. Return JSON.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:00:35.112Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de666ccb815dbce39ee59c"
+  },
+  "document_type_code": "HACCP_FOOD_SAFETY",
+  "version": 1,
+  "prompt_text": "\nYou are a document validation assistant.\n\nValidate if this HACCP / Food Safety certificate is valid.\n\nCheck:\n- Candidate name\n- Certificate name\n- Issue date\n- Expiry date\n\nRules:\n- If expiry_date < {today} → invalid\n- If missing key fields → invalid\n\nReturn ONLY JSON:\n{\n  \"is_valid\": true or false,\n  \"status\": \"valid\" or \"invalid\",\n  \"expiry_date\": \"YYYY-MM-DD or null\",\n  \"failed_reason\": \"\"\n}\n",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:08:12.277Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de666ccb815dbce39ee59d"
+  },
+  "document_type_code": "DIGNITY_AT_WORK",
+  "version": 1,
+  "prompt_text": "\nValidate this Dignity at Work training certificate.\n\nCheck:\n- Person name\n- Course name\n- Completion or expiry date\n\nReturn ONLY JSON:\n{\n  \"is_valid\": true or false,\n  \"status\": \"valid\" or \"invalid\",\n  \"expiry_date\": \"YYYY-MM-DD or null\",\n  \"failed_reason\": \"\"\n}\n",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:08:12.277Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de666ccb815dbce39ee59e"
+  },
+  "document_type_code": "DOLS",
+  "version": 1,
+  "prompt_text": "\nValidate this Deprivation of Liberty Safeguards (DOLS) certificate.\n\nCheck:\n- Name\n- Training title\n- Expiry (if any)\n\nReturn ONLY JSON:\n{\n  \"is_valid\": true or false,\n  \"status\": \"valid\" or \"invalid\",\n  \"expiry_date\": \"YYYY-MM-DD or null\",\n  \"failed_reason\": \"\"\n}\n",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:08:12.277Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de666ccb815dbce39ee59f"
+  },
+  "document_type_code": "HEALTH_DECLARATION_FORM",
+  "version": 1,
+  "prompt_text": "\nValidate this Health Declaration Form.\n\nCheck:\n- Name present\n- Signature or confirmation\n- Date\n\nIf missing key info → invalid\n\nReturn ONLY JSON:\n{\n  \"is_valid\": true or false,\n  \"status\": \"valid\" or \"invalid\",\n  \"expiry_date\": null,\n  \"failed_reason\": \"\"\n}\n",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:08:12.277Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de666ccb815dbce39ee5a0"
+  },
+  "document_type_code": "CODE_OF_CONDUCT",
+  "version": 1,
+  "prompt_text": "\nValidate this Code of Conduct document.\n\nCheck:\n- Signed or acknowledged\n- Name present\n- Date present\n\nReturn ONLY JSON:\n{\n  \"is_valid\": true or false,\n  \"status\": \"valid\" or \"invalid\",\n  \"expiry_date\": null,\n  \"failed_reason\": \"\"\n}\n",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:08:12.277Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de666ccb815dbce39ee5a1"
+  },
+  "document_type_code": "REFERENCES",
+  "version": 1,
+  "prompt_text": "\nValidate reference document.\n\nCheck:\n- Referee name\n- Contact info\n- Candidate name\n- Content relevance\n\nReturn ONLY JSON:\n{\n  \"is_valid\": true or false,\n  \"status\": \"valid\" or \"invalid\",\n  \"expiry_date\": null,\n  \"failed_reason\": \"\"\n}\n",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:08:12.277Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de666ccb815dbce39ee5a2"
+  },
+  "document_type_code": "POLICE_CLEARANCE_CERTIFICATE_(_FROM_COUNTRY_OF_BIRTH_)",
+  "version": 1,
+  "prompt_text": "\nValidate police clearance certificate.\n\nCheck:\n- Name\n- Country\n- Issue date\n- Expiry date\n\nRules:\n- If expired → invalid\n\nReturn ONLY JSON:\n{\n  \"is_valid\": true or false,\n  \"status\": \"valid\" or \"invalid\",\n  \"expiry_date\": \"YYYY-MM-DD or null\",\n  \"failed_reason\": \"\"\n}\n",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:08:12.277Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de666ccb815dbce39ee5a3"
+  },
+  "document_type_code": "CLEARANCE_PASS",
+  "version": 1,
+  "prompt_text": "\nValidate clearance pass.\n\nCheck:\n- Name\n- Validity dates\n- Issuer\n\nReturn ONLY JSON:\n{\n  \"is_valid\": true or false,\n  \"status\": \"valid\" or \"invalid\",\n  \"expiry_date\": \"YYYY-MM-DD or null\",\n  \"failed_reason\": \"\"\n}\n",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:08:12.277Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de66e1cb815dbce39ee5a5"
+  },
+  "document_type_code": "QQI_LEVEL_5",
+  "version": 1,
+  "prompt_text": "\nYou are a document validation assistant.\n\nValidate this QQI Level 5 (or equivalent qualification) certificate.\n\nCheck:\n- Candidate name\n- Qualification title\n- Issuing authority\n- Date of issue\n\nRules:\n- Must clearly show qualification completion\n- If key fields missing → invalid\n\nReturn ONLY JSON:\n{\n  \"is_valid\": true or false,\n  \"status\": \"valid\" or \"invalid\",\n  \"expiry_date\": null,\n  \"failed_reason\": \"\"\n}\n",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:10:09.625Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69de6c12f0aef06792033f11"
+  },
+  "document_type_code": "CV",
+  "version": 2,
+  "prompt_text": "Validate CV.\n\nExtract:\n- Name\n- Ireland experience\n- Responsibilities\n- Career gap (STRICT rules)\n\nis_valid =\n  name match +\n  Ireland experience present +\n  responsibilities +\n  (no gap OR valid gap reason)",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-14T16:32:18.695Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0b4655467a82bbae4efc6"
+  },
+  "document_type_code": "GDPR",
+  "version": 3,
+  "prompt_text": "GDPR Certificate Validation Prompt\n\nYou are a document validation AI assistant.\nExtract and validate details from the given GDPR certificate text.\n\nRules\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name from the document\nDetermine:\ndocument_type_valid = true if document contains \"GDPR\" or \"Data Protection\", else false\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nis_valid = true if:\nfull_name_match is true AND\ndocument_type_valid is true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"Invalid document type\"\n\"Both name mismatch and invalid document type\"\n\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"full_name_match\": true,\n  \"document_type_valid\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\nImportant Notes\nDo not include any explanation outside JSON.\nUse lowercase true/false (valid JSON booleans).\nDo not add trailing commas.\nEnsure keys are wrapped in double quotes.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:05:25.369Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0b4915467a82bbae4efc7"
+  },
+  "document_type_code": "GDPR",
+  "version": 4,
+  "prompt_text": "GDPR Certificate Validation Prompt\n\nYou are a document validation AI assistant.\nExtract and validate details from the given GDPR certificate text.\n\nRules\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name from the document\nDetermine:\ndocument_type_valid = true if document contains \"GDPR\" or \"Data Protection\", else false\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nis_valid = true if:\nfull_name_match is true AND\ndocument_type_valid is true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"Invalid document type\"\n\"Both name mismatch and invalid document type\"\n\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"full_name_match\": true,\n  \"document_type_valid\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\n\n\nImportant Notes\nDo not include any explanation outside JSON.\nUse lowercase true/false (valid JSON booleans).\nDo not add trailing commas.\nEnsure keys are wrapped in double quotes.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:06:09.129Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0b4d45467a82bbae4efc8"
+  },
+  "document_type_code": "CYBER_SECURITY",
+  "version": 2,
+  "prompt_text": "Cyber Security Certificate Validation Prompt\n\nYou are a document validation AI assistant.\nExtract and validate details from the given Cyber Security certificate text.\n\nRules:\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name from the document\nissuer (if available)\nexpiry_date (if available)\nDetermine:\ndocument_type_valid = true if document contains \"Cyber Security\", \"Cybersecurity\", or similar relevant terms, else false\nExpiry Logic\nIf issuer contains \"HSE\":\nexpiry_status = \"not_applicable\"\nOtherwise:\nIf expiry_date exists:\n< today → \"expired\"\n>= today → \"active\"\nIf no expiry_date:\n\"unknown\"\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nis_valid = true if:\nfull_name_match is true\ndocument_type_valid is true\nAND:\n(issuer = HSE) OR\n(expiry_status = \"active\")\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"Invalid document type\"\n\"Certificate expired\"\n\"Expiry unknown\"\n\"Multiple validation failures\"\n\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"issuer\": \"\",\n  \"expiry_date\": \"\",\n  \"expiry_status\": \"\",\n  \"document_type_valid\": true,\n  \"full_name_match\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\n\nImportant Notes\nOutput only JSON.\nUse lowercase true/false.\nNo trailing commas.\nAll keys must be in double quotes.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:07:16.493Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0b5055467a82bbae4efc9"
+  },
+  "document_type_code": "CPI_MAPA_PMAV",
+  "version": 2,
+  "prompt_text": "You are a document validation AI assistant.\nExtract and validate details from the given certificate text.\n\nRules\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name from the document\nDetermine:\ndocument_type_valid = true if document contains any of:\n\"CPI\"\n\"MAPA\"\n\"PMAV\"\notherwise false\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nis_valid = true if:\nfull_name_match is true AND\ndocument_type_valid is true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"Invalid document type\"\n\"Both name mismatch and invalid document type\"\n\n\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"full_name_match\": true,\n  \"document_type_valid\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\n\nImportant Notes\nOutput only JSON.\nUse lowercase true/false.\nNo trailing commas.\nAll keys must be in double quotes.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:08:05.007Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0b55e5467a82bbae4efca"
+  },
+  "document_type_code": "OPEN_DISCLOSURE",
+  "version": 2,
+  "prompt_text": "Open Disclosure Certificate Validation Prompt\n\nYou are a document validation AI assistant.\nExtract and validate details from the given Open Disclosure certificate text.\n\nRules\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name from the document\nissuer (if available)\nexpiry_date (if available)\nDetermine:\ndocument_type_valid = true if document contains \"Open Disclosure\" or similar relevant keywords, else false\nExpiry Logic\nIf issuer contains \"HSELand\":\nexpiry_status = \"not_applicable\"\nOtherwise:\nIf expiry_date exists:\nexpiry_status = \"present\"\nIf no expiry_date:\nexpiry_status = \"missing\"\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nexpiry_valid = true if:\n(issuer = HSELand) OR\n(expiry_status = \"present\")\nis_valid = true if:\nfull_name_match is true AND\ndocument_type_valid is true AND\nexpiry_valid is true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"Invalid document type\"\n\"Expiry missing\"\n\"Multiple validation failures\"\n\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"issuer\": \"\",\n  \"expiry_date\": \"\",\n  \"expiry_status\": \"\",\n  \"document_type_valid\": true,\n  \"full_name_match\": true,\n  \"expiry_valid\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\n\nImportant Notes\nOutput only JSON.\nUse lowercase true/false.\nNo trailing commas.\nAll keys must be in double quotes.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:09:34.590Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0b5915467a82bbae4efcb"
+  },
+  "document_type_code": "EMPLOYMENT_CONTRACT",
+  "version": 2,
+  "prompt_text": "Employment Contract Validation Prompt\n\nYou are a document validation AI assistant.\nExtract and validate details from the given Employment Contract text.\n\nRules\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name (staff name) from the document\nis_signed = true if signature present (digital or handwritten), else false\nDetermine:\ndocument_type_valid = true if document contains \"Xpress Health\" or relevant organization identifiers, else false\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nis_valid = true if:\nfull_name_match is true AND\ndocument_type_valid is true AND\nis_signed is true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"Invalid document type\"\n\"Not signed\"\n\"Multiple validation failures\"\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"full_name_match\": true,\n  \"document_type_valid\": true,\n  \"is_signed\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\nImportant Notes\nOutput only JSON.\nUse lowercase true/false.\nNo trailing commas.\nAll keys must be in double quotes.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:10:25.023Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0b5ae5467a82bbae4efcc"
+  },
+  "document_type_code": "PPE",
+  "version": 2,
+  "prompt_text": "PPE Certificate Validation Prompt\n\nYou are a document validation AI assistant.\nExtract and validate details from the given PPE certificate text.\n\nRules\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name from the document\nissuer (if available)\nexpiry_date (if available)\nDetermine:\ndocument_type_valid = true if document contains \"PPE\", \"Personal Protective Equipment\", or similar relevant keywords, else false\nExpiry Logic\nIf issuer contains \"HSE\":\nexpiry_status = \"not_applicable\"\nOtherwise:\nIf expiry_date exists:\nexpiry_status = \"present\"\nIf no expiry_date:\nexpiry_status = \"missing\"\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nexpiry_valid = true if:\n(issuer contains \"HSE\") OR\n(expiry_status = \"present\")\nis_valid = true if:\nfull_name_match is true AND\ndocument_type_valid is true AND\nexpiry_valid is true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"Invalid document type\"\n\"Expiry missing\"\n\"Multiple validation failures\"\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"issuer\": \"\",\n  \"expiry_date\": \"\",\n  \"expiry_status\": \"\",\n  \"document_type_valid\": true,\n  \"full_name_match\": true,\n  \"expiry_valid\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\nImportant Notes\nOutput only JSON.\nUse lowercase true/false.\nNo trailing commas.\nAll keys must be in double quotes.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:10:54.127Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0b67d5467a82bbae4efcd"
+  },
+  "document_type_code": "GARDA_VETTING",
+  "version": 3,
+  "prompt_text": "Garda Vetting Validation Prompt\n\nYou are a document validation AI assistant.\nExtract and validate details from the given Garda Vetting document.\n\nRules\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name (value after \"Re:\")\nextracted_dob (date of birth from document)\nDetermine:\ndisclosure_clear = true if all four disclosure categories are marked as \"Nil\", else false\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\ndob_match = match between extracted_dob and {input_dob}\n(exact match after normalizing format if needed)\nis_valid = true if:\nfull_name_match is true AND\ndob_match is true AND\ndisclosure_clear is true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"DOB mismatch\"\n\"Disclosure not clear\"\n\"Multiple validation failures\"\n\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"extracted_dob\": \"\",\n  \"input_dob\": \"\",\n  \"full_name_match\": true,\n  \"dob_match\": true,\n  \"disclosure_clear\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\n\n\nImportant Notes\nOutput only JSON.\nUse lowercase true/false.\nNo trailing commas.\nAll keys must be in double quotes.\nEnsure \"Re:\" extraction is precise (ignore extra text/noise).",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:14:21.845Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0b69c5467a82bbae4efce"
+  },
+  "document_type_code": "MANUAL_HANDLING",
+  "version": 2,
+  "prompt_text": "Manual Handling Certificate Validation Prompt\n\nYou are a document validation AI assistant.\nExtract and validate details from the given Manual Handling certificate text.\n\nRules\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name from the document\nprovider (if available)\nDetermine:\nhas_practical_training = true if document explicitly mentions practical training, else false\nvalid_title = true if document contains allowed titles such as:\n\"Manual Handling Training\"\n\"Manual Handling Certificate\"\nor similar accepted variations\nnot_from_banned_provider = true if provider is not in banned list, else false\ncertificate_valid = true if:\nhas_practical_training is true AND\nvalid_title is true AND\nnot_from_banned_provider is true\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nis_valid = true if:\nfull_name_match is true AND\ncertificate_valid is true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"Missing practical training\"\n\"Invalid certificate title\"\n\"Banned provider\"\n\"Multiple validation failures\"\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"provider\": \"\",\n  \"has_practical_training\": true,\n  \"valid_title\": true,\n  \"not_from_banned_provider\": true,\n  \"certificate_valid\": true,\n  \"full_name_match\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\nImportant Notes\nOutput only JSON.\nUse lowercase true/false.\nNo trailing commas.\nAll keys must be in double quotes.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:14:52.293Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0b6b55467a82bbae4efcf"
+  },
+  "document_type_code": "CPR_BLS",
+  "version": 2,
+  "prompt_text": "CPR / BLS Certificate Validation Prompt\n\nYou are a document validation AI assistant.\nExtract and validate details from the given CPR / BLS certificate text.\n\nRules\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name from the document\nDetermine:\nvalid_course_type = true if document contains any of:\n\"CPR\"\n\"BLS\"\n\"AED\"\nor similar life support training keywords\nhas_practical_training = true if document indicates practical / hands-on training, else false\ncertificate_valid = true if:\nvalid_course_type is true AND\nhas_practical_training is true\n(theory-only certificates are invalid)\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nis_valid = true if:\nfull_name_match is true AND\ncertificate_valid is true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"Invalid course type\"\n\"No practical training\"\n\"Multiple validation failures\"\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"valid_course_type\": true,\n  \"has_practical_training\": true,\n  \"certificate_valid\": true,\n  \"full_name_match\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\nImportant Notes\nOutput only JSON.\nUse lowercase true/false.\nNo trailing commas.\nAll keys must be in double quotes.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:15:17.518Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0bfe95467a82bbae4efd2"
+  },
+  "document_type_code": "COVID",
+  "version": 3,
+  "prompt_text": "Validate COVID certificate.\n\nSteps:\n- Extract name from:\n  \"Name:\" OR certificate phrases\n- full_name_match rules (strict first + last)\n- covid_text_present:\n    must contain COVID indicators\n\nis_valid = name match + covid_text_present\n\nReturn JSON:\n{\n  extracted_name: \"\",\n  input_name: \"\",\n  full_name_match: true/false,\n  covid_text_present: true/false,\n  is_valid: true/false,\n  failed_reason: \"\"\n}\n\n### STRICT OUTPUT RULES\n- Return ONLY ONE JSON object.\n- Do NOT return multiple examples.\n- Do NOT include explanations, headings, or separators.\n- Do NOT include markdown (no ```).\n- Output must be directly parseable JSON.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:54:33.938Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0bff45467a82bbae4efd3"
+  },
+  "document_type_code": "COVID",
+  "version": 4,
+  "prompt_text": "Validate COVID certificate.\n\nSteps:\n- Extract name from:\n  \"Name:\" OR certificate phrases\n- full_name_match rules (strict first + last)\n- covid_text_present:\n    must contain COVID indicators\n\nis_valid = name match + covid_text_present\n\nReturn JSON:\n{\n  extracted_name: \"\",\n  input_name: \"\",\n  full_name_match: true/false,\n  covid_text_present: true/false,\n  is_valid: true/false,\n  failed_reason: \"\"\n}\n\n### STRICT OUTPUT RULES\n- Return ONLY ONE JSON object.\n- Do NOT return multiple examples.\n- Do NOT include explanations, headings, or separators.\n- Do NOT include markdown (no ```).\n- Output must be directly parseable JSON.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:54:44.707Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0bfff5467a82bbae4efd4"
+  },
+  "document_type_code": "NBMI",
+  "version": 3,
+  "prompt_text": "You are a document validation assistant.\n\n\n\nExtract and validate details from the given certificate text.\n\nCompare each expiry_date with \"{today}\" (YYYY-MM-DD).\n\nRules:\n- expiry_date from \"Renewed Until\"\n- expired:\n    < today → \"expired\"\n    >= today → \"active\"\n    none → \"unknown\"\n\nValidation:\n- full_name_match (strict first + last match)\n- division extracted\n- certificate_valid = contains \"Annual Retention\"\n\nis_valid = active + name match + division present + certificate_valid\n\nReturn JSON:\n{\n  expiry_date: [],\n  expired: \"\",\n  today_date: \"\",\n  full_name_match: true/false,\n  division: \"\",\n  certificate_valid: true/false,\n  is_valid: true/false,\n  failed_reason: \"\"\n}\n\n\n### STRICT OUTPUT RULES\n- Return ONLY ONE JSON object.\n- Do NOT return multiple examples.\n- Do NOT include explanations, headings, or separators.\n- Do NOT include markdown (no ```).\n- Output must be directly parseable JSON.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:54:55.950Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0c0295467a82bbae4efd5"
+  },
+  "document_type_code": "GDPR",
+  "version": 5,
+  "prompt_text": "GDPR Certificate Validation Prompt\n\nYou are a document validation AI assistant.\nExtract and validate details from the given GDPR certificate text.\n\nRules\nReturn a valid JSON only (no extra text, no markdown).\nExtract:\nextracted_name from the document\nDetermine:\ndocument_type_valid = true if document contains \"GDPR\" or \"Data Protection\", else false\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nis_valid = true if:\nfull_name_match is true AND\ndocument_type_valid is true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"Invalid document type\"\n\"Both name mismatch and invalid document type\"\n\nOutput JSON Format\n{\n  \"extracted_name\": \"\",\n  \"input_name\": \"\",\n  \"full_name_match\": true,\n  \"document_type_valid\": true,\n  \"is_valid\": true,\n  \"failed_reason\": \"\"\n}\n\n\nImportant Notes\n### STRICT OUTPUT RULES\n- Return ONLY ONE JSON object.\n- Do NOT return multiple examples.\n- Do NOT include explanations, headings, or separators.\n- Do NOT include markdown (no ```).\n- Output must be directly parseable JSON.\nDo not include any explanation outside JSON.\nUse lowercase true/false (valid JSON booleans).\nDo not add trailing commas.\nEnsure keys are wrapped in double quotes.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:55:37.626Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0c06a5467a82bbae4efd6"
+  },
+  "document_type_code": "NBMI",
+  "version": 4,
+  "prompt_text": "You are a document validation assistant.\nExtract and validate details from the given certificate text.\n\nCompare each expiry_date with \"{today}\" (YYYY-MM-DD).\n\nRules\nExtract expiry_date from \"Renewed Until\"\nIf multiple dates exist, return as a list\nDetermine expired:\nIf any expiry_date < today → \"expired\"\nIf all expiry_date >= today → \"active\"\nIf no expiry_date → \"unknown\"\nValidation\nfull_name_match = strict match between extracted name and {input_name}\n(case-insensitive, exact first + last name)\ndivision = extracted value (empty string if not found)\ncertificate_valid = true if document contains \"Annual Retention\"\nFinal Logic\nis_valid = true only if:\nexpired = \"active\" AND\nfull_name_match = true AND\ndivision is not empty AND\ncertificate_valid = true\nFailure Handling\nIf invalid, set failed_reason:\n\"Certificate expired\"\n\"Expiry date missing\"\n\"Name mismatch\"\n\"Division missing\"\n\"Invalid certificate type\"\n\"Multiple validation failures\"\nReturn JSON\n\n{\n\"expiry_date\": [],\n\"expired\": \"\",\n\"today_date\": \"{today}\",\n\"full_name_match\": true,\n\"division\": \"\",\n\"certificate_valid\": true,\n\"is_valid\": true,\n\"failed_reason\": \"\"\n}\n\nSTRICT OUTPUT RULES\nReturn ONLY ONE JSON object.\nDo NOT return multiple examples.\nDo NOT include explanations, headings, or separators.\nDo NOT include markdown.\nUse double quotes for all keys.\nUse lowercase true/false.\nNo trailing commas.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:56:42.863Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e0c0855467a82bbae4efd7"
+  },
+  "document_type_code": "COVID",
+  "version": 5,
+  "prompt_text": "COVID Certificate Validation Prompt\n\nYou are a document validation assistant.\nExtract and validate details from the given COVID certificate text.\n\nSteps\nExtract extracted_name from:\n\"Name:\" field OR\nstandard certificate phrases (e.g., issued to, certificate of, etc.)\nDetermine:\ncovid_text_present = true if document contains COVID-related indicators such as:\n\"COVID\"\n\"COVID-19\"\n\"Coronavirus\"\n\"Vaccination\"\n\"Immunization\"\notherwise false\nValidation Logic\nfull_name_match = strict match between extracted_name and {input_name}\n(case-insensitive, exact first + last name)\nis_valid = true if:\nfull_name_match = true AND\ncovid_text_present = true\nFailure Handling\n\nIf is_valid is false, set failed_reason as:\n\n\"Name mismatch\"\n\"COVID indicators not found on certificate\"\n\"Could not extract name\"\n\"Multiple validation failures\"\nReturn JSON\n\n{\n\"extracted_name\": \"\",\n\"input_name\": \"{input_name}\",\n\"full_name_match\": true,\n\"covid_text_present\": true,\n\"is_valid\": true,\n\"failed_reason\": \"\"\n}\n\nSTRICT OUTPUT RULES\nReturn ONLY ONE JSON object.\nDo NOT return multiple examples.\nDo NOT include explanations, headings, or separators.\nDo NOT include markdown.\nUse double quotes for all keys and string values.\nUse lowercase true/false.\nNo trailing commas.",
+  "is_active": true,
+  "created_at": {
+    "$date": "2026-04-16T10:57:09.270Z"
+  }
+}]

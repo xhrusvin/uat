@@ -18,7 +18,9 @@ db.users.update_one(
         "password": hashed,
         "first_name": "Admin",
         "last_name": "User",
-        "is_admin": True
+        "is_admin": True,
+        "phone": "",          
+        "call_sent": 0    
     }},
     upsert=True
 )
