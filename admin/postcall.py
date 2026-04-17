@@ -276,7 +276,7 @@ def api_brief_summary_cov_new():
 
             except Exception:
                 location_in_ireland_name = ""
-
+                email_message_practical_training_institutes = ""
             if location_in_ireland_name:
              # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK START ===
              email_message_practical_training_institutes = ""
