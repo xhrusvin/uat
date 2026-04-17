@@ -328,7 +328,7 @@ def api_brief_summary_cov_new():
         next_follow_up_at = now_utc + timedelta(hours=24)
         next_compliance_document_at = now_utc + timedelta(hours=56)
         next_professional_reference_at = now_utc + timedelta(hours=240)
-        email_message_practical_training_institutes = location_in_ireland
+        email_message_practical_training_institutes = ''
 
         if location_in_ireland:
          try:
@@ -343,7 +343,7 @@ def api_brief_summary_cov_new():
 
          except Exception:
                 location_in_ireland_name = ""
-                
+        email_message_practical_training_institutes = location_in_ireland_name      
         if location_in_ireland_name:
              # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK START ===
              email_message_practical_training_institutes = ""
