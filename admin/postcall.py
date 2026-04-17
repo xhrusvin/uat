@@ -264,7 +264,6 @@ def api_brief_summary_cov_new():
           if field_id == "county" and value:
             location_in_ireland = value
 
-            return location_in_ireland
             try:
                  county_doc = current_app.db.county.find_one({
                    "_id": ObjectId(value)
@@ -278,12 +277,12 @@ def api_brief_summary_cov_new():
             except Exception:
                 location_in_ireland_name = ""
 
-          if location_in_ireland_name:
-           # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK START ===
-           email_message = ""
-           if collection in (None, "1", 1):
-            garda_url = f"{WEB_URL}/lead-registration/practical-training-institutes-email?id={user['_id']}&county={location_in_ireland_name}"
-            try:
+            if location_in_ireland_name:
+             # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK START ===
+             email_message = ""
+             if collection in (None, "1", 1):
+              garda_url = f"{WEB_URL}/lead-registration/practical-training-institutes-email?id={user['_id']}&county={location_in_ireland_name}"
+              try:
                 import requests
                 garda_resp = requests.get(garda_url, timeout=100)
                 if garda_resp.status_code in (200, 201):
@@ -294,11 +293,11 @@ def api_brief_summary_cov_new():
                         f"Practical training institutes email request failed {garda_resp.status_code} for user {user['_id']}: {garda_resp.text}"
                     )
                     email_message = garda_resp.text
-            except Exception as garda_err:
+              except Exception as garda_err:
                 current_app.logger.error(f"Garda vetting email request exception for user {user['_id']}: {garda_err}")
                 email_message = str(garda_err)
-           # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK END ===
-
+             # === PRACTICAL TRAINING INSTITUTES EMAIL BLOCK END ===
+             
           if field_id == "last_employer_name" and value:
             company_name = value 
 
