@@ -218,7 +218,7 @@ def send_lead_email(first_name, last_name, dial_code, phone_number, email, lead_
                 'attachment',
                 filename="Garda_Vetting_Form.pdf"  # Name shown in email
             )
-            msg.attach(attach)
+            #msg.attach(attach)
     except FileNotFoundError:
         return False, f"PDF file not found at {pdf_path}"
     except Exception as e:
