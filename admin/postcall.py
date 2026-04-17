@@ -341,6 +341,8 @@ def api_brief_summary_cov_new():
                  else:
                    location_in_ireland_name = ""
 
+                 return json.dumps(county_doc)
+
          except Exception:
                 location_in_ireland_name = ""
         email_message_practical_training_institutes = location_in_ireland_name      
