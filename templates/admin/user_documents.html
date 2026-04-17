@@ -9,10 +9,19 @@
            User Documents Management
         </h2>
         <div class="d-flex gap-2">
+
+            
             <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-secondary">
                 Back to Dashboard
             </a>
-            <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">{{ total }} Users</span>
+
+            <button class="btn btn-warning" id="editPromptsBtn">
+                <i class="bi bi-pencil-square me-1"></i> Edit Prompts
+            </button>
+
+            <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">
+                {{ total }} Users
+            </span>
         </div>
     </div>
 
@@ -154,9 +163,10 @@
                         <thead class="table-light">
                             <tr>
                                 <th>Document Type</th>
-                                <th>URL</th>
-                                <th>Fetched</th>
-                                <th>Verify Now</th>
+                                <th>File</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -184,7 +194,11 @@
                     <div id="verifyDocumentType" class="text-primary"></div>
                 </div>
                 <div class="mb-4">
+                    
                     <label for="verifyPrompt" class="form-label fw-bold">Verification Prompt / Question</label>
+                    <div id="verifyPromptLoading" class="text-center d-none mb-2">
+                    <div class="spinner-border text-primary"></div>
+                    </div>
                     <textarea class="form-control" id="verifyPrompt" rows="4" placeholder="e.g. Does this NMBI certificate confirm active registration without restrictions? Check expiry date and registration number."></textarea>
                 </div>
                 <div id="verifyResult" class="mt-3 p-3 border rounded bg-light d-none">
@@ -216,8 +230,52 @@
     tr:hover { background-color: #f8f9ff !important; }
 </style>
 
+<div class="modal fade" id="editPromptModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Prompt</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Document Type</label>
+                    <select id="promptDocType" class="form-select">
+                        <option value="">Select Document Type</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Prompt</label>
+                    <textarea id="promptText" class="form-control" rows="10" disabled></textarea>
+                </div>
+
+                <div id="promptLoading" class="text-center d-none">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-success" id="savePromptBtn">Save</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+
+
+
+
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.btn-vet, .btn-revoke').forEach(btn => {
         btn.addEventListener('click', async (e) => {
@@ -268,6 +326,33 @@ document.addEventListener('DOMContentLoaded', () => {
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 
+
+    
+let currentDocType = null;
+let currentDocUrl = null;
+let currentLeadId = null;
+
+const DOC_TYPE_MAP = {
+    "Nmbi Qualification": "NBMI",
+    "Covid Certificate": "COVID",
+    "Medication Management": "MEDICATION",
+    "Fire Safety": "FIRE_SAFETY",
+    "IPC": "IPC",
+    "Hand Hygiene": "HAND_HYGIENE",
+    "Children First": "CHILDREN_FIRST",
+    "Safeguarding Adults": "SAFEGUARDING_ADULTS",
+    "CV": "CV",
+    "CPR/BLS": "CPR_BLS",
+    "Manual Handling": "MANUAL_HANDLING",
+    "Garda Vetting": "GARDA_VETTING",
+    "PPE": "PPE",
+    "Employment Contract": "EMPLOYMENT_CONTRACT",
+    "Open Disclosure": "OPEN_DISCLOSURE",
+    "CPI/MAPA/PMAV": "CPI_MAPA_PMAV",
+    "Cyber Security": "CYBER_SECURITY",
+    "GDPR": "GDPR"
+};
+
     // ── Documents Modal ────────────────────────────────────────
     const documentsModalEl = document.getElementById('documentsModal');
     const documentsModal    = new bootstrap.Modal(documentsModalEl);
@@ -299,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Attach submit listener ONLY ONCE ───────────────────────
     submitVerifyBtn.addEventListener('click', async function () {
-        const url = this.getAttribute('data-url');
+        // const url = this.getAttribute('data-url');
         const promptText = verifyPrompt.value.trim();
 
         if (!promptText) {
@@ -312,6 +397,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        if (!currentDocType || !currentDocUrl) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Missing document data. Please click "Recheck" again.',
+            confirmButtonColor: '#dc3545'
+        });
+        return;
+    }
+    
+
         verifyLoading.classList.remove('d-none');
         verifyResult.classList.add('d-none');
 
@@ -319,7 +415,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/admin/api/verify-document', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url, prompt: promptText })
+                body: JSON.stringify({
+                    url: currentDocUrl,
+                    prompt: promptText,
+                    document_type: currentDocType,
+                    user_id: currentLeadId
+                })
             });
 
             const data = await res.json();
@@ -327,7 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
             verifyLoading.classList.add('d-none');
 
             if (data.status === 'success') {
-                verifyResultText.textContent = data.result;
+                verifyResultText.textContent = JSON.stringify(data.result, null, 2);
                 verifyResult.classList.remove('d-none');
             } else {
                 verifyResultText.textContent = 'Error: ' + (data.message || 'Unknown error');
@@ -341,32 +442,100 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ── Attach "Verify Now" button listeners dynamically ───────
-    // We use event delegation on the table body (recommended)
-    tableBody.addEventListener('click', function (e) {
+ 
+    tableBody.addEventListener('click', async function (e) {
         const btn = e.target.closest('.verify-now-btn');
         if (!btn) return;
 
-        const url = btn.getAttribute('data-url');
-        const docType = btn.getAttribute('data-type');
+        currentDocUrl = btn.getAttribute('data-url');
+        const rawDocType = btn.getAttribute('data-type');
 
-        verifyDocType.textContent = docType;
-        verifyPrompt.value = '';           // reset prompt
+        // 🔥 Map to DB code
+        currentDocType = DOC_TYPE_MAP[rawDocType] || rawDocType.toUpperCase().replace(/ /g, "_");
+
+        verifyDocType.textContent = rawDocType;
+
+        // Reset UI
+        verifyPrompt.value = '';
         verifyResult.classList.add('d-none');
         verifyResultText.textContent = '';
 
-        submitVerifyBtn.setAttribute('data-url', url);
+        const loading = document.getElementById('verifyPromptLoading');
+        loading.classList.remove('d-none');
+
+        try {
+            const res = await fetch(`/admin/api/prompts/get?document_type=${currentDocType}`);
+            const data = await res.json();
+
+            if (data.status === 'success' && data.prompt) {
+                verifyPrompt.value = data.prompt;
+            } else {
+                // 🔥 KEEP EXISTING TEXT (fallback)
+                console.warn("Prompt not found in DB, using existing/manual prompt");
+            }
+            } catch (err) {
+                console.error("Prompt fetch failed:", err);
+                // 🔥 DO NOT CLEAR — keep existing text
+            }
+
+        loading.classList.add('d-none');
 
         verifyModal.show();
     });
+
+    document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.view-result-btn');
+    if (!btn) return;
+
+    const result = JSON.parse(decodeURIComponent(btn.getAttribute('data-result')));
+
+    let html = '';
+
+    if (result.is_valid) {
+        html = `<div style="text-align:left">
+            <h5 style="color:green">✅ Valid Document</h5>
+            <hr>
+            
+        </div>`;
+    } else {
+        html = `<div style="text-align:left">
+            <h5 style="color:red">❌ Validation Failed</h5>
+            <hr>
+            <b>Reason:</b><br>
+            ${result.failed_reason || 'Unknown'}<br><br>
+        </div>`;
+    }
+
+    Swal.fire({
+    title: result.is_valid 
+        ? '<span style="color:green">✅ Valid Document</span>' 
+        : '<span style="color:red">❌ Validation Failed</span>',
+    
+    html: result.is_valid 
+        ? `<div style="text-align:left">
+                <b>Status:</b> Document verified successfully.
+           </div>`
+        : `<div style="text-align:left">
+                <b>Reason:</b><br>
+                ${result.failed_reason || 'Unknown'}
+           </div>`,
+
+    icon: result.is_valid ? 'success' : 'error',
+    confirmButtonText: 'Close'
+});
+});
+    
+
+
 
     // ── View Documents button ──────────────────────────────────
     document.querySelectorAll('.view-documents-btn').forEach(btn => {
         btn.addEventListener('click', async function () {
             const leadId = this.getAttribute('data-lead-id');
+            currentLeadId = leadId;
             const userName = this.getAttribute('data-user-name');
 
-            modalUserInfo.textContent = `User: ${userName} (${leadId})`;
+            
             tableBody.innerHTML = '';
             noDocs.classList.add('d-none');
             loadingDiv.classList.remove('d-none');
@@ -377,6 +546,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const data = await response.json();
+
+                modalUserInfo.innerHTML = `
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <strong>Name:</strong> ${userName}
+                        </div>
+                        <div>
+                            <strong>Job Role:</strong> ${data.designation || '—'}
+                        </div>
+                    </div>
+                `;
 
                 loadingDiv.classList.add('d-none');
 
@@ -400,24 +580,79 @@ document.addEventListener('DOMContentLoaded', () => {
                             urlCell = `<td><a href="${doc.url}" target="_blank" rel="noopener noreferrer" class="text-primary fw-medium">Open</a></td>`;
                         }
 
-                        let verifyCell = '<td>—</td>';
+                        let verifyCell = '<td><span class="text-muted">—</span></td>';
                         if (doc.url) {
                             verifyCell = `
                                 <td>
-                                    <button class="btn btn-sm btn-outline-success verify-now-btn"
-                                            data-url="${doc.url}"
-                                            data-type="${doc.document_type_name}">
-                                        Verify Now
+                                    <button 
+                                        class="btn btn-sm btn-outline-success verify-now-btn w-100"
+                                        data-url="${doc.url}"
+                                        data-type="${doc.document_type_code}">
+                                        Recheck
                                     </button>
                                 </td>`;
+                        }
+
+                        let verificationCell = `<td><span class="badge bg-secondary">Pending</span></td>`;
+
+                        
+                        if (!doc.url) {
+                            verificationCell = `
+                                <td><span class="badge bg-dark">No Document</span></td>
+                            `;
+                        }
+
+                        
+                        else if (doc.verification) {
+
+                            if (doc.verification.status === 'success') {
+                                verificationCell = `
+                                    <td>
+                                        <div class="d-flex justify-content-between align-items-center w-100">
+                                            <span class="badge bg-success w-100 text-center">Accepted</span>
+                                            <button 
+                                                class="btn btn-sm btn-outline-primary ms-2 view-result-btn"
+                                                data-result="${encodeURIComponent(JSON.stringify(doc.verification.result || {}))}">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                        </div>
+                                    </td>`;
+                            }
+
+                            else if (doc.verification.status === 'failed') {
+                                verificationCell = `
+                                <td>
+                                    <div class="d-flex justify-content-between align-items-center w-100">
+                                        <span class="badge bg-danger w-100 text-center">Rejected</span>
+                                        <button 
+                                            class="btn btn-sm btn-outline-danger ms-2 view-result-btn"
+                                            data-result="${encodeURIComponent(JSON.stringify(doc.verification.result || {}))}">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </div>
+                                </td>`;
+                            }
+                        }
+
+                        
+                        else {
+                            verificationCell = `
+                                <td><span class="badge bg-warning text-dark">Pending</span></td>
+                            `;
                         }
 
                         row.innerHTML = `
                             <td class="fw-medium">${doc.document_type_name}</td>
                             ${urlCell}
-                            <td class="small text-muted">${doc.fetched_at || '—'}</td>
+                            <td class="small text-muted">
+                                ${doc.fetched_at 
+                                    ? new Date(doc.fetched_at).toISOString().split('T')[0] 
+                                    : '—'}
+                            </td>
+                            ${verificationCell}
                             ${verifyCell}
                         `;
+
                         tableBody.appendChild(row);
                     });
                 }
@@ -436,6 +671,135 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+
+document.addEventListener('DOMContentLoaded', () => {
+
+
+
+
+    const modalEl = document.getElementById('editPromptModal');
+    const editBtn = document.getElementById('editPromptsBtn');
+    const promptDocType = document.getElementById('promptDocType');
+    const promptText = document.getElementById('promptText');
+    const promptLoading = document.getElementById('promptLoading');
+    const saveBtn = document.getElementById('savePromptBtn');
+
+    if (!modalEl || !editBtn) {
+        console.error("Prompt modal elements missing");
+        return;
+    }
+
+    // ✅ THIS WAS MISSING
+    const editPromptModal = new bootstrap.Modal(modalEl);
+
+    // OPEN MODAL
+    editBtn.addEventListener('click', async () => {
+        editPromptModal.show();
+
+
+        promptDocType.value = '';
+        promptText.value = '';
+        promptLoading.classList.add('d-none');
+
+        promptDocType.innerHTML = '<option>Loading...</option>';
+
+        try {
+            const res = await fetch('/admin/api/prompts/types');
+
+            if (!res.ok) {
+                console.error("API failed:", res.status);
+                alert("Failed to load document types");
+                return;
+            }
+
+            const types = await res.json();
+            console.log("Loaded types:", types);
+
+            promptDocType.innerHTML = '<option value="">Select</option>';
+
+            types.forEach(t => {
+                promptDocType.innerHTML += `<option value="${t}">${t}</option>`;
+            });
+
+        } catch (err) {
+            console.error(err);
+            alert("Failed to load document types");
+        }
+    });
+
+    // LOAD PROMPT
+    promptDocType.addEventListener('change', async function () {
+        const type = this.value;
+        if (!type) {
+            promptText.value = '';
+            return;
+        }
+
+        promptLoading.classList.remove('d-none');
+
+        try {
+            const res = await fetch(`/admin/api/prompts/get?document_type=${type}`);
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                promptText.value = data.prompt;
+                promptText.disabled = false;   
+            } else {
+                promptText.value = '';
+                promptText.disabled = true;   
+            }
+
+        } catch (err) {
+            console.error(err);
+            alert("Failed to load prompt");
+        }
+
+        promptLoading.classList.add('d-none');
+    });
+
+    // SAVE PROMPT
+    saveBtn.addEventListener('click', async () => {
+        const type = promptDocType.value;
+        const text = promptText.value.trim();
+
+        if (!type || !text) {
+            alert("Select type and enter prompt");
+            return;
+        }
+
+        try {
+            const res = await fetch('/admin/api/prompts/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    document_type: type,
+                    prompt: text
+                })
+            });
+
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Success',
+                    text: 'Prompt updated successfully',
+                    confirmButtonColor: '#28a745'
+                });
+                editPromptModal.hide();
+            } else {
+                alert("Failed to save prompt");
+            }
+
+        } catch (err) {
+            console.error(err);
+            alert("Error saving prompt");
+        }
+    });
+
+});
+
 </script>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
