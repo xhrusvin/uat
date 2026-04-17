@@ -186,11 +186,11 @@ def send_lead_email(first_name, last_name, dial_code, phone_number, email, lead_
     msg["Bcc"] = BCC_EMAIL
     msg["Cc"] = CC_EMAIL
 
-    msg["Subject"] = "Garda Vetting Request – Next Steps for Your Application"
+    msg["Subject"] = "List of Paractical Training Institutes"
 
     # Render the HTML template with variables
     html_content = render_template(
-        "email/garda_vetting_mail.html",
+        "email/practical_training_institutes.html",
         first_name=first_name,
         last_name=last_name,
         dial_code=dial_code,
