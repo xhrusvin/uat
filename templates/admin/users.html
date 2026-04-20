@@ -545,6 +545,15 @@
 
     <!-- LEFT: Full Call Recording -->
     <div class="col-lg-7">
+      <!-- NEW: Recall Button -->
+      <div class="mb-3 text-end">
+        <button id="recall-followup-btn" 
+                class="btn btn-warning btn-sm px-4"
+                style="display: none;">
+          <i class="bi bi-arrow-counterclockwise me-2"></i>
+          Recall Follow-up Call  
+        </button>
+      </div>
       <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
       <div id="fu-audio-player-container" class="mb-4 d-none">
         <audio id="fu-call-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
