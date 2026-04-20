@@ -154,8 +154,8 @@ def register_follow_up_call_routes(app):
             #"call_sent": {"$ne": 0},
             #"follow_up_sent": {"$ne": 1},  # 0 or missing
             "email": {"$exists": True},
-            "email": "juhi@xpresshealth.ie",
-            #"email": "rusvin@xpresshealth.ie",
+            #"email": "juhi@xpresshealth.ie",
+            "email": "rusvin@xpresshealth.ie",
             #"next_follow_up_at": {"$lte": current_time}
             }
 
