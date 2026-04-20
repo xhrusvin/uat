@@ -295,7 +295,7 @@ def onboarding_tr():
         }
     ]
 
-    facet_result = list(current_app.db.level_four_cov.aggregate(facet_pipeline, allowDiskUse=True))[0]
+    facet_result = list(current_app.db.onboarding_cov.aggregate(facet_pipeline, allowDiskUse=True))[0]
 
     total = facet_result["total"][0]["count"] if facet_result.get("total") else 0
     raw_convs = facet_result.get("results", [])
@@ -319,7 +319,7 @@ def onboarding_tr():
 @admin_required
 def get_onboarding_tr_audio(conv_id):
     #try:
-        conv = current_app.db.level_four_cov.find_one({"_id": ObjectId(conv_id)})
+        conv = current_app.db.onboarding_cov.find_one({"_id": ObjectId(conv_id)})
         if not conv:
             return "Conversation not found", 404
 
@@ -525,7 +525,7 @@ def get_onboarding_transcript(conv_id):
     if not ObjectId.is_valid(conv_id):
         return jsonify({"error": "Invalid conversation ID"}), 400
 
-    conv = current_app.db.level_four_cov.find_one(
+    conv = current_app.db.onboarding_cov.find_one(
         {"_id": ObjectId(conv_id)},
         {"turns": 1, "phone": 1, "started_at": 1, "ended_at": 1}  # only fetch what we need
     )
