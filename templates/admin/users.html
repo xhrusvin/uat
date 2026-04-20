@@ -1824,7 +1824,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.currentComplianceConvId         = (this.dataset.complianceConvId || '').trim() || null;
 window.currentComplianceElevenLabsId   = (this.dataset.complianceElevenlabsId || '').trim() || null;
             window.currentFollowupConvId = currentFollowupConvId;
-            
+
             window.currentProfrefConvId         = (this.dataset.profrefConvId || '').trim() || null;
             window.currentProfrefElevenLabsId   = (this.dataset.profrefElevenlabsId || '').trim() || null;
             window.currentProfref2ConvId        = (this.dataset.profref2ConvId || '').trim() || null;
@@ -2768,29 +2768,27 @@ $(document).ready(function () {
 
     // === RECALL FOLLOW-UP BUTTON LOGIC ===
     function updateRecallButtonVisibility() {
-        const recallBtn = document.getElementById('recall-followup-btn');
-        if (!recallBtn) return;
+    const recallBtn = document.getElementById('recall-followup-btn');
+    if (!recallBtn) return;
 
-        // Show button only if there is a follow-up conversation ID
-        if (currentFollowupConvId && currentFollowupConvId.trim() !== '') {
-            recallBtn.style.display = 'inline-block';
-        } else {
-            recallBtn.style.display = 'none';
-        }
+    // ✅ Read from window scope — set by row click handler
+    const convId = window.currentFollowupConvId || '';
+
+    if (convId.trim() !== '') {
+        recallBtn.style.display = 'inline-block';
+    } else {
+        recallBtn.style.display = 'none';
     }
+}
 
     // Show recall button when Follow-up tab is opened
     const followupTab = document.getElementById('followup-call-tab');
-    if (followupTab) {
-        followupTab.addEventListener('shown.bs.tab', function () {
-            // Make sure we have the latest value from the row click
-            currentFollowupConvId = window.currentFollowupConvId || 
-                                   (document.querySelector('.user-row') ? 
-                                    document.querySelector('.user-row').dataset.followupConvId : null);
-            
-            updateRecallButtonVisibility();
-        });
-    }
+if (followupTab) {
+    followupTab.addEventListener('shown.bs.tab', function () {
+        // ✅ Just use window scope — don't re-read from DOM
+        updateRecallButtonVisibility();
+    });
+}
 
     // Recall button click handler with confirmation
     $('#recall-followup-btn').on('click', function () {
@@ -2819,10 +2817,16 @@ $(document).ready(function () {
         });
     });
 
+    function getActiveUserId() {
+    return window.currentUserId || currentUserId || null;
+}
+
     // AJAX Call to Recall
     function recallFollowupCall() {
         const btn = $('#recall-followup-btn');
         const originalHTML = btn.html();
+
+        const userId = window.currentUserId || currentUserId;
 
         btn.prop('disabled', true).html(`
             <span class="spinner-border spinner-border-sm me-2"></span>
