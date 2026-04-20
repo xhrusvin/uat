@@ -383,7 +383,7 @@ def users():
     elevenlabs_ids = [u.get('onboarding_elevenlabs_conversation_id') for u in users_list if u.get('onboarding_elevenlabs_conversation_id')]
     conv_by_elevenlabs_id = {}
     if elevenlabs_ids:
-        for doc in current_app.db.level_four_cov.find(
+        for doc in current_app.db.onboarding_cov.find(
             {"elevenlabs_conversation_id": {"$in": elevenlabs_ids}},
             {"_id": 1, "elevenlabs_conversation_id": 1}
         ):
