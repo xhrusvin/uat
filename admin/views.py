@@ -313,7 +313,7 @@ def users():
         u["last_followup_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
 
     # 3. Compliance (Level 4)
-    elevenlabs_ids = [u.get('compliance_elevenlabs_conversation_id') for u in users_list if u.get('compliance_elevenlabs_conversation_id')]
+    elevenlabs_ids = [u.get('level_four_elevenlabs_conversation_id') for u in users_list if u.get('level_four_elevenlabs_conversation_id')]
     conv_by_elevenlabs_id = {}
     if elevenlabs_ids:
         for doc in current_app.db.level_four_cov.find(
@@ -325,7 +325,7 @@ def users():
                 conv_by_elevenlabs_id[el_key] = str(doc["_id"])
 
     for u in users_list:
-        el_id = u.get("compliance_elevenlabs_conversation_id") or ""
+        el_id = u.get("level_four_elevenlabs_conversation_id") or ""
         u["last_compliance_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
 
     # 4. Professional Reference Level 1 (ref_count: "1")
