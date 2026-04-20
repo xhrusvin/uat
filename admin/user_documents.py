@@ -21,6 +21,9 @@ import magic
 
 import json
 
+import hashlib
+
+
 load_dotenv()
 
 from .views import admin_required
@@ -86,6 +89,9 @@ def safe_json_parse(text):
             "status": "invalid",
             "failed_reason": "Invalid AI response format"
         }
+
+def generate_file_hash(file_bytes):
+    return hashlib.sha256(file_bytes).hexdigest()
 
 
 
@@ -486,6 +492,8 @@ Now validate the document.
         resp.raise_for_status()
         file_bytes = resp.content
 
+        file_hash = generate_file_hash(file_bytes)
+
         file_size = len(file_bytes)
         if file_size < 300:
             raise ValueError(f"Downloaded file too small ({file_size} bytes)")
@@ -609,11 +617,11 @@ Now validate the document.
             current_app.db.documents.update_one(
                 {
                     "user_id": ObjectId(user_id),
-                    "document_type_code": document_type,
-                    "file_url": doc_url
+                    "document_type_code": document_type
                 },
                 {
                     "$set": {
+                        "file_url": doc_url,
                         "status": "completed" if parsed_result.get("is_valid") else "failed",
                         "last_validation_id": validation_id,
                         "updated_at": datetime.utcnow()
