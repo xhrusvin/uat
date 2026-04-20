@@ -552,3 +552,39 @@ def get_followup_transcript(conv_id):
         "turns": formatted_turns,
         "turn_count": len(formatted_turns)
     }), 200
+
+
+@admin_bp.route('/api/recall_followup_call', methods=['POST'])
+@admin_required
+def recall_followup_call():
+    data = request.get_json()
+    user_id = data.get('user_id')
+
+    if not user_id or not ObjectId.is_valid(user_id):
+        return jsonify({"success": False, "message": "Invalid user ID"}), 400
+
+    try:
+        result = current_app.db.users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {
+                "follow_up_sent": 0,
+                "last_followup_conv_id": None,           # optional: clear reference
+                "followup_elevenlabs_conversation_id": None
+            }}
+        )
+
+        if result.modified_count > 0:
+            current_app.logger.info(f"Follow-up call recalled for user {user_id}")
+            return jsonify({
+                "success": True,
+                "message": "Follow-up call successfully recalled"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": "User not found or no changes made"
+            }), 404
+
+    except Exception as e:
+        current_app.logger.error(f"Error recalling follow-up: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Internal server error"}), 500
