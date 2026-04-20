@@ -1783,3 +1783,51 @@ def get_conversation_transcript(conv_id):
         "turn_count": len(formatted_turns)
     }), 200
 
+
+
+
+@admin_bp.route('/api/user_suggestions', methods=['GET'])
+@admin_required
+def user_suggestions():
+    query = request.args.get('q', '').strip()
+
+    if not query or len(query) < 2:
+        return jsonify([])
+
+    escaped = re.escape(query)
+
+    users = list(current_app.db.users.find({
+        "is_admin": {"$ne": True},
+        "$or": [
+            {"first_name": {"$regex": escaped, "$options": "i"}},
+            {"last_name": {"$regex": escaped, "$options": "i"}},
+            {"email": {"$regex": escaped, "$options": "i"}},
+            {"phone": {"$regex": escaped, "$options": "i"}},
+            {
+                "$expr": {
+                    "$regexMatch": {
+                        "input": {
+                            "$concat": [
+                                {"$ifNull": ["$first_name", ""]},
+                                " ",
+                                {"$ifNull": ["$last_name", ""]}
+                            ]
+                        },
+                        "regex": escaped,
+                        "options": "i"
+                    }
+                }
+            }
+        ]
+    }).limit(5))
+
+    results = []
+    for u in users:
+        results.append({
+            "id": str(u["_id"]),
+            "name": f"{u.get('first_name','')} {u.get('last_name','')}".strip(),
+            "email": u.get("email", ""),
+            "phone": u.get("phone", "")
+        })
+
+    return jsonify(results)

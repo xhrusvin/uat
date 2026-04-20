@@ -24,12 +24,26 @@
             <form method="get" class="row g-3 align-items-end" id="filterForm">
 
                 <!-- Search -->
-                <div class="col-lg-5 col-md-6">
+                <!-- <div class="col-lg-5 col-md-6">
                  <label class="form-label fw-semibold text-muted small mb-1">SEARCH</label>
 <input type="text" name="search" class="form-control form-control-lg"
        placeholder="Search by email, name or phone number..." 
        value="{{ search | default('') }}">
-                </div>
+                </div> -->
+                
+
+                <div class="position-relative">
+    <input type="text" id="userSearch"
+           name="search"
+           class="form-control form-control-lg"
+           placeholder="Search by email, name or phone..."
+           autocomplete="off">
+
+    <div id="suggestionsBox" class="list-group position-absolute w-100 shadow"
+         style="z-index:1000; display:none;"></div>
+</div>
+
+
 
                 <!-- Joined From -->
                 <div class="col-lg-2 col-md-3">
@@ -1076,6 +1090,73 @@
 <script>
 
 
+const SUGGESTION_URL = "{{ url_for('admin.user_suggestions') }}";
+
+
+const input = document.getElementById('userSearch');
+const box = document.getElementById('suggestionsBox');
+
+let debounceTimer;
+
+input.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+
+    const query = this.value.trim();
+
+    if (query.length < 2) {
+        box.style.display = 'none';
+        return;
+    }
+
+    debounceTimer = setTimeout(async () => {
+        try {
+            // const res = await fetch(`/admin/api/user_suggestions?q=${encodeURIComponent(query)}`)
+            const res = await fetch(`${SUGGESTION_URL}?q=${encodeURIComponent(query)}`)
+            const data = await res.json();
+
+            box.innerHTML = '';
+
+            if (!data.length) {
+                box.style.display = 'none';
+                return;
+            }
+
+            data.forEach(user => {
+                const item = document.createElement('a');
+                item.className = 'list-group-item list-group-item-action';
+
+                item.innerHTML = `
+                    <div><strong>${user.name || 'No Name'}</strong></div>
+                    <small class="text-muted">${user.email} • ${user.phone}</small>
+                `;
+
+                item.onclick = () => {
+                    input.value = user.name || user.email;
+                    box.style.display = 'none';
+
+                    // OPTIONAL: auto submit
+                    document.getElementById('filterForm').submit();
+                };
+
+                box.appendChild(item);
+            });
+
+            box.style.display = 'block';
+
+        } catch (err) {
+            console.error(err);
+        }
+    }, 300); // debounce
+});
+
+// Hide on outside click
+document.addEventListener('click', function (e) {
+    if (!input.contains(e.target) && !box.contains(e.target)) {
+        box.style.display = 'none';
+    }
+});
+
+
 document.addEventListener('click', async (e) => {
 
     const btn = e.target.closest('.view-docs-btn');
@@ -1229,6 +1310,7 @@ document.querySelectorAll('.sortable').forEach(header => {
         // const tbody = document.querySelector('tbody');
         const tbody = document.querySelector('.table tbody');
         const rows = Array.from(tbody.querySelectorAll('tr.user-row'));
+
 
         // Toggle direction
         if (currentSort.key === key) {
