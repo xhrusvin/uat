@@ -206,15 +206,13 @@ def users():
     sort_order = request.args.get('sort', 'desc')
     sort_direction = -1 if sort_order == 'desc' else 1
 
-    # ====================== BUILD QUERY ======================
     query = {"is_admin": {"$ne": True}}
 
-    # ------------------- SEARCH FILTER -------------------
+    # ====================== SEARCH FILTER ======================
     if search:
         escaped = re.escape(search)
         regex = {"$regex": escaped, "$options": "i"}
 
-        # Full name search (more reliable)
         full_name_condition = {
             "$expr": {
                 "$regexMatch": {
@@ -239,29 +237,30 @@ def users():
             full_name_condition
         ]
 
-    # ------------------- DATE FILTER (Joined From / To) -------------------
+    # ====================== DATE FILTER (FIXED) ======================
     if joined_from or joined_to:
-        date_filter = {}
         try:
+            date_filter = {}
+
             if joined_from:
                 from_dt = datetime.strptime(joined_from, '%Y-%m-%d')
-                date_filter["$gte"] = from_dt.replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                )
+                # Make it timezone-aware UTC (important!)
+                from_dt = from_dt.replace(tzinfo=utc)          # ← FIXED
+                date_filter["$gte"] = from_dt
 
             if joined_to:
                 to_dt = datetime.strptime(joined_to, '%Y-%m-%d')
-                date_filter["$lte"] = to_dt.replace(
-                    hour=23, minute=59, second=59, microsecond=999999
-                )
+                to_dt = to_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+                to_dt = to_dt.replace(tzinfo=utc)              # ← FIXED
+                date_filter["$lte"] = to_dt
 
             if date_filter:
                 query["created_at"] = date_filter
-        except ValueError:
-            # Invalid date format → ignore silently
-            pass
 
-    # ====================== COUNT TOTAL & FETCH PAGINATED USERS ======================
+        except ValueError as e:
+            current_app.logger.warning(f"Invalid date filter: {joined_from} to {joined_to} | Error: {e}")
+
+    # ====================== COUNT & FETCH ======================
     total = current_app.db.users.count_documents(query)
 
     users_list = list(
@@ -271,7 +270,7 @@ def users():
         .limit(per_page)
     )
 
-    # ====================== FORMAT DATA FOR TEMPLATE ======================
+    # ====================== FORMATTING (unchanged) ======================
     for u in users_list:
         u['call_sent'] = u.get('call_sent', 1)
         u['garda_email_sent_status'] = "Sent" if u.get('garda_email_sent') == 1 else "No"
@@ -286,17 +285,16 @@ def users():
                 dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
                 u['created_at_formatted'] = dt.strftime('%d %b %Y')
                 u['created_at_time'] = dt.strftime('%H:%M')
-            except Exception:
+            except:
                 u['created_at_formatted'] = '—'
                 u['created_at_time'] = ''
         else:
             u['created_at_formatted'] = '—'
             u['created_at_time'] = ''
 
-    # ==================== CONVERSATION ID ATTACHMENTS ====================
+    # ==================== ALL YOUR CONVERSATION ID ATTACHMENTS (KEPT AS-IS) ====================
     # 1. Regular conversations
-    elevenlabs_ids = [u.get('last_elevenlabs_conversation_id') for u in users_list 
-                      if u.get('last_elevenlabs_conversation_id')]
+    elevenlabs_ids = [u.get('last_elevenlabs_conversation_id') for u in users_list if u.get('last_elevenlabs_conversation_id')]
     conv_by_elevenlabs_id = {}
     if elevenlabs_ids:
         for doc in current_app.db.conversations.find(
@@ -312,8 +310,7 @@ def users():
         u["last_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
 
     # 2. Follow-up conversations
-    elevenlabs_ids = [u.get('followup_elevenlabs_conversation_id') for u in users_list 
-                      if u.get('followup_elevenlabs_conversation_id')]
+    elevenlabs_ids = [u.get('followup_elevenlabs_conversation_id') for u in users_list if u.get('followup_elevenlabs_conversation_id')]
     conv_by_elevenlabs_id = {}
     if elevenlabs_ids:
         for doc in current_app.db.follow_up_conv.find(
@@ -329,8 +326,7 @@ def users():
         u["last_followup_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
 
     # 3. Compliance (Level 4)
-    elevenlabs_ids = [u.get('level_four_elevenlabs_conversation_id') for u in users_list 
-                      if u.get('level_four_elevenlabs_conversation_id')]
+    elevenlabs_ids = [u.get('level_four_elevenlabs_conversation_id') for u in users_list if u.get('level_four_elevenlabs_conversation_id')]
     conv_by_elevenlabs_id = {}
     if elevenlabs_ids:
         for doc in current_app.db.level_four_cov.find(
@@ -345,9 +341,8 @@ def users():
         el_id = u.get("level_four_elevenlabs_conversation_id") or ""
         u["last_compliance_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
 
-    # 4. Professional Reference Level 1 (ref_count: "2")
-    elevenlabs_ids = [u.get('level_five_elevenlabs_conversation_id') for u in users_list 
-                      if u.get('level_five_elevenlabs_conversation_id')]
+    # 4. Professional Reference Level 1
+    elevenlabs_ids = [u.get('level_five_elevenlabs_conversation_id') for u in users_list if u.get('level_five_elevenlabs_conversation_id')]
     conv_by_elevenlabs_id = {}
     if elevenlabs_ids:
         for doc in current_app.db.level_five_cov.find(
@@ -362,22 +357,13 @@ def users():
         el_id = u.get("level_five_elevenlabs_conversation_id") or ""
         u["last_profref_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
 
-    # 5. Professional Reference Level 2 (by phone + ref_count: "1")
+    # 5. Professional Reference Level 2 (by phone)
     conv_by_phone_ref2 = {}
     phones = [u.get('phone') for u in users_list if u.get('phone')]
     if phones:
         for doc in current_app.db.level_five_cov.find(
-            {
-                "phone": {"$in": phones},
-                "ref_count": "1"
-            },
-            {
-                "_id": 1,
-                "phone": 1,
-                "ref_count": 1,
-                "ref_name": 1,
-                "elevenlabs_conversation_id": 1
-            }
+            {"phone": {"$in": phones}, "ref_count": "1"},
+            {"_id": 1, "phone": 1, "ref_count": 1, "ref_name": 1, "elevenlabs_conversation_id": 1}
         ):
             phone_key = doc.get("phone")
             if phone_key:
@@ -387,7 +373,7 @@ def users():
         user_phone = u.get("phone") or ""
         u["last_profref_conv_id2"] = conv_by_phone_ref2.get(user_phone, "")
 
-    # ====================== RENDER TEMPLATE ======================
+    # ====================== RENDER ======================
     return render_template('admin/users.html',
                            users=users_list,
                            page=page,
