@@ -1889,8 +1889,8 @@ document.addEventListener('DOMContentLoaded', () => {
             currentElevenLabsId         = (this.dataset.elevenlabsId || '').trim() || null;
             currentFollowupConvId       = (this.dataset.followupConvId || '').trim() || null;
             currentFollowupElevenLabsId = (this.dataset.followupElevenlabsId || '').trim() || null;
-            currentComplianceConvId     = (this.dataset.complianceConvId || '').trim() || null;
-            currentComplianceElevenLabsId = (this.dataset.complianceElevenlabsId || '').trim() || null;
+            window.currentComplianceConvId         = (this.dataset.complianceConvId || '').trim() || null;
+window.currentComplianceElevenLabsId   = (this.dataset.complianceElevenlabsId || '').trim() || null;
             
             window.currentProfrefConvId         = (this.dataset.profrefConvId || '').trim() || null;
             window.currentProfrefElevenLabsId   = (this.dataset.profrefElevenlabsId || '').trim() || null;
@@ -2076,23 +2076,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Tab shown event
     document.getElementById('compliance-call-tab').addEventListener('shown.bs.tab', () => {
-        if (!currentComplianceConvId) {
-            compCallSection.classList.add('d-none');
-            compNoCallNotice.classList.remove('d-none');
-            return;
-        }
+    // Read from window scope — set by row click handler
+    currentComplianceConvId       = window.currentComplianceConvId || null;
+    currentComplianceElevenLabsId = window.currentComplianceElevenLabsId || null;
 
-        compCallSection.classList.remove('d-none');
-        compNoCallNotice.classList.add('d-none');
+    if (!currentComplianceConvId) {
+        compCallSection.classList.add('d-none');
+        compNoCallNotice.classList.remove('d-none');
+        return;
+    }
 
-        compResetAudioUI();
-        compResetTranscript();
-        compResetBrief();
+    compCallSection.classList.remove('d-none');
+    compNoCallNotice.classList.add('d-none');
 
-        compLoadAudio();
-        compLoadTranscript();
-        compLoadBriefSummary();
-    });
+    compResetAudioUI();
+    compResetTranscript();
+    compResetBrief();
+
+    compLoadAudio();
+    compLoadTranscript();
+    compLoadBriefSummary();
+});
 
     // Retry buttons
     document.getElementById('comp-retry-audio').addEventListener('click', compLoadAudio);
