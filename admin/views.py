@@ -481,6 +481,8 @@ def logout():
 @admin_required
 def delete_user():
     data = request.get_json()
+    print("DELETE PAYLOAD:", data)
+
     user_id = data.get('user_id')
 
     if not user_id or not ObjectId.is_valid(user_id):
