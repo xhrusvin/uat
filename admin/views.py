@@ -379,6 +379,22 @@ def users():
         user_phone = u.get("phone") or ""
         u["last_profref_conv_id2"] = conv_by_phone_ref2.get(user_phone, "")
 
+    # 6. Onboarding 
+    elevenlabs_ids = [u.get('onboarding_elevenlabs_conversation_id') for u in users_list if u.get('onboarding_elevenlabs_conversation_id')]
+    conv_by_elevenlabs_id = {}
+    if elevenlabs_ids:
+        for doc in current_app.db.level_four_cov.find(
+            {"elevenlabs_conversation_id": {"$in": elevenlabs_ids}},
+            {"_id": 1, "elevenlabs_conversation_id": 1}
+        ):
+            el_key = doc.get("elevenlabs_conversation_id")
+            if el_key:
+                conv_by_elevenlabs_id[el_key] = str(doc["_id"])
+
+    for u in users_list:
+        el_id = u.get("onboarding_elevenlabs_conversation_id") or ""
+        u["last_onboarding_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
+
     # ====================== RENDER TEMPLATE ======================
     return render_template('admin/users.html',
                            users=users_list,
