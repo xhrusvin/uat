@@ -1796,7 +1796,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const data = await res.json();
             fuTxLoading.classList.add('d-none');
-            //renderTurns(fuTurnsDiv, fuTxEmpty, data.turns || []);
+            renderTurns(fuTurnsDiv, fuTxEmpty, data.turns || []);
         } catch (err) {
             fuTxLoading.classList.add('d-none');
             fuTxErrorMsg.textContent = err.message;
