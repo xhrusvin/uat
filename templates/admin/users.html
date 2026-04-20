@@ -1823,6 +1823,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentFollowupElevenLabsId = (this.dataset.followupElevenlabsId || '').trim() || null;
             window.currentComplianceConvId         = (this.dataset.complianceConvId || '').trim() || null;
 window.currentComplianceElevenLabsId   = (this.dataset.complianceElevenlabsId || '').trim() || null;
+            window.currentFollowupConvId = currentFollowupConvId;
             
             window.currentProfrefConvId         = (this.dataset.profrefConvId || '').trim() || null;
             window.currentProfrefElevenLabsId   = (this.dataset.profrefElevenlabsId || '').trim() || null;
@@ -2760,5 +2761,109 @@ document.getElementById('documents-accepted-tab')
 
 
 
+</script>
+<!-- Add this complete Recall Button Script -->
+<script>
+$(document).ready(function () {
+
+    // === RECALL FOLLOW-UP BUTTON LOGIC ===
+    function updateRecallButtonVisibility() {
+        const recallBtn = document.getElementById('recall-followup-btn');
+        if (!recallBtn) return;
+
+        // Show button only if there is a follow-up conversation ID
+        if (currentFollowupConvId && currentFollowupConvId.trim() !== '') {
+            recallBtn.style.display = 'inline-block';
+        } else {
+            recallBtn.style.display = 'none';
+        }
+    }
+
+    // Show recall button when Follow-up tab is opened
+    const followupTab = document.getElementById('followup-call-tab');
+    if (followupTab) {
+        followupTab.addEventListener('shown.bs.tab', function () {
+            // Make sure we have the latest value from the row click
+            currentFollowupConvId = window.currentFollowupConvId || 
+                                   (document.querySelector('.user-row') ? 
+                                    document.querySelector('.user-row').dataset.followupConvId : null);
+            
+            updateRecallButtonVisibility();
+        });
+    }
+
+    // Recall button click handler with confirmation
+    $('#recall-followup-btn').on('click', function () {
+        if (!currentUserId) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'User ID not found'
+            });
+            return;
+        }
+
+        Swal.fire({
+            title: 'Recall Follow-up Call?',
+            html: 'This will reset <strong>follow_up_sent = 0</strong> in the user record.<br><br>The user will be eligible to receive the follow-up call again.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#f0ad4e',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, Recall',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                recallFollowupCall();
+            }
+        });
+    });
+
+    // AJAX Call to Recall
+    function recallFollowupCall() {
+        const btn = $('#recall-followup-btn');
+        const originalHTML = btn.html();
+
+        btn.prop('disabled', true).html(`
+            <span class="spinner-border spinner-border-sm me-2"></span>
+            Recalling...
+        `);
+
+        $.ajax({
+            url: '{{ url_for("admin.recall_followup_call") }}',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ user_id: currentUserId }),
+            success: function (res) {
+                if (res.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Success',
+                        text: 'Follow-up call has been recalled successfully!',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+
+                    // Hide button after successful recall
+                    btn.hide();
+                } else {
+                    Swal.fire('Failed', res.message || 'Failed to recall call', 'error');
+                }
+            },
+            error: function () {
+                Swal.fire('Error', 'Server error while recalling call', 'error');
+            },
+            complete: function () {
+                btn.prop('disabled', false).html(originalHTML);
+            }
+        });
+    }
+
+    // Also call it when modal opens (in case tab is already active)
+    document.getElementById('userDetailModal').addEventListener('shown.bs.modal', function () {
+        setTimeout(updateRecallButtonVisibility, 300);
+    });
+
+});
 </script>
 {% endblock %}
