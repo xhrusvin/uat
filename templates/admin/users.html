@@ -2,44 +2,6 @@
 
 {% block title %}User Management • Admin{% endblock %}
 
-
-{% block extra_css %}
-<style>
-.sortable {
-    cursor: pointer;
-    user-select: none;
-}
-
-.sort-icon {
-    font-size: 0.75rem;
-    margin-left: 6px;
-    color: #bbb;
-}
-
-.sortable:hover .sort-icon {
-    color: #000;
-}
-
-.sortable.asc .sort-icon {
-    color: #000;
-}
-
-.sortable.desc .sort-icon {
-    color: #000;
-}
-
-
-.btn-delete {
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-}
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="container-fluid px-4 py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -62,12 +24,26 @@
             <form method="get" class="row g-3 align-items-end" id="filterForm">
 
                 <!-- Search -->
-                <div class="col-lg-5 col-md-6">
+                <!-- <div class="col-lg-5 col-md-6">
                  <label class="form-label fw-semibold text-muted small mb-1">SEARCH</label>
 <input type="text" name="search" class="form-control form-control-lg"
        placeholder="Search by email, name or phone number..." 
        value="{{ search | default('') }}">
-                </div>
+                </div> -->
+                
+
+                <div class="position-relative">
+    <input type="text" id="userSearch"
+           name="search"
+           class="form-control form-control-lg"
+           placeholder="Search by email, name or phone..."
+           autocomplete="off">
+
+    <div id="suggestionsBox" class="list-group position-absolute w-100 shadow"
+         style="z-index:1000; display:none;"></div>
+</div>
+
+
 
                 <!-- Joined From -->
                 <div class="col-lg-2 col-md-3">
@@ -132,7 +108,7 @@
                     </thead>
                     <tbody>
                         {% for u in users %}
-        <tr class="user-row" 
+                        <tr class="user-row" 
     data-id="{{ u._id|string }}" 
     data-conv-id="{{ u.get('last_conv_id', '') }}"  
     data-elevenlabs-id="{{ u.get('last_elevenlabs_conversation_id', '') }}"
@@ -142,28 +118,20 @@
     data-compliance-elevenlabs-id="{{ u.get('compliance_elevenlabs_conversation_id', '') }}"
     data-profref-conv-id="{{ u.get('last_profref_conv_id', '') }}"
     data-profref-elevenlabs-id="{{ u.get('level_five_elevenlabs_conversation_id', '') }}"
-
-
-    data-name="{{ (u.get('first_name','') ~ ' ' ~ u.get('last_name','')) | lower }}"
-    data-email="{{ u.email | lower }}"
-    data-country="{{ (u.country or '') | lower }}"
-    data-designation="{{ (u.designation or '') | lower }}"
-    data-joined="{{ u.created_at }}"
-    
     data-profref2-conv-id="{{ u.get('last_profref_conv_id2', '') }}"
-    data-profref2-elevenlabs-id="{{ u.get('level_five_elevenlabs_conversation_id2', '') }}"
+    data-profref2-elevenlabs-id="{{ u.get('level_five_elevenlabs_conversation_id', '') }}"
     data-onboarding-conv-id="{{ u.get('last_onboarding_conv_id', '') }}"
     data-onboarding-elevenlabs-id="{{ u.get('onboarding_elevenlabs_conversation_id', '') }}"
     data-ref-name="{{ u.get('ref_name', '') | e }}"
-    data-ref-name2="{{ u.get('ref_name2', '') | e }}"
 
+    data-ref-name2="{{ u.get('ref_name2', '') | e }}"
     style="cursor: pointer;">
                             <td class="ps-4">
     <div class="d-flex align-items-center">
        {% set first = u.get('first_name', '') or '' %}
 {% set last  = u.get('last_name', '')  or '' %}
 
-        <div class="avatar avatar-sm bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
+        <div class="avatar bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
             {{ first[0] if first else 'U' }}{{ last[0] if last else '' }}
         </div>
         <div>
@@ -206,7 +174,6 @@
                                 {% endif %}
                             </td> -->
 
-
                             <td class="text-center">
                             <button class="btn btn-outline-primary btn-sm rounded-circle view-docs-btn"
                                 data-user-id="{{ u._id|string }}"
@@ -225,11 +192,11 @@
                             </td>
                             <td class="text-center">
                                 <button class="btn btn-danger btn-sm rounded-circle btn-delete"
-        data-id="{{ u._id|string }}"
-        data-name="{{ ((u.get('first_name', '') or '') + ' ' + (u.get('last_name', '') or ''))|trim or u.email }}"
-        title="Delete user">
-    <i class="bi bi-trash"></i>
-</button>
+                                    data-id="{{ u._id|string }}"
+                                    data-name="{{ ((u.get('first_name', '') or '') + ' ' + (u.get('last_name', '') or ''))|trim or u.email }}"
+                                    title="Delete user">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </td>
                         </tr>
                         {% else %}
@@ -442,12 +409,12 @@
       <i class="bi bi-telephone-forward me-2"></i>Follow Up Call
     </button>
   </li>
-  
+  <!-- NEW: Compliance Document Tab -->
           <li class="nav-item" role="presentation">
             <button class="nav-link fw-semibold" id="compliance-call-tab"
                     data-bs-toggle="tab" data-bs-target="#compliance-call-pane"
                     type="button" role="tab">
-              <i class="bi bi-file-earmark-check me-2"></i> Document Status Call
+              <i class="bi bi-file-earmark-check me-2"></i> Document status call
             </button>
           </li>
 
@@ -475,6 +442,7 @@
     <i class="bi bi-telephone-inbound-fill me-2"></i> Onboarding Call
   </button>
 </li>
+
 <li class="nav-item">
   <button class="nav-link fw-semibold"
           id="documents-accepted-tab"
@@ -483,10 +451,12 @@
     <i class="bi bi-folder-check me-2"></i> Compliance Documents
   </button>
 </li>
+
+
 </ul>
 
         <!-- ── Tab Panes ── -->
-        <div class="tab-content px-4 pt-4 pb-3" id="userDetailTabContent">
+    <div class="tab-content px-4 pt-4 pb-3" id="userDetailTabContent">
 
           <!-- ══ INTRO CALL PANE ══ -->
           <div class="tab-pane fade show active" id="intro-call-pane" role="tabpanel">
@@ -715,10 +685,32 @@
     <p class="text-muted">This user has not completed the Professional Reference call yet.</p>
   </div>
 
-
-
-
   <div id="profref-call-section" class="row g-4 d-none">
+
+    <!-- REFERENCE DETAILS CARD -->
+  <div id="profref-details-card" class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+      <strong><i class="bi bi-person-badge-fill me-2"></i>Professional Reference 1 Information</strong>
+      <span id="profref-status" class="badge bg-secondary">Loading...</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <small class="text-muted d-block">Reference Name</small>
+          <h6 class="mb-0 fw-bold" id="profref-name">—</h6>
+        </div>
+        <div class="col-md-4">
+          <small class="text-muted d-block">Phone</small>
+          <h6 class="mb-0 fw-bold text-primary" id="profref-phone">—</h6>
+        </div>
+        <div class="col-md-4">
+          <small class="text-muted d-block">Email</small>
+          <h6 class="mb-0 fw-bold text-primary" id="profref-email">—</h6>
+        </div>
+        
+      </div>
+    </div>
+  </div>
 
     <!-- LEFT COLUMN: Audio + Transcript -->
     <div class="col-lg-7">
@@ -775,13 +767,161 @@
   </div><!-- /#profref-call-section -->
 </div><!-- /#profref-call-pane -->
 
+
 <div class="tab-pane fade" id="profref2-call-pane" role="tabpanel">
-  <div class="text-center py-5 text-muted">
-    <i class="bi bi-person-x display-4 opacity-50"></i>
-    <p class="mt-3">Professional Reference 2 not implemented yet</p>
+
+  <div id="profref2-no-call" class="text-center py-5 d-none">
+    <i class="bi bi-telephone-x display-4 text-muted opacity-50"></i>
+    <h5 class="mt-3 text-muted">No Professional Reference 2 Call Available</h5>
+    <p class="text-muted">This user has not completed the second Professional Reference call yet.</p>
+  </div>
+
+  <div id="profref2-call-section" class="row g-4 d-none">
+
+    <!-- Reference Information Card -->
+              <div class="col-12">
+                <div class="card border-0 shadow-sm mb-4">
+                  <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <strong><i class="bi bi-person-badge-fill me-2"></i>Professional Reference 2 Information</strong>
+                    <span id="profref2-status" class="badge bg-secondary">Loading...</span>
+                  </div>
+                  <div class="card-body">
+                    <div class="row g-3">
+                      <div class="col-md-4">
+                        <small class="text-muted d-block">Reference Name</small>
+                        <h6 class="mb-0 fw-bold" id="profref2-name">—</h6>
+                      </div>
+                      <div class="col-md-4">
+                        <small class="text-muted d-block">Phone</small>
+                        <h6 class="mb-0 fw-bold text-primary" id="profref2-phone">—</h6>
+                      </div>
+                      <div class="col-md-4">
+                        <small class="text-muted d-block">Email</small>
+                        <h6 class="mb-0 fw-bold text-primary" id="profref2-email">—</h6>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+    <div class="col-lg-7">
+      <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
+      <div id="profref2-audio-player-container" class="mb-4 d-none">
+        <audio id="profref2-call-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
+        <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
+      </div>
+      <div id="profref2-audio-loading" class="text-primary mb-3 d-none">
+        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+        <strong>Loading audio recording...</strong>
+      </div>
+      <div id="profref2-audio-error" class="alert alert-danger d-none" role="alert">
+        <strong>Audio unavailable:</strong> <span id="profref2-error-message"></span>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="profref2-retry-audio">Retry</button>
+      </div>
+
+      <hr class="my-3">
+
+      <h6 class="fw-bold text-primary mb-3">Conversation Transcript</h6>
+      <div id="profref2-transcript-loading" class="text-center py-5 d-none">
+        <div class="spinner-border text-primary" style="width:2.5rem;height:2.5rem;" role="status"></div>
+        <p class="mt-3 text-muted">Loading transcript...</p>
+      </div>
+      <div id="profref2-transcript-error" class="alert alert-danger d-none" role="alert">
+        <strong>Failed to load transcript:</strong> <span id="profref2-transcript-error-msg"></span>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="profref2-retry-transcript">Retry</button>
+      </div>
+      <div id="profref2-transcript-empty" class="text-center py-5 d-none">
+        <i class="bi bi-chat-square-dots display-4 text-muted opacity-50"></i>
+        <p class="mt-3 text-muted">No transcript available for this call.</p>
+      </div>
+      <div id="profref2-turns" class="border-start border-4 border-primary ps-4"
+           style="max-height: 460px; overflow-y: auto;"></div>
+    </div>
+
+    <div class="col-lg-5">
+      <h6 class="fw-bold text-primary mb-3">Brief Lead Summary</h6>
+      <div id="profref2-brief-summary" class="border-start border-4 border-info ps-4"
+           style="max-height: 580px; overflow-y: auto;">
+        <div id="profref2-brief-loading" class="text-center py-5">
+          <div class="spinner-border text-primary" style="width:2rem;height:2rem;" role="status"></div>
+          <p class="mt-3 text-muted">Loading brief summary...</p>
+        </div>
+        <div id="profref2-brief-content" class="d-none"></div>
+        <div id="profref2-brief-empty" class="text-center py-5 text-muted d-none">
+          <i class="bi bi-info-circle display-4 opacity-50"></i>
+          <p class="mt-3 mb-0">No summary data available for this call.</p>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
+<!-- ==================== ONBOARDING CALL PANE ==================== -->
+<div class="tab-pane fade" id="onboarding-call-pane" role="tabpanel">
+
+  <div id="onboarding-no-call" class="text-center py-5 d-none">
+    <i class="bi bi-telephone-x display-4 text-muted opacity-50"></i>
+    <h5 class="mt-3 text-muted">No Onboarding Call Available</h5>
+    <p class="text-muted">This user has not completed the Onboarding call yet.</p>
+  </div>
+
+  <div id="onboarding-call-section" class="row g-4 d-none">
+
+    <!-- LEFT COLUMN: Audio + Transcript -->
+    <div class="col-lg-7">
+      <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
+      <div id="onboarding-audio-player-container" class="mb-4 d-none">
+        <audio id="onboarding-call-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
+        <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
+      </div>
+      <div id="onboarding-audio-loading" class="text-primary mb-3 d-none">
+        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+        <strong>Loading audio recording...</strong>
+      </div>
+      <div id="onboarding-audio-error" class="alert alert-danger d-none" role="alert">
+        <strong>Audio unavailable:</strong> <span id="onboarding-error-message"></span>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="onboarding-retry-audio">Retry</button>
+      </div>
+
+      <hr class="my-3">
+
+      <h6 class="fw-bold text-primary mb-3">Conversation Transcript</h6>
+      <div id="onboarding-transcript-loading" class="text-center py-5 d-none">
+        <div class="spinner-border text-primary" style="width:2.5rem;height:2.5rem;" role="status"></div>
+        <p class="mt-3 text-muted">Loading transcript...</p>
+      </div>
+      <div id="onboarding-transcript-error" class="alert alert-danger d-none" role="alert">
+        <strong>Failed to load transcript:</strong> <span id="onboarding-transcript-error-msg"></span>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="onboarding-retry-transcript">Retry</button>
+      </div>
+      <div id="onboarding-transcript-empty" class="text-center py-5 d-none">
+        <i class="bi bi-chat-square-dots display-4 text-muted opacity-50"></i>
+        <p class="mt-3 text-muted">No transcript available for this call.</p>
+      </div>
+      <div id="onboarding-turns" class="border-start border-4 border-primary ps-4"
+           style="max-height: 460px; overflow-y: auto;"></div>
+    </div>
+
+    <!-- RIGHT COLUMN: Brief Lead Summary -->
+    <div class="col-lg-5">
+      <h6 class="fw-bold text-primary mb-3">Brief Lead Summary</h6>
+      <div id="onboarding-brief-summary" class="border-start border-4 border-info ps-4"
+           style="max-height: 580px; overflow-y: auto;">
+        <div id="onboarding-brief-loading" class="text-center py-5">
+          <div class="spinner-border text-primary" style="width:2rem;height:2rem;" role="status"></div>
+          <p class="mt-3 text-muted">Loading brief summary...</p>
+        </div>
+        <div id="onboarding-brief-content" class="d-none"></div>
+        <div id="onboarding-brief-empty" class="text-center py-5 text-muted d-none">
+          <i class="bi bi-info-circle display-4 opacity-50"></i>
+          <p class="mt-3 mb-0">No summary data available for this call.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /#onboarding-call-section -->
+</div><!-- /#onboarding-call-pane -->
 
 
 
@@ -818,7 +958,6 @@
 
 
 
-
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Close</button>
       </div>
@@ -827,6 +966,10 @@
 </div>
 </div><!-- /.tab-content -->
       </div>
+
+
+
+
 
 
 <div class="modal fade" id="documentsModal" tabindex="-1">
@@ -871,9 +1014,166 @@
   </div>
 </div>
 
+<!-- DELETE USER MODAL -->
+<div class="modal fade" id="deleteUserModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">
+          <i class="bi bi-exclamation-triangle me-2"></i>
+          Confirm Delete
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body text-center">
+        <p class="mb-2">Are you sure you want to delete:</p>
+        <h6 class="fw-bold text-danger" id="deleteUserName">User</h6>
+        <small class="text-muted">This action cannot be undone.</small>
+      </div>
+
+      <div class="modal-footer justify-content-center">
+        <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <button type="button" class="btn btn-danger px-4" id="confirmDeleteBtn">
+          Delete
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% block extra_css %}
+<style>
+.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.sort-icon {
+    font-size: 0.75rem;
+    margin-left: 6px;
+    color: #bbb;
+}
+
+.sortable:hover .sort-icon {
+    color: #000;
+}
+
+.sortable.asc .sort-icon {
+    color: #000;
+}
+
+.sortable.desc .sort-icon {
+    color: #000;
+}
+
+
+.btn-delete {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+</style>
+{% endblock %}
+
+
+
 
 <style>
-    .avatar-sm { width: 40px; height: 40px; font-size: 1rem; }
+
+
+let deleteUserId = null;
+let deleteRow = null;
+
+const deleteModal = new bootstrap.Modal(document.getElementById('deleteUserModal'));
+
+
+
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.btn-delete');
+    if (!btn) return;
+
+    deleteUserId = btn.getAttribute('data-id');
+    deleteRow = btn.closest('tr');
+
+    const name = btn.getAttribute('data-name') || "User";
+    document.getElementById('deleteUserName').textContent = name;
+
+    deleteModal.show();
+});
+
+
+
+document.getElementById('confirmDeleteBtn').addEventListener('click', async function () {
+
+    if (!deleteUserId) return;
+
+    const btn = this;
+
+    // Loading state
+    btn.disabled = true;
+    btn.innerHTML = `
+        <span class="spinner-border spinner-border-sm me-2"></span>
+        Deleting...
+    `;
+
+    try {
+        const res = await fetch('/admin/api/delete_user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                user_id: deleteUserId   // 🔥 IMPORTANT FIX
+            })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+
+            // Close modal
+            deleteModal.hide();
+
+            // Remove row with animation
+            deleteRow.style.transition = "opacity 0.3s";
+            deleteRow.style.opacity = "0";
+
+            setTimeout(() => {
+                deleteRow.remove();
+            }, 300);
+
+        } else {
+            alert(data.error || "Delete failed");
+        }
+
+    } catch (err) {
+        console.error(err);
+        alert("Server error");
+    }
+
+    // Reset button
+    btn.disabled = false;
+    btn.innerHTML = "Delete";
+});
+
+
+    .avatar-sm { width: 60px; height: 60px; font-size: 1rem; }
+
+    .avatar {
+    width: 50px;
+    height: 50px;
+    font-size: 1.2rem;
+}
+
+
     tr:hover { background-color: #f8f9ff !important; transition: background-color 0.2s; }
     .btn-delete:hover { 
         background-color: #c82333 !important; 
@@ -901,6 +1201,73 @@
 
 <!-- Delete handler -->
 <script>
+
+
+const SUGGESTION_URL = "{{ url_for('admin.user_suggestions') }}";
+
+const input = document.getElementById('userSearch');
+const box = document.getElementById('suggestionsBox');
+
+let debounceTimer;
+
+input.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+
+    const query = this.value.trim();
+
+    if (query.length < 2) {
+        box.style.display = 'none';
+        return;
+    }
+
+    debounceTimer = setTimeout(async () => {
+        try {
+            // const res = await fetch(`/admin/api/user_suggestions?q=${encodeURIComponent(query)}`)
+            const res = await fetch(`${SUGGESTION_URL}?q=${encodeURIComponent(query)}`)
+            const data = await res.json();
+
+            box.innerHTML = '';
+
+            if (!data.length) {
+                box.style.display = 'none';
+                return;
+            }
+
+            data.forEach(user => {
+                const item = document.createElement('a');
+                item.className = 'list-group-item list-group-item-action';
+
+                item.innerHTML = `
+                    <div><strong>${user.name || 'No Name'}</strong></div>
+                    <small class="text-muted">${user.email} • ${user.phone}</small>
+                `;
+
+                item.onclick = () => {
+                    input.value = user.name || user.email;
+                    box.style.display = 'none';
+
+                    // OPTIONAL: auto submit
+                    document.getElementById('filterForm').submit();
+                };
+
+                box.appendChild(item);
+            });
+
+            box.style.display = 'block';
+
+        } catch (err) {
+            console.error(err);
+        }
+    }, 300); // debounce
+});
+
+// Hide on outside click
+document.addEventListener('click', function (e) {
+    if (!input.contains(e.target) && !box.contains(e.target)) {
+        box.style.display = 'none';
+    }
+});
+
 
 document.addEventListener('click', async (e) => {
 
@@ -977,53 +1344,113 @@ document.addEventListener('click', async (e) => {
 
 });
 
-
 document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.btn-delete').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation(); // prevent row click
-            const userId   = e.target.dataset.id;
-            const userName = e.target.dataset.name || 'This user';
+    document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.btn-delete');
+        if (!btn) return;
 
-            const result = await Swal.fire({
-                title: 'Delete User?',
-                html: `Are you sure you want to <strong>permanently delete</strong><br><span class="text-primary">${userName}</span>?`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#6c757d',
-                confirmButtonText: 'Yes, delete',
-                cancelButtonText: 'Cancel',
-                reverseButtons: true
+        const userId = btn.getAttribute('data-id');
+        const name = btn.getAttribute('data-name') || "User";
+
+        if (!userId) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Invalid User',
+                text: 'User ID is missing'
             });
+            return;
+        }
 
-            if (result.isConfirmed) {
-                try {
-                    const res  = await fetch('/admin/api/delete_user', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ user_id: userId })
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        Swal.fire({ icon: 'success', title: 'Deleted!',
-                            text: `${userName} has been removed.`,
-                            timer: 2000, showConfirmButton: false
-                        }).then(() => location.reload());
-                    } else {
-                        Swal.fire('Error', data.error || 'Failed to delete user.', 'error');
-                    }
-                } catch {
-                    Swal.fire('Error', 'Network error. Please try again.', 'error');
-                }
+        // 🔥 Confirmation UI (REPLACES confirm())
+        const result = await Swal.fire({
+            title: 'Delete User?',
+            html: `<strong>${name}</strong><br><small>This action cannot be undone</small>`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, Delete',
+            cancelButtonText: 'Cancel',
+            reverseButtons: true,
+            focusCancel: true
+        });
+
+        if (!result.isConfirmed) return;
+
+        // 🔄 Loading state
+        Swal.fire({
+            title: 'Deleting...',
+            text: 'Please wait',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
             }
         });
+
+        try {
+            const res = await fetch('/admin/api/delete_user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    user_id: userId
+                })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+
+                // ✅ Success UI (REPLACES alert)
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Deleted!',
+                    text: 'User has been removed',
+                    timer: 1500,
+                    showConfirmButton: false
+                });
+
+                btn.closest('tr').remove();
+
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Failed',
+                    text: data.error || "Delete failed"
+                });
+            }
+
+        } catch (err) {
+            console.error(err);
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Server Error',
+                text: 'Something went wrong'
+            });
+        }
     });
 });
 
 
 const getCellValue = (row, key) => {
-    return row.dataset[key] || '';
+    const cells = row.querySelectorAll('td');
+
+    switch (key) {
+        case 'name':
+            return cells[0]?.innerText.trim() || '';
+        case 'email':
+            return cells[1]?.innerText.trim() || '';
+        case 'country':
+            return cells[3]?.innerText.trim() || '';
+        case 'designation':
+            return cells[4]?.innerText.trim() || '';
+        case 'joined':
+            return row.querySelector('[data-joined]')?.dataset.joined || '';
+        default:
+            return '';
+    }
 };
 
 let currentSort = {
@@ -1036,8 +1463,10 @@ document.querySelectorAll('.sortable').forEach(header => {
 
     header.addEventListener('click', () => {
         const key = header.dataset.key;
-        const tbody = document.querySelector('tbody');
+        // const tbody = document.querySelector('tbody');
+        const tbody = document.querySelector('.table tbody');
         const rows = Array.from(tbody.querySelectorAll('tr.user-row'));
+
 
         // Toggle direction
         if (currentSort.key === key) {
@@ -1084,7 +1513,6 @@ if (icon) {
 
     });
 });
-
 
 
 
@@ -1188,7 +1616,8 @@ $(document).ready(function () {
 ══════════════════════════════════════════ -->
 <script>
 
-let currentUserId              = null;
+let currentUserId = null;
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // ── Element refs — INTRO CALL ──
@@ -1367,7 +1796,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const data = await res.json();
             fuTxLoading.classList.add('d-none');
-            renderTurns(fuTurnsDiv, fuTxEmpty, data.turns || []);
+            //renderTurns(fuTurnsDiv, fuTxEmpty, data.turns || []);
         } catch (err) {
             fuTxLoading.classList.add('d-none');
             fuTxErrorMsg.textContent = err.message;
@@ -1376,32 +1805,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     document.getElementById('fu-retry-transcript').addEventListener('click', fuLoadTranscript);
 
-    // ══════════════════════════════════
-    // RENDER TURNS (shared)
-    // ══════════════════════════════════
-    function renderTurns(container, emptyEl, turns) {
-        container.innerHTML = '';
-        if (!turns || turns.length === 0) {
-            emptyEl.classList.remove('d-none');
-            return;
-        }
-        turns.forEach((turn, idx) => {
-            const isAgent = turn.role === 'agent';
-            const bubble  = document.createElement('div');
-            bubble.className = `turn-bubble mb-4 ${isAgent ? 'text-end' : ''}`;
-            bubble.style.animationDelay = `${idx * 30}ms`;
-            bubble.innerHTML = `
-                <div class="d-inline-block p-3 rounded-3 shadow-sm
-                            ${isAgent ? 'bg-primary text-white' : 'bg-light'}"
-                     style="max-width:80%;">
-                    <div class="small fw-bold mb-1 ${isAgent ? 'text-white opacity-75' : 'text-primary'}">
-                        ${isAgent ? 'Agent' : 'Caller'} &bull; ${turn.time || '—'}
-                    </div>
-                    <div style="white-space:pre-wrap;">${(turn.text || '').replace(/\n/g, '<br>')}</div>
-                </div>`;
-            container.appendChild(bubble);
-        });
-    }
+    
 
     // ══════════════════════════════════
     // BRIEF SUMMARY — INTRO
@@ -1449,35 +1853,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ══════════════════════════════════
-    // RENDER BRIEF SUMMARY (shared)
-    // ══════════════════════════════════
-    function renderBriefSummary(loadingEl, contentEl, emptyEl, data) {
-        if (!data.rows || data.rows.length === 0) {
-            loadingEl.classList.add('d-none');
-            emptyEl.classList.remove('d-none');
-            return;
-        }
-        let html = '';
-        if (data.call_summary || data.call_status) {
-            html += `<div class="alert alert-info mb-3">`;
-            if (data.call_summary) html += `<div><strong>Call Summary:</strong> ${data.call_summary}</div>`;
-            if (data.call_status)  html += `<div><strong>Call Status:</strong> ${data.call_status}</div>`;
-            html += `</div>`;
-        }
-        html += '<h6 class="text-success mt-2 mb-3">Collected Information</h6>';
-        html += data.rows.map(row => `
-            <div class="row mb-3">
-                <div class="col-md-5"><strong class="text-muted">${row.label}</strong></div>
-                <div class="col-md-7">
-                    <span class="fw-semibold ${row.is_null ? 'text-muted fst-italic' : ''}">${row.value}</span>
-                </div>
-            </div>`
-        ).join('');
-        contentEl.innerHTML = html;
-        loadingEl.classList.add('d-none');
-        contentEl.classList.remove('d-none');
-    }
+    
 
     // ══════════════════════════════════
     // TAB CLICK — lazy-load Follow Up
@@ -1502,7 +1878,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ══════════════════════════════════
     document.querySelectorAll('.user-row').forEach(row => {
         row.addEventListener('click', function (e) {
-
             if (
             e.target.closest('.btn-delete') ||
             e.target.closest('.view-docs-btn')
@@ -1519,6 +1894,24 @@ document.addEventListener('DOMContentLoaded', () => {
             
             window.currentProfrefConvId         = (this.dataset.profrefConvId || '').trim() || null;
             window.currentProfrefElevenLabsId   = (this.dataset.profrefElevenlabsId || '').trim() || null;
+            window.currentProfref2ConvId        = (this.dataset.profref2ConvId || '').trim() || null;
+            window.currentProfref2ElevenLabsId  = (this.dataset.profref2ElevenlabsId || '').trim() || null;
+            window.currentOnboardingConvId      = (this.dataset.onboardingConvId || '').trim() || null;
+            window.currentOnboardingElevenLabsId = (this.dataset.onboardingElevenlabsId || '').trim() || null;
+
+            currentProfrefConvId = this.dataset.profrefConvId || null;
+            currentProfrefElevenLabsId = this.dataset.profrefElevenlabsId || null;
+            
+
+            window.currentProfrefName = this.dataset.refName || '';
+
+            window.currentProfref2ConvId = this.dataset.profref2ConvId || null;
+            window.currentProfref2ElevenLabsId = this.dataset.profref2ElevenlabsId || null;
+            window.currentProfref2Name = this.dataset.refName2 || '';
+   
+
+            // Professional Reference 2 (if you have second reference)
+            window.currentProfref2Name = this.dataset.refName2 || '';
             // Populate meta
             const cells = this.querySelectorAll('td');
             document.getElementById('ud-name').textContent    = cells[0]?.querySelector('.fw-semibold')?.textContent?.trim() || '—';
@@ -1535,7 +1928,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 noCallNotice.classList.add('d-none');
                 callSection.classList.remove('d-none');
                 resetAudioUI(); resetTranscript(); resetBrief();
+                populateProfrefDetails();
                 loadAudio(); loadTranscript(); loadBriefSummary();
+                
             } else {
                 callSection.classList.add('d-none');
                 noCallNotice.classList.remove('d-none');
@@ -1560,7 +1955,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (fuAudioPlayer.src?.startsWith('blob:')) { URL.revokeObjectURL(fuAudioPlayer.src); fuAudioPlayer.src = ''; }
         resetAudioUI(); resetTranscript();
         fuResetAudioUI(); fuResetTranscript();
+
+
+        if (window.profref2AudioPlayer) {
+    window.profref2AudioPlayer.pause();
+    if (window.profref2AudioPlayer.src?.startsWith('blob:')) {
+        URL.revokeObjectURL(window.profref2AudioPlayer.src);
+        window.profref2AudioPlayer.src = '';
+    }
+}
+if (window.profref2ResetAudioUI)    window.profref2ResetAudioUI();
+if (window.profref2ResetTranscript) window.profref2ResetTranscript();
     });
+    
 });
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -1694,6 +2101,635 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <script>
+document.addEventListener('DOMContentLoaded', () => {
+    // === Professional Reference Elements ===
+    const profrefAudioPlayer     = document.getElementById('profref-call-audio');
+    const profrefAudioContainer  = document.getElementById('profref-audio-player-container');
+    const profrefAudioLoading    = document.getElementById('profref-audio-loading');
+    const profrefAudioError      = document.getElementById('profref-audio-error');
+    const profrefErrorMsg        = document.getElementById('profref-error-message');
+
+    const profrefTurnsDiv        = document.getElementById('profref-turns');
+    const profrefTxLoading       = document.getElementById('profref-transcript-loading');
+    const profrefTxError         = document.getElementById('profref-transcript-error');
+    const profrefTxErrorMsg      = document.getElementById('profref-transcript-error-msg');
+    const profrefTxEmpty         = document.getElementById('profref-transcript-empty');
+
+    const profrefBriefLoading    = document.getElementById('profref-brief-loading');
+    const profrefBriefContent    = document.getElementById('profref-brief-content');
+    const profrefBriefEmpty      = document.getElementById('profref-brief-empty');
+    const profrefCallSection     = document.getElementById('profref-call-section');
+    const profrefNoCallNotice    = document.getElementById('profref-no-call');
+
+    // Reset functions
+    function profrefResetAudioUI() {
+        profrefAudioLoading.classList.add('d-none');
+        profrefAudioError.classList.add('d-none');
+        profrefAudioContainer.classList.add('d-none');
+    }
+
+    function profrefResetTranscript() {
+        profrefTurnsDiv.innerHTML = '';
+        profrefTxLoading.classList.add('d-none');
+        profrefTxError.classList.add('d-none');
+        profrefTxEmpty.classList.add('d-none');
+    }
+
+    function profrefResetBrief() {
+        profrefBriefLoading.classList.remove('d-none');
+        profrefBriefContent.classList.add('d-none');
+        profrefBriefContent.innerHTML = '';
+        profrefBriefEmpty.classList.add('d-none');
+    }
+
+    function profrefShowAudioError(msg) {
+        profrefErrorMsg.textContent = msg;
+        profrefAudioError.classList.remove('d-none');
+        profrefAudioLoading.classList.add('d-none');
+    }
+
+    // ====================== LOAD FUNCTIONS ======================
+
+    async function profrefLoadAudio() {
+        profrefResetAudioUI();
+        profrefAudioLoading.classList.remove('d-none');
+
+        const convId = window.currentProfrefConvId;
+        if (!convId) {
+            profrefShowAudioError("No conversation ID");
+            return;
+        }
+
+        try {
+            const res = await fetch(`/admin/level_five_tr/${convId}/audio`);
+            if (!res.ok) throw new Error(res.status === 404 ? 'Audio is still being generated by ElevenLabs' : 'Audio not available');
+
+            if (profrefAudioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(profrefAudioPlayer.src);
+            const blob = await res.blob();
+            profrefAudioPlayer.src = URL.createObjectURL(blob);
+
+            profrefAudioContainer.classList.remove('d-none');
+            profrefAudioLoading.classList.add('d-none');
+        } catch (err) {
+            profrefShowAudioError(err.message);
+        }
+    }
+
+    async function profrefLoadTranscript() {
+        profrefResetTranscript();
+        profrefTxLoading.classList.remove('d-none');
+
+        const convId = window.currentProfrefConvId;
+        if (!convId) {
+            profrefTxErrorMsg.textContent = "No conversation ID available";
+            profrefTxError.classList.remove('d-none');
+            profrefTxLoading.classList.add('d-none');
+            return;
+        }
+
+        try {
+            const res = await fetch(`/admin/api/level_five_tr/${convId}/transcript`);
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `Server error ${res.status}`);
+            }
+            const data = await res.json();
+
+            profrefTxLoading.classList.add('d-none');
+            // Use the shared renderTurns (defined in first script)
+            if (typeof window.renderTurns === 'function') {
+                window.renderTurns(profrefTurnsDiv, profrefTxEmpty, data.turns || []);
+            } else if (typeof renderTurns === 'function') {
+                renderTurns(profrefTurnsDiv, profrefTxEmpty, data.turns || []);
+            } else {
+                throw new Error("renderTurns function not found");
+            }
+        } catch (err) {
+            profrefTxLoading.classList.add('d-none');
+            profrefTxErrorMsg.textContent = err.message;
+            profrefTxError.classList.remove('d-none');
+        }
+    }
+
+    async function profrefLoadBriefSummary() {
+        profrefResetBrief();
+
+        const elId = window.currentProfrefElevenLabsId;
+        if (!elId) {
+            profrefBriefEmpty.classList.remove('d-none');
+            profrefBriefLoading.classList.add('d-none');
+            return;
+        }
+
+        try {
+            const resp = await fetch(`/admin/elevenlabs/api/level_five_tr/${elId}/summary`);
+            if (!resp.ok) throw new Error('Failed to fetch summary');
+
+            const data = await resp.json();
+
+            // === IMPORTANT: Use the shared renderBriefSummary ===
+            if (typeof window.renderBriefSummary === 'function') {
+                window.renderBriefSummary(profrefBriefLoading, profrefBriefContent, profrefBriefEmpty, data);
+            } else if (typeof renderBriefSummary === 'function') {
+                renderBriefSummary(profrefBriefLoading, profrefBriefContent, profrefBriefEmpty, data);
+            } else {
+                // Fallback if function is still not accessible
+                console.warn("renderBriefSummary not found in global scope");
+                profrefBriefLoading.classList.add('d-none');
+                profrefBriefEmpty.classList.remove('d-none');
+            }
+        } catch (err) {
+            console.error("Brief summary error:", err);
+            profrefBriefLoading.classList.add('d-none');
+            profrefBriefEmpty.classList.remove('d-none');
+        }
+    }
+
+    // ====================== TAB SHOWN ======================
+    document.getElementById('profref-call-tab').addEventListener('shown.bs.tab', () => {
+        const convId = window.currentProfrefConvId;
+        if (!convId) {
+            profrefCallSection.classList.add('d-none');
+            profrefNoCallNotice.classList.remove('d-none');
+            return;
+        }
+
+        profrefCallSection.classList.remove('d-none');
+        profrefNoCallNotice.classList.add('d-none');
+
+        profrefResetAudioUI();
+        profrefResetTranscript();
+        profrefResetBrief();
+
+        loadProfrefDetails();
+
+        profrefLoadAudio();
+        profrefLoadTranscript();
+        profrefLoadBriefSummary();
+    });
+
+    // Retry buttons
+    document.getElementById('profref-retry-audio').addEventListener('click', profrefLoadAudio);
+    document.getElementById('profref-retry-transcript').addEventListener('click', profrefLoadTranscript);
+
+    // Expose for cleanup
+    window.profrefResetAudioUI = profrefResetAudioUI;
+    window.profrefResetTranscript = profrefResetTranscript;
+    window.profrefAudioPlayer = profrefAudioPlayer;
+});
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    const profref2AudioPlayer     = document.getElementById('profref2-call-audio');
+    const profref2AudioContainer  = document.getElementById('profref2-audio-player-container');
+    const profref2AudioLoading    = document.getElementById('profref2-audio-loading');
+    const profref2AudioError      = document.getElementById('profref2-audio-error');
+    const profref2ErrorMsg        = document.getElementById('profref2-error-message');
+
+    const profref2TurnsDiv        = document.getElementById('profref2-turns');
+    const profref2TxLoading       = document.getElementById('profref2-transcript-loading');
+    const profref2TxError         = document.getElementById('profref2-transcript-error');
+    const profref2TxErrorMsg      = document.getElementById('profref2-transcript-error-msg');
+    const profref2TxEmpty         = document.getElementById('profref2-transcript-empty');
+
+    const profref2BriefLoading    = document.getElementById('profref2-brief-loading');
+    const profref2BriefContent    = document.getElementById('profref2-brief-content');
+    const profref2BriefEmpty      = document.getElementById('profref2-brief-empty');
+    const profref2CallSection     = document.getElementById('profref2-call-section');
+    const profref2NoCallNotice    = document.getElementById('profref2-no-call');
+
+    function profref2ResetAudioUI() {
+        profref2AudioLoading.classList.add('d-none');
+        profref2AudioError.classList.add('d-none');
+        profref2AudioContainer.classList.add('d-none');
+    }
+    function profref2ResetTranscript() {
+        profref2TurnsDiv.innerHTML = '';
+        profref2TxLoading.classList.add('d-none');
+        profref2TxError.classList.add('d-none');
+        profref2TxEmpty.classList.add('d-none');
+    }
+    function profref2ResetBrief() {
+        profref2BriefLoading.classList.remove('d-none');
+        profref2BriefContent.classList.add('d-none');
+        profref2BriefContent.innerHTML = '';
+        profref2BriefEmpty.classList.add('d-none');
+    }
+    function profref2ShowAudioError(msg) {
+        profref2ErrorMsg.textContent = msg;
+        profref2AudioError.classList.remove('d-none');
+        profref2AudioLoading.classList.add('d-none');
+    }
+
+    async function profref2LoadAudio() {
+        profref2ResetAudioUI();
+        profref2AudioLoading.classList.remove('d-none');
+        const convId = window.currentProfref2ConvId;
+        if (!convId) { profref2ShowAudioError("No conversation ID"); return; }
+        try {
+            const res = await fetch(`/admin/level_five_tr/${convId}/audio`);
+            if (!res.ok) throw new Error(res.status === 404 ? 'Audio still being generated' : 'Audio not available');
+            if (profref2AudioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(profref2AudioPlayer.src);
+            const blob = await res.blob();
+            profref2AudioPlayer.src = URL.createObjectURL(blob);
+            profref2AudioContainer.classList.remove('d-none');
+            profref2AudioLoading.classList.add('d-none');
+        } catch (err) { profref2ShowAudioError(err.message); }
+    }
+
+    async function profref2LoadTranscript() {
+        profref2ResetTranscript();
+        profref2TxLoading.classList.remove('d-none');
+        const convId = window.currentProfref2ConvId;
+        if (!convId) {
+            profref2TxErrorMsg.textContent = "No conversation ID available";
+            profref2TxError.classList.remove('d-none');
+            profref2TxLoading.classList.add('d-none');
+            return;
+        }
+        try {
+            const res = await fetch(`/admin/api/level_five_tr/${convId}/transcript`);
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `Server error ${res.status}`);
+            }
+            const data = await res.json();
+            profref2TxLoading.classList.add('d-none');
+            const fn = window.renderTurns || renderTurns;
+            fn(profref2TurnsDiv, profref2TxEmpty, data.turns || []);
+        } catch (err) {
+            profref2TxLoading.classList.add('d-none');
+            profref2TxErrorMsg.textContent = err.message;
+            profref2TxError.classList.remove('d-none');
+        }
+    }
+
+    async function profref2LoadBriefSummary() {
+        profref2ResetBrief();
+        const elId = window.currentProfref2ElevenLabsId;
+        if (!elId) {
+            profref2BriefEmpty.classList.remove('d-none');
+            profref2BriefLoading.classList.add('d-none');
+            return;
+        }
+        try {
+            const resp = await fetch(`/admin/elevenlabs/api/level_five_tr/${elId}/summary`);
+            if (!resp.ok) throw new Error('Failed to fetch summary');
+            const data = await resp.json();
+            const fn = window.renderBriefSummary || renderBriefSummary;
+            fn(profref2BriefLoading, profref2BriefContent, profref2BriefEmpty, data);
+        } catch (err) {
+            profref2BriefLoading.classList.add('d-none');
+            profref2BriefEmpty.classList.remove('d-none');
+        }
+    }
+
+    document.getElementById('profref2-call-tab').addEventListener('shown.bs.tab', () => {
+        const convId = window.currentProfref2ConvId;
+        if (!convId) {
+            profref2CallSection.classList.add('d-none');
+            profref2NoCallNotice.classList.remove('d-none');
+            return;
+        }
+        profref2CallSection.classList.remove('d-none');
+        profref2NoCallNotice.classList.add('d-none');
+        profref2ResetAudioUI();
+        profref2ResetTranscript();
+        profref2ResetBrief();
+        populateProfrefDetails();
+        profref2LoadAudio();
+        profref2LoadTranscript();
+        profref2LoadBriefSummary();
+    });
+
+    document.getElementById('profref2-retry-audio').addEventListener('click', profref2LoadAudio);
+    document.getElementById('profref2-retry-transcript').addEventListener('click', profref2LoadTranscript);
+
+    window.profref2ResetAudioUI = profref2ResetAudioUI;
+    window.profref2ResetTranscript = profref2ResetTranscript;
+    window.profref2AudioPlayer = profref2AudioPlayer;
+});
+
+
+// ══════════════════════════════════
+    // RENDER TURNS (shared)
+    // ══════════════════════════════════
+    function renderTurns(container, emptyEl, turns) {
+        container.innerHTML = '';
+        if (!turns || turns.length === 0) {
+            emptyEl.classList.remove('d-none');
+            return;
+        }
+        turns.forEach((turn, idx) => {
+            const isAgent = turn.role === 'agent';
+            const bubble  = document.createElement('div');
+            bubble.className = `turn-bubble mb-4 ${isAgent ? 'text-end' : ''}`;
+            bubble.style.animationDelay = `${idx * 30}ms`;
+            bubble.innerHTML = `
+                <div class="d-inline-block p-3 rounded-3 shadow-sm
+                            ${isAgent ? 'bg-primary text-white' : 'bg-light'}"
+                     style="max-width:80%;">
+                    <div class="small fw-bold mb-1 ${isAgent ? 'text-white opacity-75' : 'text-primary'}">
+                        ${isAgent ? 'Agent' : 'Caller'} &bull; ${turn.time || '—'}
+                    </div>
+                    <div style="white-space:pre-wrap;">${(turn.text || '').replace(/\n/g, '<br>')}</div>
+                </div>`;
+            container.appendChild(bubble);
+        });
+    }
+
+    // ══════════════════════════════════
+    // RENDER BRIEF SUMMARY (shared)
+    // ══════════════════════════════════
+    function renderBriefSummary(loadingEl, contentEl, emptyEl, data) {
+        if (!data.rows || data.rows.length === 0) {
+            loadingEl.classList.add('d-none');
+            emptyEl.classList.remove('d-none');
+            return;
+        }
+        let html = '';
+        if (data.call_summary || data.call_status) {
+            html += `<div class="alert alert-info mb-3">`;
+            if (data.call_summary) html += `<div><strong>Call Summary:</strong> ${data.call_summary}</div>`;
+            if (data.call_status)  html += `<div><strong>Call Status:</strong> ${data.call_status}</div>`;
+            html += `</div>`;
+        }
+        html += '<h6 class="text-success mt-2 mb-3">Collected Information</h6>';
+        html += data.rows.map(row => `
+            <div class="row mb-3">
+                <div class="col-md-5"><strong class="text-muted">${row.label}</strong></div>
+                <div class="col-md-7">
+                    <span class="fw-semibold ${row.is_null ? 'text-muted fst-italic' : ''}">${row.value}</span>
+                </div>
+            </div>`
+        ).join('');
+        contentEl.innerHTML = html;
+        loadingEl.classList.add('d-none');
+        contentEl.classList.remove('d-none');
+    }
+function populateProfrefDetails() {
+    // Prof Ref 1
+    document.getElementById('profref-name').textContent = window.currentProfrefName || '—';
+   
+}
+  // Add these variables in your DOMContentLoaded
+let currentProfrefConvId = null;
+let currentProfrefElevenLabsId = null;
+
+// NEW: Fetch Reference Details
+async function loadProfrefDetails() {
+    const detailsCard = document.getElementById('profref-details-card');
+    const statusBadge = document.getElementById('profref-status');
+    
+    if (!currentProfrefConvId) {
+        statusBadge.textContent = "No Reference Data";
+        statusBadge.className = "badge bg-warning";
+        return;
+    }
+
+    try {
+        statusBadge.textContent = "Loading...";
+        statusBadge.className = "badge bg-secondary";
+
+        const res = await fetch(`/admin/api/level_five_tr/${currentProfrefConvId}/details`);
+        
+        if (!res.ok) throw new Error("Failed to fetch reference details");
+
+        const result = await res.json();
+        
+        if (result.success && result.data) {
+            const d = result.data;
+            
+            document.getElementById('profref-name').textContent = d.ref_name;
+            document.getElementById('profref-phone').textContent = d.ref_phone;
+            document.getElementById('profref-email').textContent = d.ref_email;
+           
+
+            statusBadge.textContent = "";
+            statusBadge.className = "badge bg-default";
+        } else {
+            throw new Error(result.error || "No data returned");
+        }
+    } catch (err) {
+        console.error("Profref details error:", err);
+        document.getElementById('profref-name').textContent = "Error loading details";
+        statusBadge.textContent = "Failed";
+        statusBadge.className = "badge bg-danger";
+    }
+}  
+
+let currentProfref2ConvId = null;
+    let currentProfref2ElevenLabsId = null;
+
+    // Populate Reference 2 Details
+    async function populateProfref2Details() {
+        const statusBadge = document.getElementById('profref2-status');
+        statusBadge.textContent = "Loading...";
+        statusBadge.className = "badge bg-secondary";
+
+        if (!currentProfref2ConvId) {
+            statusBadge.textContent = "No Data";
+            statusBadge.className = "badge bg-warning";
+            return;
+        }
+
+        try {
+            const res = await fetch(`/admin/api/level_five_tr/${currentProfref2ConvId}/details`);
+            if (!res.ok) throw new Error("Failed to load details");
+
+            const result = await res.json();
+            if (result.success && result.data) {
+                const d = result.data;
+                document.getElementById('profref2-name').textContent = d.ref_name || '—';
+                document.getElementById('profref2-phone').textContent = d.ref_phone || '—';
+                document.getElementById('profref2-email').textContent = d.ref_email || '—';
+                statusBadge.textContent = "";
+                statusBadge.className = "badge bg-default";
+            }
+        } catch (err) {
+            console.error(err);
+            document.getElementById('profref2-name').textContent = "Error";
+            statusBadge.textContent = "Failed";
+            statusBadge.className = "badge bg-danger";
+        }
+    }
+
+    // Tab shown for Prof Ref 2
+    document.getElementById('profref2-call-tab').addEventListener('shown.bs.tab', () => {
+        currentProfref2ConvId = window.currentProfref2ConvId;
+        currentProfref2ElevenLabsId = window.currentProfref2ElevenLabsId;
+
+        if (!currentProfref2ConvId) {
+            document.getElementById('profref2-call-section').classList.add('d-none');
+            document.getElementById('profref2-no-call').classList.remove('d-none');
+            return;
+        }
+
+        document.getElementById('profref2-call-section').classList.remove('d-none');
+        document.getElementById('profref2-no-call').classList.add('d-none');
+
+        populateProfref2Details();
+        // Call your existing load functions for audio, transcript, brief summary for profref2
+        profref2LoadAudio();
+        profref2LoadTranscript();
+        profref2LoadBriefSummary();
+    });
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    const onboardingAudioPlayer    = document.getElementById('onboarding-call-audio');
+    const onboardingAudioContainer = document.getElementById('onboarding-audio-player-container');
+    const onboardingAudioLoading   = document.getElementById('onboarding-audio-loading');
+    const onboardingAudioError     = document.getElementById('onboarding-audio-error');
+    const onboardingErrorMsg       = document.getElementById('onboarding-error-message');
+
+    const onboardingTurnsDiv       = document.getElementById('onboarding-turns');
+    const onboardingTxLoading      = document.getElementById('onboarding-transcript-loading');
+    const onboardingTxError        = document.getElementById('onboarding-transcript-error');
+    const onboardingTxErrorMsg     = document.getElementById('onboarding-transcript-error-msg');
+    const onboardingTxEmpty        = document.getElementById('onboarding-transcript-empty');
+
+    const onboardingBriefLoading   = document.getElementById('onboarding-brief-loading');
+    const onboardingBriefContent   = document.getElementById('onboarding-brief-content');
+    const onboardingBriefEmpty     = document.getElementById('onboarding-brief-empty');
+    const onboardingCallSection    = document.getElementById('onboarding-call-section');
+    const onboardingNoCallNotice   = document.getElementById('onboarding-no-call');
+
+    // ── Reset helpers ──
+    function onboardingResetAudioUI() {
+        onboardingAudioLoading.classList.add('d-none');
+        onboardingAudioError.classList.add('d-none');
+        onboardingAudioContainer.classList.add('d-none');
+    }
+    function onboardingResetTranscript() {
+        onboardingTurnsDiv.innerHTML = '';
+        onboardingTxLoading.classList.add('d-none');
+        onboardingTxError.classList.add('d-none');
+        onboardingTxEmpty.classList.add('d-none');
+    }
+    function onboardingResetBrief() {
+        onboardingBriefLoading.classList.remove('d-none');
+        onboardingBriefContent.classList.add('d-none');
+        onboardingBriefContent.innerHTML = '';
+        onboardingBriefEmpty.classList.add('d-none');
+    }
+    function onboardingShowAudioError(msg) {
+        onboardingErrorMsg.textContent = msg;
+        onboardingAudioError.classList.remove('d-none');
+        onboardingAudioLoading.classList.add('d-none');
+    }
+
+    // ── Load audio ──
+    async function onboardingLoadAudio() {
+        onboardingResetAudioUI();
+        onboardingAudioLoading.classList.remove('d-none');
+        const convId = window.currentOnboardingConvId;
+        if (!convId) { onboardingShowAudioError('No conversation ID'); return; }
+        try {
+            const res = await fetch(`/admin/onboarding_tr/${convId}/audio`);
+            if (!res.ok) throw new Error(
+                res.status === 404 ? 'Audio is still being generated by ElevenLabs' : 'Audio not available yet'
+            );
+            if (onboardingAudioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(onboardingAudioPlayer.src);
+            const blob = await res.blob();
+            onboardingAudioPlayer.src = URL.createObjectURL(blob);
+            onboardingAudioContainer.classList.remove('d-none');
+            onboardingAudioLoading.classList.add('d-none');
+        } catch (err) {
+            onboardingShowAudioError(err.message);
+        }
+    }
+
+    // ── Load transcript ──
+    async function onboardingLoadTranscript() {
+        onboardingResetTranscript();
+        onboardingTxLoading.classList.remove('d-none');
+        const convId = window.currentOnboardingConvId;
+        if (!convId) {
+            onboardingTxErrorMsg.textContent = 'No conversation ID available';
+            onboardingTxError.classList.remove('d-none');
+            onboardingTxLoading.classList.add('d-none');
+            return;
+        }
+        try {
+            const res = await fetch(`/admin/api/onboarding_tr/${convId}/transcript`);
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `Server error ${res.status}`);
+            }
+            const data = await res.json();
+            onboardingTxLoading.classList.add('d-none');
+            const fn = window.renderTurns || renderTurns;
+            fn(onboardingTurnsDiv, onboardingTxEmpty, data.turns || []);
+        } catch (err) {
+            onboardingTxLoading.classList.add('d-none');
+            onboardingTxErrorMsg.textContent = err.message;
+            onboardingTxError.classList.remove('d-none');
+        }
+    }
+
+    // ── Load brief summary ──
+    async function onboardingLoadBriefSummary() {
+        onboardingResetBrief();
+        const elId = window.currentOnboardingElevenLabsId;
+        if (!elId) {
+            onboardingBriefLoading.classList.add('d-none');
+            onboardingBriefEmpty.classList.remove('d-none');
+            return;
+        }
+        try {
+            const resp = await fetch(`/admin/elevenlabs/api/onboarding_tr/${elId}/summary`);
+            if (!resp.ok) throw new Error('Failed to fetch summary');
+            const data = await resp.json();
+            const fn = window.renderBriefSummary || renderBriefSummary;
+            fn(onboardingBriefLoading, onboardingBriefContent, onboardingBriefEmpty, data);
+        } catch (err) {
+            onboardingBriefLoading.classList.add('d-none');
+            onboardingBriefEmpty.classList.remove('d-none');
+        }
+    }
+
+    // ── Tab shown event ──
+    document.getElementById('onboarding-call-tab').addEventListener('shown.bs.tab', () => {
+        const convId = window.currentOnboardingConvId;
+        if (!convId) {
+            onboardingCallSection.classList.add('d-none');
+            onboardingNoCallNotice.classList.remove('d-none');
+            return;
+        }
+        onboardingCallSection.classList.remove('d-none');
+        onboardingNoCallNotice.classList.add('d-none');
+        onboardingResetAudioUI();
+        onboardingResetTranscript();
+        onboardingResetBrief();
+        onboardingLoadAudio();
+        onboardingLoadTranscript();
+        onboardingLoadBriefSummary();
+    });
+
+    // ── Retry buttons ──
+    document.getElementById('onboarding-retry-audio').addEventListener('click', onboardingLoadAudio);
+    document.getElementById('onboarding-retry-transcript').addEventListener('click', onboardingLoadTranscript);
+
+    // ── Cleanup on modal close ──
+    document.getElementById('userDetailModal').addEventListener('hidden.bs.modal', () => {
+        onboardingAudioPlayer.pause();
+        if (onboardingAudioPlayer.src?.startsWith('blob:')) {
+            URL.revokeObjectURL(onboardingAudioPlayer.src);
+            onboardingAudioPlayer.src = '';
+        }
+        onboardingResetAudioUI();
+        onboardingResetTranscript();
+    }, { once: false });
+
+    // Expose for external reset
+    window.onboardingResetAudioUI    = onboardingResetAudioUI;
+    window.onboardingResetTranscript = onboardingResetTranscript;
+    window.onboardingAudioPlayer     = onboardingAudioPlayer;
+});
+
+
 
 async function loadDocumentsAccepted(userId) {
     const tbody = document.querySelector('#docsTable tbody');
@@ -1786,146 +2822,7 @@ document.getElementById('documents-accepted-tab')
     }
 });
 
-document.addEventListener('DOMContentLoaded', () => {
 
-    // === Professional Reference Call Elements ===
-    const profrefAudioPlayer     = document.getElementById('profref-call-audio');
-    const profrefAudioContainer  = document.getElementById('profref-audio-player-container');
-    const profrefAudioLoading    = document.getElementById('profref-audio-loading');
-    const profrefAudioError      = document.getElementById('profref-audio-error');
-    const profrefErrorMsg        = document.getElementById('profref-error-message');
 
-    const profrefTurnsDiv        = document.getElementById('profref-turns');
-    const profrefTxLoading       = document.getElementById('profref-transcript-loading');
-    const profrefTxError         = document.getElementById('profref-transcript-error');
-    const profrefTxErrorMsg      = document.getElementById('profref-transcript-error-msg');
-    const profrefTxEmpty         = document.getElementById('profref-transcript-empty');
-
-    const profrefBriefLoading    = document.getElementById('profref-brief-loading');
-    const profrefBriefContent    = document.getElementById('profref-brief-content');
-    const profrefBriefEmpty      = document.getElementById('profref-brief-empty');
-
-    const profrefCallSection     = document.getElementById('profref-call-section');
-    const profrefNoCallNotice    = document.getElementById('profref-no-call');
-
-    // State — picked up from the row click in the first DOMContentLoaded block
-    // We read window.currentProfrefConvId / window.currentProfrefElevenLabsId
-    // which the row-click handler will set (see patch to row click below).
-
-    function profrefResetAudioUI() {
-        profrefAudioLoading.classList.add('d-none');
-        profrefAudioError.classList.add('d-none');
-        profrefAudioContainer.classList.add('d-none');
-    }
-
-    function profrefResetTranscript() {
-        profrefTurnsDiv.innerHTML = '';
-        profrefTxLoading.classList.add('d-none');
-        profrefTxError.classList.add('d-none');
-        profrefTxEmpty.classList.add('d-none');
-    }
-
-    function profrefResetBrief() {
-        profrefBriefLoading.classList.remove('d-none');
-        profrefBriefContent.classList.add('d-none');
-        profrefBriefContent.innerHTML = '';
-        profrefBriefEmpty.classList.add('d-none');
-    }
-
-    function profrefShowAudioError(msg) {
-        profrefErrorMsg.textContent = msg;
-        profrefAudioError.classList.remove('d-none');
-        profrefAudioLoading.classList.add('d-none');
-    }
-
-    async function profrefLoadAudio() {
-        profrefResetAudioUI();
-        profrefAudioLoading.classList.remove('d-none');
-        const convId = window.currentProfrefConvId;
-        try {
-            const res = await fetch(`/admin/level_five_tr/${convId}/audio`);
-            if (!res.ok) throw new Error('Audio not available yet or still processing');
-            if (profrefAudioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(profrefAudioPlayer.src);
-            const blob = await res.blob();
-            profrefAudioPlayer.src = URL.createObjectURL(blob);
-            profrefAudioContainer.classList.remove('d-none');
-            profrefAudioLoading.classList.add('d-none');
-        } catch (err) {
-            profrefShowAudioError(err.message);
-        }
-    }
-
-    async function profrefLoadTranscript() {
-        profrefResetTranscript();
-        profrefTxLoading.classList.remove('d-none');
-        const convId = window.currentProfrefConvId;
-        try {
-            const res = await fetch(`/admin/api/level_five_tr/${convId}/transcript`);
-            if (!res.ok) throw new Error('Failed to load transcript');
-            const data = await res.json();
-            profrefTxLoading.classList.add('d-none');
-            // Re-use the shared renderTurns from the first script block
-            renderTurns(profrefTurnsDiv, profrefTxEmpty, data.turns || []);
-        } catch (err) {
-            profrefTxErrorMsg.textContent = err.message;
-            profrefTxError.classList.remove('d-none');
-            profrefTxLoading.classList.add('d-none');
-        }
-    }
-
-    async function profrefLoadBriefSummary() {
-        profrefResetBrief();
-        const elId = window.currentProfrefElevenLabsId;
-        if (!elId) {
-            profrefBriefEmpty.classList.remove('d-none');
-            profrefBriefLoading.classList.add('d-none');
-            return;
-        }
-        try {
-            const resp = await fetch(`/admin/elevenlabs/api/level_five_tr/${elId}/summary`);
-            if (!resp.ok) throw new Error('Failed to fetch summary');
-            const data = await resp.json();
-            renderBriefSummary(profrefBriefLoading, profrefBriefContent, profrefBriefEmpty, data);
-        } catch (err) {
-            profrefBriefLoading.classList.add('d-none');
-            profrefBriefEmpty.classList.remove('d-none');
-        }
-    }
-
-    // Tab shown — lazy load
-    document.getElementById('profref-call-tab').addEventListener('shown.bs.tab', () => {
-        const convId = window.currentProfrefConvId;
-        if (!convId) {
-            profrefCallSection.classList.add('d-none');
-            profrefNoCallNotice.classList.remove('d-none');
-            return;
-        }
-        profrefCallSection.classList.remove('d-none');
-        profrefNoCallNotice.classList.add('d-none');
-        profrefResetAudioUI();
-        profrefResetTranscript();
-        profrefResetBrief();
-        profrefLoadAudio();
-        profrefLoadTranscript();
-        profrefLoadBriefSummary();
-    });
-
-    document.getElementById('profref-retry-audio').addEventListener('click', profrefLoadAudio);
-    document.getElementById('profref-retry-transcript').addEventListener('click', profrefLoadTranscript);
-
-    // Expose reset functions for modal-close cleanup
-    window.profrefResetAudioUI      = profrefResetAudioUI;
-    window.profrefResetTranscript   = profrefResetTranscript;
-    window.profrefAudioPlayer       = profrefAudioPlayer;
-});
-if (window.profrefAudioPlayer) {
-    window.profrefAudioPlayer.pause();
-    if (window.profrefAudioPlayer.src?.startsWith('blob:')) {
-        URL.revokeObjectURL(window.profrefAudioPlayer.src);
-        window.profrefAudioPlayer.src = '';
-    }
-    window.profrefResetAudioUI?.();
-    window.profrefResetTranscript?.();
-}
 </script>
 {% endblock %}

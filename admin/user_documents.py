@@ -21,6 +21,9 @@ import magic
 
 import json
 
+import hashlib
+
+
 load_dotenv()
 
 from .views import admin_required
@@ -86,6 +89,9 @@ def safe_json_parse(text):
             "status": "invalid",
             "failed_reason": "Invalid AI response format"
         }
+
+def generate_file_hash(file_bytes):
+    return hashlib.sha256(file_bytes).hexdigest()
 
 
 
@@ -290,12 +296,10 @@ def api_list_user_documents():
             current_app.db.documents.update_one(
                 {
                     "user_id": ObjectId(lead_id),
-                    "document_type_code": doc_code,
-                    "status": { "$ne": "completed" }
+                    "document_type_code": doc_code
                 },
                 {
                     "$set": {
-                        "file_url": doc_url,
                         "status": "pending",
                         "updated_at": datetime.utcnow()
                     },
@@ -488,6 +492,8 @@ Now validate the document.
         resp.raise_for_status()
         file_bytes = resp.content
 
+        file_hash = generate_file_hash(file_bytes)
+
         file_size = len(file_bytes)
         if file_size < 300:
             raise ValueError(f"Downloaded file too small ({file_size} bytes)")
@@ -611,11 +617,11 @@ Now validate the document.
             current_app.db.documents.update_one(
                 {
                     "user_id": ObjectId(user_id),
-                    "document_type_code": document_type,
-                    "file_url": doc_url
+                    "document_type_code": document_type
                 },
                 {
                     "$set": {
+                        "file_url": doc_url,
                         "status": "completed" if parsed_result.get("is_valid") else "failed",
                         "last_validation_id": validation_id,
                         "updated_at": datetime.utcnow()
@@ -678,31 +684,79 @@ def api_user_documents_accepted():
     if not lead_id or not ObjectId.is_valid(lead_id):
         return jsonify({"status": "error", "message": "Invalid lead_id"}), 400
 
-    docs = list(current_app.db.documents.find(
-        {"user_id": ObjectId(lead_id)},
-        {
-            "document_type_code": 1,
-            "status": 1,
-            "updated_at": 1,
-            "file_url": 1
-        }
-    ).sort("updated_at", -1))
+    # 🔹 Get xn_user_id (required for API)
+    user = current_app.db.users.find_one(
+        {"_id": ObjectId(lead_id)},
+        {"xn_user_id": 1}
+    )
 
-    result = []
-    for d in docs:
-        updated = d.get("updated_at")
-        if isinstance(updated, datetime):
-            updated = updated.strftime("%d %b %Y %H:%M")
+    if not user or "xn_user_id" not in user:
+        return jsonify({"status": "error", "message": "User not found"}), 404
 
-        result.append({
-            "document_type": d.get("document_type_code"),
-            "status": d.get("status", "pending"),
-            "updated_at": updated or "—",
-            "url": d.get("file_url"),
-            "reason": d.get("reason", "")
+    xn_user_id = str(user["xn_user_id"]).strip()
+
+    # 🔹 External API config
+    USER_EXTERNAL_API_URL = os.getenv('XN_PORTAL_BASE_URL')
+    USER_EXTERNAL_API_KEY = os.getenv('XN_PORTAL_API_KEY')
+    APP_COUNTRY = os.getenv('XN_APP_COUNTRY', 'ie')
+
+    api_url = f"{USER_EXTERNAL_API_URL.rstrip('/')}/ai/recruitments/user-document-list"
+
+    headers = {
+        "Api-Key": USER_EXTERNAL_API_KEY,
+        "X-App-Country": APP_COUNTRY,
+        "Content-Type": "application/json"
+    }
+
+    try:
+        
+        resp = requests.get(api_url, headers=headers, json={"_id": xn_user_id}, timeout=10)
+        resp.raise_for_status()
+
+        fresh_documents = resp.json().get("data", []) or []
+
+       
+        url_map = {}
+        for doc in fresh_documents:
+            doc_name = (doc.get("document_type_name") or "").strip()
+            if not doc_name:
+                continue
+
+            doc_code = DOC_TYPE_MAP.get(doc_name, doc_name.upper().replace(" ", "_"))
+            url_map[doc_code] = doc.get("url")
+
+        
+        docs = list(current_app.db.documents.find(
+            {"user_id": ObjectId(lead_id)},
+            {
+                "document_type_code": 1,
+                "status": 1,
+                "updated_at": 1
+            }
+        ).sort("updated_at", -1))
+
+        result = []
+
+        for d in docs:
+            updated = d.get("updated_at")
+            if isinstance(updated, datetime):
+                updated = updated.strftime("%d %b %Y %H:%M")
+
+            code = d.get("document_type_code")
+
+            result.append({
+                "document_type": code,
+                "status": d.get("status", "pending"),
+                "updated_at": updated or "—",
+                "url": url_map.get(code), 
+                "reason": d.get("reason", "")
+            })
+
+        return jsonify({
+            "status": "success",
+            "documents": result
         })
 
-    return jsonify({
-        "status": "success",
-        "documents": result
-    })
+    except Exception as e:
+        current_app.logger.exception("Error fetching accepted documents")
+        return jsonify({"status": "error", "message": str(e)}), 500

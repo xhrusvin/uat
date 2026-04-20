@@ -49,6 +49,8 @@ import pytz
 from datetime import datetime
 from migrations import run_migrations
 
+from document_worker_api import bp as document_worker_bp
+
 
 load_dotenv()
 
@@ -172,6 +174,9 @@ app.register_blueprint(xpressgp_bp)
 app.register_blueprint(gemini_call_bp)
 app.register_blueprint(booking_bp)
 app.register_blueprint(document_validate_bp)
+app.register_blueprint(document_worker_bp)
+
+
 
 
 
