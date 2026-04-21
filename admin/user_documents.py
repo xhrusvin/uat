@@ -421,69 +421,39 @@ def update_prompt():
 @admin_bp.route('/api/verify-document', methods=['POST'])
 @admin_required
 def api_verify_document():
-    data = request.get_json()
+    data = request.get_json() or {}
     doc_url = data.get('url')
     document_type = data.get('document_type')
+    user_id = data.get("user_id")
 
-    # prompt_doc = current_app.db.prompts.find_one(
-    #     {"document_type_code": document_type, "is_active": True},
-    #     sort=[("version", -1)]
-    # )
+    if not doc_url or not document_type:
+        return jsonify({"status": "error", "message": "Missing URL or document_type"}), 400
 
-    # if not prompt_doc:
-    #     return jsonify({"status": "error", "message": "Prompt not found"}), 404
-
-    # user_prompt = prompt_doc["prompt_text"]
-
-    # Get prompt from DB
+    # Get prompt (DB first, then fallback)
     prompt_doc = current_app.db.prompts.find_one(
         {"document_type_code": document_type, "is_active": True},
         sort=[("version", -1)]
     )
 
-    # 🔥 FALLBACK LOGIC
-    if prompt_doc and prompt_doc.get("prompt_text"):
-        user_prompt = prompt_doc["prompt_text"]
-    else:
-        user_prompt = data.get("prompt", "").strip()
+    user_prompt = (prompt_doc.get("prompt_text") if prompt_doc else None) or data.get("prompt", "").strip()
 
-        if not user_prompt:
-            return jsonify({
-                "status": "error",
-                "message": "No prompt available (DB or input)"
-            }), 400
+    if not user_prompt:
+        return jsonify({"status": "error", "message": "No prompt available"}), 400
 
-    print("Using prompt:", user_prompt[:100])
-
-
-    document_type = data.get('document_type', 'document')
-
-    if not doc_url or not user_prompt:
-        return jsonify({"status": "error", "message": "Missing URL or prompt"}), 400
-
-#     full_prompt = f"""Current date and time in IST: {date_str}
-# Answer any date-related questions using this exact current time — do NOT guess or use outdated knowledge.
-
-# {user_prompt}"""
-
-    full_prompt = f"""Current date and time: {date_str}
+    full_prompt = f"""Current date and time in IST: {date_str}
 
 You are a strict document validation AI. 
+Return ONLY a valid JSON object. No explanations, no markdown, no code blocks.
 
-CRITICAL RULES:
-- Respond with **ONLY** a valid JSON object. No explanations, no markdown, no ```json blocks, no extra text.
-- Do not add any words before or after the JSON.
-
-Required output format (exactly):
-
+Required format exactly:
 {{
   "is_valid": true or false,
   "status": "valid" or "invalid",
-  "failed_reason": "brief reason why invalid (empty string if valid)",
+  "failed_reason": "short reason if invalid, empty string if valid",
   "expiry_date": "YYYY-MM-DD" or null
 }}
 
-Now analyze the provided document according to these instructions:
+Validate this document:
 
 {user_prompt}
 """
@@ -496,38 +466,20 @@ Now analyze the provided document according to these instructions:
         resp.raise_for_status()
         file_bytes = resp.content
 
-        file_hash = generate_file_hash(file_bytes)
-
         file_size = len(file_bytes)
         if file_size < 300:
-            raise ValueError(f"Downloaded file too small ({file_size} bytes)")
+            raise ValueError(f"File too small ({file_size} bytes)")
 
-        # Detect real MIME type using content sniffing (better than headers)
         mime = magic.Magic(mime=True)
         detected_mime = mime.from_buffer(file_bytes)
-
-        current_app.logger.info(
-            f"Downloaded {file_size} bytes | "
-            f"Detected MIME: {detected_mime} | "
-            f"Header Content-Type: {resp.headers.get('Content-Type')} | "
-            f"Header Content-Encoding: {resp.headers.get('Content-Encoding')}"
-        )
 
         if detected_mime not in SUPPORTED_MIME_TYPES:
             return jsonify({
                 "status": "error",
-                "message": f"Unsupported file format (detected: {detected_mime}). Only PDF and common images (JPEG/PNG/WebP) are supported."
+                "message": f"Unsupported format: {detected_mime}. Only PDF and images supported."
             }), 415
 
-        # Debug save
-        debug_dir = Path("/tmp/gemini_debug")
-        debug_dir.mkdir(exist_ok=True)
-        debug_path = debug_dir / f"file_{uuid.uuid4()}_{detected_mime.replace('/', '_')}"
-        with open(debug_path, "wb") as f:
-            f.write(file_bytes)
-        current_app.logger.info(f"Debug file saved: {debug_path}")
-
-        # For PDF: optional repair + fallback text extraction
+        # Optional PDF repair + text extraction
         extracted_text = ""
         if detected_mime == 'application/pdf':
             # qpdf repair (optional but recommended)
@@ -547,8 +499,6 @@ Now analyze the provided document according to these instructions:
                     current_app.logger.info("qpdf repair applied to PDF")
             except Exception as q_err:
                 current_app.logger.warning(f"qpdf skipped/failed: {q_err}")
-
-            # Try text extraction as fallback
             try:
                 reader = PdfReader(BytesIO(file_bytes))
                 for page in reader.pages:
@@ -558,17 +508,13 @@ Now analyze the provided document according to these instructions:
             except Exception as pdf_err:
                 current_app.logger.warning(f"PDF text extraction failed: {pdf_err}")
 
-        # Prepare content for Gemini
-        file_b64 = base64.b64encode(file_bytes).decode('utf-8')
-
+        # Prepare content
         content_parts = [full_prompt]
 
-        if extracted_text and detected_mime == 'application/pdf':
-            # Prefer text if available (more reliable when PDF is damaged)
-            content_parts.append(f"\nExtracted document text:\n{extracted_text[:15000]}")
-            current_app.logger.info("Using text fallback for damaged PDF")
+        if extracted_text and detected_mime == 'application/pdf' and len(extracted_text) > 100:
+            content_parts.append(f"\nExtracted text from PDF:\n{extracted_text[:12000]}")
         else:
-            # Use binary (PDF or image)
+            file_b64 = base64.b64encode(file_bytes).decode('utf-8')
             content_parts.append({
                 "inline_data": {
                     "mime_type": detected_mime,
@@ -576,105 +522,86 @@ Now analyze the provided document according to these instructions:
                 }
             })
 
+        # === IMPROVED GENERATION CONFIG ===
+        generation_config = genai.GenerationConfig(
+            temperature=0.1,
+            max_output_tokens=2048,
+            response_mime_type="application/json"   # ← This helps a lot
+        )
+
         response = model.generate_content(
-    content_parts,
-    generation_config=genai.GenerationConfig(
-        temperature=0.1,           # Lower = more consistent
-        max_output_tokens=4096,
-        response_mime_type="application/json",   # ← THIS IS KEY
-        response_schema={                        # Optional but powerful (Gemini 2.5+)
-            "type": "object",
-            "properties": {
-                "is_valid": {"type": "boolean"},
-                "status": {"type": "string", "enum": ["valid", "invalid"]},
-                "failed_reason": {"type": "string"},
-                "expiry_date": {"type": ["string", "null"]}
-            },
-            "required": ["is_valid", "status", "failed_reason"]
-        }
-    )
-)
+            content_parts,
+            generation_config=generation_config
+        )
 
-        # result = response.text.strip() or "[No content extracted]"
-        result_text = response.text.strip()
-        parsed_result = safe_json_parse(result_text)
+        raw_text = response.text.strip() if response.text else "{}"
+        current_app.logger.info(f"Raw Gemini response for {document_type}: {raw_text[:800]}...")
 
-        # return jsonify({
-        #     "status": "success",
-        #     "result": parsed_result,
-        #     "mime_type_used": detected_mime,
-        #     "source": "text fallback" if extracted_text else "direct file",
-        #     "document_type": document_type
-        # })
+        # Better parsing
+        parsed_result = safe_json_parse(raw_text)
 
-
-        
-        user_id = data.get("user_id")  # send from frontend if possible
-
-        validation_id = None
-
-        try:
-            validation_doc = {
-                "user_id": ObjectId(user_id) if user_id and ObjectId.is_valid(user_id) else None,
-                "document_type_code": document_type,
-                "status": "success" if parsed_result.get("is_valid") else "failed",
-                "result": parsed_result,
-                "failed_reason": parsed_result.get("failed_reason"),
-                "raw_response": parsed_result,
-                "validated_at": datetime.utcnow()
+        # Force it to be a dict
+        if isinstance(parsed_result, list):
+            parsed_result = parsed_result[0] if parsed_result else {}
+        if not isinstance(parsed_result, dict):
+            parsed_result = {
+                "is_valid": False,
+                "status": "invalid",
+                "failed_reason": "AI did not return a valid JSON object"
             }
 
-            inserted = current_app.db.validations.insert_one(validation_doc)
-            validation_id = str(inserted.inserted_id)
+        # === Save to DB safely ===
+        validation_doc = {
+            "user_id": ObjectId(user_id) if user_id and ObjectId.is_valid(user_id) else None,
+            "document_type_code": document_type,
+            "status": "success" if parsed_result.get("is_valid") is True else "failed",
+            "result": parsed_result,          # now guaranteed dict
+            "failed_reason": parsed_result.get("failed_reason", ""),
+            "raw_response": raw_text[:2000],  # store raw text instead of parsed if needed
+            "validated_at": datetime.utcnow()
+        }
 
+        inserted = current_app.db.validations.insert_one(validation_doc)
+        validation_id = str(inserted.inserted_id)
 
-            # 1. Update document
-            current_app.db.documents.update_one(
-                {
-                    "user_id": ObjectId(user_id),
-                    "document_type_code": document_type
-                },
-                {
-                    "$set": {
-                        "file_url": doc_url,
-                        "status": "completed" if parsed_result.get("is_valid") else "failed",
-                        "last_validation_id": validation_id,
-                        "updated_at": datetime.utcnow()
-                    }
+        # Update documents collection
+        current_app.db.documents.update_one(
+            {"user_id": ObjectId(user_id), "document_type_code": document_type},
+            {
+                "$set": {
+                    "file_url": doc_url,
+                    "status": "completed" if parsed_result.get("is_valid") is True else "failed",
+                    "last_validation_id": validation_id,
+                    "updated_at": datetime.utcnow()
                 }
-            )
+            },
+            upsert=True
+        )
 
-            # 2. Update user_document_status
-            status_value = "valid" if parsed_result.get("is_valid") else "invalid"
+        # Update user_document_status
+        status_value = "valid" if parsed_result.get("is_valid") is True else "invalid"
+        if parsed_result.get("expiry_date") and isinstance(parsed_result.get("expiry_date"), str):
+            # Optional: add expiry logic if needed
+            pass
 
-            if parsed_result.get("expired") == "expired":
-                status_value = "expired"
-
-            current_app.db.user_document_status.update_one(
-                {
-                    "user_id": ObjectId(user_id),
-                    "document_type_code": document_type
-                },
-                {
-                    "$set": {
-                        "status": status_value,
-                        "latest_validation_id": validation_id,
-                        "source": "ai",
-                        "last_updated": datetime.utcnow()
-                    }
-                },
-                upsert=True
-            )
-
-        except Exception as db_err:
-            current_app.logger.warning(f"Validation save failed: {db_err}")
+        current_app.db.user_document_status.update_one(
+            {"user_id": ObjectId(user_id), "document_type_code": document_type},
+            {
+                "$set": {
+                    "status": status_value,
+                    "latest_validation_id": validation_id,
+                    "source": "ai",
+                    "last_updated": datetime.utcnow()
+                }
+            },
+            upsert=True
+        )
 
         return jsonify({
             "status": "success",
             "result": parsed_result,
             "validation_id": validation_id,
             "mime_type_used": detected_mime,
-            "source": "text fallback" if extracted_text else "direct file",
             "document_type": document_type
         })
 
@@ -683,10 +610,10 @@ Now analyze the provided document according to these instructions:
         return jsonify({"status": "error", "message": f"Failed to download file: {str(e)}"}), 502
 
     except Exception as e:
-        current_app.logger.exception(f"Verification failed for {doc_url}")
+        current_app.logger.exception(f"Verification failed for {doc_url} | Error: {e}")
         return jsonify({
             "status": "error",
-            "message": f"Processing failed: {str(e)}. Check logs and /tmp/gemini_debug files."
+            "message": f"Processing failed: {str(e)}"
         }), 500
     
 
