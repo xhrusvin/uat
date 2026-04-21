@@ -17,7 +17,8 @@ import subprocess
 from pathlib import Path
 from PyPDF2 import PdfReader
 from io import BytesIO
-import magic  
+import magic 
+import re 
 
 import json
 
@@ -81,13 +82,22 @@ DOC_TYPE_MAP = {
 
 
 def safe_json_parse(text):
+    if not text:
+        return {"is_valid": False, "status": "invalid", "failed_reason": "Empty AI response"}
+    
+    # Strip markdown code blocks
+    text = re.sub(r'```(?:json)?\s*', '', text)
+    text = re.sub(r'```\s*$', '', text)
+    text = text.strip()
+    
     try:
         return json.loads(text)
-    except:
+    except json.JSONDecodeError as e:
+        current_app.logger.warning(f"JSON parse failed: {e} | Raw: {text[:500]}...")
         return {
             "is_valid": False,
             "status": "invalid",
-            "failed_reason": "Invalid AI response format"
+            "failed_reason": f"AI returned malformed JSON: {str(e)[:100]}"
         }
 
 def generate_file_hash(file_bytes):
@@ -456,30 +466,24 @@ def api_verify_document():
 
 # {user_prompt}"""
 
-    full_prompt = f"""Current date and time in IST: {date_str}
+    full_prompt = f"""Current date and time: {date_str}
 
-You are a document validation AI.
+You are a strict document validation AI. 
 
-STRICT INSTRUCTIONS:
-- You MUST return ONLY valid JSON
-- DO NOT return explanation, text, or markdown
-- DO NOT wrap in ```json
-- Output must be a single JSON object
+CRITICAL RULES:
+- Respond with **ONLY** a valid JSON object. No explanations, no markdown, no ```json blocks, no extra text.
+- Do not add any words before or after the JSON.
 
-Required JSON format:
+Required output format (exactly):
+
 {{
   "is_valid": true or false,
   "status": "valid" or "invalid",
-  "failed_reason": "string (empty if valid)",
-  "expiry_date": "YYYY-MM-DD or null"
+  "failed_reason": "brief reason why invalid (empty string if valid)",
+  "expiry_date": "YYYY-MM-DD" or null
 }}
 
-Rules:
-- If document is valid → is_valid = true, status = "valid"
-- If invalid → is_valid = false and include failed_reason
-- If expiry exists → include expiry_date
-
-Now validate the document.
+Now analyze the provided document according to these instructions:
 
 {user_prompt}
 """
@@ -573,15 +577,26 @@ Now validate the document.
             })
 
         response = model.generate_content(
-            content_parts,
-            generation_config=genai.GenerationConfig(
-                temperature=0.2,
-                max_output_tokens=4096,
-            )
-        )
+    content_parts,
+    generation_config=genai.GenerationConfig(
+        temperature=0.1,           # Lower = more consistent
+        max_output_tokens=4096,
+        response_mime_type="application/json",   # ← THIS IS KEY
+        response_schema={                        # Optional but powerful (Gemini 2.5+)
+            "type": "object",
+            "properties": {
+                "is_valid": {"type": "boolean"},
+                "status": {"type": "string", "enum": ["valid", "invalid"]},
+                "failed_reason": {"type": "string"},
+                "expiry_date": {"type": ["string", "null"]}
+            },
+            "required": ["is_valid", "status", "failed_reason"]
+        }
+    )
+)
 
         # result = response.text.strip() or "[No content extracted]"
-        result_text = response.text.strip() or "{}"
+        result_text = response.text.strip()
         parsed_result = safe_json_parse(result_text)
 
         # return jsonify({
