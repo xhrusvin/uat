@@ -72,8 +72,8 @@ def register_onboarding_call_routes(app):
             #"call_sent": {"$ne": 0},
             #"follow_up_sent": {"$ne": 0},  # 0 or missing
             #"compliance_documents_status": {"$ne": 1},
-            "xn_user_id": "69d7984a855b3aa3030e8986",
-            "email": "rusvin@xpresshealth.ie"
+            "xn_user_id": "69e7340f5f14105609094fb1",
+            "email": "juhi@xpresshealth.ie"
             }
 
         user = app.db.users.find_one(

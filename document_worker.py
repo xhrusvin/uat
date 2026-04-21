@@ -263,19 +263,45 @@ def call_gemini(doc_url, prompt_text):
 # ─────────────────────────────────────────────
 # MAIN WORKER
 # ─────────────────────────────────────────────
-def process_documents(limit=10):
+def process_documents(limit=10, email=None):
 
     # logging.info(f"[DEBUG] DB Name: {DB_NAME}")
     # logging.info(f"[DEBUG] Collections: {db.list_collection_names()}")
+
+    user_filter = None
+
+    if email:
+        user = db.users.find_one({"email": email})
+
+        if not user:
+            logging.error(f"[FILTER] No user found with email: {email}")
+            return
+
+        user_filter = user["_id"]
+        logging.info(f"[FILTER] Running for user: {email} | user_id: {user_filter}")
+
+
+
     total_docs = db.documents.count_documents({})
     logging.info(f"[DEBUG] Total documents in DB: {total_docs}")
     sample_docs = list(db.documents.find({}, {"status": 1}).limit(5))
     logging.info(f"[DEBUG] Sample statuses: {sample_docs}")
     logging.info("===== WORKER CYCLE START =====")
 
-    docs = db.documents.find({
+    # docs = db.documents.find({
+    #     "status": {"$in": ["pending", "failed"]}
+    # }).limit(limit)
+
+    query = {
         "status": {"$in": ["pending", "failed"]}
-    }).limit(limit)
+    }
+
+    logging.info(f"[QUERY] {query}")
+
+    if user_filter:
+        query["user_id"] = user_filter
+
+    docs = db.documents.find(query).limit(limit)
 
     log_stats()
 
