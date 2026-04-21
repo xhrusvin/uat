@@ -71,6 +71,8 @@ DOC_TYPE_MAP = {
 
 
 
+
+
 def log_stats():
     pending = db.documents.count_documents({"status": "pending"})
     processing = db.documents.count_documents({"status": "processing"})
@@ -109,6 +111,49 @@ def get_pending_failed_count():
     return db.documents.count_documents({
         "status": {"$in": ["pending", "failed"]}
     })
+
+
+def fetch_latest_document_url(user, document_type_code):
+    USER_EXTERNAL_API_URL = os.getenv('XN_PORTAL_BASE_URL')
+    USER_EXTERNAL_API_KEY = os.getenv('XN_PORTAL_API_KEY')
+    APP_COUNTRY = os.getenv('XN_APP_COUNTRY', 'ie')
+
+    if not USER_EXTERNAL_API_URL or not USER_EXTERNAL_API_KEY:
+        raise Exception("Missing external API config")
+
+    api_url = f"{USER_EXTERNAL_API_URL.rstrip('/')}/ai/recruitments/user-document-list"
+
+    headers = {
+        "Api-Key": USER_EXTERNAL_API_KEY,
+        "X-App-Country": APP_COUNTRY,
+        "Content-Type": "application/json"
+    }
+
+    xn_user_id = str(user.get("xn_user_id", "")).strip()
+    if not xn_user_id:
+        raise Exception("Missing xn_user_id")
+
+    resp = requests.get(api_url, headers=headers, json={"_id": xn_user_id}, timeout=10)
+    resp.raise_for_status()
+
+    api_data = resp.json()
+    if not api_data.get("success"):
+        raise Exception("External API returned non-success")
+
+    documents = api_data.get("data", []) or []
+
+    for doc in documents:
+        name = (doc.get("document_type_name") or "").strip()
+        if not name:
+            continue
+
+        code = DOC_TYPE_MAP.get(name, name.upper().replace(" ", "_"))
+
+        if code == document_type_code:
+            return doc.get("url")
+
+    return None
+
 
 
 # def extract_json(text):
@@ -295,7 +340,21 @@ def process_documents(limit=10):
 
             # ── GEMINI CALL
             logging.info("[GEMINI REQUEST] Sending request to Gemini...")
-            result_text = call_gemini(doc["file_url"], final_prompt)
+            doc_url = fetch_latest_document_url(user, mapped_type)
+
+            if not doc_url:
+                logging.warning(f"[URL FETCH] No URL found for type: {mapped_type}")
+                db.documents.update_one(
+                    {"_id": doc["_id"]},
+                    {"$set": {
+                        "status": "failed",
+                        "error": "Document URL not found",
+                        "updated_at": datetime.now(timezone.utc)
+                    }}
+                )
+                continue
+
+            result_text = call_gemini(doc_url, final_prompt)
             parsed = safe_json_parse(result_text)
 
             logging.info(f"[PARSED RESULT] {json.dumps(parsed, indent=2)}")
