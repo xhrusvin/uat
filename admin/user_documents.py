@@ -329,14 +329,41 @@ def api_list_user_documents():
                 sort=[("validated_at", -1)]
             )
 
+            document_data = current_app.db.documents_new.find_one(
+                {
+                    "user_id": ObjectId(lead_id),
+                    "document_type_name": doc_name
+                },
+                sort=[("validated_at", -1)]
+            )
+
+
+
             verification_data = None
-            if validation:
+            # if validation:
+            #     verification_data = {
+            #         "status": validation.get("status"),
+            #         "result": validation.get("result"),
+            #         "failed_reason": validation.get("failed_reason"),
+            #         "validation_id": str(validation["_id"])
+            #     }
+            if document_data:
                 verification_data = {
-                    "status": validation.get("status"),
-                    "result": validation.get("result"),
-                    "failed_reason": validation.get("failed_reason"),
-                    "validation_id": str(validation["_id"])
+                    "status": document_data.get("ai_status"),
+                    "url_status": document_data.get("url_status"),
+                    "result": document_data.get("ai_raw_response"),
+                    "failed_reason": document_data.get("ai_reason"),
+                    "validation_id": str(document_data["_id"])
                 }
+            else:
+                verification_data = {
+                    "status": "Pending",
+                    "url_status": 1,
+                    "result": "",
+                    "failed_reason": "",
+                    "validation_id": ""
+                }
+               
 
             documents.append({
                 "document_type_name": doc_name,

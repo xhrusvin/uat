@@ -487,7 +487,46 @@ const DOC_TYPE_MAP = {
     const btn = e.target.closest('.view-result-btn');
     if (!btn) return;
 
-    const result = JSON.parse(decodeURIComponent(btn.getAttribute('data-result')));
+    let raw = btn.getAttribute('data-result');
+
+if (!raw || raw === "null" || raw === "None") {
+    console.warn("Empty or invalid result:", raw);
+    
+    Swal.fire({
+        title: '⚠️ No Result Available',
+        text: 'No validation data found for this document.',
+        icon: 'warning'
+    });
+    return;
+}
+
+let result;
+
+try {
+    raw = decodeURIComponent(raw);
+
+    // remove markdown if present
+    raw = raw.replace(/```json\s*/i, '').replace(/```/g, '').trim();
+
+    if (!raw) throw new Error("Empty after cleaning");
+
+    result = JSON.parse(raw);
+
+    // handle double-encoded JSON
+    if (typeof result === "string") {
+        result = JSON.parse(result);
+    }
+
+} catch (e) {
+    console.error("Parsing failed:", raw);
+
+    Swal.fire({
+        title: '❌ Error',
+        text: 'Invalid result format.',
+        icon: 'error'
+    });
+    return;
+}
 
     let html = '';
 
@@ -594,18 +633,21 @@ const DOC_TYPE_MAP = {
                         }
 
                         let verificationCell = `<td><span class="badge bg-secondary">Pending</span></td>`;
-
-                        
-                        if (!doc.url) {
+                       
+                        if (!doc.verification.url_status) {
                             verificationCell = `
                                 <td><span class="badge bg-dark">No Document</span></td>
                             `;
                         }
 
-                        
-                        else if (doc.verification) {
+                        const status = doc.verification.status;
+                        const isAccepted = status === true || status === 'true';
+                        const isRejected = status === false || status === 'false';
 
-                            if (doc.verification.status === 'success') {
+
+                        
+                        if (doc.verification) {
+                            if (isAccepted) {
                                 verificationCell = `
                                     <td>
                                         <div class="d-flex justify-content-between align-items-center w-100">
@@ -619,7 +661,7 @@ const DOC_TYPE_MAP = {
                                     </td>`;
                             }
 
-                            else if (doc.verification.status === 'failed') {
+                            else if (isRejected && doc.verification.url_status) {
                                 verificationCell = `
                                 <td>
                                     <div class="d-flex justify-content-between align-items-center w-100">
