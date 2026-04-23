@@ -973,6 +973,53 @@
 
 </div>
 
+<div class="tab-pane fade" id="status-pane" role="tabpanel">
+
+  <!-- Loading -->
+  <div id="status-loading" class="text-center py-5 d-none">
+    <div class="spinner-border text-primary"></div>
+    <p class="mt-2 text-muted">Loading status...</p>
+  </div>
+
+  <!-- Error -->
+  <div id="status-error" class="alert alert-danger d-none mx-3 mt-3"></div>
+
+  <!-- Cards -->
+  <div id="status-cards" class="row g-4 pt-3 d-none">
+
+    <!-- Call Status -->
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center py-4">
+          <i class="bi bi-telephone-fill display-5 mb-3 text-primary"></i>
+          <h6 class="text-muted mb-2">Call Status</h6>
+          <span id="status-call-sent" class="badge fs-6 px-3 py-2">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Garda Email Status -->
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center py-4">
+          <i class="bi bi-envelope-fill display-5 mb-3 text-primary"></i>
+          <h6 class="text-muted mb-2">Email Status</h6>
+          <span id="status-garda-email" class="badge fs-6 px-3 py-2">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Missed Call Email Status -->
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center py-4">
+          <i class="bi bi-telephone-x-fill display-5 mb-3 text-primary"></i>
+          <h6 class="text-muted mb-2">Missed Call Email</h6>
+          <span id="status-missed-call-email" class="badge fs-6 px-3 py-2">—</span>
+        </div>
+      </div>
+    </div>
+
 
 
       <div class="modal-footer border-0">
@@ -981,54 +1028,12 @@
     </div>
   </div>
 </div>
-<div class="tab-pane fade" id="status-pane" role="tabpanel">
+</div><!-- /.tab-content -->
+      </div>
 
-          <!-- Loading -->
-          <div id="status-loading" class="text-center py-5 d-none">
-            <div class="spinner-border text-primary"></div>
-            <p class="mt-2 text-muted">Loading status...</p>
-          </div>
+      
 
-          <!-- Error -->
-          <div id="status-error" class="alert alert-danger d-none mx-3 mt-3"></div>
-
-          <!-- Cards -->
-          <div id="status-cards" class="row g-4 pt-3 d-none">
-
-            <div class="col-md-4">
-              <div class="card border-0 shadow-sm h-100">
-                <div class="card-body text-center py-4">
-                  <i class="bi bi-telephone-fill display-5 mb-3 text-primary"></i>
-                  <h6 class="text-muted mb-2">Call Status</h6>
-                  <span id="status-call-sent" class="badge fs-6 px-3 py-2">—</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="col-md-4">
-              <div class="card border-0 shadow-sm h-100">
-                <div class="card-body text-center py-4">
-                  <i class="bi bi-envelope-fill display-5 mb-3 text-primary"></i>
-                  <h6 class="text-muted mb-2">Email Status</h6>
-                  <span id="status-garda-email" class="badge fs-6 px-3 py-2">—</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="col-md-4">
-              <div class="card border-0 shadow-sm h-100">
-                <div class="card-body text-center py-4">
-                  <i class="bi bi-telephone-x-fill display-5 mb-3 text-primary"></i>
-                  <h6 class="text-muted mb-2">Missed Call Email</h6>
-                  <span id="status-missed-call-email" class="badge fs-6 px-3 py-2">—</span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div><!-- /#status-pane -->
-
-      </div><!-- /.tab-content -->
+ 
 
 
 
