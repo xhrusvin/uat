@@ -972,53 +972,111 @@
   </div>
 
 </div>
-
 <div class="tab-pane fade" id="status-pane" role="tabpanel">
 
   <!-- Loading -->
-  <div id="status-loading" class="text-center py-5 d-none">
+  <div id="status-loading" class="text-center py-4 d-none">
     <div class="spinner-border text-primary"></div>
-    <p class="mt-2 text-muted">Loading status...</p>
+    <p class="mt-2 text-muted small">Loading status...</p>
   </div>
 
   <!-- Error -->
   <div id="status-error" class="alert alert-danger d-none mx-3 mt-3"></div>
 
   <!-- Cards -->
-  <div id="status-cards" class="row g-4 pt-3 d-none">
+  <div id="status-cards" class="d-none pt-3">
 
-    <!-- Call Status -->
-    <div class="col-md-4">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body text-center py-4">
-          <i class="bi bi-telephone-fill display-5 mb-3 text-primary"></i>
-          <h6 class="text-muted mb-2">Call Status</h6>
-          <span id="status-call-sent" class="badge fs-6 px-3 py-2">—</span>
+    <!-- Row 1 -->
+    <div class="row g-2 mb-2">
+
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3 px-2">
+            <i class="bi bi-telephone-fill fs-3 mb-2 text-primary d-block"></i>
+            <div class="small text-muted mb-1">Intro Call</div>
+            <span id="status-call-sent" class="badge px-2 py-1">—</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Garda Email Status -->
-    <div class="col-md-4">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body text-center py-4">
-          <i class="bi bi-envelope-fill display-5 mb-3 text-primary"></i>
-          <h6 class="text-muted mb-2">Email Status</h6>
-          <span id="status-garda-email" class="badge fs-6 px-3 py-2">—</span>
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3 px-2">
+            <i class="bi bi-telephone-forward-fill fs-3 mb-2 text-info d-block"></i>
+            <div class="small text-muted mb-1">Follow Up Call</div>
+            <span id="status-followup-call" class="badge px-2 py-1">—</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Missed Call Email Status -->
-    <div class="col-md-4">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body text-center py-4">
-          <i class="bi bi-telephone-x-fill display-5 mb-3 text-primary"></i>
-          <h6 class="text-muted mb-2">Missed Call Email</h6>
-          <span id="status-missed-call-email" class="badge fs-6 px-3 py-2">—</span>
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3 px-2">
+            <i class="bi bi-file-earmark-check-fill fs-3 mb-2 text-warning d-block"></i>
+            <div class="small text-muted mb-1">Compliance Doc Call</div>
+            <span id="status-compliance-call" class="badge px-2 py-1">—</span>
+          </div>
         </div>
       </div>
+
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3 px-2">
+            <i class="bi bi-person-check-fill fs-3 mb-2 text-success d-block"></i>
+            <div class="small text-muted mb-1">Professional Ref Call</div>
+            <span id="status-profref-call" class="badge px-2 py-1">—</span>
+          </div>
+        </div>
+      </div>
+
     </div>
+
+    <!-- Row 2 -->
+    <div class="row g-2">
+
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3 px-2">
+            <i class="bi bi-telephone-inbound-fill fs-3 mb-2 text-purple d-block" style="color:#764ba2;"></i>
+            <div class="small text-muted mb-1">Onboarding Call</div>
+            <span id="status-onboarding-call" class="badge px-2 py-1">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3 px-2">
+            <i class="bi bi-envelope-fill fs-3 mb-2 text-primary d-block"></i>
+            <div class="small text-muted mb-1">Garda Email</div>
+            <span id="status-garda-email" class="badge px-2 py-1">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3 px-2">
+            <i class="bi bi-envelope-check-fill fs-3 mb-2 text-success d-block"></i>
+            <div class="small text-muted mb-1">Practical Training Email</div>
+            <span id="status-practical-email" class="badge px-2 py-1">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3 px-2">
+            <i class="bi bi-telephone-x-fill fs-3 mb-2 text-danger d-block"></i>
+            <div class="small text-muted mb-1">Missed Call Email</div>
+            <span id="status-missed-call-email" class="badge px-2 py-1">—</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div><!-- /#status-pane -->
 
 
 
@@ -2951,54 +3009,63 @@ $(document).ready(function () {
     }
 
     function loadUserStatus(userId) {
-        const loading = document.getElementById('status-loading');
-        const cards   = document.getElementById('status-cards');
-        const errEl   = document.getElementById('status-error');
+    const loading = document.getElementById('status-loading');
+    const cards   = document.getElementById('status-cards');
+    const errEl   = document.getElementById('status-error');
 
-        // Reset
-        loading.classList.remove('d-none');
-        cards.classList.add('d-none');
-        errEl.classList.add('d-none');
+    loading.classList.remove('d-none');
+    cards.classList.add('d-none');
+    errEl.classList.add('d-none');
 
-        const url = STATUS_URL.replace('PLACEHOLDER', userId);
+    const url = STATUS_URL.replace('PLACEHOLDER', userId);
 
-        $.ajax({
-            url: url,
-            type: 'GET',
-            success: function (res) {
-                loading.classList.add('d-none');
-                cards.classList.remove('d-none');
+    $.ajax({
+        url: url,
+        type: 'GET',
+        success: function (res) {
+            loading.classList.add('d-none');
+            cards.classList.remove('d-none');
 
-                // Call Status
-                const callEl = document.getElementById('status-call-sent');
+            function setBadge(id, value) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (value === 'Sent') {
+                    el.textContent = 'Sent';
+                    el.className   = 'badge px-2 py-1 bg-success';
+                } else {
+                    el.textContent = 'Not Sent';
+                    el.className   = 'badge px-2 py-1 bg-warning text-dark';
+                }
+            }
+
+            // Intro call uses 1/0 integer
+            const callEl = document.getElementById('status-call-sent');
+            if (callEl) {
                 if (String(res.call_sent) === '1') {
                     callEl.textContent = 'Sent';
-                    callEl.className   = 'badge fs-6 px-3 py-2 bg-success';
+                    callEl.className   = 'badge px-2 py-1 bg-success';
                 } else {
-                    callEl.textContent = 'Pending';
-                    callEl.className   = 'badge fs-6 px-3 py-2 bg-warning text-dark';
+                    callEl.textContent = 'Not Sent';
+                    callEl.className   = 'badge px-2 py-1 bg-warning text-dark';
                 }
-
-                // Garda Email
-                applyBadge(
-                    document.getElementById('status-garda-email'),
-                    res.garda_email_sent_status
-                );
-
-                // Missed Call Email
-                applyBadge(
-                    document.getElementById('status-missed-call-email'),
-                    res.missed_call_email_status
-                );
-            },
-            error: function (xhr) {
-                loading.classList.add('d-none');
-                const msg = xhr.responseJSON?.error || 'Failed to load status';
-                errEl.textContent = msg;
-                errEl.classList.remove('d-none');
             }
-        });
-    }
+
+            setBadge('status-followup-call',    res.follow_up_call_status);
+            setBadge('status-compliance-call',  res.compliance_call_status);
+            setBadge('status-profref-call',     res.professional_reference_status);
+            setBadge('status-onboarding-call',  res.onboarding_call_status);
+            setBadge('status-garda-email',      res.garda_email_sent_status);
+            setBadge('status-practical-email',  res.practical_training_email_status);
+            setBadge('status-missed-call-email',res.missed_call_email_status);
+        },
+        error: function (xhr) {
+            loading.classList.add('d-none');
+            const msg = xhr.responseJSON?.error || 'Failed to load status';
+            errEl.textContent = msg;
+            errEl.classList.remove('d-none');
+        }
+    });
+}
 
     // Fire when Status tab is clicked
     document.getElementById('status-tab').addEventListener('shown.bs.tab', function () {

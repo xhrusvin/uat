@@ -1868,14 +1868,28 @@ def get_user_status(user_id):
 
     user = current_app.db.users.find_one(
         {"_id": ObjectId(user_id)},
-        {"call_sent": 1, "garda_email_sent": 1, "missed_call_email_sent": 1}
+        {
+            "call_sent": 1,
+            "garda_email_sent": 1,
+            "practical_training_institutes_email_sent": 1,
+            "follow_up_sent": 1,
+            "level_four_elevenlabs_conversation_id": 1,
+            "onboarding_elevenlabs_conversation_id": 1,
+            "professional_reference_call_sent": 1,
+            "missed_call_email_sent": 1
+        }
     )
 
     if not user:
         return jsonify({"error": "User not found"}), 404
 
     return jsonify({
-        "call_sent":                 user.get("call_sent", 0),
-        "garda_email_sent_status":   "Sent" if user.get("garda_email_sent") == 1 else "Not Sent",
-        "missed_call_email_status":  "Sent" if user.get("missed_call_email_sent") == 1 else "Not Sent"
+        "call_sent":                        user.get("call_sent", 0),
+        "garda_email_sent_status":          "Sent" if user.get("garda_email_sent") == 1 else "Not Sent",
+        "practical_training_email_status":  "Sent" if user.get("practical_training_institutes_email_sent") == 1 else "Not Sent",
+        "follow_up_call_status":            "Sent" if user.get("follow_up_sent") == 1 else "Not Sent",
+        "compliance_call_status":           "Sent" if user.get("level_four_elevenlabs_conversation_id") else "Not Sent",
+        "onboarding_call_status":           "Sent" if user.get("onboarding_elevenlabs_conversation_id") else "Not Sent",
+        "professional_reference_status":    "Sent" if user.get("professional_reference_call_sent") == 1 else "Not Sent",
+        "missed_call_email_status":         "Sent" if user.get("missed_call_email_sent") == 1 else "Not Sent"
     }), 200
