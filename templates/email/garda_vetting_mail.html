@@ -41,173 +41,26 @@
 <p>As discussed over the call, we are proceeding with your application for the role of <strong>{{ designation }}</strong>.  
 To move forward, please provide the following documents:</p>
 
-<ul>
-<li><strong>1. Identity & Eligibility</strong><br>
-• Valid Passport<br>
-• Irish Residence Permit (IRP/GNIB), if applicable<br>
-• Proof of Address (dated within the last 3 months)
-</li>
-
-<!-- PROFESSIONAL REGISTRATION / QUALIFICATION -->
-{% if designation in ["Nurse", "Midwife"] %}
-<li><strong>2. Professional Registration</strong><br>
-• NMBI Registration
-</li>
-{% elif designation in ["Pharmacist"] %}
-<li><strong>2. Professional Registration</strong><br>
-• PSI Registration
-</li>
-{% elif designation in ["Pharmacy Technician"] %}
-<li><strong>2. Qualification</strong><br>
-• Relevant Pharmacy Technician Qualification
-</li>
-{% elif designation in ["Chef"] %}
-<li><strong>2. Qualification</strong><br>
-• Culinary Degree
-</li>
-{% else %}
-<li><strong>2. Qualification</strong><br>
-• QQI Level 5 or relevant role qualification
-</li>
-{% endif %}
-
-<!-- CERTIFICATES -->
-<li><strong>3. Mandatory Training Certificates</strong><br>
-
-{% if designation == "Healthcare Assistant" %}
-• Fire Safety<br>
-• Hand Hygiene<br>
-• Covid Certificate<br>
-• Attach Any Other Certificate<br>
-• Infection Prevention & Control<br>
-• Children First<br>
-• Safeguarding Adults at Risk<br>
-• CPR / BLS<br>
-• Manual & People Handling<br>
-• Garda Vetting Document<br>
-• CPI / MAPA / PMAV<br>
-• Open Disclosure<br>
-• GDPR<br>
-• PPE<br>
-• Dignity at Work<br>
-• HACCP/Food Safety<br>
-• Cyber Security<br>
-• Irish National Early Warning System (INEWS V2 – Nursing/HSE)<br>
-
-{% elif designation == "Nurse" %}
-• Covid Certificate<br>
-• Medication Management<br>
-• Attach Any Other Certificate<br>
-• Fire Safety<br>
-• Infection Prevention & Control<br>
-• Hand Hygiene<br>
-• Children First<br>
-• Safeguarding Adults at Risk<br>
-• CPR / BLS<br>
-• Manual & People Handling<br>
-• Garda Vetting Document<br>
-• Open Disclosure<br>
-• CPI / MAPA / PMAV<br>
-• Cyber Security<br>
-• GDPR<br>
-• Visual Display Equipment<br>
-• PPE<br>
-• Dignity at Work<br>
-• Irish National Early Warning System (INEWS V2 – Nursing/HSCP)<br>
-
-
-{% elif designation == "Midwives" %}
-• Nmbi Qualification<br>
-• Covid Certificate<br>
-• Attach Any Other Certificate<br>
-• Infection Prevention Control Certificate<br>
-• Children First<br>
-• Safeguarding Adults at Risk<br>
-• Neonatal Resuscitation Programme<br>
-• Breastfeeding Certification<br>
-• Prompt (Obstetric Emergency Training)<br>
-• Ctg (Fetal Heart Rate Monitoring)<br>
-• CPR / BLS<br>
-• K2<br>
-• Manual and People Handling Documents<br>
-• Garda Vetting Document<br>
-• Cyber Security<br>
-• The Open Disclosure<br>
-
-
-{% elif designation == "Multi-Task Assistant" %}
-• Food Hygiene<br>
-• Attach Any Other Certificate<br>
-• Fire Safety<br>
-• Infection Prevention & Control<br>
-• Hand Hygiene<br>
-• Children First<br>
-• Safeguarding Adults at Risk<br>
-• CPR / BLS<br>
-• Manual & People Handling<br>
-• Garda Vetting Document<br>
-• CPI / MAPA / PMAV<br>
-
-
-{% elif designation == "Pharmacy Technician" %}
-• Attach Any Other Certificate<br>
-• Qualification<br>
-• Garda Vetting Document<br>
-
-{% elif designation == "Cleaner" %}
-• Food Hygiene<br>
-• Cleaning & Disinfecting in a Healthcare Environment<br>
-• Attach Any Other Certificate<br>
-• Fire Safety<br>
-• Standard and Transmission Precaution<br>
-• Infection Prevention & Control<br>
-• PPE<br>
-• Hand Hygiene<br>
-• Garda Vetting Document<br>
-
-{% elif designation == "Pharmacist" %}
-• Attach Any Other Certificate<br>
-• Psi Registration<br>
-• Garda Vetting Document<br>
-
-{% elif designation == "Kitchen Assistant" %}
-• Attach Any Other Certificate<br>
-• Fire Safety<br>
-• Infection Prevention & Control<br>
-• Safeguarding Adults At Risk<br>
-• Manual & People Handling<br>
-• Garda Vetting Document<br>
-• HACCP / Food Safety<br>
-• Manual Handling Practical<br>
-• Allergens Awareness<br>
-• Health and Safety<br>
-• Hand Hygiene<br>
-
-
-{% elif designation == "Chef" %}
-• Culinary Degree<br>
-• Food Hygiene<br>
-• Attach Any Other Certificate<br>
-• Hand Hygiene<br>
-• Garda Vetting Document<br>
-
-{% elif designation == "Housekeeping" %}
-• Food Hygiene<br>
-• Fire Safety<br>
-• Infection Prevention & Control<br>
-• PPE<br>
-• Hand Hygiene<br>
-• Manual & People Handling<br>
-• Garda Vetting Document<br>
-• CPI / MAPA / PMAV<br>
-• Cleaning & Disinfecting in a Healthcare Environment<br>
-
-
-{% endif %} 
-</li>
-
-<li><strong>4. Bank Details</strong></li>
-</ul>
+<p>To proceed with your application, Garda Vetting must be completed. 
+Required Documents for Garda Vetting: <br>
+1. Identity Proof (any one): <br>
+•Passport from your country of citizenship  <br>
+•Irish / EU / UK Driving Licence  <br>
+•Learner Permit  <br>
+2. Proof of Address (any one): <br>
+•Utility Bill (Gas, Electricity, Broadband, Waste, or TV Licence)  <br>
+•Bank Statement from a recognized bank (Revolut or private lenders are not accepted)  <br>
+•Credit Union Statement or Passbook  <br>
+ 
+Important Instructions: <br>
+•Please print and complete the NVB1 form manually  <br>
+•Ensure your name matches exactly as per your passport  <br>
+•Ensure your address matches your latest proof of address  <br>
+ 
+In-Person Verification: <br>
+As per Garda requirements, in-person document verification is mandatory. <br>
+•Once we receive your documents and completed form, we will schedule your verification <br>
+appointment  </p>
 
 <div class="highlight-note">
                                 <p><strong>Note:</strong> All theory certificates can be completed through our Care Learning portal: <a href="https://www.care-learning.com/" style="color: #007bff; text-decoration: underline;">Online Health Care Courses | Care Learning </a></p>

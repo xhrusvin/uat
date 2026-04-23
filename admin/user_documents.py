@@ -685,47 +685,121 @@ def api_user_documents_accepted():
         fresh_documents = resp.json().get("data", []) or []
 
        
-        url_map = {}
-        for doc in fresh_documents:
-            doc_name = (doc.get("document_type_name") or "").strip()
-            if not doc_name:
-                continue
-
-            doc_code = DOC_TYPE_MAP.get(doc_name, doc_name.upper().replace(" ", "_"))
-            url_map[doc_code] = doc.get("url")
-
-        
-        docs = list(current_app.db.documents.find(
-            {"user_id": ObjectId(lead_id)},
-            {
-                "document_type_code": 1,
-                "status": 1,
-                "updated_at": 1
-            }
-        ).sort("updated_at", -1))
-
         result = []
 
-        for d in docs:
-            updated = d.get("updated_at")
-            if isinstance(updated, datetime):
-                updated = updated.strftime("%d %b %Y %H:%M")
+        for doc in fresh_documents:
+          doc_name = (doc.get("document_type_name") or "").strip()
+          doc_code = DOC_TYPE_MAP.get(doc_name, doc_name.upper().replace(" ", "_"))
+          doc_url = doc.get("url")
 
-            code = d.get("document_type_code")
+          # Get AI result from documents_new
+          document_data = current_app.db.documents_new.find_one(
+        {
+            "user_id": ObjectId(lead_id),
+            "document_type_name": doc_name          # ← directly from API
+        },
+        sort=[("synced_at", -1)]
+    )
 
-            result.append({
-                "document_type": code,
-                "status": d.get("status", "pending"),
-                "updated_at": updated or "—",
-                "url": url_map.get(code), 
-                "reason": d.get("reason", "")
-            })
+          # Get status/updated_at from local documents collection
+          local_doc = current_app.db.documents.find_one(
+        {
+            "user_id": ObjectId(lead_id),
+            "document_type_code": doc_code
+        },
+        {"status": 1, "updated_at": 1}
+    )
+
+          updated = local_doc.get("updated_at") if local_doc else None
+          if isinstance(updated, datetime):
+              updated = updated.strftime("%d %b %Y %H:%M")
+          
+          ai_status = document_data.get("ai_status") if document_data else None
+
+          if ai_status in [True, 'true']:
+             status = True
+
+          elif ai_status in [False, 'false']:
+            if not doc_url:
+              status = "No document"
+            else:
+              status = False
+          else:
+              status = "pending"
+          
+
+          result.append({
+        "document_type": doc_code,
+        "doc_name": doc_name,                       # ← directly from API
+        "status": status,
+        "ai_reason": document_data.get("ai_reason", "") if document_data else "",
+        "updated_at": updated or "—",
+        "url": doc_url,
+    })
 
         return jsonify({
-            "status": "success",
-            "documents": result
-        })
+          "status": "success",
+         "documents": result
+       })
+
+     
 
     except Exception as e:
         current_app.logger.exception("Error fetching accepted documents")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@admin_bp.route('/api/verify-document/remove', methods=['POST'])
+@admin_required
+def api_remove_document_verification():
+    data = request.get_json() or {}
+    user_id  = data.get('user_id')
+    doc_type = data.get('document_type')   # this is the mapped code e.g. "NBMI"
+
+    if not user_id or not ObjectId.is_valid(user_id):
+        return jsonify({"status": "error", "message": "Invalid or missing user_id"}), 400
+
+    if not doc_type:
+        return jsonify({"status": "error", "message": "Missing document_type"}), 400
+
+    try:
+        # Reverse-lookup the display name from DOC_TYPE_MAP so we can
+        # match documents_new.document_type_name (stored as display name)
+        # e.g. code "NBMI" → name "Nmbi Qualification"
+        code_to_name = {v: k for k, v in DOC_TYPE_MAP.items()}
+        doc_name = code_to_name.get(doc_type)
+
+        query = {"user_id": ObjectId(user_id)}
+        if doc_name:
+            query["document_type_name"] = doc_name
+        else:
+            # Fallback: try matching by code directly in case it was stored that way
+            query["document_type_name"] = doc_type
+
+        result = current_app.db.documents_new.update_many(
+            query,
+            {
+                "$set": {
+                    "ai_attempted": False,
+                    "ai_status": None,
+                    "ai_reason": None,
+                    "ai_raw_response": None,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+
+        current_app.logger.info(
+            f"Removed verification for user={user_id} doc_type={doc_type} "
+            f"doc_name={doc_name} matched={result.matched_count} modified={result.modified_count}"
+        )
+
+        return jsonify({
+            "status": "success",
+            "doc_type": doc_type,
+            "matched": result.matched_count,
+            "modified": result.modified_count
+        })
+
+    except Exception as e:
+        current_app.logger.exception(f"Failed to remove verification: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500

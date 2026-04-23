@@ -173,8 +173,6 @@
                     </table>
                 </div>
 
-                
-                
                 <div id="no-documents" class="text-center py-4 d-none">
                     <i class="bi bi-file-earmark-x display-4 text-muted"></i>
                     <p class="mt-3 text-muted">No documents found for this user.</p>
@@ -210,10 +208,19 @@
                     <p class="mt-2">Verifying with Gemini AI...</p>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success" id="submitVerify">Submit to Gemini</button>
-            </div>
+            <div class="modal-footer justify-content-between">
+    <button type="button" class="btn btn-outline-danger" id="removeVerificationBtn">
+        <i class="bi bi-trash me-1"></i>Remove Current Verification
+    </button>
+    <button type="button" class="btn btn-warning" id="recheckAllBtn">
+        <i class="bi bi-arrow-clockwise me-1"></i>Recheck
+    </button>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success" id="submitVerify">Submit to Gemini</button>
+
+    </div>
+</div>
         </div>
     </div>
 </div>
@@ -442,6 +449,150 @@ const DOC_TYPE_MAP = {
         }
     });
 
+    // ── Remove Verification Button ─────────────────────────────
+document.getElementById('removeVerificationBtn').addEventListener('click', async function () {
+    if (!currentLeadId || !documentdlug) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Missing Data',
+            text: 'No document selected. Please open via "Recheck" first.',
+            confirmButtonColor: '#f39c12'
+        });
+        return;
+    }
+
+    const confirm = await Swal.fire({
+        title: 'Remove Verification?',
+        html: `This will reset the AI verification status for <strong>${verifyDocType.textContent}</strong>.<br><br>Are you sure?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonText: 'Cancel',
+        confirmButtonText: 'Yes, Remove It'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+        const res = await fetch('/admin/api/verify-document/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: currentLeadId,
+                document_type: documentdlug
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.status === 'success') {
+            Swal.fire({
+                icon: 'success',
+                title: 'Removed',
+                text: 'Verification has been reset successfully.',
+                confirmButtonColor: '#28a745'
+            }).then(() => {
+                verifyModal.hide();
+                document.querySelector(`.view-documents-btn[data-lead-id="${currentLeadId}"]`)?.click();
+            });
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Failed',
+                text: data.message || 'Could not remove verification.',
+                confirmButtonColor: '#dc3545'
+            });
+        }
+    } catch (err) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Network Error',
+            text: err.message,
+            confirmButtonColor: '#dc3545'
+        });
+    }
+});
+
+
+// ── Recheck All Documents Button ───────────────────────────
+document.getElementById('recheckAllBtn').addEventListener('click', async function () {
+    if (!currentLeadId) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'No User Selected',
+            text: 'Please open a user\'s documents first.',
+            confirmButtonColor: '#f39c12'
+        });
+        return;
+    }
+
+    const confirm = await Swal.fire({
+        title: 'Recheck All Documents?',
+        html: `This will trigger AI validation for <strong>all documents</strong> of this user.<br><br>Are you sure?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#f39c12',
+        cancelButtonText: 'Cancel',
+        confirmButtonText: 'Yes, Recheck'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    const btn = document.getElementById('recheckAllBtn');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Rechecking...`;
+
+    try {
+        const res = await fetch(
+            `/admin/validate_document?limit=1&user_id=${currentLeadId}`,
+            { method: 'GET' }
+        );
+        const data = await res.json();
+
+        if (data.status === 'Batch processed') {
+            const user = data.processed_users?.[0];
+
+            Swal.fire({
+                icon: user?.user_fully_done ? 'success' : 'info',
+                title: user?.user_fully_done ? '✅ All Done' : 'In Progress',
+                html: `
+                    <div style="text-align:left">
+                        <b>Email:</b> ${user?.email || '—'}<br>
+                        <b>Checked this request:</b> ${user?.checked_this_request ?? '—'}<br>
+                        <b>Total checked so far:</b> ${user?.total_checked_so_far ?? '—'} / ${user?.total_docs ?? '—'}<br>
+                        <b>Fully done:</b> ${user?.user_fully_done ? 'Yes ✅' : 'No ⏳'}
+                    </div>
+                `,
+                confirmButtonText: 'Refresh Documents',
+                confirmButtonColor: '#28a745'
+            }).then(() => {
+                verifyModal.hide();
+                document.querySelector(`.view-documents-btn[data-lead-id="${currentLeadId}"]`)?.click();
+            });
+
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Unexpected Response',
+                text: JSON.stringify(data),
+                confirmButtonColor: '#dc3545'
+            });
+        }
+
+    } catch (err) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Network Error',
+            text: err.message,
+            confirmButtonColor: '#dc3545'
+        });
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+});
+
  
     tableBody.addEventListener('click', async function (e) {
         const btn = e.target.closest('.verify-now-btn');
@@ -452,6 +603,7 @@ const DOC_TYPE_MAP = {
 
         // 🔥 Map to DB code
         currentDocType = DOC_TYPE_MAP[rawDocType] || rawDocType.toUpperCase().replace(/ /g, "_");
+        documentdlug = rawDocType
 
         verifyDocType.textContent = rawDocType;
 
@@ -464,7 +616,7 @@ const DOC_TYPE_MAP = {
         loading.classList.remove('d-none');
 
         try {
-            const res = await fetch(`/admin/api/prompts/get?document_type=${currentDocType}`);
+            const res = await fetch(`/admin/api/prompts/get?document_type=${documentdlug}`);
             const data = await res.json();
 
             if (data.status === 'success' && data.prompt) {
@@ -626,7 +778,7 @@ try {
                                     <button 
                                         class="btn btn-sm btn-outline-success verify-now-btn w-100"
                                         data-url="${doc.url}"
-                                        data-type="${doc.document_type_code}">
+                                        data-type="${doc.document_type_name}">
                                         Recheck
                                     </button>
                                 </td>`;

@@ -34,18 +34,22 @@ def validate_document():
     per_page = int(request.args.get('limit', 10))
     search = request.args.get('search', '').strip()
     email_filter = request.args.get('email', '').strip()
+    user_id_filter = request.args.get('user_id', '').strip()
 
     # 2. Build Query
     query = {"is_admin": {"$ne": True}}
 
     if email_filter:
         query["email"] = email_filter
+    elif user_id_filter:
+        query["_id"] = ObjectId(user_id_filter)
     else:
         query["document_fetched"] = {"$ne": 1}
         query["xn_user_id"] = {"$exists": True, "$ne": ""}
 
     if search:
         query["email"] = {"$regex": search, "$options": "i"}
+        
 
     # 3. Fetch Users
     users_list = list(
