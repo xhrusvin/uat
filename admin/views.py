@@ -1858,3 +1858,24 @@ def user_suggestions():
         })
 
     return jsonify(results)
+
+
+@admin_bp.route('/api/user/<user_id>/status')
+@admin_required
+def get_user_status(user_id):
+    if not ObjectId.is_valid(user_id):
+        return jsonify({"error": "Invalid user ID"}), 400
+
+    user = current_app.db.users.find_one(
+        {"_id": ObjectId(user_id)},
+        {"call_sent": 1, "garda_email_sent": 1, "missed_call_email_sent": 1}
+    )
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    return jsonify({
+        "call_sent":                 user.get("call_sent", 0),
+        "garda_email_sent_status":   "Sent" if user.get("garda_email_sent") == 1 else "Not Sent",
+        "missed_call_email_status":  "Sent" if user.get("missed_call_email_sent") == 1 else "Not Sent"
+    }), 200

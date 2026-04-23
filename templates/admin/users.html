@@ -125,9 +125,6 @@
     data-ref-name="{{ u.get('ref_name', '') | e }}"
 
     data-ref-name2="{{ u.get('ref_name2', '') | e }}"
-    data-call-sent="{{ u.call_sent }}"
-data-garda-email-status="{{ u.garda_email_sent_status | default('') }}"
-data-missed-call-email-status="{{ u.missed_call_email_sent_status | default('') }}"
     style="cursor: pointer;">
                             <td class="ps-4">
     <div class="d-flex align-items-center">
@@ -988,7 +985,18 @@ data-missed-call-email-status="{{ u.missed_call_email_sent_status | default('') 
       </div>
 
       <div class="tab-pane fade" id="status-pane" role="tabpanel">
-  <div class="row g-4 pt-2">
+
+  <!-- Loading -->
+  <div id="status-loading" class="text-center py-5 d-none">
+    <div class="spinner-border text-primary"></div>
+    <p class="mt-2 text-muted">Loading status...</p>
+  </div>
+
+  <!-- Error -->
+  <div id="status-error" class="alert alert-danger d-none mx-3 mt-3"></div>
+
+  <!-- Cards -->
+  <div id="status-cards" class="row g-4 pt-3 d-none">
 
     <!-- Call Status -->
     <div class="col-md-4">
@@ -996,7 +1004,7 @@ data-missed-call-email-status="{{ u.missed_call_email_sent_status | default('') 
         <div class="card-body text-center py-4">
           <i class="bi bi-telephone-fill display-5 mb-3 text-primary"></i>
           <h6 class="text-muted mb-2">Call Status</h6>
-          <span id="status-call-sent" class="badge fs-6 px-3 py-2"></span>
+          <span id="status-call-sent" class="badge fs-6 px-3 py-2">—</span>
         </div>
       </div>
     </div>
@@ -1007,7 +1015,7 @@ data-missed-call-email-status="{{ u.missed_call_email_sent_status | default('') 
         <div class="card-body text-center py-4">
           <i class="bi bi-envelope-fill display-5 mb-3 text-primary"></i>
           <h6 class="text-muted mb-2">Email Status</h6>
-          <span id="status-garda-email" class="badge fs-6 px-3 py-2"></span>
+          <span id="status-garda-email" class="badge fs-6 px-3 py-2">—</span>
         </div>
       </div>
     </div>
@@ -1017,8 +1025,8 @@ data-missed-call-email-status="{{ u.missed_call_email_sent_status | default('') 
       <div class="card border-0 shadow-sm h-100">
         <div class="card-body text-center py-4">
           <i class="bi bi-telephone-x-fill display-5 mb-3 text-primary"></i>
-          <h6 class="text-muted mb-2">Missed Call Email Status</h6>
-          <span id="status-missed-call-email" class="badge fs-6 px-3 py-2"></span>
+          <h6 class="text-muted mb-2">Missed Call Email</h6>
+          <span id="status-missed-call-email" class="badge fs-6 px-3 py-2">—</span>
         </div>
       </div>
     </div>
@@ -2927,41 +2935,78 @@ if (followupTab) {
 
 
 </script>
-
 <script>
-document.getElementById('status-tab').addEventListener('shown.bs.tab', () => {
-    // Call Status
-    const callSentEl = document.getElementById('status-call-sent');
-    const callSent   = window.currentCallSent;
-    if (String(callSent) === '1') {
-        callSentEl.textContent  = 'Sent';
-        callSentEl.className    = 'badge fs-6 px-3 py-2 bg-success';
-    } else {
-        callSentEl.textContent  = 'Pending';
-        callSentEl.className    = 'badge fs-6 px-3 py-2 bg-warning text-dark';
+$(document).ready(function () {
+
+    const STATUS_URL = "{{ url_for('admin.get_user_status', user_id='PLACEHOLDER') }}";
+
+    function applyBadge(el, value, sentLabel, notSentLabel) {
+        if (value === 'Sent') {
+            el.textContent  = sentLabel || 'Sent';
+            el.className    = 'badge fs-6 px-3 py-2 bg-success';
+        } else {
+            el.textContent  = notSentLabel || value || 'Not Sent';
+            el.className    = 'badge fs-6 px-3 py-2 bg-warning text-dark';
+        }
     }
 
-    // Garda Email Status
-    const gardaEl     = document.getElementById('status-garda-email');
-    const gardaStatus = window.currentGardaEmailStatus;
-    if (gardaStatus === 'Sent') {
-        gardaEl.textContent = 'Sent';
-        gardaEl.className   = 'badge fs-6 px-3 py-2 bg-success';
-    } else {
-        gardaEl.textContent = 'Not Sent';
-        gardaEl.className   = 'badge fs-6 px-3 py-2 bg-warning text-dark';
+    function loadUserStatus(userId) {
+        const loading = document.getElementById('status-loading');
+        const cards   = document.getElementById('status-cards');
+        const errEl   = document.getElementById('status-error');
+
+        // Reset
+        loading.classList.remove('d-none');
+        cards.classList.add('d-none');
+        errEl.classList.add('d-none');
+
+        const url = STATUS_URL.replace('PLACEHOLDER', userId);
+
+        $.ajax({
+            url: url,
+            type: 'GET',
+            success: function (res) {
+                loading.classList.add('d-none');
+                cards.classList.remove('d-none');
+
+                // Call Status
+                const callEl = document.getElementById('status-call-sent');
+                if (String(res.call_sent) === '1') {
+                    callEl.textContent = 'Sent';
+                    callEl.className   = 'badge fs-6 px-3 py-2 bg-success';
+                } else {
+                    callEl.textContent = 'Pending';
+                    callEl.className   = 'badge fs-6 px-3 py-2 bg-warning text-dark';
+                }
+
+                // Garda Email
+                applyBadge(
+                    document.getElementById('status-garda-email'),
+                    res.garda_email_sent_status
+                );
+
+                // Missed Call Email
+                applyBadge(
+                    document.getElementById('status-missed-call-email'),
+                    res.missed_call_email_status
+                );
+            },
+            error: function (xhr) {
+                loading.classList.add('d-none');
+                const msg = xhr.responseJSON?.error || 'Failed to load status';
+                errEl.textContent = msg;
+                errEl.classList.remove('d-none');
+            }
+        });
     }
 
-    // Missed Call Email Status
-    const missedEl     = document.getElementById('status-missed-call-email');
-    const missedStatus = window.currentMissedCallStatus;
-    if (missedStatus === 'Sent') {
-        missedEl.textContent = 'Sent';
-        missedEl.className   = 'badge fs-6 px-3 py-2 bg-success';
-    } else {
-        missedEl.textContent = 'Not Sent';
-        missedEl.className   = 'badge fs-6 px-3 py-2 bg-warning text-dark';
-    }
+    // Fire when Status tab is clicked
+    document.getElementById('status-tab').addEventListener('shown.bs.tab', function () {
+        if (currentUserId) {
+            loadUserStatus(currentUserId);
+        }
+    });
+
 });
 </script>
 {% endblock %}
