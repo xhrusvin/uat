@@ -125,6 +125,9 @@
     data-ref-name="{{ u.get('ref_name', '') | e }}"
 
     data-ref-name2="{{ u.get('ref_name2', '') | e }}"
+    data-call-sent="{{ u.call_sent }}"
+data-garda-email-status="{{ u.garda_email_sent_status | default('') }}"
+data-missed-call-email-status="{{ u.missed_call_email_sent_status | default('') }}"
     style="cursor: pointer;">
                             <td class="ps-4">
     <div class="d-flex align-items-center">
@@ -449,6 +452,14 @@
           data-bs-toggle="tab"
           data-bs-target="#documents-accepted-pane">
     <i class="bi bi-folder-check me-2"></i> Compliance Documents
+  </button>
+</li>
+
+<li class="nav-item" role="presentation">
+  <button class="nav-link fw-semibold" id="status-tab"
+          data-bs-toggle="tab" data-bs-target="#status-pane"
+          type="button" role="tab">
+    <i class="bi bi-activity me-2"></i> Status
   </button>
 </li>
 
@@ -975,6 +986,45 @@
 </div>
 </div><!-- /.tab-content -->
       </div>
+
+      <div class="tab-pane fade" id="status-pane" role="tabpanel">
+  <div class="row g-4 pt-2">
+
+    <!-- Call Status -->
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center py-4">
+          <i class="bi bi-telephone-fill display-5 mb-3 text-primary"></i>
+          <h6 class="text-muted mb-2">Call Status</h6>
+          <span id="status-call-sent" class="badge fs-6 px-3 py-2"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Garda Email Status -->
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center py-4">
+          <i class="bi bi-envelope-fill display-5 mb-3 text-primary"></i>
+          <h6 class="text-muted mb-2">Email Status</h6>
+          <span id="status-garda-email" class="badge fs-6 px-3 py-2"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Missed Call Email Status -->
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center py-4">
+          <i class="bi bi-telephone-x-fill display-5 mb-3 text-primary"></i>
+          <h6 class="text-muted mb-2">Missed Call Email Status</h6>
+          <span id="status-missed-call-email" class="badge fs-6 px-3 py-2"></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
 
 
 
@@ -1832,6 +1882,11 @@ window.currentComplianceElevenLabsId   = (this.dataset.complianceElevenlabsId ||
             window.currentOnboardingConvId      = (this.dataset.onboardingConvId || '').trim() || null;
             window.currentOnboardingElevenLabsId = (this.dataset.onboardingElevenlabsId || '').trim() || null;
 
+
+             // Capture status fields
+window.currentCallSent            = this.dataset.callSent;
+window.currentGardaEmailStatus    = this.dataset.gardaEmailStatus;
+window.currentMissedCallStatus    = this.dataset.missedCallEmailStatus;
             currentProfrefConvId = this.dataset.profrefConvId || null;
             currentProfrefElevenLabsId = this.dataset.profrefElevenlabsId || null;
             
@@ -2868,6 +2923,45 @@ if (followupTab) {
         setTimeout(updateRecallButtonVisibility, 300);
     });
 
+});
+
+
+</script>
+
+<script>
+document.getElementById('status-tab').addEventListener('shown.bs.tab', () => {
+    // Call Status
+    const callSentEl = document.getElementById('status-call-sent');
+    const callSent   = window.currentCallSent;
+    if (String(callSent) === '1') {
+        callSentEl.textContent  = 'Sent';
+        callSentEl.className    = 'badge fs-6 px-3 py-2 bg-success';
+    } else {
+        callSentEl.textContent  = 'Pending';
+        callSentEl.className    = 'badge fs-6 px-3 py-2 bg-warning text-dark';
+    }
+
+    // Garda Email Status
+    const gardaEl     = document.getElementById('status-garda-email');
+    const gardaStatus = window.currentGardaEmailStatus;
+    if (gardaStatus === 'Sent') {
+        gardaEl.textContent = 'Sent';
+        gardaEl.className   = 'badge fs-6 px-3 py-2 bg-success';
+    } else {
+        gardaEl.textContent = 'Not Sent';
+        gardaEl.className   = 'badge fs-6 px-3 py-2 bg-warning text-dark';
+    }
+
+    // Missed Call Email Status
+    const missedEl     = document.getElementById('status-missed-call-email');
+    const missedStatus = window.currentMissedCallStatus;
+    if (missedStatus === 'Sent') {
+        missedEl.textContent = 'Sent';
+        missedEl.className   = 'badge fs-6 px-3 py-2 bg-success';
+    } else {
+        missedEl.textContent = 'Not Sent';
+        missedEl.className   = 'badge fs-6 px-3 py-2 bg-warning text-dark';
+    }
 });
 </script>
 {% endblock %}
