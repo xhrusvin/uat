@@ -18,7 +18,7 @@ import re
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-2.5-flash')
 
-ALLOWED_IP = "34.52.131.152"
+ALLOWED_IPS = ["34.52.131.152", "103.146.175.179", "10.0.0.5"]
 
 def get_remote_ip():
     """
@@ -44,11 +44,11 @@ def admin_required(f):
 def validate_document():
     client_ip = get_remote_ip()
 
-    if client_ip != ALLOWED_IP:
-            return jsonify({
-                "status": "error",
-                "message": f"Access denied: IP {client_ip} is not whitelisted"
-            }), 403
+    if client_ip not in ALLOWED_IPS:
+        return jsonify({
+            "status": "error",
+            "message": f"Access denied: IP {client_ip} is not whitelisted"
+        }), 403
     # 1. Get URL Parameters
     page = int(request.args.get('page', 1))
     per_page = int(request.args.get('limit', 10))
