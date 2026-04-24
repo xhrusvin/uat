@@ -18,6 +18,20 @@ import re
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-2.5-flash')
 
+ALLOWED_IP = "34.52.131.152"
+
+def get_remote_ip():
+    """
+    Extracts the real client IP, accounting for proxies/load balancers
+    that set X-Forwarded-For or X-Real-IP headers.
+    """
+    if request.headers.get('X-Forwarded-For'):
+        # X-Forwarded-For can be a comma-separated list; first IP is the client
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    elif request.headers.get('X-Real-IP'):
+        return request.headers.get('X-Real-IP').strip()
+    return request.remote_addr
+
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -27,8 +41,14 @@ def admin_required(f):
     return decorated
 
 @admin_bp.route('/validate_document')
-@admin_required
 def validate_document():
+    client_ip = get_remote_ip()
+
+    if client_ip != ALLOWED_IP:
+            return jsonify({
+                "status": "error",
+                "message": f"Access denied: IP {client_ip} is not whitelisted"
+            }), 403
     # 1. Get URL Parameters
     page = int(request.args.get('page', 1))
     per_page = int(request.args.get('limit', 10))
