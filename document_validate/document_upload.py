@@ -53,10 +53,10 @@ def document_upload_webhook():
     """
 
     # ==================== GET ====================
-    if request.method == "GET":
+    if request.method == "POST":
         try:
-            xn_user_id = request.args.get("user_id")
-            document_id = request.args.get("document_id")
+            xn_user_id = request.json.get("user_id")
+            document_id = request.json.get("document_id")
 
             if not xn_user_id or not document_id:
                 return jsonify({
