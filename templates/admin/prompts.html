@@ -151,11 +151,11 @@
                         <label class="form-label fw-bold">
                             Document Type Code <span class="text-danger">*</span>
                         </label>
-                        <input type="text" class="form-control font-monospace text-uppercase"
-                               id="prompt_code" name="document_type_code"
-                               required maxlength="20"
-                               placeholder="e.g. NBMI, DBS, PASSPORT">
-                        <div class="form-text">Unique uppercase code identifying the document type.</div>
+                        <input type="text" class="form-control font-monospace"
+       id="prompt_code" name="document_type_code"
+       required maxlength="20"
+       placeholder="e.g. NBMI, DBS, PASSPORT">
+<div class="form-text">Unique code identifying the document type.</div>
                     </div>
 
                     <div class="mb-3">
@@ -219,12 +219,6 @@ document.querySelectorAll('.btn-edit').forEach(btn => {
     });
 });
 
-// ── Auto-uppercase code field ─────────────────────────────────────────
-document.getElementById('prompt_code').addEventListener('input', function () {
-    const pos = this.selectionStart;
-    this.value = this.value.toUpperCase();
-    this.setSelectionRange(pos, pos);
-});
 
 // ── Form submit ──────────────────────────────────────────────────────
 document.getElementById('promptForm').addEventListener('submit', async function (e) {

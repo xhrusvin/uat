@@ -34,7 +34,7 @@ def _get_all(search, page, per_page):
 
 
 def _is_code_unique(code, exclude_id=None):
-    query = {"document_type_code": code.upper().strip()}
+    query = {"document_type_code": code.strip()}
     if exclude_id:
         query["_id"] = {"$ne": ObjectId(exclude_id)}
     return _prompts_col().count_documents(query) == 0
@@ -65,7 +65,7 @@ def prompts():
 @admin_required
 def prompt_add():
     data = request.get_json()
-    code = (data.get('document_type_code') or '').strip().upper()
+    code = (data.get('document_type_code') or '').strip()
     text = (data.get('prompt_text') or '').strip()
 
     if not code:
@@ -94,7 +94,7 @@ def prompt_add():
 def prompt_edit():
     data      = request.get_json()
     prompt_id = (data.get('prompt_id') or '').strip()
-    code      = (data.get('document_type_code') or '').strip().upper()
+    code = (data.get('document_type_code') or '').strip()
     text      = (data.get('prompt_text') or '').strip()
 
     if not prompt_id:
