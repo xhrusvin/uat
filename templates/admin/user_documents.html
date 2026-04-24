@@ -517,7 +517,7 @@ document.getElementById('removeVerificationBtn').addEventListener('click', async
 
 // ── Recheck All Documents Button ───────────────────────────
 document.getElementById('recheckAllBtn').addEventListener('click', async function () {
-    if (!userxnId) {
+    if (!currentUserXnId) {
         Swal.fire({
             icon: 'warning',
             title: 'No User Selected',
@@ -546,7 +546,7 @@ document.getElementById('recheckAllBtn').addEventListener('click', async functio
 
     try {
         const res = await fetch(
-            `/admin/validate_document?limit=1&user_id=${userxnId}`,
+            `/admin/validate_document?limit=1&user_id=${currentUserXnId}`,
             { method: 'GET' }
         );
         const data = await res.json();
@@ -727,6 +727,7 @@ try {
             currentLeadId = leadId;
             const userName = this.getAttribute('data-user-name');
              const userxnId = this.getAttribute('data-user-xn-id');
+             currentUserXnId = userxnId;
 
             
             tableBody.innerHTML = '';
