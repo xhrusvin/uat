@@ -35,6 +35,8 @@ def validate_document():
     search = request.args.get('search', '').strip()
     email_filter = request.args.get('email', '').strip()
     user_id_filter = request.args.get('user_id', '').strip()
+    xn_user_id_filter = request.args.get('xn_user_id', '').strip()
+    document_id_filter = request.args.get('document_id', '').strip()  # NEW
 
     # 2. Build Query
     query = {"is_admin": {"$ne": True}}
@@ -43,13 +45,14 @@ def validate_document():
         query["email"] = email_filter
     elif user_id_filter:
         query["_id"] = ObjectId(user_id_filter)
+    elif xn_user_id_filter:
+        query["xn_user_id"] = xn_user_id_filter
     else:
         query["document_fetched"] = {"$ne": 1}
         query["xn_user_id"] = {"$exists": True, "$ne": ""}
 
     if search:
         query["email"] = {"$regex": search, "$options": "i"}
-        
 
     # 3. Fetch Users
     users_list = list(
@@ -81,26 +84,32 @@ def validate_document():
 
             docs_array = response.json().get('data', [])
 
-            # ── Find docs not yet AI-checked in documents_new ──────────────
-            already_checked_ids = set(
-                d['document_id']
-                for d in current_app.db.documents_new.find(
-                    {
-                        "user_id": local_id,
-                        "ai_attempted": True   # has been processed
-                    },
-                    {"document_id": 1}
+            # ── Filter or find pending docs based on document_id_filter ────
+            if document_id_filter:
+                # Only process the specific document — skip ai_attempted check
+                docs_to_process = [
+                    doc for doc in docs_array
+                    if str(doc.get('document_id')) == document_id_filter
+                ]
+            else:
+                # Normal flow: exclude already AI-checked docs
+                already_checked_ids = set(
+                    d['document_id']
+                    for d in current_app.db.documents_new.find(
+                        {
+                            "user_id": local_id,
+                            "ai_attempted": True
+                        },
+                        {"document_id": 1}
+                    )
                 )
-            )
+                pending_docs = [
+                    doc for doc in docs_array
+                    if doc.get('document_id') not in already_checked_ids
+                ]
+                # HARD CAP: only process 2 docs per request
+                docs_to_process = pending_docs[:2]
 
-            # Docs still pending AI check
-            pending_docs = [
-                doc for doc in docs_array
-                if doc.get('document_id') not in already_checked_ids
-            ]
-
-            # ── HARD CAP: only process 2 docs per request ──────────────────
-            docs_to_process = pending_docs[:2]
             ai_checked_count = 0
 
             for doc in docs_to_process:
@@ -182,7 +191,6 @@ def validate_document():
                 ai_checked_count += 1
 
             # ── Check if ALL docs for this user are now complete ───────────
-            # Total docs from API vs total saved in documents_new for this user
             total_docs = len(docs_array)
             total_saved = current_app.db.documents_new.count_documents({
                 "user_id": local_id,
@@ -190,14 +198,12 @@ def validate_document():
             })
 
             if total_saved >= total_docs:
-                # Every doc has been AI-checked across all requests — mark done
                 current_app.db.users.update_one(
                     {"_id": local_id},
                     {"$set": {"document_fetched": 1}}
                 )
                 fully_done = True
             else:
-                # Still has pending docs — will be picked up in next request
                 fully_done = False
 
             processed_results.append({
