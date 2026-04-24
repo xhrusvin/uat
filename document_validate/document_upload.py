@@ -115,6 +115,7 @@ def document_upload_webhook():
             }), 401
 
         data = request.get_json(silent=True) or {}
+        
 
         user_id = data.get("user_id")
         document_id = data.get("document_id")
@@ -137,7 +138,7 @@ def document_upload_webhook():
 
         return jsonify({
             "status": "success",
-            "message": "Document upload recorded successfully",
+            "message": "Document upload recorded successfully1",
             "uploaded_id": str(result.inserted_id),
             "user_id": user_id,
             "document_id": document_id,
