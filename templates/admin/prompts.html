@@ -153,7 +153,7 @@
                         </label>
                         <input type="text" class="form-control font-monospace"
        id="prompt_code" name="document_type_code"
-       required maxlength="20"
+       required
        placeholder="e.g. NBMI, DBS, PASSPORT">
 <div class="form-text">Unique code identifying the document type.</div>
                     </div>
@@ -234,7 +234,7 @@ document.getElementById('promptForm').addEventListener('submit', async function 
 
     const payload = {
         prompt_id:            document.getElementById('prompt_id').value,
-        document_type_code:   document.getElementById('prompt_code').value.trim().toUpperCase(),
+        document_type_code: document.getElementById('prompt_code').value.trim(),
         prompt_text:          document.getElementById('prompt_text').value.trim(),
         is_active:            document.getElementById('prompt_is_active').checked,
     };
