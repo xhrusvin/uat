@@ -11,7 +11,7 @@
                     data-bs-toggle="modal" data-bs-target="#promptModal">
                 <i class="bi bi-plus-lg"></i> Add Prompt
             </button>
-            <a href="{{ url_for('booking.prompts') }}" class="btn btn-outline-secondary">
+            <a href="{{ url_for('admin.prompts') }}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-repeat"></i> Refresh
             </a>
             <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">
@@ -28,7 +28,7 @@
                    placeholder="Search by code or prompt text..." value="{{ search }}" autofocus>
             <button class="btn btn-primary px-4" type="submit">Search</button>
             {% if search %}
-            <a href="{{ url_for('booking.prompts') }}" class="btn btn-outline-secondary">Clear</a>
+            <a href="{{ url_for('admin.prompts') }}" class="btn btn-outline-secondary">Clear</a>
             {% endif %}
         </div>
     </form>
