@@ -212,6 +212,7 @@ def validate_document():
 
                 # ── Call external verification update when both xn_user_id
                 #    and document_id are provided as URL parameters ──────────
+                verify_payload = ""
                 if xn_user_id_filter and document_id_filter:
                     try:
                         verify_url = f"{BASE_URL}/ai/document-validate/external-verification-update"
@@ -258,7 +259,9 @@ def validate_document():
                 "total_docs": total_docs,
                 "checked_this_request": ai_checked_count,
                 "total_checked_so_far": total_saved,
-                "user_fully_done": fully_done
+                "user_fully_done": fully_done,
+                "verify_payload": verify_payload,
+                "verify_response": verify_resp.text[:200] if verify_resp else ""
             })
 
         except Exception as e:
