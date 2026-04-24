@@ -219,7 +219,7 @@ def validate_document():
                         verify_payload = {
                             "user_id": xn_user_id,
                             "document_id": doc.get('document_id'),
-                            "document_type": doc.get('document_type_name', ''),
+                            "document_type": "",
                             "status": ai_status,
                             "reject_reason": ai_reason if not ai_status else ""
                         }
