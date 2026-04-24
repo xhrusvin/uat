@@ -261,7 +261,7 @@ def validate_document():
                 "total_checked_so_far": total_saved,
                 "user_fully_done": fully_done,
                 "verify_payload": verify_payload,
-                "verify_response": verify_resp.text[:200] if verify_resp else ""
+                "verify_response": verify_resp.text if verify_resp else ""
             })
 
         except Exception as e:
