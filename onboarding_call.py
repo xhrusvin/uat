@@ -83,13 +83,13 @@ def register_onboarding_call_routes(app):
             #"follow_up_sent": {"$ne": 0},  # 0 or missing
             #"compliance_documents_status": {"$ne": 1},
             # "xn_user_id": "69e7340f5f14105609094fb1",
-            "email": "nasarrusvin@example.com"
+            "email": "rusvin@xpresshealth.ie"
             # "xn_user_id": xnid
             }
 
         user = app.db.users.find_one(
-          query,
-          sort=[("onboarding_call_sent", 1)]  # Oldest due first (ascending)
+          query
+          # sort=[("onboarding_call_sent", 1)]  
           )
 
         if not user:
