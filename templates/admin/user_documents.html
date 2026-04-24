@@ -526,7 +526,7 @@ document.getElementById('recheckAllBtn').addEventListener('click', async functio
         });
         return;
     }
-    const documentId = btn.getAttribute('data-document-id');
+    
 
     const confirm = await Swal.fire({
         title: 'Recheck All Documents?',
@@ -541,6 +541,7 @@ document.getElementById('recheckAllBtn').addEventListener('click', async functio
     if (!confirm.isConfirmed) return;
 
     const btn = document.getElementById('recheckAllBtn');
+    const documentId = btn.getAttribute('data-document-id');
     const originalHtml = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Rechecking...`;
