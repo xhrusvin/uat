@@ -271,7 +271,7 @@ def validate_document():
         "status": "Batch processed",
         "count": len(processed_results),
         "processed_users": processed_results
-    })
+    })  
 
 @admin_bp.route('/get_user_documents/<user_id>')
 @admin_required
