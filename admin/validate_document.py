@@ -210,6 +210,33 @@ def validate_document():
                 )
                 ai_checked_count += 1
 
+                # ── Call external verification update when both xn_user_id
+                #    and document_id are provided as URL parameters ──────────
+                if xn_user_id_filter and document_id_filter:
+                    try:
+                        verify_url = f"{BASE_URL}/ai/document-validate/external-verification-update"
+                        verify_payload = {
+                            "user_id": xn_user_id,
+                            "document_id": doc.get('document_id'),
+                            "document_type": doc.get('document_type_name', ''),
+                            "status": ai_status,
+                            "reject_reason": ai_reason if not ai_status else ""
+                        }
+                        verify_resp = requests.post(
+                            verify_url,
+                            headers=headers,
+                            json=verify_payload,
+                            timeout=15
+                        )
+                        current_app.logger.info(
+                            f"External verify update for doc {doc.get('document_id')}: "
+                            f"status={verify_resp.status_code}, body={verify_resp.text[:200]}"
+                        )
+                    except Exception as ve:
+                        current_app.logger.error(
+                            f"External verify update failed for doc {doc.get('document_id')}: {ve}"
+                        )
+
             # ── Check if ALL docs for this user are now complete ───────────
             total_docs = len(docs_array)
             total_saved = current_app.db.documents_new.count_documents({
