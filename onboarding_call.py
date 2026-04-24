@@ -149,11 +149,11 @@ def register_onboarding_call_routes(app):
         update_result = app.db.users.update_one(
             {
                 "_id": user_id,
-                "onboarding_call_sent": {"$in": [0, None]}
+                "onboarding_call_sent": {"$in": [0, None, 1]}
             },
             {
                 "$set": {
-                    "onboarding_call_sent": 1,
+                    "onboarding_call_sent": 0,
                     "updated_at": datetime.utcnow()
                 }
             }
