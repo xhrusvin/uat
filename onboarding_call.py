@@ -84,7 +84,7 @@ def register_onboarding_call_routes(app):
             #"compliance_documents_status": {"$ne": 1},
             # "xn_user_id": "69e7340f5f14105609094fb1",
             # "email": "juhi@xpresshealth.ie",
-            "xn_user_id": xnid
+            # "xn_user_id": xnid
             }
 
         user = app.db.users.find_one(
