@@ -20,5 +20,5 @@ from . import transcriptions_onboarding
 from . import user_documents
 from . import staff
 from . import postcall
-
+from . import prompts
 
