@@ -353,7 +353,7 @@ def api_list_user_documents():
                     "url_status": document_data.get("url_status"),
                     "result": document_data.get("ai_raw_response"),
                     "failed_reason": document_data.get("ai_reason"),
-                    "document_id": document_data.get("ai_raw_response"),
+                    "document_id": document_data.get("document_id"),
                     "validation_id": str(document_data["_id"])
                 }
             else:
