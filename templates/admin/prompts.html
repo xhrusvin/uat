@@ -232,8 +232,8 @@ document.getElementById('promptForm').addEventListener('submit', async function 
     const btn    = document.getElementById('promptSubmitBtn');
     const isEdit = !!document.getElementById('prompt_id').value;
     const url    = isEdit
-        ? "{{ url_for('booking.prompt_edit') }}"
-        : "{{ url_for('booking.prompt_add') }}";
+        ? "{{ url_for('admin.prompt_edit') }}"
+        : "{{ url_for('admin.prompt_add') }}";
 
     btn.disabled    = true;
     btn.textContent = isEdit ? 'Saving...' : 'Creating...';
@@ -288,7 +288,7 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
         if (!isConfirmed) return;
 
         try {
-            const res    = await fetch("{{ url_for('booking.prompt_delete') }}", {
+            const res    = await fetch("{{ url_for('admin.prompt_delete') }}", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt_id: btn.dataset.id })
