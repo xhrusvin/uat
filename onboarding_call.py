@@ -147,15 +147,16 @@ def register_onboarding_call_routes(app):
 
         # Prevent double-triggering (in case of concurrent requests)
         update_result = app.db.users.update_one(
-          {
-            "_id": user_id
-          },
-          {
-            "$set": {
-                "follow_up_sent": 1,
-                "updated_at": datetime.utcnow()
+            {
+                "_id": user_id,
+                "onboarding_call_sent": {"$in": [0, None]}
+            },
+            {
+                "$set": {
+                    "onboarding_call_sent": 1,
+                    "updated_at": datetime.utcnow()
+                }
             }
-          }
         )
 
         if update_result.modified_count == 0:
