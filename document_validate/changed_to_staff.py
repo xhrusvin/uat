@@ -4,6 +4,7 @@ from bson import ObjectId
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+import requests
 
 from . import bp
 
@@ -94,12 +95,24 @@ def changed_to_staff_webhook():
         # 4. Insert into uploaded_documents (use insert_one for webhook style)
         result = table_name.insert_one(record)
 
-        # 5. Return success response
+        onboarding_url = f"https://uat.expresshealth.ie/onboarding_call?xnid={user_id}"
+
+        try:
+            onboarding_response = requests.get(onboarding_url)
+
+            onboarding_status = onboarding_response.status_code
+            onboarding_body = onboarding_response.text
+
+        except Exception as e:
+            onboarding_status = "failed"
+            onboarding_body = str(e)
+
         return jsonify({
             "status": "success",
             "message": "Changed to staff recorded successfully",
             "uploaded_id": str(result.inserted_id),
             "user_id": user_id,
+            "onboarding_call_status": onboarding_status,
             "timestamp": record["uploaded_at"].isoformat()
         }), 201
 

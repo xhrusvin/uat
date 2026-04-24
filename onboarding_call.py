@@ -1,7 +1,7 @@
 # onboarding_call.py
 import threading
 import logging
-from flask import current_app, jsonify
+from flask import current_app, jsonify, request
 from bson import ObjectId
 from onboardingcall import make_onboarding_ai_call
 from datetime import datetime
@@ -55,6 +55,16 @@ def register_onboarding_call_routes(app):
           "allowed_window": f"{ALLOWED_START_HOUR}:00 - {ALLOWED_END_HOUR}:00 UTC",
           "call_allowed": allowed
        }
+        
+
+        xnid = request.args.get("xnid")
+
+        if not xnid:
+            return jsonify({
+                **response_base,
+                "status": "missing_param",
+                "message": "xnid query parameter is required"
+            }), 400
 
         if not allowed:
             return jsonify({
@@ -72,8 +82,9 @@ def register_onboarding_call_routes(app):
             #"call_sent": {"$ne": 0},
             #"follow_up_sent": {"$ne": 0},  # 0 or missing
             #"compliance_documents_status": {"$ne": 1},
-            "xn_user_id": "69e7340f5f14105609094fb1",
-            "email": "juhi@xpresshealth.ie"
+            # "xn_user_id": "69e7340f5f14105609094fb1",
+            "xn_user_id": xnid,
+            # "email": "juhi@xpresshealth.ie"
             }
 
         user = app.db.users.find_one(
