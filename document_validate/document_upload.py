@@ -54,6 +54,14 @@ def document_upload_webhook():
 
     # ==================== GET ====================
     if request.method == "POST":
+        api_key = request.headers.get("Api-Key")
+        app_country = request.headers.get("X-App-Country")
+
+        if api_key != USER_EXTERNAL_API_KEY:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid or missing Api-Key"
+            }), 401
         try:
             xn_user_id = request.json.get("user_id")
             document_id = request.json.get("document_id")
@@ -103,50 +111,3 @@ def document_upload_webhook():
                 "message": f"Server error: {str(e)}"
             }), 500
 
-    # ==================== POST ====================
-    try:
-        api_key = request.headers.get("Api-Key")
-        app_country = request.headers.get("X-App-Country")
-
-        if api_key != USER_EXTERNAL_API_KEY:
-            return jsonify({
-                "status": "error",
-                "message": "Invalid or missing Api-Key"
-            }), 401
-
-        data = request.get_json(silent=True) or {}
-        
-
-        user_id = data.get("user_id")
-        document_id = data.get("document_id")
-
-        if not user_id or not document_id:
-            return jsonify({
-                "status": "error",
-                "message": "Missing required fields: user_id and document_id"
-            }), 400
-
-        record = {
-            "user_id": str(user_id).strip(),
-            "document_id": str(document_id).strip(),
-            "uploaded_at": datetime.utcnow(),
-            "country": app_country,          # Fixed typo: "cuntry" → "country"
-            "status": "uploaded"
-        }
-
-        result = uploaded_documents_coll.insert_one(record)
-
-        return jsonify({
-            "status": "success",
-            "message": "Document upload recorded successfully1",
-            "uploaded_id": str(result.inserted_id),
-            "user_id": user_id,
-            "document_id": document_id,
-            "timestamp": record["uploaded_at"].isoformat()
-        }), 201
-
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Server error: {str(e)}"
-        }), 500
