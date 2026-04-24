@@ -541,7 +541,6 @@ document.getElementById('recheckAllBtn').addEventListener('click', async functio
     if (!confirm.isConfirmed) return;
 
     const btn = document.getElementById('recheckAllBtn');
-    const documentId = btn.getAttribute('data-document-id');
     const originalHtml = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Rechecking...`;
@@ -602,6 +601,7 @@ document.getElementById('recheckAllBtn').addEventListener('click', async functio
         if (!btn) return;
 
         currentDocUrl = btn.getAttribute('data-url');
+        documentId = btn.getAttribute('data-document-id');
         const rawDocType = btn.getAttribute('data-type');
 
         // 🔥 Map to DB code
