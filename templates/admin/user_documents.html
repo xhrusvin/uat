@@ -546,7 +546,7 @@ document.getElementById('recheckAllBtn').addEventListener('click', async functio
 
     try {
         const res = await fetch(
-            `/admin/validate_document?limit=1&user_id=${currentUserXnId}`,
+            `/admin/validate_document?limit=1&xn_user_id=${currentUserXnId}`,
             { method: 'GET' }
         );
         const data = await res.json();
