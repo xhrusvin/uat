@@ -316,6 +316,12 @@ select.parsley-success {
         </a>
     </div>
 
+    <a class="nav-link {% if request.path.startswith('/admin/prompts') %}active{% endif %}"
+       href="{{ url_for('admin.prompts') }}">
+        <i class="bi bi-chat-dots"></i>
+        <span>Prompts</span>
+    </a>
+
     <a class="nav-link {% if request.path.startswith('/admin/staff') %}active{% endif %}"
        href="{{ url_for('admin.staff') }}">
         <i class="bi bi-people"></i>

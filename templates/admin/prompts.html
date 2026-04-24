@@ -1,0 +1,303 @@
+{% extends "admin/base.html" %}
+{% block title %}Prompts • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">Prompt Management</h2>
+        <div class="d-flex gap-3 flex-wrap">
+            <button class="btn btn-primary" onclick="prepareAddModal()"
+                    data-bs-toggle="modal" data-bs-target="#promptModal">
+                <i class="bi bi-plus-lg"></i> Add Prompt
+            </button>
+            <a href="{{ url_for('admin.prompts') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-repeat"></i> Refresh
+            </a>
+            <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">
+                {{ total }} Prompt{{ 's' if total != 1 }}
+            </span>
+        </div>
+    </div>
+
+    <!-- Search -->
+    <form method="get" class="mb-5">
+        <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+            <span class="input-group-text bg-white border-0">Search</span>
+            <input type="text" name="search" class="form-control border-0 ps-0"
+                   placeholder="Search by code or prompt text..." value="{{ search }}" autofocus>
+            <button class="btn btn-primary px-4" type="submit">Search</button>
+            {% if search %}
+            <a href="{{ url_for('admin.prompts') }}" class="btn btn-outline-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+
+    <!-- Table -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="text-white"
+                           style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                        <tr>
+                            <th class="ps-4">#</th>
+                            <th>Doc Type Code</th>
+                            <th>Prompt Preview</th>
+                            <th class="text-center">Version</th>
+                            <th>Status</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in prompts %}
+                        <tr>
+                            <td class="ps-4 text-muted small">
+                                {{ loop.index + (page - 1) * per_page }}
+                            </td>
+                            <td>
+                                <span class="badge bg-dark font-monospace fs-6 px-3 py-2">
+                                    {{ p.document_type_code }}
+                                </span>
+                            </td>
+                            <td class="text-muted small" style="max-width:420px;">
+                                <span class="d-inline-block text-truncate" style="max-width:400px;"
+                                      title="{{ p.prompt_text | e }}">
+                                    {{ p.prompt_text }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-info text-dark rounded-pill px-3">
+                                    v{{ p.version }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if p.is_active %}
+                                <span class="badge bg-success rounded-pill px-3">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary rounded-pill px-3">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 btn-edit"
+                                        data-id="{{ p._id }}"
+                                        data-code="{{ p.document_type_code | e }}"
+                                        data-text="{{ p.prompt_text | e }}"
+                                        data-active="{{ p.is_active | tojson }}">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
+                                        data-id="{{ p._id | string }}"
+                                        data-code="{{ p.document_type_code | e }}">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-5 text-muted">
+                                <i class="bi bi-file-text display-1 opacity-25 d-block mb-3"></i>
+                                <h5>No prompts found</h5>
+                                {% if search %}<p class="mb-0">Try a different search term</p>{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% set pages = ((total / per_page) | round(0,'ceil')) | int %}
+    {% if total > per_page %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center pagination-lg">
+            {% if page > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page-1 }}&search={{ search }}">Previous</a>
+            </li>
+            {% endif %}
+            {% for pg in range([page-2,1]|max, [page+3,pages+1]|min) %}
+            <li class="page-item {% if pg == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ pg }}&search={{ search }}">{{ pg }}</a>
+            </li>
+            {% endfor %}
+            {% if page < pages %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page+1 }}&search={{ search }}">Next</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
+</div>
+
+<!-- Add / Edit Modal -->
+<div class="modal fade" id="promptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title fw-bold" id="promptModalLabel">Add Prompt</h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <form id="promptForm">
+                <div class="modal-body">
+                    <input type="hidden" id="prompt_id" name="prompt_id">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            Document Type Code <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control font-monospace"
+       id="prompt_code" name="document_type_code"
+       required
+       placeholder="e.g. NBMI, DBS, PASSPORT">
+<div class="form-text">Unique code identifying the document type.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            Prompt Text <span class="text-danger">*</span>
+                        </label>
+                        <textarea class="form-control font-monospace"
+                                  id="prompt_text" name="prompt_text"
+                                  rows="14" required
+                                  placeholder="Enter the full prompt instructions here…"
+                                  style="font-size:.82rem;line-height:1.55;resize:vertical;"></textarea>
+                        <div class="form-text">
+                            Editing the prompt text will automatically increment the version number.
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox"
+                               id="prompt_is_active" checked>
+                        <label class="form-check-label fw-bold" for="prompt_is_active">
+                            Active (used during document validation)
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold"
+                            id="promptSubmitBtn">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────
+function prepareAddModal() {
+    document.getElementById('promptModalLabel').textContent  = 'Add Prompt';
+    document.getElementById('promptSubmitBtn').textContent   = 'Create';
+    document.getElementById('prompt_id').value               = '';
+    document.getElementById('prompt_code').value             = '';
+    document.getElementById('prompt_text').value             = '';
+    document.getElementById('prompt_is_active').checked      = true;
+    document.getElementById('prompt_code').removeAttribute('readonly');
+}
+
+// ── Edit buttons ─────────────────────────────────────────────────────
+document.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('promptModalLabel').textContent  = 'Edit Prompt';
+        document.getElementById('promptSubmitBtn').textContent   = 'Save Changes';
+        document.getElementById('prompt_id').value               = btn.dataset.id;
+        document.getElementById('prompt_code').value             = btn.dataset.code;
+        document.getElementById('prompt_text').value             = btn.dataset.text;
+        document.getElementById('prompt_is_active').checked      = btn.dataset.active === 'true';
+        // allow code editing on edit too; backend guards uniqueness
+        document.getElementById('prompt_code').removeAttribute('readonly');
+        new bootstrap.Modal(document.getElementById('promptModal')).show();
+    });
+});
+
+
+// ── Form submit ──────────────────────────────────────────────────────
+document.getElementById('promptForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const btn    = document.getElementById('promptSubmitBtn');
+    const isEdit = !!document.getElementById('prompt_id').value;
+    const url    = isEdit
+        ? "{{ url_for('admin.prompt_edit') }}"
+        : "{{ url_for('admin.prompt_add') }}";
+
+    btn.disabled    = true;
+    btn.textContent = isEdit ? 'Saving...' : 'Creating...';
+
+    const payload = {
+        prompt_id:            document.getElementById('prompt_id').value,
+        document_type_code: document.getElementById('prompt_code').value.trim(),
+        prompt_text:          document.getElementById('prompt_text').value.trim(),
+        is_active:            document.getElementById('prompt_is_active').checked,
+    };
+
+    try {
+        const res    = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success', title: 'Saved!',
+                text: result.message,
+                timer: 1500, showConfirmButton: false
+            }).then(() => {
+                bootstrap.Modal.getInstance(
+                    document.getElementById('promptModal')).hide();
+                location.reload();
+            });
+        } else {
+            Swal.fire('Error', result.error || 'Operation failed', 'error');
+        }
+    } catch {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    } finally {
+        btn.disabled    = false;
+        btn.textContent = isEdit ? 'Save Changes' : 'Create';
+    }
+});
+
+// ── Delete buttons ───────────────────────────────────────────────────
+document.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const { isConfirmed } = await Swal.fire({
+            title: 'Delete Prompt?',
+            html: `Delete prompt for <strong>${btn.dataset.code}</strong>? This cannot be undone.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Yes, delete'
+        });
+        if (!isConfirmed) return;
+
+        try {
+            const res    = await fetch("{{ url_for('admin.prompt_delete') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_id: btn.dataset.id })
+            });
+            const result = await res.json();
+
+            if (result.success) {
+                Swal.fire('Deleted!', '', 'success').then(() => location.reload());
+            } else {
+                Swal.fire('Error', result.error || 'Delete failed', 'error');
+            }
+        } catch {
+            Swal.fire('Error', 'Network error', 'error');
+        }
+    });
+});
+</script>
+{% endblock %}
