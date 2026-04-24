@@ -78,19 +78,13 @@ def register_onboarding_call_routes(app):
         current_time = datetime.utcnow() 
         query = {
             "is_admin": {"$ne": True},
-            "xn_user_id": {"$ne": None},
-            #"call_sent": {"$ne": 0},
-            #"follow_up_sent": {"$ne": 0},  # 0 or missing
-<<<<<<< HEAD
+            #"xn_user_id": {"$ne": None},
+            "call_sent": {"$ne": 0},
+            "follow_up_sent": {"$ne": 0},  # 0 or missing
             #"compliance_documents_status": {"$ne": 1},
             # "xn_user_id": "69e7340f5f14105609094fb1",
             "xn_user_id": xnid,
             # "email": "juhi@xpresshealth.ie"
-=======
-            #"onboarding_call_sent": {"$ne": 1},
-            "xn_user_id": "69e7340f5f14105609094fb1",
-            #"email": "juhi@xpresshealth.ie"
->>>>>>> 508cc46abcbc422268405ceaecc08103f9be0fe6
             }
 
         user = app.db.users.find_one(
