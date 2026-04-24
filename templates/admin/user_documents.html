@@ -526,6 +526,7 @@ document.getElementById('recheckAllBtn').addEventListener('click', async functio
         });
         return;
     }
+    const documentId = btn.getAttribute('data-document-id');
 
     const confirm = await Swal.fire({
         title: 'Recheck All Documents?',
@@ -546,7 +547,7 @@ document.getElementById('recheckAllBtn').addEventListener('click', async functio
 
     try {
         const res = await fetch(
-            `/admin/validate_document?limit=1&xn_user_id=${currentUserXnId}`,
+            `/admin/validate_document?limit=1&xn_user_id=${currentUserXnId}&document_id=${documentId}`,
             { method: 'GET' }
         );
         const data = await res.json();
