@@ -102,6 +102,9 @@ def changed_to_staff_webhook():
 
             onboarding_status = onboarding_response.status_code
             onboarding_body = onboarding_response.text
+            print("Onboarding response status:", onboarding_response.status_code)
+            print("Onboarding response status:", onboarding_status)
+            print("Onboarding response body:", onboarding_body)
 
         except Exception as e:
             onboarding_status = "failed"
@@ -113,6 +116,7 @@ def changed_to_staff_webhook():
             "uploaded_id": str(result.inserted_id),
             "user_id": user_id,
             "onboarding_call_status": onboarding_status,
+            "onboarding_response": onboarding_response.text,
             "timestamp": record["uploaded_at"].isoformat()
         }), 201
 
