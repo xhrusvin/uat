@@ -18,6 +18,20 @@ import re
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-2.5-flash')
 
+ALLOWED_IP = "34.52.131.152"
+
+def get_remote_ip():
+    """
+    Extracts the real client IP, accounting for proxies/load balancers
+    that set X-Forwarded-For or X-Real-IP headers.
+    """
+    if request.headers.get('X-Forwarded-For'):
+        # X-Forwarded-For can be a comma-separated list; first IP is the client
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    elif request.headers.get('X-Real-IP'):
+        return request.headers.get('X-Real-IP').strip()
+    return request.remote_addr
+
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -27,8 +41,14 @@ def admin_required(f):
     return decorated
 
 @admin_bp.route('/validate_document')
-@admin_required
 def validate_document():
+    client_ip = get_remote_ip()
+
+    if client_ip != ALLOWED_IP:
+            return jsonify({
+                "status": "error",
+                "message": f"Access denied: IP {client_ip} is not whitelisted"
+            }), 403
     # 1. Get URL Parameters
     page = int(request.args.get('page', 1))
     per_page = int(request.args.get('limit', 10))
@@ -190,6 +210,34 @@ def validate_document():
                 )
                 ai_checked_count += 1
 
+                # ── Call external verification update when both xn_user_id
+                #    and document_id are provided as URL parameters ──────────
+                verify_payload = ""
+                if xn_user_id_filter and document_id_filter:
+                    try:
+                        verify_url = f"{BASE_URL}/ai/document-validate/external-verification-update"
+                        verify_payload = {
+                            "user_id": xn_user_id,
+                            "document_id": doc.get('document_id'),
+                            "document_type": doc.get('document_type_name', ''),
+                            "status": ai_status,
+                            "reject_reason": ai_reason if not ai_status else ""
+                        }
+                        verify_resp = requests.post(
+                            verify_url,
+                            headers=headers,
+                            json=verify_payload,
+                            timeout=15
+                        )
+                        current_app.logger.info(
+                            f"External verify update for doc {doc.get('document_id')}: "
+                            f"status={verify_resp.status_code}, body={verify_resp.text[:200]}"
+                        )
+                    except Exception as ve:
+                        current_app.logger.error(
+                            f"External verify update failed for doc {doc.get('document_id')}: {ve}"
+                        )
+
             # ── Check if ALL docs for this user are now complete ───────────
             total_docs = len(docs_array)
             total_saved = current_app.db.documents_new.count_documents({
@@ -211,7 +259,9 @@ def validate_document():
                 "total_docs": total_docs,
                 "checked_this_request": ai_checked_count,
                 "total_checked_so_far": total_saved,
-                "user_fully_done": fully_done
+                "user_fully_done": fully_done,
+                "verify_payload": verify_payload,
+                "verify_response": verify_resp.text[:200] if verify_resp else ""
             })
 
         except Exception as e:
@@ -221,7 +271,7 @@ def validate_document():
         "status": "Batch processed",
         "count": len(processed_results),
         "processed_users": processed_results
-    })
+    })  
 
 @admin_bp.route('/get_user_documents/<user_id>')
 @admin_required
