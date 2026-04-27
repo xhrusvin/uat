@@ -215,7 +215,6 @@ def track_click():
             }
         )
 
-        # Optional debug log
         print(f"[TRACK CLICK] lead_id={lead_id}, updated={result.modified_count}")
 
     except Exception as e:
@@ -224,7 +223,7 @@ def track_click():
 
     # Redirect user to actual page
     return redirect(
-        f"https://expresshealth.ie/lead-registration/set_password?id={lead_id}"
+        f"https://uat.expresshealth.ie/lead-registration/set_password?id={lead_id}"
     )
 
 
