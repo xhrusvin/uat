@@ -71,7 +71,7 @@
 
 <!-- User Detail Modal -->
 <div class="modal fade" id="userModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow-lg rounded-4">
             <div class="modal-header text-white rounded-top-4"
                  style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
@@ -140,6 +140,64 @@
                         </div>
                     </li>
                 </ul>
+
+                <hr class="mt-3 mb-3">
+
+                <!-- Call Action Buttons -->
+                <div>
+                    <p class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing:.06em;">
+                        <i class="bi bi-telephone-outbound me-1"></i> Trigger Call
+                    </p>
+                    <div class="d-grid gap-2">
+
+                        <button class="btn btn-outline-warning text-dark fw-semibold d-flex align-items-center gap-2"
+                                onclick="triggerCall('call_missed')">
+                            <span class="badge bg-warning text-dark" style="min-width:28px;">
+                                <i class="bi bi-telephone-x"></i>
+                            </span>
+                            <span>Missed Call</span>
+                            <code class="ms-auto text-muted small">/call_missed</code>
+                        </button>
+
+                        <button class="btn btn-outline-info text-dark fw-semibold d-flex align-items-center gap-2"
+                                onclick="triggerCall('follow_up_call')">
+                            <span class="badge bg-info text-dark" style="min-width:28px;">
+                                <i class="bi bi-arrow-repeat"></i>
+                            </span>
+                            <span>Follow-up Call</span>
+                            <code class="ms-auto text-muted small">/follow_up_call</code>
+                        </button>
+
+                        <button class="btn btn-outline-primary fw-semibold d-flex align-items-center gap-2"
+                                onclick="triggerCall('compliance_document_call')">
+                            <span class="badge bg-primary" style="min-width:28px;">
+                                <i class="bi bi-file-earmark-check"></i>
+                            </span>
+                            <span>Compliance Document Call</span>
+                            <code class="ms-auto text-muted small">/compliance_document_call</code>
+                        </button>
+
+                        <button class="btn btn-outline-success fw-semibold d-flex align-items-center gap-2"
+                                onclick="triggerCall('onboarding_call')">
+                            <span class="badge bg-success" style="min-width:28px;">
+                                <i class="bi bi-person-plus"></i>
+                            </span>
+                            <span>Onboarding Call</span>
+                            <code class="ms-auto text-muted small">/onboarding_call</code>
+                        </button>
+
+                        <button class="btn btn-outline-secondary fw-semibold d-flex align-items-center gap-2"
+                                onclick="triggerCall('professional_reference_call')">
+                            <span class="badge bg-secondary" style="min-width:28px;">
+                                <i class="bi bi-briefcase"></i>
+                            </span>
+                            <span>Professional Reference Call</span>
+                            <code class="ms-auto text-muted small">/professional_reference_call</code>
+                        </button>
+
+                    </div>
+                </div>
+
             </div>
             <div class="modal-footer border-0">
                 <button type="button" class="btn btn-outline-secondary"
@@ -165,7 +223,7 @@ async function doSearch() {
     if (!q) { clearSearch(); return; }
 
     try {
-        const res  = await fetch(`/admin/trigger_ai_call/search?q=${encodeURIComponent(q)}`);
+        const res  = await fetch(`/admin/users/search?q=${encodeURIComponent(q)}`);
         const data = await res.json();
 
         if (!data.success) {
@@ -252,7 +310,11 @@ function clearSearch() {
     document.getElementById('resultBadge').style.cssText    = 'display:none!important;';
 }
 
+let _currentUserId = null;
+
 function showUser(u) {
+    _currentUserId = u.xn_user_id || u._id;   // prefer xn_user_id as the query param
+
     const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ') || '—';
     const initials = ((u.first_name?.[0] || '') + (u.last_name?.[0] || '')).toUpperCase() || '?';
 
@@ -276,6 +338,46 @@ function showUser(u) {
     document.getElementById('modalCreated').textContent = created;
 
     new bootstrap.Modal(document.getElementById('userModal')).show();
+}
+
+const BASE_URL = window.location.origin;   // e.g. https://uat.expresshealth.ie
+
+async function triggerCall(endpoint) {
+    if (!_currentUserId) {
+        Swal.fire('Error', 'No user selected', 'error');
+        return;
+    }
+
+    const url = `${BASE_URL}/${endpoint}?user_id=${encodeURIComponent(_currentUserId)}`;
+
+    const { isConfirmed } = await Swal.fire({
+        title: 'Trigger Call?',
+        html: `<span class="text-muted small font-monospace">${url}</span>`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#667eea',
+        confirmButtonText: 'Yes, trigger it',
+        cancelButtonText: 'Cancel',
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+        const res = await fetch(url, { method: 'GET' });
+        if (res.ok) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Triggered!',
+                text: `${endpoint.replace(/_/g, ' ')} triggered successfully.`,
+                timer: 2000,
+                showConfirmButton: false
+            });
+        } else {
+            Swal.fire('Failed', `Server responded with ${res.status}: ${res.statusText}`, 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error', 'Network error – ' + err.message, 'error');
+    }
 }
 
 function copyToClipboard(elId) {
