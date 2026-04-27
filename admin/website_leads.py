@@ -10,7 +10,10 @@ import aiohttp
 import asyncio
 from datetime import timedelta
 
+import threading
+
 from .views import admin_bp, admin_required
+
 
 
 # ===============================
@@ -96,14 +99,25 @@ def update_registration_status():
     db.website_leads.aggregate(pipeline)
 
 
+
+def run_update_registration_status():
+    try:
+        update_registration_status()
+    except Exception as e:
+        current_app.logger.error(f"Background job failed: {str(e)}")
+
+
 # ===============================
 # WEBSITE LEADS LIST
 # ===============================
+
+
+
 @admin_bp.route("/website-leads")
 @admin_required
 def website_leads_list():
 
-    update_registration_status()
+    threading.Thread(target=run_update_registration_status).start()
 
     page = int(request.args.get("page", 1))
     per_page = 25
