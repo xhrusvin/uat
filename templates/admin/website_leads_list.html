@@ -108,6 +108,8 @@
                             <th>Phone</th>
                             <th>Email</th>
                             <th>Email Sent</th>
+                            <th>Link Clicked</th>
+                            <th>Registered</th>
                             <th>Location</th>
                             <th>Call Summary</th>
                             <th>Turns</th>
@@ -147,7 +149,23 @@
     {% else %}
         <span class="badge bg-warning text-dark">No</span>
     {% endif %}
+    </td>
+    <td>
+    {% if lead.link_clicked_label == 'Yes' %}
+        <span class="badge bg-success">Clicked</span>
+        {% else %}
+        <span class="badge bg-warning text-dark">No</span>
+    {% endif %}
+    </td>
+    <td>
+{% if lead.registration_completed_label == 'Yes' %}
+    <span class="badge bg-success">Done</span>
+{% else %}
+    <span class="badge bg-warning text-dark">Pending</span>
+{% endif %}
 </td>
+
+    
 
     
     <td>

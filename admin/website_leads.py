@@ -8,8 +8,12 @@ from datetime import datetime
 import os
 import aiohttp
 import asyncio
+from datetime import timedelta
+
+import threading
 
 from .views import admin_bp, admin_required
+
 
 
 # ===============================
@@ -34,14 +38,87 @@ async def fetch_audio(url, api_key):
             if resp.status != 200:
                 return None
             return await resp.read()
+        
+
+
+def update_registration_status():
+    db = current_app.db
+
+    pipeline = [
+        {
+            "$match": {
+                "email": {"$ne": None},
+                "registration_completed": {"$ne": 1}
+            }
+        },
+        {
+            "$lookup": {
+                "from": "users",
+                "let": {"lead_email": {"$toLower": "$email"}},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$eq": [
+                                    {"$toLower": "$email"},
+                                    "$$lead_email"
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "as": "matched_user"
+            }
+        },
+        {
+            "$match": {
+                "matched_user.0": {"$exists": True}
+            }
+        },
+        {
+            "$set": {
+                "registration_completed": 1,
+                "registration_completed_at": datetime.utcnow()
+            }
+        },
+        {
+            "$project": {
+                "matched_user": 0
+            }
+        },
+        {
+            "$merge": {
+                "into": "website_leads",
+                "on": "_id",
+                "whenMatched": "merge",
+                "whenNotMatched": "discard"
+            }
+        }
+    ]
+
+    db.website_leads.aggregate(pipeline)
+
+
+
+def run_update_registration_status():
+    try:
+        update_registration_status()
+    except Exception as e:
+        current_app.logger.error(f"Background job failed: {str(e)}")
 
 
 # ===============================
 # WEBSITE LEADS LIST
 # ===============================
+
+
+
 @admin_bp.route("/website-leads")
 @admin_required
 def website_leads_list():
+
+    threading.Thread(target=run_update_registration_status).start()
+
     page = int(request.args.get("page", 1))
     per_page = 25
     search = request.args.get("search", "").strip()
@@ -82,6 +159,20 @@ def website_leads_list():
                         {"$eq": ["$email_sent", 1]},
                         "Yes",
                         "Pending"
+                    ]
+                },
+                "link_clicked_label": {
+                    "$cond": [
+                        {"$eq": ["$link_clicked", 1]},
+                        "Yes",
+                        "No"
+                    ]
+                },
+                "registration_completed_label": {
+                    "$cond": [
+                        {"$eq": ["$registration_completed", 1]},
+                        "Yes",
+                        "No"
                     ]
                 }
             }

@@ -8,6 +8,10 @@ from dotenv import load_dotenv
 from pymongo import MongoClient
 from datetime import datetime
 import pytz
+from flask import request, redirect
+from bson import ObjectId
+
+
 
 from . import bp
 
@@ -186,6 +190,41 @@ def send_lead_email(first_name, last_name, dial_code, phone_number, email, lead_
             "error": str(e),
             "message": "Failed to send email. Check SMTP settings and server logs."
         }), 500
+    
+
+
+@bp.route("/track-click", methods=["GET"])
+def track_click():
+    lead_id = request.args.get("lead_id")
+
+    if not lead_id:
+        return "Invalid request: missing lead_id", 400
+
+    try:
+        result = website_leads_collection.update_one(
+            {
+                "_id": ObjectId(lead_id),
+                "link_clicked": {"$ne": 1}  # prevent duplicate updates
+            },
+            {
+                "$set": {
+                    "link_clicked": 1,
+                    "link_clicked_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat()
+                }
+            }
+        )
+
+        print(f"[TRACK CLICK] lead_id={lead_id}, updated={result.modified_count}")
+
+    except Exception as e:
+        print(f"[TRACK CLICK ERROR] {str(e)}")
+        return "Internal server error", 500
+
+    # Redirect user to actual page
+    return redirect(
+        f"https://uat.expresshealth.ie/lead-registration/set_password?id={lead_id}"
+    )
 
 
 @bp.route("/hello")
