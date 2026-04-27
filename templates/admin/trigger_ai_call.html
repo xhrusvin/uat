@@ -165,7 +165,7 @@ async function doSearch() {
     if (!q) { clearSearch(); return; }
 
     try {
-        const res  = await fetch(`/admin/users/search?q=${encodeURIComponent(q)}`);
+        const res  = await fetch(`/admin/trigger_ai_call/search?q=${encodeURIComponent(q)}`);
         const data = await res.json();
 
         if (!data.success) {
