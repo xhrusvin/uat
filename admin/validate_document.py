@@ -139,6 +139,8 @@ def validate_document():
                 ai_status = False
                 ai_reason = "No URL"
                 ai_raw_response = ""
+                user_name = u.get('name', '')
+                date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 if doc_url:
                     try:
@@ -146,11 +148,12 @@ def validate_document():
                             "document_type_code": {"$regex": doc_name, "$options": "i"}
                         })
 
-                        prompt = (
+                        base_prompt = (
                             prompt_record['prompt_text']
                             if prompt_record and prompt_record.get('prompt_text')
                             else "Analise and find document name"
                         )
+                        prompt = f"{base_prompt}\n\nName : {user_name}\nDate and time now : {date_str}"
 
                         file_resp = requests.get(doc_url, timeout=10)
                         if file_resp.status_code == 200:
