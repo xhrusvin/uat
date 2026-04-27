@@ -41,14 +41,10 @@ async def fetch_audio(url, api_key):
 def update_registration_status():
     db = current_app.db
 
-    one_min_ago = datetime.utcnow() - timedelta(minutes=1)
-
     pipeline = [
         {
             "$match": {
                 "email": {"$ne": None},
-                "email_sent": 1,
-                "email_sent_at": {"$lte": one_min_ago},
                 "registration_completed": {"$ne": 1}
             }
         },
