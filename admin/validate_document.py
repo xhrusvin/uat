@@ -140,6 +140,7 @@ def validate_document():
                 ai_reason = "No URL"
                 ai_raw_response = ""
                 user_name = u.get('name', '')
+                return jsonify(u)
                 date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 if doc_url:
