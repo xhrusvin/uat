@@ -130,6 +130,7 @@ def register_follow_up_call_routes(app):
     @app.route('/follow_up_call', methods=['GET'])
     def auto_follow_up_call():
         allowed, server_time = is_within_call_window()
+        user_id = request.args.get('user_id')
 
         response_base = {
           "server_time": server_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -148,7 +149,14 @@ def register_follow_up_call_routes(app):
           # Find users where follow-up is due: follow_up_sent is 0 (or missing) AND next_follow_up_at <= now (if exists)
         current_time = datetime.utcnow() 
 
-        query = {
+        if user_id:
+            query = {
+                "_id": ObjectId(user_id),
+                "is_admin": {"$ne": True},
+            }
+        else:
+          
+            query = {
             "is_admin": {"$ne": True},
             #"xn_user_id": {"$ne": None},
             #"call_sent": {"$ne": 0},
