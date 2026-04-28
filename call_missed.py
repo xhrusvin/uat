@@ -34,6 +34,7 @@ def register_missed_call_routes(app):
     @app.route('/call_missed', methods=['GET'])
     def call_missed_page():
         allowed, server_time = is_within_call_window()
+        user_id = request.args.get('user_id')
 
         response_base = {
             "server_time": server_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -49,7 +50,12 @@ def register_missed_call_routes(app):
             }), 200
 
         # === Within allowed time → proceed ===
-        query = {
+        if user_id:
+            query = {
+                "_id": ObjectId(user_id)
+            }
+        else:
+            query = {
             "is_admin": {"$ne": True},
             "$or": [
                 {"call_sent": 0},
