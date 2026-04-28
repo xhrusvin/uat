@@ -51,7 +51,6 @@ def register_missed_call_routes(app):
             }), 200
 
         # === Within allowed time → proceed ===
-        return user_id
         if user_id:
             query = {
                 "_id": ObjectId(user_id)

@@ -313,7 +313,7 @@ function clearSearch() {
 let _currentUserId = null;
 
 function showUser(u) {
-    _currentUserId = u.xn_user_id || u._id;   // prefer xn_user_id as the query param
+    _currentUserId = u._id;   // prefer xn_user_id as the query param
 
     const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ') || '—';
     const initials = ((u.first_name?.[0] || '') + (u.last_name?.[0] || '')).toUpperCase() || '?';
@@ -347,8 +347,8 @@ async function triggerCall(endpoint) {
         Swal.fire('Error', 'No user selected', 'error');
         return;
     }
-
-    const url = `${BASE_URL}/${endpoint}?user_id=${encodeURIComponent(_currentUserId)}`;
+    const user_id = String(_currentUserId);
+    const url = `${BASE_URL}/${endpoint}?user_id=${encodeURIComponent(user_id)}`;
 
     const { isConfirmed } = await Swal.fire({
         title: 'Trigger Call?',
