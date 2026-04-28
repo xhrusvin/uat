@@ -76,14 +76,15 @@ def register_missed_call_routes(app):
                 "message": "No users need a call (within allowed hours)."
             }), 200
 
-        user_id = user["_id"]
-        if user.get("call_sent") == 1:
+        
+        if user.get("call_sent") == 1 and not user_id:
             return jsonify({
                 **response_base,
                 "status": "already_sent",
                 "message": "Call already triggered."
             }), 200
-
+            
+        user_id = user["_id"]
         # Mark as sent
         result = app.db.users.update_one(
             {"_id": user_id},
