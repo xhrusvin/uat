@@ -2,7 +2,7 @@
 import email
 import threading
 import logging
-from flask import current_app, jsonify
+from flask import current_app, jsonify, request
 from bson import ObjectId
 from professionalreferencecall import make_professional_reference_ai_call
 from datetime import datetime
@@ -65,6 +65,7 @@ def register_professional_reference_call_routes(app):
     @app.route('/professional_reference_call', methods=['GET'])
     def auto_professional_reference_call():
         allowed, server_time = is_within_call_window()
+        user_id = request.args.get('user_id')
 
         response_base = {
           "server_time": server_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -82,7 +83,11 @@ def register_professional_reference_call_routes(app):
           # === Within allowed time → proceed ===
           # Find users where follow-up is due: follow_up_sent is 0 (or missing) AND next_follow_up_at <= now (if exists)
         current_time = datetime.utcnow() 
-        query = {
+
+        if user_id:
+            query = {"_id": ObjectId(user_id)}
+        else:
+            query = {
             "is_admin": {"$ne": True},
             "xn_user_id": {"$ne": None},
             #"call_sent": {"$ne": 0},
@@ -96,6 +101,8 @@ def register_professional_reference_call_routes(app):
           query,
           sort=[("next_follow_up_at", 1)]  # Oldest due first (ascending)
           )
+
+        
 
         if not user:
             return jsonify({

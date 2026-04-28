@@ -88,6 +88,8 @@ def register_compliance_doc_call_routes(app):
           sort=[("compliance_documents_status", 1)]  # Oldest due first (ascending)
           )
 
+        
+
         if not user:
         # Optional: fallback message if no follow-up due
           return jsonify({
@@ -95,6 +97,13 @@ def register_compliance_doc_call_routes(app):
               "status": "no_pending",
             "message": "No users need a compliance document call at this time."
           }), 200
+
+        if not user['xn_user_id']:
+            return jsonify({
+                **response_base,
+                "status": "no_xn_user_id",
+                "message": "User does not have an xn_user_id."
+            }), 200
 
         user_id = user["_id"]
         xn_user_id = user.get("xn_user_id")

@@ -49,6 +49,7 @@ def register_onboarding_call_routes(app):
     @app.route('/onboarding_call', methods=['GET'])
     def auto_onboarding_call():
         allowed, server_time = is_within_call_window()
+        user_id = request.args.get('user_id')
 
         response_base = {
           "server_time": server_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -76,7 +77,11 @@ def register_onboarding_call_routes(app):
           # === Within allowed time → proceed ===
           # Find users where follow-up is due: follow_up_sent is 0 (or missing) AND next_follow_up_at <= now (if exists)
         current_time = datetime.utcnow() 
-        query = {
+        
+        if user_id:
+            query = {"_id": ObjectId(user_id)}
+        else:
+            query = {
             "is_admin": {"$ne": True},
             #"xn_user_id": {"$ne": None},
             # call_sent": {"$ne": 0},
@@ -99,6 +104,13 @@ def register_onboarding_call_routes(app):
               "status": "no_pending",
             "message": "No users need a compliance document call at this time."
           }), 200
+
+        if not user['xn_user_id']:
+            return jsonify({
+                **response_base,
+                "status": "no_xn_user_id",
+                "message": "User does not have an xn_user_id."
+            }), 200
 
         user_id = user["_id"]
         xn_user_id = user.get("xn_user_id")
