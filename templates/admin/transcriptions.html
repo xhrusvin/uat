@@ -58,6 +58,7 @@
                             <th>Designation</th>
                             <th>Country</th>
                             <th>Status</th>
+                            <th>Email</th>
                             <th>Summary</th>
                             <th>Time</th>
                             <th class="text-end pe-4">Date</th>
@@ -119,7 +120,14 @@
         <span class="text-warning fw-bold">Ongoing</span>
     {% endif %}
 </td>
-                            <td>
+<td>
+    {% if c.garda_email_sent == 1 %}
+        <span class="badge bg-success">Sent</span>
+    {% else %}
+        <span class="badge bg-warning">Not Sent</span>
+    {% endif %}
+</td>
+<td>
                          
     {% if c.elevenlabs_conversation_id %}
     <button class="btn btn-sm btn-outline-info rounded-circle info-btn mt-1"
