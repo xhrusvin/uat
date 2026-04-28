@@ -1,7 +1,7 @@
 # follow_up_call.py
 import threading
 import logging
-from flask import current_app, jsonify
+from flask import current_app, jsonify, request
 from bson import ObjectId
 from compliancedocumentcall import make_compliance_document_ai_call
 from datetime import datetime
@@ -49,6 +49,7 @@ def register_compliance_doc_call_routes(app):
     @app.route('/compliance_document_call', methods=['GET'])
     def auto_compliance_document_call():
         allowed, server_time = is_within_call_window()
+        user_id = request.args.get('user_id')
 
         response_base = {
           "server_time": server_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -66,7 +67,13 @@ def register_compliance_doc_call_routes(app):
           # === Within allowed time → proceed ===
           # Find users where follow-up is due: follow_up_sent is 0 (or missing) AND next_follow_up_at <= now (if exists)
         current_time = datetime.utcnow() 
-        query = {
+        if user_id:
+            query = {
+                "is_admin": {"$ne": True},
+                "_id": ObjectId(user_id)
+            }
+        else:
+            query = {
             "is_admin": {"$ne": True},
             #"xn_user_id": {"$ne": None},
             #"call_sent": {"$ne": 0},
