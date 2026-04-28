@@ -1,7 +1,7 @@
 # follow_up_call.py
 import threading
 import logging
-from flask import current_app, jsonify
+from flask import current_app, jsonify, request
 from bson import ObjectId
 from followupcall import make_followup_ai_call
 from datetime import datetime
