@@ -1,10 +1,11 @@
 # call_missed.py
 import threading
 import logging
-from flask import current_app, jsonify
+from flask import current_app, jsonify, request
 from bson import ObjectId
 from registration import make_ai_call
 from datetime import datetime
+
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
