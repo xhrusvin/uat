@@ -316,6 +316,12 @@ select.parsley-success {
         </a>
     </div>
 
+    <a class="nav-link {% if request.path.startswith('/admin/trigger_ai_call') %}active{% endif %}"
+       href="{{ url_for('admin.trigger_ai_call') }}">
+        <i class="bi bi-telephone"></i>
+        <span>Trigger AI Call</span>
+    </a>
+
     <a class="nav-link {% if request.path.startswith('/admin/prompts') %}active{% endif %}"
        href="{{ url_for('admin.prompts') }}">
         <i class="bi bi-chat-dots"></i>
