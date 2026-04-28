@@ -17,7 +17,8 @@ DB_NAME = os.getenv('DB_NAME')
 USER_EXTERNAL_API_KEY = os.getenv('XN_PORTAL_WEBHOOK_KEY')
 APP_COUNTRY = os.getenv('XN_APP_COUNTRY', 'ie')
 
-VALIDATE_DOCUMENT_URL = "https://uat.expresshealth.ie/admin/validate_document"
+WEB_URL = os.getenv('WEB_URL')
+VALIDATE_DOCUMENT_URL = f"{WEB_URL}/admin/validate_document"
 
 if not all([MONGO_URI, DB_NAME]):
     raise ValueError("Required env vars missing (MONGO_URI, DB_NAME)")

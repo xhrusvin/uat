@@ -58,8 +58,6 @@ def register_onboarding_call_routes(app):
        }
         
 
-        
-
         if not allowed:
             return jsonify({
                 **response_base,
