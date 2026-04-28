@@ -58,14 +58,7 @@ def register_onboarding_call_routes(app):
        }
         
 
-        xnid = request.args.get("xnid")
-
-        if not xnid:
-            return jsonify({
-                **response_base,
-                "status": "missing_param",
-                "message": "xnid query parameter is required"
-            }), 400
+        
 
         if not allowed:
             return jsonify({
