@@ -42,7 +42,6 @@
                             <th>Email</th>
                             <th>Phone</th>
                             <th>Designation</th>
-                            <th class="text-center">Status</th>
                             <th class="text-center">Action</th>
                         </tr>
                     </thead>
@@ -277,11 +276,6 @@ function renderResults(users, q) {
             <td class="text-muted small">${highlight(u.email || '—', q)}</td>
             <td class="text-muted small font-monospace">${highlight(u.phone || '—', q)}</td>
             <td><span class="badge bg-secondary rounded-pill px-2">${u.designation || '—'}</span></td>
-            <td class="text-center">
-                <span class="badge ${u.call_sent ? 'bg-success' : 'bg-secondary'} rounded-pill px-3">
-                    ${u.call_sent ? 'Called' : 'Pending'}
-                </span>
-            </td>
             <td class="text-center">
                 <button class="btn btn-outline-primary btn-sm rounded-pill px-3"
                         onclick='showUser(${JSON.stringify(u)})'>
