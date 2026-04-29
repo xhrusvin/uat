@@ -1344,7 +1344,8 @@ document.addEventListener('click', async (e) => {
     modal.show();
 
     try {
-        const res = await fetch(`/admin/api/user-documents/accepted?lead_id=${userId}`);
+        // const res = await fetch(`/admin/api/user-documents/accepted?lead_id=${userId}`);
+        const res = await fetch(`/admin/api/user-documents/list?lead_id=${userId}`);
         const result = await res.json();
 
         console.log("API RESULT:", result);
@@ -1360,29 +1361,48 @@ document.addEventListener('click', async (e) => {
 
         result.documents.forEach(doc => {
 
-            const name = doc.document_type || '—';
+    const name = doc.document_type_name || '—';
 
-            // 🔥 Map status correctly
-            let statusText = 'Pending';
-            let statusClass = 'bg-secondary';
+    const verification = doc.verification || {};
 
-            if (doc.status === 'completed') {
-                statusText = 'Validated';
-                statusClass = 'bg-success';
-            } else if (doc.status === 'failed') {
-                statusText = 'Rejected';
-                statusClass = 'bg-danger';
-            }
+    const status = (verification.status || "Pending").toLowerCase();
+    const reason = verification.failed_reason || "";
 
-            const row = document.createElement('tr');
+    let statusText = "Pending";
+    let statusClass = "bg-secondary";
 
-            row.innerHTML = `
-                <td>${name}</td>
-                <td><span class="badge ${statusClass}">${statusText}</span></td>
-            `;
+    if (status === "approved") {
+        statusText = "Approved";
+        statusClass = "bg-success";
+    } else if (status === "failed" || status === "rejected") {
+        statusText = "Rejected";
+        statusClass = "bg-danger";
+    }
 
-            tbody.appendChild(row);
-        });
+    const row = document.createElement('tr');
+
+    row.innerHTML = `
+        <td>${name}</td>
+
+        <td class="text-end">
+            <div class="d-flex justify-content-end align-items-center gap-2">
+
+                <span class="badge ${statusClass}">
+                    ${statusText}
+                </span>
+
+                ${reason ? `
+                    <small class="text-danger">
+                        ${reason}
+                    </small>
+                ` : ""}
+
+            </div>
+        </td>
+    `;
+
+    tbody.appendChild(row);
+});
 
     } catch (err) {
         console.error(err);
