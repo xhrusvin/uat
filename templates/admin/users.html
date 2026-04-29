@@ -2836,31 +2836,26 @@ async function loadDocumentsAccepted(userId) {
 
 
         function getStatusClass(status) {
+
+            if (status === true) return 'bg-success';
+            if (status === false) return 'bg-danger';
+            if (status === "No document") return 'bg-dark';
+
             switch ((status || '').toLowerCase()) {
-                case 'completed':
-                    return 'bg-success';        // green
                 case 'pending':
-                    return 'bg-warning text-dark'; // yellow
-                case 'rejected':
-                    return 'bg-danger';         // red
-                case 'in_progress':
-                    return 'bg-primary';        // blue
+                    return 'bg-warning text-dark';
                 default:
-                    return 'bg-secondary';      // grey
+                    return 'bg-secondary';
             }
         }
 
         function formatStatus(status) {
-            if (!status) return 'Unknown';
 
-            const normalized = status.toLowerCase();
+            if (status === true) return 'Accepted';
+            if (status === false) return 'Rejected';
+            if (status === "No document") return 'No Document';
 
-            
-            if (normalized === 'completed') return 'Accepted';
-
-            return normalized
-                .replace('_', ' ')
-                .replace(/\b\w/g, c => c.toUpperCase());
+            return 'Pending';
         }
 
 
@@ -2880,10 +2875,23 @@ async function loadDocumentsAccepted(userId) {
             tbody.innerHTML += `
                 <tr>
                     <td>${formatDocumentName(doc.document_type)}</td>
-                    <td>
-                        <span class="badge ${statusClass}">
-                            ${formatStatus(doc.status)}
-                        </span>
+                    <td class="text-end">
+                        <div class="d-flex flex-column align-items-end">
+
+                            <!-- Status -->
+                            <span class="badge ${statusClass} px-3 py-2 mb-1">
+                                ${formatStatus(doc.status)}
+                            </span>
+
+                            <!-- Reason (only if rejected/failed) -->
+                            ${reason ? `
+                                <small class="text-danger opacity-75"
+                                    style="max-width:220px; text-align:right;">
+                                    ${reason}
+                                </small>
+                            ` : ""}
+
+                        </div>
                     </td>
                     <td>${doc.updated_at}</td>
                     <td>${doc.url ? `<a href="${doc.url}" target="_blank">View</a>` : '-'}</td>
