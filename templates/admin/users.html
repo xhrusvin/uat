@@ -359,17 +359,24 @@
 <!--   USER DETAIL MODAL     -->
 <!-- ======================= -->
 <div class="modal fade" id="userDetailModal" tabindex="-1" aria-labelledby="userDetailModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable user-modal">
     <div class="modal-content rounded-4 shadow-lg border-0">
 
-      <div class="modal-header text-white border-0"
-           style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-        <h5 class="modal-title fw-bold" id="userDetailModalLabel">
-          <i class="bi bi-person-circle me-2"></i>
-          User Details &amp; Call Transcript
-        </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
+      <div class="modal-header user-modal-header border-0">
+
+        <div class="d-flex align-items-center gap-3">
+            <div class="avatar-lg bg-white text-primary rounded-circle d-flex align-items-center justify-content-center fw-bold shadow-sm">
+            <span id="ud-initials">U</span>
+            </div>
+
+            <div>
+            <h5 class="mb-0 fw-bold">User Details</h5>
+            <small class="opacity-75">Call transcripts & activity</small>
+            </div>
+        </div>
+
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
 
       <div class="modal-body" id="userDetailBody">
 
@@ -1205,6 +1212,46 @@
     justify-content: center;
     padding: 0;
 }
+
+.user-modal {
+    max-width: 95vw;
+}
+
+@media (min-width: 1400px) {
+    .user-modal {
+        max-width: 1400px;
+    }
+}
+
+
+.user-modal-header {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    padding: 16px 24px;
+}
+
+.avatar-lg {
+    width: 48px;
+    height: 48px;
+    font-size: 1.2rem;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 </style>
 {% endblock %}
 
