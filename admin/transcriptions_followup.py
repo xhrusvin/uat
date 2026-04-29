@@ -75,6 +75,7 @@ def _format_conv(conv):
     conv['designation'] = safe_str(user.get('designation'), '-')
     conv['country'] = safe_str(user.get('country'), '-')
     conv['call_status'] = safe_str(conv.get('call_status'), '—')
+    conv['follow_up_sent'] = user.get('follow_up_sent')
 
     # === DATE FORMATTING (also make safe) ===
     try:
@@ -134,7 +135,8 @@ def _format_conv(conv):
         'ended_at': conv['ended_at'],
         'turns': conv['turns'],
         'elevenlabs_conversation_id': elevenlabs_id,
-        'has_audio': bool(elevenlabs_id)
+        'has_audio': bool(elevenlabs_id),
+        'follow_up_sent': conv.get('follow_up_sent'),
     }
 
 
@@ -279,6 +281,7 @@ def followup_tr():
             "user_info.email": 1,
             "user_info.designation": 1,
             "user_info.country": 1,
+            "user_info.follow_up_sent": 1,
         }
     })
 

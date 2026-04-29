@@ -561,6 +561,7 @@ def _format_conv(conv):
     conv['designation'] = safe_str(user.get('designation'), '-')
     conv['country'] = safe_str(user.get('country'), '-')
     conv['call_status'] = safe_str(conv.get('call_status'), '—')
+    conv['garda_email_sent'] = user.get('garda_email_sent')
 
     # === DATE FORMATTING (also make safe) ===
     try:
@@ -620,7 +621,8 @@ def _format_conv(conv):
         'ended_at': conv['ended_at'],
         'turns': conv['turns'],
         'elevenlabs_conversation_id': elevenlabs_id,
-        'has_audio': bool(elevenlabs_id)
+        'has_audio': bool(elevenlabs_id),
+        'garda_email_sent': conv.get('garda_email_sent'),
     }
 
 
@@ -763,6 +765,7 @@ def transcriptions():
             "user_info.email": 1,
             "user_info.designation": 1,
             "user_info.country": 1,
+            "user_info.garda_email_sent": 1
         }
     })
 

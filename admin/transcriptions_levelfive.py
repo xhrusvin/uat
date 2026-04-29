@@ -68,6 +68,7 @@ def _format_conv(conv):
 
     first_name = safe_str(user.get('first_name'))
     last_name  = safe_str(user.get('last_name'))
+    professional_reference_call_sent = user.get('professional_reference_call_sent', 0)
 
     full_name = " ".join(filter(None, [first_name, last_name])).strip()
     conv['name'] = full_name or "Unknown User"
@@ -75,6 +76,7 @@ def _format_conv(conv):
     conv['designation'] = safe_str(user.get('designation'), '-')
     conv['country'] = safe_str(user.get('country'), '-')
     conv['call_status'] = safe_str(conv.get('call_status'), '—')
+    conv['professional_reference_call_sent'] = int(professional_reference_call_sent or 0)
 
     # === DATE FORMATTING (also make safe) ===
     try:
@@ -134,7 +136,8 @@ def _format_conv(conv):
         'ended_at': conv['ended_at'],
         'turns': conv['turns'],
         'elevenlabs_conversation_id': elevenlabs_id,
-        'has_audio': bool(elevenlabs_id)
+        'has_audio': bool(elevenlabs_id),
+        'professional_reference_call_sent': conv.get('professional_reference_call_sent', 0)
     }
 
 
@@ -281,6 +284,7 @@ def level_five_tr():
             "user_info.email": 1,
             "user_info.designation": 1,
             "user_info.country": 1,
+            "user_info.professional_reference_call_sent": 1 
         }
     })
 

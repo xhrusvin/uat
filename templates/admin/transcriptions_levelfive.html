@@ -58,6 +58,7 @@
                             <th>Designation</th>
                             <th>Country</th>
                             <th>Status</th>
+                            <th>Email</th>
                             <th>Summary</th>
                             <th>Time</th>
                             <th class="text-end pe-4">Date</th>
@@ -74,6 +75,7 @@
                             data-ended="{{ c.ended_at }}"
                             data-call-status="{{ c.call_status }}"
                             data-turn-count="{{ c.turn_count }}"
+                            data-pr-call="{{ c.professional_reference_call_sent }}
                             data-elevenlabs-id="{{ c.elevenlabs_conversation_id or '' }}">
                             <td class="ps-4 fw-bold text-primary">{{ c.phone }}</td>
                             <td>
@@ -111,11 +113,24 @@
             <span class="text-success fw-bold">{{ c.call_status }}</span>
         
         {% endif %}
+
+        
     
     {% else %}
         <span class="text-warning fw-bold">Ongoing</span>
     {% endif %}
 </td>
+<td>
+{% if c.professional_reference_call_sent == 1 %}
+            <div class="small text-success mt-1">
+                <span class="badge bg-success mt-1">Send</span>
+            </div>
+        {% else %}
+            <div class="small text-muted mt-1">
+                <span class="badge bg-warning">Not Send</span>
+            </div>
+        {% endif %}
+        </td>
                             <td>
                          
     {% if c.elevenlabs_conversation_id %}
