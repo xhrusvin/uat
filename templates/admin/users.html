@@ -1383,24 +1383,28 @@ document.addEventListener('click', async (e) => {
         const row = document.createElement('tr');
 
         row.innerHTML = `
-            <td>${name}</td>
+    <td>
+        <div class="fw-semibold">${name}</div>
+    </td>
 
-            <td class="text-end">
-                <div class="d-flex justify-content-end align-items-center gap-2">
+    <td class="text-end">
+        <div class="d-flex flex-column align-items-end">
 
-                    <span class="badge ${statusClass}">
-                        ${statusText}
-                    </span>
+            <!-- Status -->
+            <span class="badge ${statusClass} px-3 py-2 mb-1">
+                ${statusText}
+            </span>
 
-                    ${reason ? `
-                        <small class="text-danger">
-                            ${reason}
-                        </small>
-                    ` : ""}
+            <!-- Reason -->
+            ${reason ? `
+                <small class="text-muted" style="max-width:220px; text-align:right;">
+                    ${reason}
+                </small>
+            ` : ""}
 
-                </div>
-            </td>
-        `;
+        </div>
+    </td>
+`;
 
         tbody.appendChild(row);
 });
