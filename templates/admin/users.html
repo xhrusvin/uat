@@ -381,24 +381,37 @@
       <div class="modal-body" id="userDetailBody">
 
         <!-- ── Meta Info Row ── -->
-        <div class="row g-4 mb-4">
-          <div class="col-md-3">
-            <small class="text-muted">Name</small>
-            <h6 class="mb-0 fw-bold" id="ud-name">—</h6>
-          </div>
-          <div class="col-md-3">
-            <small class="text-muted">Email</small>
-            <h6 class="mb-0 fw-semibold text-primary" id="ud-email">—</h6>
-          </div>
-          <div class="col-md-3">
-            <small class="text-muted">Phone</small>
-            <h6 class="mb-0 fw-bold text-primary" id="ud-phone">—</h6>
-          </div>
-          <div class="col-md-3">
-            <small class="text-muted">Country</small>
-            <h6 class="mb-0" id="ud-country">—</h6>
-          </div>
-        </div>
+        <div class="row g-3 mb-4">
+
+            <div class="col-md-3">
+                <div class="info-card">
+                <small>Name</small>
+                <div id="ud-name" class="fw-bold">—</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="info-card">
+                <small>Email</small>
+                <div id="ud-email" class="text-primary fw-semibold">—</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="info-card">
+                <small>Phone</small>
+                <div id="ud-phone">—</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="info-card">
+                <small>Country</small>
+                <div id="ud-country">—</div>
+                </div>
+            </div>
+
+            </div>
 
         <!-- ── Tabs ── -->
         <ul class="nav nav-tabs px-4 border-bottom" id="userDetailTabs" role="tablist">
@@ -1237,10 +1250,81 @@
 }
 
 
+.info-card {
+    background: #f8f9ff;
+    border-radius: 12px;
+    padding: 12px 14px;
+    border: 1px solid #eef0ff;
+    transition: 0.2s;
+}
+
+.info-card:hover {
+    background: #eef2ff;
+}
+
+.nav-tabs {
+    border-bottom: none;
+}
+
+.nav-tabs .nav-link {
+    border: none;
+    border-radius: 10px;
+    padding: 8px 14px;
+    margin-right: 6px;
+    color: #555;
+    transition: 0.2s;
+}
+
+.nav-tabs .nav-link:hover {
+    background: #f1f3ff;
+}
+
+.nav-tabs .nav-link.active {
+    background: #667eea;
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
 
 
+.turn-bubble {
+    padding: 10px 14px;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    max-width: 80%;
+    font-size: 0.9rem;
+    animation: fadeSlideIn 0.2s ease;
+}
+
+.turn-user {
+    background: #667eea;
+    color: white;
+    margin-left: auto;
+}
+
+.turn-ai {
+    background: #f1f3f9;
+    color: #333;
+}
 
 
+#ud-brief-summary {
+    position: sticky;
+    top: 10px;
+}
+
+.modal-body {
+    padding: 24px 28px;
+}
+
+
+.modal-content {
+    animation: fadeUp 0.25s ease;
+}
+
+@keyframes fadeUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
 
 
 
