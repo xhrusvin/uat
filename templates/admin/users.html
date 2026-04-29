@@ -2871,6 +2871,7 @@ async function loadDocumentsAccepted(userId) {
         data.documents.forEach(doc => {
 
             const statusClass = getStatusClass(doc.status);
+            const reason = doc.ai_reason || ""; 
 
             tbody.innerHTML += `
                 <tr>
