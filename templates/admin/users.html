@@ -1344,8 +1344,8 @@ document.addEventListener('click', async (e) => {
     modal.show();
 
     try {
-        // const res = await fetch(`/admin/api/user-documents/accepted?lead_id=${userId}`);
-        const res = await fetch(`/admin/api/user-documents/list?lead_id=${userId}`);
+        
+        const res = await fetch(`/admin/api/user-documents/accepted?lead_id=${userId}`);
         const result = await res.json();
 
         console.log("API RESULT:", result);
@@ -1359,49 +1359,50 @@ document.addEventListener('click', async (e) => {
 
         wrapper.classList.remove('d-none');
 
-        result.documents.forEach(doc => {
+    result.documents.forEach(doc => {
 
-    const name = doc.document_type_name || '—';
+        const name = doc.doc_name || '—';
+        const reason = doc.ai_reason || "";
 
-    const verification = doc.verification || {};
+        let statusText = "Pending";
+        let statusClass = "bg-secondary";
 
-    const status = (verification.status || "Pending").toLowerCase();
-    const reason = verification.failed_reason || "";
+        if (doc.status === true) {
+            statusText = "Approved";
+            statusClass = "bg-success";
+        } 
+        else if (doc.status === false) {
+            statusText = "Rejected";
+            statusClass = "bg-danger";
+        } 
+        else if (doc.status === "No document") {
+            statusText = "No Document";
+            statusClass = "bg-dark";
+        }
 
-    let statusText = "Pending";
-    let statusClass = "bg-secondary";
+        const row = document.createElement('tr');
 
-    if (status === "approved") {
-        statusText = "Approved";
-        statusClass = "bg-success";
-    } else if (status === "failed" || status === "rejected") {
-        statusText = "Rejected";
-        statusClass = "bg-danger";
-    }
+        row.innerHTML = `
+            <td>${name}</td>
 
-    const row = document.createElement('tr');
+            <td class="text-end">
+                <div class="d-flex justify-content-end align-items-center gap-2">
 
-    row.innerHTML = `
-        <td>${name}</td>
+                    <span class="badge ${statusClass}">
+                        ${statusText}
+                    </span>
 
-        <td class="text-end">
-            <div class="d-flex justify-content-end align-items-center gap-2">
+                    ${reason ? `
+                        <small class="text-danger">
+                            ${reason}
+                        </small>
+                    ` : ""}
 
-                <span class="badge ${statusClass}">
-                    ${statusText}
-                </span>
+                </div>
+            </td>
+        `;
 
-                ${reason ? `
-                    <small class="text-danger">
-                        ${reason}
-                    </small>
-                ` : ""}
-
-            </div>
-        </td>
-    `;
-
-    tbody.appendChild(row);
+        tbody.appendChild(row);
 });
 
     } catch (err) {
