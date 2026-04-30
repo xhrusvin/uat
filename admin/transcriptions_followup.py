@@ -50,7 +50,7 @@ def _format_conv(conv):
     if XN_APP_COUNTRY == "ie":
         tz = pytz.timezone("Europe/Dublin")   # Ireland time
     else:
-        tz = pytz.timezone("Asia/Kolkata")    # India time
+        tz = pytz.timezone("UTC")    # India time
     
     conv_id = str(conv.get('_id', ''))
     conv['conv_id'] = conv_id
