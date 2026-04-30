@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import pytz
 from pymongo import MongoClient
-from location_lookup_autoaddress import _extract_location
+from .location_lookup_autoaddress import _extract_location
 load_dotenv()
 
 # ==================== BLUEPRINT ====================
