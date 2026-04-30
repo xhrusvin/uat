@@ -149,7 +149,7 @@ def validate_document():
                 if doc_url:
                     try:
                         prompt_record = current_app.db.prompts.find_one({
-                            "document_type_code": {"$regex": doc_name, "$options": "i"}
+                            "document_type_code": {"$regex": re.escape(doc_name), "$options": "i"}
                         })
 
                         base_prompt = (

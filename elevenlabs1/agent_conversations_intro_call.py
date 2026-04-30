@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import pytz
 from pymongo import MongoClient
-
+from location_lookup_autoaddress import _extract_location
 load_dotenv()
 
 # ==================== BLUEPRINT ====================
@@ -41,6 +41,7 @@ db = client[DB_NAME]
 
 leads_collection = db["website_leads"]          # CLEAN CRM DATA
 conversations_collection = db["conversations"]  # UI TRANSCRIPTS ONLY
+users = db["users"]
 
 # ==================== CONSTANTS ====================
 CALL_STATUS_VALUES = {
@@ -155,15 +156,35 @@ def sync_agent_conversations_intro_call():
                 dc_map = extract_data_collection_map(dc_results)
 
                 call_status_val = dc_map.get("call_status")   # ← NEW
+                eir_code_val = dc_map.get("eir_code")
+                if eir_code_val:
+                     eir_code_val = eir_code_val.strip()
+                     try:
+                       resolved = _resolve(eir_code_val)
+                       if resolved:
+                          location = _extract_location(resolved)
+                          # Use location fields as needed, e.g.:
+                          # location["formatted_address"], location["lat"], location["lng"], etc.
+                     except Exception:
+                        location = None
+
+
 
                 # ==================== website_leads_conv (UI Transcript) ====================
                 conv_doc = {
-                    "call_status": call_status_val,           # ← ADDED AS REQUESTED
+                    "call_status": call_status_val
                 }
 
                 conversations_collection.update_one(
                     {"elevenlabs_conversation_id": conversation_id},     # or {"elevenlabs_conversation_id": conversation_id} if you prefer
                     {"$set": conv_doc}
+                )
+
+                address = location["formatted_address"] if location else None
+
+                users.update_one(
+                    {"last_elevenlabs_conversation_id": conversation_id},
+                    {"$set": {"address": address}}
                 )
 
                 processed += 1
