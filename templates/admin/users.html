@@ -359,39 +359,59 @@
 <!--   USER DETAIL MODAL     -->
 <!-- ======================= -->
 <div class="modal fade" id="userDetailModal" tabindex="-1" aria-labelledby="userDetailModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable user-modal">
     <div class="modal-content rounded-4 shadow-lg border-0">
 
-      <div class="modal-header text-white border-0"
-           style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-        <h5 class="modal-title fw-bold" id="userDetailModalLabel">
-          <i class="bi bi-person-circle me-2"></i>
-          User Details &amp; Call Transcript
-        </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
+      <div class="modal-header user-modal-header border-0">
+
+        <div class="d-flex align-items-center gap-3">
+            <div class="avatar-lg bg-white text-primary rounded-circle d-flex align-items-center justify-content-center fw-bold shadow-sm">
+            <span id="ud-initials">U</span>
+            </div>
+
+            <div>
+            <h5 class="mb-0 fw-bold">User Details</h5>
+            <small class="opacity-75">Call transcripts & activity</small>
+            </div>
+        </div>
+
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
 
       <div class="modal-body" id="userDetailBody">
 
         <!-- ── Meta Info Row ── -->
-        <div class="row g-4 mb-4">
-          <div class="col-md-3">
-            <small class="text-muted">Name</small>
-            <h6 class="mb-0 fw-bold" id="ud-name">—</h6>
-          </div>
-          <div class="col-md-3">
-            <small class="text-muted">Email</small>
-            <h6 class="mb-0 fw-semibold text-primary" id="ud-email">—</h6>
-          </div>
-          <div class="col-md-3">
-            <small class="text-muted">Phone</small>
-            <h6 class="mb-0 fw-bold text-primary" id="ud-phone">—</h6>
-          </div>
-          <div class="col-md-3">
-            <small class="text-muted">Country</small>
-            <h6 class="mb-0" id="ud-country">—</h6>
-          </div>
-        </div>
+        <div class="row g-3 mb-4">
+
+            <div class="col-md-3">
+                <div class="info-card">
+                <small>Name</small>
+                <div id="ud-name" class="fw-bold">—</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="info-card">
+                <small>Email</small>
+                <div id="ud-email" class="text-primary fw-semibold">—</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="info-card">
+                <small>Phone</small>
+                <div id="ud-phone">—</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="info-card">
+                <small>Country</small>
+                <div id="ud-country">—</div>
+                </div>
+            </div>
+
+            </div>
 
         <!-- ── Tabs ── -->
         <ul class="nav nav-tabs px-4 border-bottom" id="userDetailTabs" role="tablist">
@@ -1205,6 +1225,117 @@
     justify-content: center;
     padding: 0;
 }
+
+.user-modal {
+    max-width: 95vw;
+}
+
+@media (min-width: 1400px) {
+    .user-modal {
+        max-width: 1400px;
+    }
+}
+
+
+.user-modal-header {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    padding: 16px 24px;
+}
+
+.avatar-lg {
+    width: 48px;
+    height: 48px;
+    font-size: 1.2rem;
+}
+
+
+.info-card {
+    background: #f8f9ff;
+    border-radius: 12px;
+    padding: 12px 14px;
+    border: 1px solid #eef0ff;
+    transition: 0.2s;
+}
+
+.info-card:hover {
+    background: #eef2ff;
+}
+
+.nav-tabs {
+    border-bottom: none;
+}
+
+.nav-tabs .nav-link {
+    border: none;
+    border-radius: 10px;
+    padding: 8px 14px;
+    margin-right: 6px;
+    color: #555;
+    transition: 0.2s;
+}
+
+.nav-tabs .nav-link:hover {
+    background: #f1f3ff;
+}
+
+.nav-tabs .nav-link.active {
+    background: #667eea;
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+
+.turn-bubble {
+    padding: 10px 14px;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    max-width: 80%;
+    font-size: 0.9rem;
+    animation: fadeSlideIn 0.2s ease;
+}
+
+.turn-user {
+    background: #667eea;
+    color: white;
+    margin-left: auto;
+}
+
+.turn-ai {
+    background: #f1f3f9;
+    color: #333;
+}
+
+
+#ud-brief-summary {
+    position: sticky;
+    top: 10px;
+}
+
+.modal-body {
+    padding: 24px 28px;
+}
+
+
+.modal-content {
+    animation: fadeUp 0.25s ease;
+}
+
+@keyframes fadeUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+
+
+
+
+
+
+
+
+
+
+
 </style>
 {% endblock %}
 
@@ -1344,6 +1475,7 @@ document.addEventListener('click', async (e) => {
     modal.show();
 
     try {
+        
         const res = await fetch(`/admin/api/user-documents/accepted?lead_id=${userId}`);
         const result = await res.json();
 
@@ -1358,31 +1490,55 @@ document.addEventListener('click', async (e) => {
 
         wrapper.classList.remove('d-none');
 
-        result.documents.forEach(doc => {
+    result.documents.forEach(doc => {
 
-            const name = doc.document_type || '—';
+        const name = doc.doc_name || '—';
+        const reason = doc.ai_reason || "";
 
-            // 🔥 Map status correctly
-            let statusText = 'Pending';
-            let statusClass = 'bg-secondary';
+        let statusText = "Pending";
+        let statusClass = "bg-secondary";
 
-            if (doc.status === 'completed') {
-                statusText = 'Validated';
-                statusClass = 'bg-success';
-            } else if (doc.status === 'failed') {
-                statusText = 'Rejected';
-                statusClass = 'bg-danger';
-            }
+        if (doc.status === true) {
+            statusText = "Approved";
+            statusClass = "bg-success";
+        } 
+        else if (doc.status === false) {
+            statusText = "Rejected";
+            statusClass = "bg-danger";
+        } 
+        else if (doc.status === "No document") {
+            statusText = "No Document";
+            statusClass = "bg-dark";
+        }
 
-            const row = document.createElement('tr');
+        const row = document.createElement('tr');
 
-            row.innerHTML = `
-                <td>${name}</td>
-                <td><span class="badge ${statusClass}">${statusText}</span></td>
-            `;
+        row.innerHTML = `
+    <td>
+        <div class="fw-semibold">${name}</div>
+    </td>
 
-            tbody.appendChild(row);
-        });
+    <td class="text-end">
+        <div class="d-flex flex-column align-items-end">
+
+            <!-- Status -->
+            <span class="badge ${statusClass} px-3 py-2 mb-1">
+                ${statusText}
+            </span>
+
+            <!-- Reason -->
+            ${reason ? `
+                <small class="text-muted" style="max-width:220px; text-align:right;">
+                    ${reason}
+                </small>
+            ` : ""}
+
+        </div>
+    </td>
+`;
+
+        tbody.appendChild(row);
+});
 
     } catch (err) {
         console.error(err);
@@ -2811,31 +2967,26 @@ async function loadDocumentsAccepted(userId) {
 
 
         function getStatusClass(status) {
+
+            if (status === true) return 'bg-success';
+            if (status === false) return 'bg-danger';
+            if (status === "No document") return 'bg-dark';
+
             switch ((status || '').toLowerCase()) {
-                case 'completed':
-                    return 'bg-success';        // green
                 case 'pending':
-                    return 'bg-warning text-dark'; // yellow
-                case 'rejected':
-                    return 'bg-danger';         // red
-                case 'in_progress':
-                    return 'bg-primary';        // blue
+                    return 'bg-warning text-dark';
                 default:
-                    return 'bg-secondary';      // grey
+                    return 'bg-secondary';
             }
         }
 
         function formatStatus(status) {
-            if (!status) return 'Unknown';
 
-            const normalized = status.toLowerCase();
+            if (status === true) return 'Accepted';
+            if (status === false) return 'Rejected';
+            if (status === "No document") return 'No Document';
 
-            
-            if (normalized === 'completed') return 'Accepted';
-
-            return normalized
-                .replace('_', ' ')
-                .replace(/\b\w/g, c => c.toUpperCase());
+            return 'Pending';
         }
 
 
@@ -2851,14 +3002,28 @@ async function loadDocumentsAccepted(userId) {
         data.documents.forEach(doc => {
 
             const statusClass = getStatusClass(doc.status);
+            const reason = doc.ai_reason || ""; 
 
             tbody.innerHTML += `
                 <tr>
                     <td>${formatDocumentName(doc.document_type)}</td>
-                    <td>
-                        <span class="badge ${statusClass}">
-                            ${formatStatus(doc.status)}
-                        </span>
+                    <td class="text-end">
+                        <div class="d-flex flex-column align-items-end">
+
+                            <!-- Status -->
+                            <span class="badge ${statusClass} px-3 py-2 mb-1">
+                                ${formatStatus(doc.status)}
+                            </span>
+
+                            <!-- Reason (only if rejected/failed) -->
+                            ${reason ? `
+                                <small class="text-danger opacity-75"
+                                    style="max-width:220px; text-align:right;">
+                                    ${reason}
+                                </small>
+                            ` : ""}
+
+                        </div>
                     </td>
                     <td>${doc.updated_at}</td>
                     <td>${doc.url ? `<a href="${doc.url}" target="_blank">View</a>` : '-'}</td>
