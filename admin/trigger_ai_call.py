@@ -21,26 +21,31 @@ def trigger_ai_call():
 @admin_bp.route('/trigger_ai_call/search')
 @admin_required
 def trigger_ai_call_search():
-    """
-    GET /admin/trigger_ai_call/search?q=<query>
-
-    Searches across first_name, last_name, email, phone.
-    Returns up to 50 results as JSON.
-    """
     q = request.args.get('q', '').strip()
 
     if not q:
         return jsonify({"success": True, "users": []})
 
     pattern = re.compile(re.escape(q), re.IGNORECASE)
-    query = {
-        "$or": [
-            {"first_name": pattern},
-            {"last_name":  pattern},
-            {"email":      pattern},
-            {"phone":      pattern},
-        ]
-    }
+
+    or_conditions = [
+        {"first_name": pattern},
+        {"last_name":  pattern},
+        {"email":      pattern},
+        {"phone":      pattern},
+    ]
+
+    # If query contains a space, also try matching first + last name split
+    parts = q.split(None, 1)  # split on whitespace, max 2 parts
+    if len(parts) == 2:
+        first_pat = re.compile(re.escape(parts[0]), re.IGNORECASE)
+        last_pat  = re.compile(re.escape(parts[1]), re.IGNORECASE)
+        or_conditions.append({
+            "first_name": first_pat,
+            "last_name":  last_pat,
+        })
+
+    query = {"$or": or_conditions}
 
     try:
         items = list(
