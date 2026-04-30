@@ -160,9 +160,7 @@ def sync_agent_conversations_intro_call():
                 if eir_code_val:
                      eir_code_val = eir_code_val.strip()
                      try:
-                       resolved = _resolve(eir_code_val)
-                       if resolved:
-                          location = _extract_location(resolved)
+                       location = _extract_location(eir_code_val)
                           # Use location fields as needed, e.g.:
                           # location["formatted_address"], location["lat"], location["lng"], etc.
                      except Exception:
