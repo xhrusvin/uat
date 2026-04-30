@@ -17,6 +17,8 @@ from .views import admin_bp, admin_required
 
 now_utc = datetime.now(pytz.UTC)
 
+XN_APP_COUNTRY = os.getenv("XN_APP_COUNTRY", "").lower()
+
 
 # ===============================
 # Helpers
@@ -43,6 +45,13 @@ async def fetch_audio(url, api_key):
 
 def _format_conv(conv):
     tz_utc = pytz.UTC
+    XN_APP_COUNTRY = os.getenv("XN_APP_COUNTRY", "").lower()
+
+    if XN_APP_COUNTRY == "ie":
+        tz = pytz.timezone("Europe/Dublin")   # Ireland time
+    else:
+        tz = pytz.timezone("Asia/Kolkata")    # India time
+    
     conv_id = str(conv.get('_id', ''))
     conv['conv_id'] = conv_id
 
@@ -83,9 +92,9 @@ def _format_conv(conv):
             if isinstance(conv['started_at'], str):
                 # Handle ISO strings with/without Z
                 dt = conv['started_at'].replace('Z', '+00:00') if 'Z' in conv['started_at'] else conv['started_at']
-                conv['started_at'] = datetime.fromisoformat(dt).astimezone(tz_utc).strftime('%Y-%m-%d %H:%M:%S')
+                conv['started_at'] = datetime.fromisoformat(dt).astimezone(tz).strftime('%Y-%m-%d %H:%M:%S')
             else:
-                conv['started_at'] = conv['started_at'].astimezone(tz_utc).strftime('%Y-%m-%d %H:%M:%S')
+                conv['started_at'] = conv['started_at'].astimezone(tz).strftime('%Y-%m-%d %H:%M:%S')
         else:
             conv['started_at'] = '—'
     except Exception:
@@ -96,9 +105,9 @@ def _format_conv(conv):
         if ended_at:
             if isinstance(ended_at, str):
                 dt = ended_at.replace('Z', '+00:00') if 'Z' in ended_at else ended_at
-                conv['ended_at'] = datetime.fromisoformat(dt).astimezone(tz_utc).strftime('%Y-%m-%d %H:%M:%S')
+                conv['ended_at'] = datetime.fromisoformat(dt).astimezone(tz).strftime('%Y-%m-%d %H:%M:%S')
             else:
-                conv['ended_at'] = ended_at.astimezone(tz_utc).strftime('%Y-%m-%d %H:%M:%S')
+                conv['ended_at'] = ended_at.astimezone(tz).strftime('%Y-%m-%d %H:%M:%S')
         else:
             conv['ended_at'] = 'Ongoing'
     except Exception:
@@ -108,7 +117,7 @@ def _format_conv(conv):
     formatted_turns = []
     for turn in conv.get('turns', []):
         try:
-            time_str = turn['ts'].astimezone(tz_utc).strftime('%H:%M:%S') if turn.get('ts') else '—'
+            time_str = turn['ts'].astimezone(tz).strftime('%H:%M:%S') if turn.get('ts') else '—'
         except Exception:
             time_str = '—'
         formatted_turns.append({
