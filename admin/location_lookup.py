@@ -39,7 +39,7 @@ def _geocode_postcode(postcode: str) -> dict | None:
     return data["results"][0]
 
 
-def _extract_location(geocode_result: dict) -> dict:
+def _extract_locationgoogle(geocode_result: dict) -> dict:
     """
     Flatten a single Geocoding API result into a clean dict.
     """
@@ -110,7 +110,7 @@ def location_lookup_by_postcode():
         if result is None:
             return jsonify({"success": False, "error": "No results found for that postcode"}), 404
 
-        location = _extract_location(result)
+        location = _extract_locationgoogle(result)
         return jsonify({"success": True, "location": location})
 
     except requests.exceptions.Timeout:

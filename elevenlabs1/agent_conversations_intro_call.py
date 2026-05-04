@@ -13,7 +13,7 @@ from datetime import datetime
 import pytz
 from pymongo import MongoClient
 from admin.location_lookup_autoaddress import _extract_location, _resolve
-from admin.location_lookup import _geocode_postcode, _extract_location
+from admin.location_lookup import _geocode_postcode, _extract_locationgoogle
 load_dotenv()
 
 # ==================== BLUEPRINT ====================
@@ -171,7 +171,7 @@ def sync_agent_conversations_intro_call():
                 if eir_code_val:
                    resolved = _geocode_postcode(eir_code_val)
                    if resolved:
-                     countydata = _extract_location(resolved)
+                     countydata = _extract_locationgoogle(resolved)
                    else:
                      countydata = None
 
