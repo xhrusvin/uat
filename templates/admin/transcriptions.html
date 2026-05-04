@@ -527,7 +527,6 @@ document.querySelectorAll('.info-btn').forEach(btn => {
         briefSummaryContent.classList.add('d-none');
         briefSummaryEmpty.classList.add('d-none');
         briefSummaryContent.innerHTML = '';
-        document.getElementById('modal-address').textContent = '—';
     }
 
     // ====================== LOAD BRIEF SUMMARY ======================
@@ -544,9 +543,7 @@ document.querySelectorAll('.info-btn').forEach(btn => {
         const addressRow = (data.rows || []).find(r =>
             r.label?.toLowerCase().includes('address')
         );
-        document.getElementById('modal-address').textContent =
-            addressRow && !addressRow.is_null ? addressRow.value : '—';
-
+        
         if (!data.rows || data.rows.length === 0) {
             briefSummaryLoading.classList.add('d-none');
             briefSummaryEmpty.classList.remove('d-none');
