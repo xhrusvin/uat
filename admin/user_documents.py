@@ -128,6 +128,21 @@ def user_documents():
             {"last_name": regex},
             {"country": regex},
             {"designation": regex},
+            {
+            "$expr": {
+                "$regexMatch": {
+                    "input": {
+                        "$concat": [
+                            {"$ifNull": ["$first_name", ""]},
+                            " ",
+                            {"$ifNull": ["$last_name", ""]}
+                        ]
+                    },
+                    "regex": search,
+                    "options": "i"
+                }
+              }
+            }
         ]
 
     total = current_app.db.users.count_documents(query)

@@ -251,6 +251,10 @@
             <span id="modal-status" class="badge bg-success">Completed</span>
         </h6>
     </div>
+    <div class="col-md-8">
+        <small class="text-muted">Address</small>
+        <h6 class="mb-0 fw-semibold" id="modal-address">—</h6>
+    </div>
 </div>
     <hr class="my-4">
 
@@ -522,6 +526,7 @@ document.querySelectorAll('.info-btn').forEach(btn => {
         briefSummaryContent.classList.add('d-none');
         briefSummaryEmpty.classList.add('d-none');
         briefSummaryContent.innerHTML = '';
+        document.getElementById('modal-address').textContent = '—';
     }
 
     // ====================== LOAD BRIEF SUMMARY ======================
@@ -534,6 +539,12 @@ document.querySelectorAll('.info-btn').forEach(btn => {
     resetBriefSummaryUI();
     try {
         const data = await fetchBriefSummaryData();
+
+        const addressRow = (data.rows || []).find(r =>
+            r.label?.toLowerCase().includes('address')
+        );
+        document.getElementById('modal-address').textContent =
+            addressRow && !addressRow.is_null ? addressRow.value : '—';
 
         if (!data.rows || data.rows.length === 0) {
             briefSummaryLoading.classList.add('d-none');
