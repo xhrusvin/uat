@@ -169,6 +169,7 @@ def sync_agent_conversations_intro_call():
                 else:
                     return jsonify({
                         "success": False,
+                        "eir_code": eir_code_val,
                         "message": "eir_code not found"
                     }), 400
                        #
