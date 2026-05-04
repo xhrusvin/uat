@@ -686,9 +686,9 @@ if (!currentIsCompleted) {
             document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
             document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
             document.getElementById('modal-started').textContent = row.dataset.started || '—';
-
+            document.getElementById('modal-address').textContent = row.dataset.address || '—';
             const statusEl = document.getElementById('modal-status');
-const callStatus = row.dataset.callStatus || '';
+            const callStatus = row.dataset.callStatus || '';
 
 if (!currentIsCompleted) {
     statusEl.textContent = 'Ongoing';
