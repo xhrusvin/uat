@@ -93,6 +93,9 @@
                             <th class="sortable" data-key="country">
   Country <i class="bi bi-arrow-down-up sort-icon"></i>
 </th>
+
+
+
                                             <th class="sortable" data-key="designation">
                 Designation <i class="bi bi-arrow-down-up sort-icon"></i>
                 </th>
@@ -125,6 +128,7 @@
     data-ref-name="{{ u.get('ref_name', '') | e }}"
 
     data-ref-name2="{{ u.get('ref_name2', '') | e }}"
+    data-address="{{ u.get('address', '') | e }}"
     style="cursor: pointer;">
                             <td class="ps-4">
     <div class="d-flex align-items-center">
@@ -408,6 +412,13 @@
                 <div class="info-card">
                 <small>Country</small>
                 <div id="ud-country">—</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="info-card">
+                <small>Address</small>
+                <div id="ud-address">—</div>
                 </div>
             </div>
 
@@ -2128,7 +2139,7 @@ window.currentMissedCallStatus    = this.dataset.missedCallEmailStatus;
             document.getElementById('ud-email').textContent   = cells[1]?.textContent?.trim() || '—';
             document.getElementById('ud-phone').textContent   = cells[2]?.textContent?.trim() || '—';
             document.getElementById('ud-country').textContent = cells[3]?.textContent?.trim() || '—';
-
+            document.getElementById('ud-address').textContent = this.dataset.address || '—';
             // Reset to Intro Call tab
             const introTab = document.getElementById('intro-call-tab');
             bootstrap.Tab.getOrCreateInstance(introTab).show();
