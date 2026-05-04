@@ -158,20 +158,15 @@ def sync_agent_conversations_intro_call():
                 call_status_val = dc_map.get("call_status")   # ← NEW
                 eir_code_val = dc_map.get("eir_code")
 
-                result = {
-                    "call_status": call_status_val,
-                    "eir_code": eir_code_val
-                }
-                return jsonify(result), 200
                 
                 if eir_code_val:
-                     try:
+                     #try:
                        location = _extract_location(eir_code_val)
                        return jsonify({"success": True, **location}), 200
                           # Use location fields as needed, e.g.:
                           # location["formatted_address"], location["lat"], location["lng"], etc.
-                     except Exception:
-                        location = None
+                    #  except Exception:
+                    #     location = None
 
 
 
