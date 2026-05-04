@@ -769,6 +769,7 @@ def transcriptions():
             "user_info.first_name": 1,
             "user_info.last_name": 1,
             "user_info.email": 1,
+            "user_info.address": 1,
             "user_info.designation": 1,
             "user_info.country": 1,
             "user_info.garda_email_sent": 1
