@@ -129,6 +129,7 @@
 
     data-ref-name2="{{ u.get('ref_name2', '') | e }}"
     data-address="{{ u.get('address', '') | e }}"
+    data-county="{{ u.get('county', '') | e }}"
     style="cursor: pointer;">
                             <td class="ps-4">
     <div class="d-flex align-items-center">
@@ -419,6 +420,13 @@
                 <div class="info-card">
                 <small>Address</small>
                 <div id="ud-address">—</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="info-card">
+                <small>County</small>
+                <div id="ud-county">—</div>
                 </div>
             </div>
 
@@ -2140,6 +2148,7 @@ window.currentMissedCallStatus    = this.dataset.missedCallEmailStatus;
             document.getElementById('ud-phone').textContent   = cells[2]?.textContent?.trim() || '—';
             document.getElementById('ud-country').textContent = cells[3]?.textContent?.trim() || '—';
             document.getElementById('ud-address').textContent = this.dataset.address || '—';
+            document.getElementById('ud-county').textContent = this.dataset.county || '—';
             // Reset to Intro Call tab
             const introTab = document.getElementById('intro-call-tab');
             bootstrap.Tab.getOrCreateInstance(introTab).show();
