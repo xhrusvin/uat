@@ -157,6 +157,12 @@ def sync_agent_conversations_intro_call():
 
                 call_status_val = dc_map.get("call_status")   # ← NEW
                 eir_code_val = dc_map.get("eir_code")
+
+                result = {
+                    "call_status": call_status_val,
+                    "eir_code": eir_code_val
+                }
+                return jsonify(result), 200
                 
                 if eir_code_val:
                      try:
