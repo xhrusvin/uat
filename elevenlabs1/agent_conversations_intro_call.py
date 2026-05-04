@@ -160,12 +160,17 @@ def sync_agent_conversations_intro_call():
 
                 
                 if eir_code_val:
-                 location = _extract_location(eir_code_val)
-                 return jsonify({
-                    "success": True,
-                    "eir_code": eir_code_val,
-                    "location": location
-                }), 200
+                  location = _extract_location(eir_code_val)
+                  return jsonify({
+                        "success": True,
+                        "eir_code": eir_code_val,
+                        "location": location
+                    }), 200
+                else:
+                    return jsonify({
+                        "success": False,
+                        "message": "eir_code not found"
+                    }), 400
                        #
                        #return jsonify({"success": True, **location}), 200
                           # Use location fields as needed, e.g.:
