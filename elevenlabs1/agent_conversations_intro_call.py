@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import pytz
 from pymongo import MongoClient
-from admin.location_lookup_autoaddress import _extract_location
+from admin.location_lookup_autoaddress import _extract_location, _resolve
 load_dotenv()
 
 # ==================== BLUEPRINT ====================
@@ -160,18 +160,18 @@ def sync_agent_conversations_intro_call():
 
                 
                 if eir_code_val:
-                  location = _extract_location(eir_code_val)
-                  return jsonify({
-                        "success": True,
-                        "eir_code": eir_code_val,
-                        "location": location
-                    }), 200
-                else:
-                    return jsonify({
-                        "success": False,
-                        "eir_code": eir_code_val,
-                        "message": "eir_code not found"
-                    }), 400
+                  resolved = _resolve(eir_code_val)
+
+                  if resolved:
+                    location = _extract_location(resolved)
+                  else:
+                    location = None
+
+                return jsonify({
+                    "success": True,
+                    "eir_code": eir_code_val,
+                    "location": location
+                }), 200
                        #
                        #return jsonify({"success": True, **location}), 200
                           # Use location fields as needed, e.g.:

@@ -131,7 +131,7 @@ def _extract_location(resolved: dict) -> dict:
         }
     }
     """
-    return "Hello"
+    
     selected = resolved.get("selected", {})
     paf      = selected.get("paf", {})
     geo      = selected.get("geoData", {})
