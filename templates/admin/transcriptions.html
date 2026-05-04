@@ -597,7 +597,7 @@ document.querySelectorAll('.transcript-row').forEach(row => {
         document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
         document.getElementById('modal-email').textContent   = row.dataset.email   || '—';
         document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
-        
+        document.getElementById('modal-address').textContent = row.dataset.address || '—';
         document.getElementById('modal-started').textContent = row.dataset.started || '—';
 
         

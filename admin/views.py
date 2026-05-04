@@ -621,6 +621,7 @@ def _format_conv(conv):
         'phone': conv.get('phone', ''),
         'name': conv['name'],
         'email': conv.get('email', '—'),
+        'address': conv.get('address', '—'),
         'designation': conv['designation'],
         'call_status': conv['call_status'],
         'country': conv['country'],
