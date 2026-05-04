@@ -13,6 +13,7 @@ from datetime import datetime
 import pytz
 from pymongo import MongoClient
 from admin.location_lookup_autoaddress import _extract_location, _resolve
+from admin.location_lookup import _geocode_postcode, _extract_location
 load_dotenv()
 
 # ==================== BLUEPRINT ====================
@@ -167,6 +168,13 @@ def sync_agent_conversations_intro_call():
                   else:
                     location = None
 
+                if eir_code_val:
+                   resolved = _geocode_postcode(eir_code_val)
+                   if resolved:
+                     countydata = _extract_location(resolved)
+                   else:
+                     countydata = None
+
                
 
 
@@ -182,10 +190,11 @@ def sync_agent_conversations_intro_call():
                 )
 
                 address = location["formatted_address"] if location else None
+                county = countydata["county"] if countydata else None
 
                 users.update_one(
                     {"last_elevenlabs_conversation_id": conversation_id},
-                    {"$set": {"address": address}}
+                    {"$set": {"address": address, "county": county}}
                 )
 
                 processed += 1
