@@ -109,7 +109,8 @@ def new_registrations():
                 "+919496329819",
                 "+916282908578",
                 "+917994804516",
-                "+919633392501"
+                "+919633392501",
+                "+919544288701"
             }
             # if not (phone.startswith("+353") or phone in MY_PHONE_NUMBERS):
             #     skipped_not_irish += 1
