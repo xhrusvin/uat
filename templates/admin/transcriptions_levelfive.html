@@ -713,11 +713,13 @@ if (!currentIsCompleted) {
             // Reset UI states
             resetAudioUI();
             resetTranscriptUI();
+            resetBriefSummaryUI();
 
             transcriptModal.show();
 
             // Fire both requests in parallel — transcript + audio
             loadTranscript();
+            loadBriefSummaryIntoModal()
 
             if (currentIsCompleted) {
                 loadAudio();
