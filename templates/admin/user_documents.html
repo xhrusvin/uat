@@ -619,7 +619,8 @@ document.getElementById('recheckAllBtn').addEventListener('click', async functio
         loading.classList.remove('d-none');
 
         try {
-            const res = await fetch(`/admin/api/prompts/get?document_type=${documentdlug}`);
+            const encodedDocType = encodeURIComponent(documentdlug);
+            const res = await fetch(`/admin/api/prompts/get?document_type=${encodedDocType}`);
             const data = await res.json();
 
             if (data.status === 'success' && data.prompt) {
