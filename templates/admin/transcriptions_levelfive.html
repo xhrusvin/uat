@@ -75,7 +75,7 @@
                             data-ended="{{ c.ended_at }}"
                             data-call-status="{{ c.call_status }}"
                             data-turn-count="{{ c.turn_count }}"
-                            data-pr-call="{{ c.professional_reference_call_sent }}
+                            data-pr-call="{{ c.professional_reference_call_sent }}"
                             data-elevenlabs-id="{{ c.elevenlabs_conversation_id or '' }}">
                             <td class="ps-4 fw-bold text-primary">{{ c.phone }}</td>
                             <td>
@@ -581,6 +581,7 @@ document.querySelectorAll('.info-btn').forEach(btn => {
     // ====================== ROW CLICK (Main Modal) ======================
 document.querySelectorAll('.transcript-row').forEach(row => {
     row.addEventListener('click', () => {
+      
         currentConvId       = row.dataset.convId;
         currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
         currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
