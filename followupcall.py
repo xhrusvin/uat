@@ -40,6 +40,8 @@ def make_followup_ai_call(app, phone: str, user_doc: dict, user_object_id):
         with app.app_context():
             e164_phone = phone.replace(" ", "")
             connection_id = os.getenv('TELNYX_CONNECTION_ID')
+            socket_uri = os.getenv('SOCKET_URI_FOLLOWUP')
+            
             
             response = requests.post(
                 f"https://api.telnyx.com/v2/texml/calls/{connection_id}",
@@ -50,7 +52,7 @@ def make_followup_ai_call(app, phone: str, user_doc: dict, user_object_id):
                 json={
                     "To": e164_phone,
                     "From": CALLER_ID.replace(" ", ""),
-                    "Url": f'https://app.expresshealth.ie/voice1_uat?{params}',
+                    "Url": f'{socket_uri}?{params}',
                     "StatusCallback": f'https://app.expresshealth.ie/call/completed'
                 }
             )
@@ -60,7 +62,7 @@ def make_followup_ai_call(app, phone: str, user_doc: dict, user_object_id):
 
             app.db.users.update_one(
                 {"_id": user_object_id},
-                {"$set": {"call_sent": 1, "updated_at": datetime.utcnow()}}
+                {"$set": {"follow_up_sent": 1, "updated_at": datetime.utcnow()}}
             )
     except Exception as e:
         print(f"Call failed: {e}")

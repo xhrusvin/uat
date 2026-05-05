@@ -16,8 +16,8 @@ log = logging.getLogger(__name__)
 # Time window (UTC)
 # Example: 08:00 – 20:00 UTC
 # --------------------------------------------------
-ALLOWED_START_HOUR = 0
-ALLOWED_END_HOUR = 23
+ALLOWED_START_HOUR = 8
+ALLOWED_END_HOUR = 20
 
 
 def is_within_call_window():
@@ -158,13 +158,13 @@ def register_follow_up_call_routes(app):
           
             query = {
             "is_admin": {"$ne": True},
-            #"xn_user_id": {"$ne": None},
-            #"call_sent": {"$ne": 0},
-            #"follow_up_sent": {"$ne": 1},  # 0 or missing
+            "xn_user_id": {"$ne": None},
+            "call_sent": {"$ne": 0},
+            "follow_up_sent": {"$ne": 1},  # 0 or missing
             "email": {"$exists": True},
             #"email": "juhi@xpresshealth.ie",
-            "email": "juhi@xpresshealth.ie",
-            #"next_follow_up_at": {"$lte": current_time}
+            #"email": "juhi@xpresshealth.ie",
+            "next_follow_up_at": {"$lte": current_time}
             }
 
         user = app.db.users.find_one(
