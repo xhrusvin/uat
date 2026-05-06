@@ -40,7 +40,7 @@ def make_compliance_document_ai_call(app, phone: str, user_doc: dict, user_objec
         with app.app_context():
             e164_phone = phone.replace(" ", "")
             connection_id = os.getenv('TELNYX_CONNECTION_ID')
-            socket_url = "wss://app.expresshealth.ie/wss"
+            socket_url = os.getenv('SOCKET_URI_LEVEL_FOUR')
 
             
             response = requests.post(
