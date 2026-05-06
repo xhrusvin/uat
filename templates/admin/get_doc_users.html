@@ -62,11 +62,7 @@
                         <tr>
                             <th class="ps-4">Name</th>
                             <th>Email</th>
-                            <th>Phone</th>
                             <th>Designation</th>
-                            <th>Country</th>
-                            <th>XN User ID</th>
-                            <th>Status</th>
                             <th class="text-center">Action</th>
                         </tr>
 
@@ -101,7 +97,7 @@
                                 {{ user.email or '—' }}
                             </td>
 
-                            <td>
+                            <!-- <td>
                                 {{ user.phone or '—' }}
                             </td>
 
@@ -139,7 +135,7 @@
 
                                 {% endif %}
 
-                            </td>
+                            </td> -->
                             <td class="text-center">
 
     {% if user.marked_for_doc_fetch == 1 %}
