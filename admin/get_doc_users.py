@@ -1,6 +1,7 @@
 # admin/get_doc_users.py
 
-from flask import render_template, request, current_app
+from flask import render_template, request, current_app, jsonify
+from bson import ObjectId
 from .views import admin_bp, admin_required
 
 
@@ -18,14 +19,12 @@ def get_doc_users():
         "designation": "Nurse"
     }
 
-    # Search
     if search:
         query["$or"] = [
             {"first_name": {"$regex": search, "$options": "i"}},
             {"last_name": {"$regex": search, "$options": "i"}},
             {"email": {"$regex": search, "$options": "i"}},
-            {"phone": {"$regex": search, "$options": "i"}},
-            {"xn_user_id": {"$regex": search, "$options": "i"}}
+            {"phone": {"$regex": search, "$options": "i"}}
         ]
 
     total = current_app.db.users.count_documents(query)
@@ -39,10 +38,10 @@ def get_doc_users():
                 "email": 1,
                 "phone": 1,
                 "designation": 1,
-                "xn_user_id": 1,
                 "country": 1,
-                "created_at": 1,
-                "document_fetched": 1
+                "xn_user_id": 1,
+                "document_fetched": 1,
+                "marked_for_doc_fetch": 1
             }
         )
         .sort("_id", -1)
@@ -58,3 +57,45 @@ def get_doc_users():
         per_page=per_page,
         search=search
     )
+
+
+# ===============================
+# MARK USER
+# ===============================
+@admin_bp.route("/mark_doc_user/<user_id>", methods=["POST"])
+@admin_required
+def mark_doc_user(user_id):
+
+    current_app.db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {
+            "$set": {
+                "marked_for_doc_fetch": 1
+            }
+        }
+    )
+
+    return jsonify({
+        "success": True
+    })
+
+
+# ===============================
+# UNMARK USER
+# ===============================
+@admin_bp.route("/unmark_doc_user/<user_id>", methods=["POST"])
+@admin_required
+def unmark_doc_user(user_id):
+
+    current_app.db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {
+            "$set": {
+                "marked_for_doc_fetch": 0
+            }
+        }
+    )
+
+    return jsonify({
+        "success": True
+    })

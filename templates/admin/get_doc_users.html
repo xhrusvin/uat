@@ -67,6 +67,7 @@
                             <th>Country</th>
                             <th>XN User ID</th>
                             <th>Status</th>
+                            <th class="text-center">Action</th>
                         </tr>
 
                     </thead>
@@ -139,6 +140,29 @@
                                 {% endif %}
 
                             </td>
+                            <td class="text-center">
+
+    {% if user.marked_for_doc_fetch == 1 %}
+
+        <button
+            class="btn btn-sm btn-danger unmark-btn"
+            data-user-id="{{ user._id }}"
+        >
+            Unmark
+        </button>
+
+    {% else %}
+
+        <button
+            class="btn btn-sm btn-success mark-btn"
+            data-user-id="{{ user._id }}"
+        >
+            Mark
+        </button>
+
+    {% endif %}
+
+</td>
 
                         </tr>
 
@@ -233,5 +257,101 @@
 
 <link rel="stylesheet"
 href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<script>
 
+document.addEventListener("DOMContentLoaded", () => {
+
+    // MARK
+    document.querySelectorAll(".mark-btn").forEach(btn => {
+
+        btn.addEventListener("click", async () => {
+
+            const userId = btn.dataset.userId;
+
+            btn.disabled = true;
+            btn.innerHTML = "Saving...";
+
+            try {
+
+                const res = await fetch(
+                    `/admin/mark_doc_user/${userId}`,
+                    {
+                        method: "POST"
+                    }
+                );
+
+                const data = await res.json();
+
+                if (data.success) {
+
+                    btn.classList.remove("btn-success");
+                    btn.classList.add("btn-danger");
+
+                    btn.innerHTML = "Unmark";
+
+                    btn.classList.remove("mark-btn");
+                    btn.classList.add("unmark-btn");
+
+                    location.reload();
+
+                }
+
+            } catch (err) {
+
+                alert("Failed to mark user");
+
+            }
+
+        });
+
+    });
+
+    // UNMARK
+    document.querySelectorAll(".unmark-btn").forEach(btn => {
+
+        btn.addEventListener("click", async () => {
+
+            const userId = btn.dataset.userId;
+
+            btn.disabled = true;
+            btn.innerHTML = "Saving...";
+
+            try {
+
+                const res = await fetch(
+                    `/admin/unmark_doc_user/${userId}`,
+                    {
+                        method: "POST"
+                    }
+                );
+
+                const data = await res.json();
+
+                if (data.success) {
+
+                    btn.classList.remove("btn-danger");
+                    btn.classList.add("btn-success");
+
+                    btn.innerHTML = "Mark";
+
+                    btn.classList.remove("unmark-btn");
+                    btn.classList.add("mark-btn");
+
+                    location.reload();
+
+                }
+
+            } catch (err) {
+
+                alert("Failed to unmark user");
+
+            }
+
+        });
+
+    });
+
+});
+
+</script>
 {% endblock %}
