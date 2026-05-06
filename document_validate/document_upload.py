@@ -87,6 +87,15 @@ def document_upload_webhook():
                 timeout=10
             )
 
+            uploaded_documents_coll.insert_one({
+                "user_id": xn_user_id,
+                "document_id": document_id,
+                "uploaded_at": datetime.utcnow(),
+                "country": app_country,
+                "status": "uploaded"
+            })
+
+
             # Return the external API's response back to the caller
             return jsonify({
                 "status": "success",
