@@ -94,8 +94,29 @@
                             </td>
 
                             <td>
-                                {{ user.email or '—' }}
-                            </td>
+
+    <div class="d-flex align-items-center gap-2">
+
+        <span class="email-text">
+            {{ user.email or '—' }}
+        </span>
+
+        {% if user.email %}
+
+        <button
+            type="button"
+            class="btn btn-sm btn-light border copy-email-btn"
+            data-email="{{ user.email }}"
+            title="Copy Email"
+        >
+            <i class="bi bi-copy"></i>
+        </button>
+
+        {% endif %}
+
+    </div>
+
+</td>
 
                             <!-- <td>
                                 {{ user.phone or '—' }}
@@ -284,6 +305,12 @@
     background-color: #f8f9ff !important;
     transition: all 0.2s ease;
 }
+.copy-email-btn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 8px;
+}
 </style>
 
 <link rel="stylesheet"
@@ -375,6 +402,80 @@ document.addEventListener("DOMContentLoaded", () => {
             } catch (err) {
 
                 alert("Failed to unmark user");
+
+            }
+
+        });
+
+    });
+
+});
+
+</script>
+<script>
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    document.querySelectorAll(".copy-email-btn").forEach(btn => {
+
+        btn.addEventListener("click", async () => {
+
+            const email = btn.dataset.email;
+
+            try {
+
+                await navigator.clipboard.writeText(email);
+
+                const original = btn.innerHTML;
+
+                btn.innerHTML = `
+                    <i class="bi bi-check-lg text-success"></i>
+                `;
+
+                setTimeout(() => {
+                    btn.innerHTML = original;
+                }, 1500);
+
+            } catch (err) {
+
+                alert("Failed to copy email");
+
+            }
+
+        });
+
+    });
+
+});
+
+</script>
+<script>
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    document.querySelectorAll(".copy-email-btn").forEach(btn => {
+
+        btn.addEventListener("click", async () => {
+
+            const email = btn.dataset.email;
+
+            try {
+
+                await navigator.clipboard.writeText(email);
+
+                const original = btn.innerHTML;
+
+                btn.innerHTML = `
+                    <i class="bi bi-check-lg text-success"></i>
+                `;
+
+                setTimeout(() => {
+                    btn.innerHTML = original;
+                }, 1500);
+
+            } catch (err) {
+
+                alert("Failed to copy email");
 
             }
 

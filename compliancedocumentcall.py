@@ -40,6 +40,8 @@ def make_compliance_document_ai_call(app, phone: str, user_doc: dict, user_objec
         with app.app_context():
             e164_phone = phone.replace(" ", "")
             connection_id = os.getenv('TELNYX_CONNECTION_ID')
+            socket_url = "wss://app.expresshealth.ie/wss"
+
             
             response = requests.post(
                 f"https://api.telnyx.com/v2/texml/calls/{connection_id}",
@@ -50,7 +52,7 @@ def make_compliance_document_ai_call(app, phone: str, user_doc: dict, user_objec
                 json={
                     "To": e164_phone,
                     "From": CALLER_ID.replace(" ", ""),
-                    "Url": f'https://app.expresshealth.ie/voice2_uat?{params}',
+                    "Url": f'{socket_url}?{params}',
                     "StatusCallback": f'https://app.expresshealth.ie/call/completed'
                 }
             )

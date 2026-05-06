@@ -75,12 +75,12 @@ def register_compliance_doc_call_routes(app):
         else:
             query = {
             "is_admin": {"$ne": True},
-            #"xn_user_id": {"$ne": None},
-            #"call_sent": {"$ne": 0},
-            #"follow_up_sent": {"$ne": 0},  # 0 or missing
-            #"compliance_documents_status": {"$ne": 1},
-            "xn_user_id": "69e7340f5f14105609094fb1",
-            "email": "juhi@xpresshealth.ie"
+            "xn_user_id": {"$ne": None},
+            "call_sent": {"$ne": 0},
+            "follow_up_sent": {"$ne": 0},  # 0 or missing
+            "compliance_documents_status": {"$ne": 1},
+            #"xn_user_id": "69e7340f5f14105609094fb1",
+            #"email": "juhi@xpresshealth.ie"
             }
 
         user = app.db.users.find_one(
