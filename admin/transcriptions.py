@@ -61,7 +61,7 @@ def _format_conv(conv):
     user = (conv.get('user_info') or [{}])[0]
     conv['name'] = f"{user.get('first_name','')} {user.get('last_name','')}".strip() or "Unknown"
     conv['designation'] = user.get('designation', '-')
-    conv['country'] = user.get('country', '-')
+    conv['county'] = user.get('county', '-')
 
     for turn in conv.get('turns', []):
         if turn.get('ts'):
@@ -135,6 +135,8 @@ def transcriptions():
     page = int(request.args.get('page', 1))
     per_page = 10
     search = request.args.get('search', '').strip()
+    designation = request.args.get('designation', '').strip()
+    county = request.args.get('county', '').strip()
 
     # Base pipeline
     pipeline = [
@@ -149,8 +151,30 @@ def transcriptions():
     ]
 
     # Optional search by phone
+    # if search:
+    #     pipeline.insert(0, {"$match": {"phone": {"$regex": search, "$options": "i"}}})
+
+    match_conditions = {}
+
+
+
     if search:
-        pipeline.insert(0, {"$match": {"phone": {"$regex": search, "$options": "i"}}})
+        match_conditions["$or"] = [
+            {"phone": {"$regex": search, "$options": "i"}},
+            {"user_info.first_name": {"$regex": search, "$options": "i"}},
+            {"user_info.last_name": {"$regex": search, "$options": "i"}}
+        ]
+
+    # Designation filter
+    if designation:
+        match_conditions["user_info.designation"] = designation
+
+    # County filter
+    if county:
+        match_conditions["user_info.country"] = county
+
+    if match_conditions:
+        pipeline.append({"$match": match_conditions})
 
     # Total count
     total_pipeline = pipeline + [{"$count": "total"}]
@@ -175,11 +199,23 @@ def transcriptions():
     cursor = current_app.db.conversations.aggregate(result_pipeline)
     convs = [_format_conv(c) for c in cursor]
 
+    designations = sorted(filter(None,
+            current_app.db.users.distinct("designation")
+        ))
+
+    counties = sorted(filter(None,
+            current_app.db.users.distinct("country")
+        ))
+
     return render_template(
         'admin/transcriptions.html',
         convs=convs,
         page=page,
         total=total,
         per_page=per_page,
-        search=search
+        search=search,
+        designation=designation,
+        county=county,
+        designations=designations,
+        counties=counties
     )
