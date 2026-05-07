@@ -75,6 +75,7 @@ def _format_conv(conv):
     conv['email'] = safe_str(user.get('email'), '—')          # ← ADD THIS LINE
     conv['designation'] = safe_str(user.get('designation'), '-')
     conv['country'] = safe_str(user.get('country'), '-')
+    conv['county'] = safe_str(user.get('county'), '-')
     conv['call_status'] = safe_str(conv.get('call_status'), '—')
     conv['professional_reference_call_sent'] = int(professional_reference_call_sent or 0)
 
@@ -132,6 +133,7 @@ def _format_conv(conv):
         'designation': conv['designation'],
         'call_status': conv['call_status'],
         'country': conv['country'],
+        'county': conv['county'],
         'started_at': conv['started_at'],
         'ended_at': conv['ended_at'],
         'turns': conv['turns'],
@@ -165,10 +167,61 @@ def level_five_tr():
     per_page = 10
     search = request.args.get('search', '').strip()
     date_range = request.args.get('date_range', '').strip()
+    designation = request.args.get('designation', '').strip()
+    county = request.args.get('county', '').strip()
 
     pre_match = {}
     post_match = None
     name_search_active = False
+
+
+    # ====================== DESIGNATION FILTER ======================
+    if designation:
+        designation_regex = safe_regex_pattern(designation)
+
+        if post_match:
+            post_match = {
+                "$and": [
+                    post_match,
+                    {
+                        "user_info.designation": {
+                            "$regex": designation_regex,
+                            "$options": "i"
+                        }
+                    }
+                ]
+            }
+        else:
+            post_match = {
+                "user_info.designation": {
+                    "$regex": designation_regex,
+                    "$options": "i"
+                }
+            }
+
+    # ====================== COUNTY FILTER ======================
+    if county:
+        county_regex = safe_regex_pattern(county)
+
+        if post_match:
+            post_match = {
+                "$and": [
+                    post_match,
+                    {
+                        "user_info.county": {
+                            "$regex": county_regex,
+                            "$options": "i"
+                        }
+                    }
+                ]
+            }
+        else:
+            post_match = {
+                "user_info.county": {
+                    "$regex": county_regex,
+                    "$options": "i"
+                }
+            }
 
     # ====================== DATE RANGE FILTER ======================
     date_filter = {}
@@ -284,6 +337,7 @@ def level_five_tr():
             "user_info.email": 1,
             "user_info.designation": 1,
             "user_info.country": 1,
+            "user_info.county": 1,
             "user_info.professional_reference_call_sent": 1 
         }
     })
@@ -308,15 +362,29 @@ def level_five_tr():
 
     convs = [_format_conv(c) for c in raw_convs]
 
+    # ====================== FILTER DROPDOWN DATA ======================
+
+    designations = sorted(list(filter(None,
+        current_app.db.users.distinct("designation")
+    )))
+
+    counties = sorted(list(filter(None,
+        current_app.db.users.distinct("county")
+    )))
+
     return render_template(
         'admin/transcriptions_levelfive.html',
-        convs=convs,
-        page=page,
-        total=total,
-        per_page=per_page,
-        search=search,
-        date_range=date_range
-    )
+            convs=convs,
+            page=page,
+            total=total,
+            per_page=per_page,
+            search=search,
+            date_range=date_range,
+            designation=designation,
+            county=county,
+            designations=designations,
+            counties=counties
+        )
 
 # ===============================
 # FETCH TRANSCRIPT (MODAL)
