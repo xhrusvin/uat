@@ -90,7 +90,7 @@ def register_professional_reference_call_routes(app):
             query = {
             "is_admin": {"$ne": True},
             "xn_user_id": {"$ne": None},
-            #"call_sent": {"$ne": 0},
+            "call_sent": {"$ne": 0},
             #"follow_up_sent": {"$ne": 0},  # 0 or missing
             #"xn_user_id": "69452f8cf84265e6fd0a11b9",
             #"next_follow_up_at": {"$lte": current_time},
@@ -170,7 +170,7 @@ def register_professional_reference_call_routes(app):
                       #full_phone = "+91 7907044695"      # First reference
                       full_phone = "+91 7034526952"
                     elif triggered_count == 1:
-                      full_phone = "+91 9633392501"      # Second reference
+                      full_phone = "+91 96311113392501"      # Second reference
                     else:
                       full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
 
