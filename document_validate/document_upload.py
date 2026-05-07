@@ -121,3 +121,56 @@ def document_upload_webhook():
                 "message": f"Server error: {str(e)}"
             }), 500
 
+
+# ==================== NEW WEBHOOK ====================
+@bp.route("/document-validate/reference-added", methods=["POST"])
+def reference_added_webhook():
+    """
+    POST: Webhook triggered when a reference is added to a document.
+
+        Expected Headers:
+            Api-Key: <your-api-key>
+            X-App-Country: ie
+
+        Expected JSON Body:
+            {
+                "user_id": "695541458810dcdf8b0d4c51",
+                "document_id": "696742358815dcdf8b0g4c06",
+                "reference_id": "697842358815dcdf8b0h4c07"
+            }
+    """
+    api_key = request.headers.get("Api-Key")
+    app_country = request.headers.get("X-App-Country")
+
+    if api_key != USER_EXTERNAL_API_KEY:
+        return jsonify({
+            "status": "error",
+            "message": "Invalid or missing Api-Key"
+        }), 401
+
+    try:
+        xn_user_id = request.json.get("user_id")
+
+        if not xn_user_id:
+            return jsonify({
+                "status": "error",
+                "message": "Missing required fields: user_id"
+            }), 400
+
+        db["reference_record"].insert_one({
+            "user_id": xn_user_id,
+            "added_at": datetime.utcnow(),
+            "country": app_country,
+            "status": "reference_added"
+        })
+
+        return jsonify({
+            "status": "success",
+            "message": "Reference recorded successfully"
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Server error: {str(e)}"
+        }), 500
