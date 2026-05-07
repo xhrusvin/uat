@@ -91,7 +91,7 @@ def register_professional_reference_call_routes(app):
             "is_admin": {"$ne": True},
             "xn_user_id": {"$ne": None},
             "call_sent": {"$ne": 0},
-            #"follow_up_sent": {"$ne": 0},  # 0 or missing
+            #"professional_reference_call_sent": {"$ne": 1},  # 0 or missing
             #"xn_user_id": "69452f8cf84265e6fd0a11b9",
             #"next_professional_reference_at": {"$lte": current_time},
             "email": "juhi@xpresshealth.ie"
