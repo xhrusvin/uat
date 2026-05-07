@@ -130,90 +130,196 @@ def get_conversation_audio(conv_id):
 @admin_bp.route('/transcriptions')
 @admin_required
 def transcriptions():
-    print("TRANSCRIPTIONS ROUTE HIT!")  # DEBUG
+    print("TRANSCRIPTIONS ROUTE HIT!")
 
     page = int(request.args.get('page', 1))
     per_page = 10
+
     search = request.args.get('search', '').strip()
     designation = request.args.get('designation', '').strip()
     county = request.args.get('county', '').strip()
     date_range = request.args.get('date_range', '').strip()
 
-    # Base pipeline
+    # ==========================================================
+    # BASE PIPELINE
+    # ==========================================================
     pipeline = [
-        {"$sort": {"started_at": -1}},
-        {"$lookup": {
-            "from": "users",
-            "localField": "phone",
-            "foreignField": "phone",
-            "as": "user_info"
-        }},
-        {"$unwind": {"path": "$user_info", "preserveNullAndEmptyArrays": True}},
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "phone",
+                "foreignField": "phone",
+                "as": "user_info"
+            }
+        },
+        {
+            "$unwind": {
+                "path": "$user_info",
+                "preserveNullAndEmptyArrays": True
+            }
+        }
     ]
 
-    # Optional search by phone
-    # if search:
-    #     pipeline.insert(0, {"$match": {"phone": {"$regex": search, "$options": "i"}}})
-
-
+    # ==========================================================
+    # FILTER CONDITIONS
+    # ==========================================================
     match_conditions = {}
 
-    # Search by phone or name
+    # Search
     if search:
         match_conditions["$or"] = [
             {"phone": {"$regex": search, "$options": "i"}},
             {"user_info.first_name": {"$regex": search, "$options": "i"}},
-            {"user_info.last_name": {"$regex": search, "$options": "i"}}
+            {"user_info.last_name": {"$regex": search, "$options": "i"}},
+            {
+                "$expr": {
+                    "$regexMatch": {
+                        "input": {
+                            "$concat": [
+                                {"$ifNull": ["$user_info.first_name", ""]},
+                                " ",
+                                {"$ifNull": ["$user_info.last_name", ""]}
+                            ]
+                        },
+                        "regex": search,
+                        "options": "i"
+                    }
+                }
+            }
         ]
 
-    # Designation filter
+    # Designation
     if designation:
         match_conditions["user_info.designation"] = designation
 
-    # County filter
+    # County
     if county:
         match_conditions["user_info.country"] = county
+
+    # Date Range
+    if date_range and " to " in date_range:
+        try:
+            start_str, end_str = date_range.split(" to ")
+
+            start_date = datetime.strptime(start_str.strip(), "%Y-%m-%d")
+            end_date = datetime.strptime(end_str.strip(), "%Y-%m-%d")
+
+            end_date = end_date.replace(hour=23, minute=59, second=59)
+
+            match_conditions["started_at"] = {
+                "$gte": start_date,
+                "$lte": end_date
+            }
+
+        except Exception as e:
+            print("DATE FILTER ERROR:", e)
 
     # Apply filters
     if match_conditions:
         pipeline.append({"$match": match_conditions})
 
-    # Total count
-    total_pipeline = pipeline + [{"$count": "total"}]
-    total_result = list(current_app.db.conversations.aggregate(total_pipeline))
+    # Sort AFTER match
+    pipeline.append({"$sort": {"started_at": -1}})
+
+    # ==========================================================
+    # TOTAL COUNT
+    # ==========================================================
+    total_pipeline = pipeline + [
+        {"$count": "total"}
+    ]
+
+    total_result = list(
+        current_app.db.conversations.aggregate(total_pipeline)
+    )
+
     total = total_result[0]["total"] if total_result else 0
 
-    # Paginated results
+    # ==========================================================
+    # RESULTS
+    # ==========================================================
     result_pipeline = pipeline + [
         {"$skip": (page - 1) * per_page},
         {"$limit": per_page},
-        {"$project": {
-            "_id": 1,
-            "phone": 1,
-            "started_at": 1,
-            "ended_at": 1,
-            "turns": 1,
-            "user_info": 1,
-            "elevenlabs_conversation_id": 1
-        }}
+        {
+            "$project": {
+                "_id": 1,
+                "phone": 1,
+                "started_at": 1,
+                "ended_at": 1,
+                "turns": 1,
+                "user_info": 1,
+                "elevenlabs_conversation_id": 1
+            }
+        }
     ]
 
     cursor = current_app.db.conversations.aggregate(result_pipeline)
+
     convs = [_format_conv(c) for c in cursor]
 
-    # Get all unique designations
-    designations = sorted(set(
-        str(d).strip()
-        for d in current_app.db.users.distinct("designation")
-        if d and str(d).strip()
-    ))
+    # ==========================================================
+    # FETCH FILTER VALUES
+    # ==========================================================
+    filter_pipeline = [
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "phone",
+                "foreignField": "phone",
+                "as": "user_info"
+            }
+        },
+        {
+            "$unwind": {
+                "path": "$user_info",
+                "preserveNullAndEmptyArrays": True
+            }
+        },
+        {
+            "$project": {
+                "designation": {
+                    "$trim": {
+                        "input": {
+                            "$ifNull": [
+                                "$user_info.designation",
+                                ""
+                            ]
+                        }
+                    }
+                },
+                "country": {
+                    "$trim": {
+                        "input": {
+                            "$ifNull": [
+                                "$user_info.country",
+                                ""
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    ]
 
-    counties = sorted(set(
-        str(c).strip()
-        for c in current_app.db.users.distinct("country")
-        if c and str(c).strip()
-    ))
+    filter_data = list(
+        current_app.db.conversations.aggregate(filter_pipeline)
+    )
 
+    designations = sorted(list(set(
+        item["designation"]
+        for item in filter_data
+        if item.get("designation")
+    )))
+
+    counties = sorted(list(set(
+        item["country"]
+        for item in filter_data
+        if item.get("country")
+    )))
+
+    # ==========================================================
+    # TEMPLATE
+    # ==========================================================
     return render_template(
         'admin/transcriptions.html',
         convs=convs,
@@ -223,6 +329,8 @@ def transcriptions():
         search=search,
         designation=designation,
         county=county,
+        date_range=date_range,
         designations=designations,
         counties=counties
     )
+```
