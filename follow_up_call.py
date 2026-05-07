@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 # Time window (UTC)
 # Example: 08:00 – 20:00 UTC
 # --------------------------------------------------
-ALLOWED_START_HOUR = 8
+ALLOWED_START_HOUR = 10
 ALLOWED_END_HOUR = 20
 
 
