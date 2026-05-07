@@ -309,7 +309,9 @@
 
             <div class="modal-header text-white border-0"
                  style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                <h5 class="modal-title fw-bold">Call Transcript & Recording</h5>
+                <h5 class="modal-title fw-bold" id="transcript-modal-title">
+                    Call Transcript
+                </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
 
@@ -394,7 +396,9 @@
 
         <!-- RIGHT COLUMN: Brief Lead Summary -->
         <div class="col-lg-5">
-            <h6 class="fw-bold text-primary mb-3">Brief Lead Summary</h6>
+            <h6 class="fw-bold text-primary mb-3" id="brief-summary-title">
+                Lead Summary
+            </h6>
             
             <div id="modal-brief-summary" class="border-start border-4 border-info ps-4" style="max-height: 520px; overflow-y: auto;">
                 
@@ -460,7 +464,9 @@
         <div class="modal-content rounded-4 shadow-lg border-0">
             <div class="modal-header text-white"
                  style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                <h5 class="modal-title fw-bold">Brief Lead Summary</h5>
+                <h5 class="modal-title fw-bold" id="brief-summary-modal-title">
+                    Lead Summary
+                </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="brief-summary-body">
@@ -583,9 +589,21 @@ document.addEventListener('DOMContentLoaded', () => {
 // ══════════════════════════════════════════════════════════
 document.querySelectorAll('.info-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
-        e.stopPropagation(); // prevent row click from firing
+
+        e.stopPropagation();
+
         currentElevenLabsId = btn.dataset.elevenlabsId?.trim() || null;
+
+        // Get user name from table row
+        const row = btn.closest('tr');
+        const userName = row?.dataset?.name || 'Lead Summary';
+
+        // Set modal title
+        document.getElementById('brief-summary-modal-title').textContent =
+            userName;
+
         loadBriefSummary();
+
         briefSummaryModal.show();
     });
 });
@@ -703,6 +721,15 @@ document.querySelectorAll('.transcript-row').forEach(row => {
 
         // === UPDATED: Populate fields in correct order ===
         document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
+        document.getElementById('transcript-modal-title').textContent = row.dataset.name || 'Call Transcript';
+
+        const summaryTitle = document.getElementById('brief-summary-title');
+
+        summaryTitle.textContent =
+            (row.dataset.name && row.dataset.name !== 'Unknown')
+                ? row.dataset.name
+                : 'Lead Summary';
+
         document.getElementById('modal-email').textContent   = row.dataset.email   || '—';
         document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
         document.getElementById('modal-address').textContent = row.dataset.address || '—';
