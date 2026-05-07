@@ -121,9 +121,8 @@ def document_upload_webhook():
                 "message": f"Server error: {str(e)}"
             }), 500
 
-
-# ==================== NEW WEBHOOK ====================
-@bp.route("/document-validate/reference-added", methods=["POST"])
+    # ==================== NEW WEBHOOK ====================
+@bp.route("/reference-added", methods=["POST"])
 def reference_added_webhook():
     """
     POST: Webhook triggered when a reference is added to a document.
@@ -174,3 +173,4 @@ def reference_added_webhook():
             "status": "error",
             "message": f"Server error: {str(e)}"
         }), 500
+
