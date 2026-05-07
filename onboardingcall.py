@@ -40,6 +40,7 @@ def make_onboarding_ai_call(app, phone: str, user_doc: dict, user_object_id):
         with app.app_context():
             e164_phone = phone.replace(" ", "")
             connection_id = os.getenv('TELNYX_CONNECTION_ID')
+            socket_url = os.getenv('SOCKET_URI_ONBOARDING')
             
             response = requests.post(
                 f"https://api.telnyx.com/v2/texml/calls/{connection_id}",
@@ -50,7 +51,7 @@ def make_onboarding_ai_call(app, phone: str, user_doc: dict, user_object_id):
                 json={
                     "To": e164_phone,
                     "From": CALLER_ID.replace(" ", ""),
-                    "Url": f'https://app.expresshealth.ie/voice4_uat?{params}',
+                    "Url": f'{socket_url}?{params}',
                     "StatusCallback": f'https://app.expresshealth.ie/call/completed'
                 }
             )
