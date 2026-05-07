@@ -137,6 +137,7 @@ def transcriptions():
     search = request.args.get('search', '').strip()
     designation = request.args.get('designation', '').strip()
     county = request.args.get('county', '').strip()
+    date_range = request.args.get('date_range', '').strip()
 
     # Base pipeline
     pipeline = [
@@ -154,10 +155,10 @@ def transcriptions():
     # if search:
     #     pipeline.insert(0, {"$match": {"phone": {"$regex": search, "$options": "i"}}})
 
+
     match_conditions = {}
 
-
-
+    # Search by phone or name
     if search:
         match_conditions["$or"] = [
             {"phone": {"$regex": search, "$options": "i"}},
@@ -173,6 +174,7 @@ def transcriptions():
     if county:
         match_conditions["user_info.country"] = county
 
+    # Apply filters
     if match_conditions:
         pipeline.append({"$match": match_conditions})
 
@@ -199,13 +201,18 @@ def transcriptions():
     cursor = current_app.db.conversations.aggregate(result_pipeline)
     convs = [_format_conv(c) for c in cursor]
 
-    designations = sorted(filter(None,
-            current_app.db.users.distinct("designation")
-        ))
+    # Get all unique designations
+    designations = sorted(set(
+        str(d).strip()
+        for d in current_app.db.users.distinct("designation")
+        if d and str(d).strip()
+    ))
 
-    counties = sorted(filter(None,
-            current_app.db.users.distinct("country")
-        ))
+    counties = sorted(set(
+        str(c).strip()
+        for c in current_app.db.users.distinct("country")
+        if c and str(c).strip()
+    ))
 
     return render_template(
         'admin/transcriptions.html',
