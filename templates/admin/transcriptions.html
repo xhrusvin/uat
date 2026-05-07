@@ -14,33 +14,120 @@
 
   <!-- Search Bar + Date Range -->
 <form method="get" class="mb-4">
-    <div class="row g-3">
-        <!-- Text Search -->
-        <div class="col-lg-5">
-            <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
-                <span class="input-group-text bg-white border-0">Search</span>
-                <input type="text" name="search" class="form-control border-0 ps-0" 
-                       placeholder="Search by phone number or name..." value="{{ search }}" autofocus>
-            </div>
-        </div>
 
-        <!-- Date Range Picker -->
-        <div class="col-lg-5">
-            <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
-                <span class="input-group-text bg-white border-0">Started</span>
-                <input type="text" id="date-range" name="date_range" 
-                       class="form-control border-0 ps-0" 
-                       placeholder="Select date range (Started From - To)"
-                       value="{{ date_range }}">
-            </div>
-        </div>
+    <div class="d-flex gap-3 align-items-center flex-wrap">
 
-        <!-- Buttons -->
-        <div class="col-lg-2">
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary flex-fill" type="submit">Filter</button>
-                <a href="{{ url_for('admin.transcriptions') }}" 
-                   class="btn btn-outline-secondary flex-fill">Clear</a>
+        <!-- Search Input -->
+        <div class="flex-grow-1">
+            <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+
+                <span class="input-group-text bg-white border-0">
+                    <i class="bi bi-search"></i>
+                </span>
+
+                <input type="text"
+                    name="search"
+                    class="form-control border-0 ps-0"
+                    placeholder="Search by phone number or name..."
+                    value="{{ search }}"
+                    autofocus>
+
+                <!-- Search Button -->
+                <button class="btn btn-primary px-4 border-0"
+                        type="submit">
+
+                    Search
+                </button>
+            </div>
+    </div>
+
+        <!-- Filter Dropdown -->
+        <div class="dropdown">
+
+            <button class="btn btn-light border shadow-sm rounded-4 px-4 py-3 dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    data-bs-auto-close="outside">
+
+                <i class="bi bi-funnel-fill me-2 text-primary"></i>
+                Filters
+
+                {% if date_range or designation or county %}
+                    <span class="badge bg-primary ms-2">Active</span>
+                {% endif %}
+            </button>
+
+            <div class="dropdown-menu dropdown-menu-end p-4 shadow border-0 rounded-4"
+                 style="width: 340px;">
+
+                <!-- Date -->
+                <div class="mb-4">
+                    <label class="form-label fw-semibold text-muted small mb-2">
+                        Date Range
+                    </label>
+
+                    <input type="text"
+                           id="date-range"
+                           name="date_range"
+                           class="form-control rounded-3"
+                           placeholder="Select date range"
+                           value="{{ date_range }}">
+                </div>
+
+                <!-- Designation -->
+                <div class="mb-4">
+                    <label class="form-label fw-semibold text-muted small mb-2">
+                        Designation
+                    </label>
+
+                    <select name="designation"
+                            class="form-select rounded-3">
+
+                        <option value="">All Designations</option>
+
+                        {% for d in designations %}
+                            <option value="{{ d }}"
+                                {% if designation == d %}selected{% endif %}>
+                                {{ d }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- County -->
+                <div class="mb-4">
+                    <label class="form-label fw-semibold text-muted small mb-2">
+                        County
+                    </label>
+
+                    <select name="county"
+                            class="form-select rounded-3">
+
+                        <option value="">All Counties</option>
+
+                        {% for cty in counties %}
+                            <option value="{{ cty }}"
+                                {% if county == cty %}selected{% endif %}>
+                                {{ cty }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Buttons -->
+                <div class="d-flex gap-2">
+                    <button type="submit"
+                            class="btn btn-primary flex-fill rounded-3">
+
+                        Apply Filters
+                    </button>
+
+                    <a href="{{ url_for('admin.transcriptions') }}"
+                       class="btn btn-outline-secondary rounded-3">
+
+                        Clear
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -56,7 +143,7 @@
                             <th class="ps-4">Phone</th>
                             <th>Name</th>
                             <th>Designation</th>
-                            <th>Country</th>
+                            <th>County</th>
                             <th>Status</th>
                             <th>Email</th>
                             <th>Summary</th>
@@ -88,8 +175,8 @@
                             </td>
                             <td><span class="text-muted">{{ c.designation }}</span></td>
                             <td>
-                                {% if c.country != '-' %}
-                                <span class="badge bg-light text-dark border">{{ c.country }}</span>
+                                {% if c.county != '-' %}
+                                <span class="badge bg-light text-dark border">{{ c.county }}</span>
                                 {% else %}
                                 <span class="text-muted">—</span>
                                 {% endif %}
@@ -410,8 +497,32 @@
         from { opacity: 0; transform: translateY(6px); }
         to   { opacity: 1; transform: translateY(0); }
     }
+
+    .dropdown-menu {
+    animation: fadeInDropdown 0.18s ease;
+}
+
+@keyframes fadeInDropdown {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.form-select:focus,
+.form-control:focus {
+    box-shadow: 0 0 0 0.15rem rgba(102, 126, 234, 0.15);
+    border-color: #667eea;
+}
+
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
 <!-- ═══════════════════════════════════════════════
      SCRIPTS
 ════════════════════════════════════════════════ -->
