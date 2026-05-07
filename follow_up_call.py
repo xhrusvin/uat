@@ -57,7 +57,7 @@ def register_follow_up_call_routes(app):
             return jsonify({
                 **response_base,
                 "status": "outside_hours",
-                "message": "Calls only allowed from 8:00 AM to 8:00 PM UTC."
+                "message": "Calls only allowed from 10:00 AM to 8:00 PM UTC."
             }), 200
 
         # === Within allowed time → proceed ===
