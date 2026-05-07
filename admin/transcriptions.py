@@ -123,10 +123,6 @@ def get_conversation_audio(conv_id):
         current_app.logger.error(f"Error fetching audio for {conv_id}: {e}", exc_info=True)
         return "Internal server error", 500
 
-
-# ------------------------------------------------------------------
-# ROUTE – LIST FINISHED TRANSCRIPTIONS
-# ------------------------------------------------------------------
 @admin_bp.route('/transcriptions')
 @admin_required
 def transcriptions():
@@ -139,6 +135,27 @@ def transcriptions():
     designation = request.args.get('designation', '').strip()
     county = request.args.get('county', '').strip()
     date_range = request.args.get('date_range', '').strip()
+
+    # ==========================================================
+    # SAFE REGEX
+    # ==========================================================
+    def safe_regex_pattern(text: str) -> str:
+        """Escape regex metacharacters safely"""
+        if not text:
+            return ""
+
+        meta = r'^$.*+?()[]{}|'
+        escaped = ''
+
+        for c in text:
+            if c in meta:
+                escaped += '\\' + c
+            else:
+                escaped += c
+
+        return escaped
+
+    safe_search = safe_regex_pattern(search)
 
     # ==========================================================
     # BASE PIPELINE
@@ -165,12 +182,37 @@ def transcriptions():
     # ==========================================================
     match_conditions = {}
 
-    # Search
+    # =========================
+    # SEARCH
+    # =========================
     if search:
         match_conditions["$or"] = [
-            {"phone": {"$regex": search, "$options": "i"}},
-            {"user_info.first_name": {"$regex": search, "$options": "i"}},
-            {"user_info.last_name": {"$regex": search, "$options": "i"}},
+
+            # Phone
+            {
+                "phone": {
+                    "$regex": safe_search,
+                    "$options": "i"
+                }
+            },
+
+            # First Name
+            {
+                "user_info.first_name": {
+                    "$regex": safe_search,
+                    "$options": "i"
+                }
+            },
+
+            # Last Name
+            {
+                "user_info.last_name": {
+                    "$regex": safe_search,
+                    "$options": "i"
+                }
+            },
+
+            # Full Name
             {
                 "$expr": {
                     "$regexMatch": {
@@ -181,30 +223,47 @@ def transcriptions():
                                 {"$ifNull": ["$user_info.last_name", ""]}
                             ]
                         },
-                        "regex": search,
+                        "regex": safe_search,
                         "options": "i"
                     }
                 }
             }
         ]
 
-    # Designation
+    # =========================
+    # DESIGNATION
+    # =========================
     if designation:
         match_conditions["user_info.designation"] = designation
 
-    # County
+    # =========================
+    # COUNTY
+    # =========================
     if county:
-        match_conditions["user_info.country"] = county
+        match_conditions["user_info.county"] = county
 
-    # Date Range
+    # =========================
+    # DATE RANGE
+    # =========================
     if date_range and " to " in date_range:
         try:
             start_str, end_str = date_range.split(" to ")
 
-            start_date = datetime.strptime(start_str.strip(), "%Y-%m-%d")
-            end_date = datetime.strptime(end_str.strip(), "%Y-%m-%d")
+            start_date = datetime.strptime(
+                start_str.strip(),
+                "%Y-%m-%d"
+            )
 
-            end_date = end_date.replace(hour=23, minute=59, second=59)
+            end_date = datetime.strptime(
+                end_str.strip(),
+                "%Y-%m-%d"
+            )
+
+            end_date = end_date.replace(
+                hour=23,
+                minute=59,
+                second=59
+            )
 
             match_conditions["started_at"] = {
                 "$gte": start_date,
@@ -214,18 +273,74 @@ def transcriptions():
         except Exception as e:
             print("DATE FILTER ERROR:", e)
 
-    # Apply filters
+    # ==========================================================
+    # APPLY MATCH
+    # ==========================================================
     if match_conditions:
-        pipeline.append({"$match": match_conditions})
+        pipeline.append({
+            "$match": match_conditions
+        })
 
-    # Sort AFTER match
-    pipeline.append({"$sort": {"started_at": -1}})
+    # ==========================================================
+    # PRIORITY SORTING
+    # ==========================================================
+    if search:
+
+        pipeline.append({
+            "$addFields": {
+                "priority": {
+                    "$cond": [
+                        {
+                            "$regexMatch": {
+                                "input": {
+                                    "$concat": [
+                                        {
+                                            "$ifNull": [
+                                                "$user_info.first_name",
+                                                ""
+                                            ]
+                                        },
+                                        " ",
+                                        {
+                                            "$ifNull": [
+                                                "$user_info.last_name",
+                                                ""
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "regex": f"^{safe_search}",
+                                "options": "i"
+                            }
+                        },
+                        0,
+                        1
+                    ]
+                }
+            }
+        })
+
+        pipeline.append({
+            "$sort": {
+                "priority": 1,
+                "started_at": -1
+            }
+        })
+
+    else:
+        pipeline.append({
+            "$sort": {
+                "started_at": -1
+            }
+        })
 
     # ==========================================================
     # TOTAL COUNT
     # ==========================================================
     total_pipeline = pipeline + [
-        {"$count": "total"}
+        {
+            "$count": "total"
+        }
     ]
 
     total_result = list(
@@ -238,8 +353,15 @@ def transcriptions():
     # RESULTS
     # ==========================================================
     result_pipeline = pipeline + [
-        {"$skip": (page - 1) * per_page},
-        {"$limit": per_page},
+
+        {
+            "$skip": (page - 1) * per_page
+        },
+
+        {
+            "$limit": per_page
+        },
+
         {
             "$project": {
                 "_id": 1,
@@ -253,7 +375,9 @@ def transcriptions():
         }
     ]
 
-    cursor = current_app.db.conversations.aggregate(result_pipeline)
+    cursor = current_app.db.conversations.aggregate(
+        result_pipeline
+    )
 
     convs = [_format_conv(c) for c in cursor]
 
@@ -261,6 +385,7 @@ def transcriptions():
     # FETCH FILTER VALUES
     # ==========================================================
     filter_pipeline = [
+
         {
             "$lookup": {
                 "from": "users",
@@ -269,14 +394,17 @@ def transcriptions():
                 "as": "user_info"
             }
         },
+
         {
             "$unwind": {
                 "path": "$user_info",
                 "preserveNullAndEmptyArrays": True
             }
         },
+
         {
             "$project": {
+
                 "designation": {
                     "$trim": {
                         "input": {
@@ -287,11 +415,12 @@ def transcriptions():
                         }
                     }
                 },
-                "country": {
+
+                "county": {
                     "$trim": {
                         "input": {
                             "$ifNull": [
-                                "$user_info.country",
+                                "$user_info.county",
                                 ""
                             ]
                         }
@@ -302,19 +431,35 @@ def transcriptions():
     ]
 
     filter_data = list(
-        current_app.db.conversations.aggregate(filter_pipeline)
+        current_app.db.conversations.aggregate(
+            filter_pipeline
+        )
     )
 
+    # ==========================================================
+    # DESIGNATIONS
+    # ==========================================================
     designations = sorted(list(set(
+
         item["designation"]
+
         for item in filter_data
+
         if item.get("designation")
+
     )))
 
+    # ==========================================================
+    # COUNTIES
+    # ==========================================================
     counties = sorted(list(set(
-        item["country"]
+
+        item["county"]
+
         for item in filter_data
-        if item.get("country")
+
+        if item.get("county")
+
     )))
 
     # ==========================================================
@@ -322,15 +467,18 @@ def transcriptions():
     # ==========================================================
     return render_template(
         'admin/transcriptions.html',
+
         convs=convs,
+
         page=page,
         total=total,
         per_page=per_page,
+
         search=search,
         designation=designation,
         county=county,
         date_range=date_range,
+
         designations=designations,
         counties=counties
     )
-```
