@@ -43,34 +43,113 @@
          style="z-index:1000; display:none;"></div>
 </div>
 
+        <div class="dropdown">
 
+            <button class="btn btn-light border shadow-sm rounded-4 px-4 py-3 dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    data-bs-auto-close="outside">
+
+                <i class="bi bi-funnel-fill me-2 text-primary"></i>
+                Filters
+
+                {% if joined_from or joined_to or designation or county %}
+                    <span class="badge bg-primary ms-2">Active</span>
+                {% endif %}
+            </button>
+
+            <div class="dropdown-menu dropdown-menu-end p-4 shadow border-0 rounded-4"
+                 style="width: 340px;">
 
                 <!-- Joined From -->
-                <div class="col-lg-2 col-md-3">
-                    <label class="form-label fw-semibold text-muted small mb-1">JOINED FROM</label>
-                    <input type="text" id="joined_from" name="joined_from" class="form-control form-control-lg flatpickr-input"
-                           placeholder="Select start date" value="{{ joined_from | default('') }}" readonly>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold text-muted small mb-2">
+                        Joined From
+                    </label>
+
+                    <input type="text"
+                           id="joined_from"
+                           name="joined_from"
+                           class="form-control rounded-3 flatpickr-input"
+                           placeholder="Select start date"
+                           value="{{ joined_from | default('') }}"
+                           readonly>
                 </div>
 
                 <!-- Joined To -->
-                <div class="col-lg-2 col-md-3">
-                    <label class="form-label fw-semibold text-muted small mb-1">JOINED TO</label>
-                    <input type="text" id="joined_to" name="joined_to" class="form-control form-control-lg flatpickr-input"
-                           placeholder="Select end date" value="{{ joined_to | default('') }}" readonly>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold text-muted small mb-2">
+                        Joined To
+                    </label>
+
+                    <input type="text"
+                           id="joined_to"
+                           name="joined_to"
+                           class="form-control rounded-3 flatpickr-input"
+                           placeholder="Select end date"
+                           value="{{ joined_to | default('') }}"
+                           readonly>
                 </div>
 
-                <!-- Action Buttons -->
-                <div class="col-lg-3 col-md-4 d-flex gap-2 pt-4">
-                    <button type="submit" class="btn btn-primary flex-fill">
+                <!-- Designation -->
+                <div class="mb-4">
+                    <label class="form-label fw-semibold text-muted small mb-2">
+                        Designation
+                    </label>
+
+                    <select name="designation"
+                            class="form-select rounded-3">
+
+                        <option value="">All Designations</option>
+
+                        {% for d in designations %}
+                            <option value="{{ d }}"
+                                {% if designation == d %}selected{% endif %}>
+                                {{ d }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- County -->
+                <div class="mb-4">
+                    <label class="form-label fw-semibold text-muted small mb-2">
+                        County
+                    </label>
+
+                    <select name="county"
+                            class="form-select rounded-3">
+
+                        <option value="">All Counties</option>
+
+                        {% for cty in counties %}
+                            <option value="{{ cty }}"
+                                {% if county == cty %}selected{% endif %}>
+                                {{ cty }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Buttons -->
+                <div class="d-flex gap-2">
+
+                    <button type="submit"
+                            class="btn btn-primary flex-fill rounded-3">
                         Apply Filters
                     </button>
-                    {% if search or joined_from or joined_to %}
-                    <a href="{{ url_for('admin.users') }}" 
-                       class="btn btn-outline-secondary flex-fill">
+
+                    <a href="{{ url_for('admin.users') }}"
+                       class="btn btn-outline-secondary rounded-3">
                         Clear
                     </a>
-                    {% endif %}
+
                 </div>
+            </div>
+            
+                
+        </div>
+
 
             </form>
         </div>

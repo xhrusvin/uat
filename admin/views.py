@@ -202,11 +202,19 @@ def users():
     search = request.args.get('search', '').strip()
     joined_from = request.args.get('joined_from', '').strip()
     joined_to = request.args.get('joined_to', '').strip()
+    designation = request.args.get('designation', '').strip()
+    county = request.args.get('county', '').strip()
    
     sort_order = request.args.get('sort', 'desc')
     sort_direction = -1 if sort_order == 'desc' else 1
 
     query = {"is_admin": {"$ne": True}}
+
+    if designation:
+        query["designation"] = designation
+
+    if county:
+        query["country"] = county
 
     # ====================== SEARCH FILTER ======================
     if search:
@@ -395,6 +403,19 @@ def users():
         el_id = u.get("onboarding_elevenlabs_conversation_id") or ""
         u["last_onboarding_conv_id"] = conv_by_elevenlabs_id.get(el_id, "")
 
+    designations = current_app.db.users.distinct(
+        "designation",
+        {"designation": {"$nin": [None, ""]}}
+    )
+
+    counties = current_app.db.users.distinct(
+        "country",
+        {"country": {"$nin": [None, ""]}}
+    )
+
+    designations = sorted([d for d in designations if d])
+    counties = sorted([c for c in counties if c])
+
     # ====================== RENDER TEMPLATE ======================
     return render_template('admin/users.html',
                            users=users_list,
@@ -404,7 +425,15 @@ def users():
                            search=search,
                            joined_from=joined_from,
                            joined_to=joined_to,
+                           designation=designation,
+                           county=county,
+                           designations=designations,
+                           counties=counties,
                            sort=sort_order)
+
+
+
+
 
 @admin_bp.route('/change_password', methods=['GET', 'POST'])
 @admin_required
