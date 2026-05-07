@@ -200,9 +200,9 @@
   Email <i class="bi bi-arrow-down-up sort-icon"></i>
 </th>
                             <th>Phone</th>
-                            <th class="sortable" data-key="country">
-  Country <i class="bi bi-arrow-down-up sort-icon"></i>
-</th>
+                            <th class="sortable" data-key="county">
+                                County <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
 
 
 
@@ -260,8 +260,8 @@
                             <td><span class="text-primary fw-medium">{{ u.email }}</span></td>
                             <td>{{ u.phone or '<span class="text-muted">—</span>'|safe }}</td>
                             <td>
-                                {% if u.country and u.country != '-' %}
-                                <span class="badge bg-light text-dark border">{{ u.country }}</span>
+                                {% if u.county and u.county != '-' %}
+                                <span class="badge bg-light text-dark border">{{ u.county }}</span>
                                 {% else %}
                                 <span class="text-muted">—</span>
                                 {% endif %}
@@ -1788,6 +1788,8 @@ const getCellValue = (row, key) => {
         case 'email':
             return cells[1]?.innerText.trim() || '';
         case 'country':
+            return cells[3]?.innerText.trim() || '';
+        case 'county':
             return cells[3]?.innerText.trim() || '';
         case 'designation':
             return cells[4]?.innerText.trim() || '';
