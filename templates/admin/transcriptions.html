@@ -190,7 +190,7 @@
         {% elif c.call_status == 'Empty' %}
             <span class="text-muted fw-bold">{{ c.call_status }}</span>
         
-        {% elif c.call_status == 'Voice call Detected' %}
+        {% elif c.call_status == 'Voice Mail Detected' %}
             <span class="text-info fw-bold">Voice Mail</span>
 
         {% elif c.call_status == 'No Required Experience' %}
@@ -749,8 +749,8 @@ if (!currentIsCompleted) {
 } else if (callStatus === 'Empty') {
     statusEl.textContent = 'Empty';
     statusEl.className   = 'badge bg-secondary';
-} else if (callStatus === 'Voice call Detected') {
-    statusEl.textContent = 'Voice call Detected';
+} else if (callStatus === 'Voice Mail Detected') {
+    statusEl.textContent = 'Voice Mail Detected';
     statusEl.className   = 'badge bg-info text-dark';
 } else if (callStatus) {
     statusEl.textContent = callStatus;

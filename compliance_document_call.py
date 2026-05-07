@@ -19,8 +19,8 @@ log = logging.getLogger(__name__)
 # Time window (UTC)
 # Example: 08:00 – 20:00 UTC
 # --------------------------------------------------
-ALLOWED_START_HOUR = 0
-ALLOWED_END_HOUR = 23
+ALLOWED_START_HOUR = 10
+ALLOWED_END_HOUR = 20
 
 XN_PORTAL_BASE_URL = os.getenv("XN_PORTAL_BASE_URL")
 
@@ -157,7 +157,7 @@ def register_compliance_doc_call_routes(app):
           },
           {
             "$set": {
-                "follow_up_sent": 1,
+                "compliance_documents_status": 1,
                 "updated_at": datetime.utcnow()
             }
           }
