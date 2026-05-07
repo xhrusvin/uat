@@ -133,9 +133,7 @@ def reference_added_webhook():
 
         Expected JSON Body:
             {
-                "user_id": "695541458810dcdf8b0d4c51",
-                "document_id": "696742358815dcdf8b0g4c06",
-                "reference_id": "697842358815dcdf8b0h4c07"
+                "user_id": "695541458810dcdf8b0d4c51"
             }
     """
     api_key = request.headers.get("Api-Key")
