@@ -309,7 +309,9 @@
 
             <div class="modal-header text-white border-0"
                  style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                <h5 class="modal-title fw-bold">Call Transcript & Recording</h5>
+                <h5 class="modal-title fw-bold" id="transcript-modal-title">
+                    Call Transcript
+                </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
 
@@ -719,6 +721,7 @@ document.querySelectorAll('.transcript-row').forEach(row => {
 
         // === UPDATED: Populate fields in correct order ===
         document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
+        document.getElementById('transcript-modal-title').textContent = row.dataset.name || 'Call Transcript';
 
         const summaryTitle = document.getElementById('brief-summary-title');
 
