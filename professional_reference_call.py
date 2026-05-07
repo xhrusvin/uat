@@ -93,13 +93,13 @@ def register_professional_reference_call_routes(app):
             "call_sent": {"$ne": 0},
             #"follow_up_sent": {"$ne": 0},  # 0 or missing
             #"xn_user_id": "69452f8cf84265e6fd0a11b9",
-            #"next_follow_up_at": {"$lte": current_time},
+            #"next_professional_reference_at": {"$lte": current_time},
             "email": "juhi@xpresshealth.ie"
             }
 
         user = app.db.users.find_one(
           query,
-          sort=[("next_follow_up_at", 1)]  # Oldest due first (ascending)
+          sort=[("next_professional_reference_at", 1)]  # Oldest due first (ascending)
           )
 
         

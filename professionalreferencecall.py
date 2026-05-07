@@ -58,6 +58,7 @@ def make_professional_reference_ai_call(app, phone: str, user_doc: dict, ref_id:
         with app.app_context():
             e164_phone = phone.replace(" ", "")
             connection_id = os.getenv('TELNYX_CONNECTION_ID')
+            socet_url = os.getenv('SOCKET_URI_LEVEL_FIVE')
             
             response = requests.post(
                 f"https://api.telnyx.com/v2/texml/calls/{connection_id}",
@@ -68,7 +69,7 @@ def make_professional_reference_ai_call(app, phone: str, user_doc: dict, ref_id:
                 json={
                     "To": e164_phone,
                     "From": CALLER_ID.replace(" ", ""),
-                    "Url": f'https://app.expresshealth.ie/voice3_uat?{query_string}',
+                    "Url": f'{socet_url}?{query_string}',
                     "StatusCallback": f'https://app.expresshealth.ie/call/completed'
                 }
             )
