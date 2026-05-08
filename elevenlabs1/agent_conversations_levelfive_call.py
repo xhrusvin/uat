@@ -148,14 +148,14 @@ def sync_agent_conversations_levelfive_call():
                 full_details = detail_resp.json()
 
                 analysis = full_details.get("analysis", {})
+                dynamic_variables = full_details.get("conversation_initiation_client_data", {}).get("dynamic_variables", {})
                 # transcript = full_details.get("transcript", [])
                 dc_results = analysis.get("data_collection_results", {})
-                dynamic_variables = analysis.get("dynamic_variables", {})
                 
                 # Extract data collection map
                 dc_map = extract_data_collection_map(dc_results)
 
-                return jsonify({"success": True, "data": full_details})
+                return jsonify({"success": True, "data": dynamic_variables})
 
                 call_status_val = dc_map.get("call_status")   # ← NEW
 
