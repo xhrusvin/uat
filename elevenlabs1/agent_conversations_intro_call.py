@@ -162,10 +162,10 @@ def sync_agent_conversations_intro_call():
                 # Check if user already has an address
                 existing_user = users.find_one(
                    {"last_elevenlabs_conversation_id": conversation_id},
-                   {"address": 1}
+                   {"eir_checked": 1}
                 )
 
-                user_needs_address = existing_user and not existing_user.get("address")
+                user_needs_address = existing_user and not existing_user.get("eir_checked")
 
                 location = None
                 countydata = None 
@@ -193,7 +193,7 @@ def sync_agent_conversations_intro_call():
 
                 users.update_one(
                     {"last_elevenlabs_conversation_id": conversation_id},
-                    {"$set": {"address": address, "county": county}}
+                    {"$set": {"address": address, "county": county,"eir_checked": True}}
                 )
 
                 processed += 1
