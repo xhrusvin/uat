@@ -157,6 +157,53 @@ def sync_agent_conversations_levelfive_call():
 
                 return jsonify({"success": True, "data": dc_map})
 
+                xn_user_id = dynamic_variables.get("xn_user_id")
+                ref_id = dynamic_variables.get("ref_id")
+
+                user_url = os.getenv("XN_PORTAL_BASE_URL")
+                user_external_api_key = os.getenv("XN_PORTAL_API_KEY")
+                xn_app_country = os.getenv("XN_APP_COUNTRY")
+
+                if not xn_user_id or not ref_id:
+                    print(f"Missing xn_user_id or ref_id in dynamic_variables for conversation {conversation_id}")
+                    skipped += 1
+                    continue
+
+                if not user_url or not user_external_api_key:
+                    print("Missing USER_API_URL or USER_EXTERNAL_API_KEY in environment")
+                    skipped += 1
+                    continue
+
+                question_answers = [
+                    {"question_id": 1, "answer": dc_map.get("question_1", 1)},
+                    {"question_id": 2, "answer": dc_map.get("question_2", 1)},
+                    {"question_id": 3, "answer": dc_map.get("question_3", 1)},
+                    {"question_id": 4, "answer": dc_map.get("question_4", 4)},
+                ]
+
+                reference_payload = {
+                    "staff_id": xn_user_id,
+                    "reference_id": ref_id,
+                    "response": question_answers
+                }
+
+                reference_headers = {
+                    "Api-Key": user_external_api_key,
+                    "X-App-Country": xn_app_country,
+                    "Content-Type": "application/json"
+                }
+
+                ref_resp = requests.post(
+                    f"{user_url}/ai/recruitments/submit-reference-request",
+                    json=reference_payload,
+                    headers=reference_headers,
+                    timeout=60
+                )
+                ref_resp.raise_for_status()
+                ref_result = ref_resp.json()
+
+                return jsonify({"success": True, "data": ref_result})
+
                 call_status_val = dc_map.get("call_status")   # ← NEW
 
                 # ==================== website_leads_conv (UI Transcript) ====================
