@@ -201,8 +201,7 @@ def sync_agent_conversations_levelfive_call():
                 ref_resp.raise_for_status()
                 ref_result = ref_resp.json()
 
-                return jsonify({"success": True, "data": ref_result})
-
+                
                 call_status_val = dc_map.get("call_status")   # ← NEW
 
                 # ==================== website_leads_conv (UI Transcript) ====================
