@@ -186,20 +186,20 @@ def sync_agent_conversations_levelfive_call():
                     "response": question_answers
                 }
 
-                reference_headers = {
-                    "Api-Key": user_external_api_key,
-                    "X-App-Country": xn_app_country,
-                    "Content-Type": "application/json"
-                }
+                # reference_headers = {
+                #     "Api-Key": user_external_api_key,
+                #     "X-App-Country": xn_app_country,
+                #     "Content-Type": "application/json"
+                # }
 
-                ref_resp = requests.post(
-                    f"{user_url}/ai/recruitments/submit-reference-request",
-                    json=reference_payload,
-                    headers=reference_headers,
-                    timeout=60
-                )
-                ref_resp.raise_for_status()
-                ref_result = ref_resp.json()
+                # ref_resp = requests.post(
+                #     f"{user_url}/ai/recruitments/submit-reference-request",
+                #     json=reference_payload,
+                #     headers=reference_headers,
+                #     timeout=60
+                # )
+                # ref_resp.raise_for_status()
+                # ref_result = ref_resp.json()
 
                 
                 call_status_val = dc_map.get("call_status")   # ← NEW

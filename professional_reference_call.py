@@ -94,7 +94,7 @@ def register_professional_reference_call_routes(app):
             "professional_reference_call_sent": {"$ne": 1},  # 0 or missing
             #"xn_user_id": "69452f8cf84265e6fd0a11b9",
             "next_professional_reference_at": {"$lte": current_time},
-            #"email": "rusvin@xpresshealth.ie"
+            #"email": "flaflavieyanga2007@hotmail.com"
             }
 
         user = app.db.users.find_one(
@@ -156,7 +156,6 @@ def register_professional_reference_call_routes(app):
         # ------------------- Trigger Call for Each Pending Reference -------------------
         triggered_count = 0
         triggered_refs = []
-
 
         for ref in references:
             if ref.get("status") == "pending":
