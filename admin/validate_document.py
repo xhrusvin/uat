@@ -103,7 +103,7 @@ def validate_document():
             response = requests.get(api_url, headers=headers, json={"_id": xn_user_id}, timeout=15)
 
             if response.status_code != 200:
-                continue
+                return jsonify({"error": "Failed to fetch documents", "response": response.json()}), 500
 
             docs_array = response.json().get('data', [])
 
