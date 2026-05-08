@@ -150,6 +150,7 @@ def sync_agent_conversations_levelfive_call():
                 analysis = full_details.get("analysis", {})
                 # transcript = full_details.get("transcript", [])
                 dc_results = analysis.get("data_collection_results", {})
+                dynamic_variables = analysis.get("dynamic_variables", {})
 
                 # Extract data collection map
                 dc_map = extract_data_collection_map(dc_results)
@@ -168,7 +169,7 @@ def sync_agent_conversations_levelfive_call():
                     {"$set": conv_doc}
                 )
 
-                return jsonify({"success": True, "data": full_details})
+                return jsonify({"success": True, "data": dynamic_variables})
 
                 processed += 1
 
