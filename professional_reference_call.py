@@ -157,8 +157,6 @@ def register_professional_reference_call_routes(app):
         triggered_count = 0
         triggered_refs = []
 
-        print("References:", references)
-        exit()
 
         for ref in references:
             if ref.get("status") == "pending":
