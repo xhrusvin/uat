@@ -94,7 +94,7 @@ def validate_document():
 
     processed_results = []
 
-    return jsonify({"error": "Failed to fetch documents", "response": users_list}), 500
+    return jsonify({"error": "Failed to fetch documents", "response": json.dumps(users_list, default=str)}), 500
 
     for u in users_list:
         local_id = u['_id']
