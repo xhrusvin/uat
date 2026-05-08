@@ -91,10 +91,10 @@ def register_professional_reference_call_routes(app):
             "is_admin": {"$ne": True},
             "xn_user_id": {"$ne": None},
             "call_sent": {"$ne": 0},
-            #"professional_reference_call_sent": {"$ne": 1},  # 0 or missing
+            "professional_reference_call_sent": {"$ne": 1},  # 0 or missing
             #"xn_user_id": "69452f8cf84265e6fd0a11b9",
-            #"next_professional_reference_at": {"$lte": current_time},
-            "email": "rusvin@xpresshealth.ie"
+            "next_professional_reference_at": {"$lte": current_time},
+            #"email": "rusvin@xpresshealth.ie"
             }
 
         user = app.db.users.find_one(
@@ -166,14 +166,14 @@ def register_professional_reference_call_routes(app):
                     ref_phone = ref.get("phone", "")
                     ref_dial_code = ref.get("dial_code", "+353")
 
-                    #full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
-                    if triggered_count == 0:
-                      #full_phone = "+91 7907044695"      # First reference
-                      full_phone = "+91 7034526952"
-                    elif triggered_count == 1:
-                      full_phone = "+91 96311113392501"      # Second reference
-                    else:
-                      full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
+                    full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
+                    # if triggered_count == 0:
+                    #   #full_phone = "+91 7907044695"      # First reference
+                    #   full_phone = "+91 7034526952"
+                    # elif triggered_count == 1:
+                    #   full_phone = "+91 96311113392501"      # Second reference
+                    # else:
+                    #   full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
 
 
                     # Trigger AI call for this reference
