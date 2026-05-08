@@ -169,23 +169,13 @@ def sync_agent_conversations_intro_call():
 
                 location = None
                 countydata = None 
+
                 if eir_code_val and user_needs_address:
                   resolved = _resolve(eir_code_val)
+                  location = _extract_location(resolved) if resolved else None
 
-                  if resolved:
-                    location = _extract_location(resolved)
-                  else:
-                    location = None
-
-                if eir_code_val:
-                   resolved = _geocode_postcode(eir_code_val)
-                   if resolved:
-                     countydata = _extract_locationgoogle(resolved)
-                   else:
-                     countydata = None
-
-               
-
+                  resolved = _geocode_postcode(eir_code_val)
+                  countydata = _extract_locationgoogle(resolved) if resolved else None
 
 
                 # ==================== website_leads_conv (UI Transcript) ====================
