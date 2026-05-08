@@ -155,8 +155,7 @@ def sync_agent_conversations_levelfive_call():
                 # Extract data collection map
                 dc_map = extract_data_collection_map(dc_results)
 
-                return jsonify({"success": True, "data": dc_map})
-
+                
                 xn_user_id = dynamic_variables.get("xn_user_id")
                 ref_id = dynamic_variables.get("ref_id")
 
@@ -175,10 +174,10 @@ def sync_agent_conversations_levelfive_call():
                     continue
 
                 question_answers = [
-                    {"question_id": 1, "answer": dc_map.get("question_1", 1)},
-                    {"question_id": 2, "answer": dc_map.get("question_2", 1)},
-                    {"question_id": 3, "answer": dc_map.get("question_3", 1)},
-                    {"question_id": 4, "answer": dc_map.get("question_4", 4)},
+                    {"question_id": 1, "answer": dc_map.get("worked_more_than_three_month")},
+                    {"question_id": 2, "answer": dc_map.get("safeguarding_issues")},
+                    {"question_id": 3, "answer": dc_map.get("has_the_sufficient_skills")},
+                    {"question_id": 4, "answer": dc_map.get("performance_rating")},
                 ]
 
                 reference_payload = {
