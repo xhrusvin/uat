@@ -1875,36 +1875,128 @@ def user_suggestions():
 
     escaped = re.escape(query)
 
-    users = list(current_app.db.users.find({
-        "is_admin": {"$ne": True},
-        "$or": [
-            {"first_name": {"$regex": escaped, "$options": "i"}},
-            {"last_name": {"$regex": escaped, "$options": "i"}},
-            {"email": {"$regex": escaped, "$options": "i"}},
-            {"phone": {"$regex": escaped, "$options": "i"}},
-            {
-                "$expr": {
-                    "$regexMatch": {
-                        "input": {
-                            "$concat": [
-                                {"$ifNull": ["$first_name", ""]},
-                                " ",
-                                {"$ifNull": ["$last_name", ""]}
-                            ]
-                        },
-                        "regex": escaped,
-                        "options": "i"
+    pipeline = [
+        {
+            "$match": {
+                "is_admin": {"$ne": True},
+                "$or": [
+                    {"first_name": {"$regex": escaped, "$options": "i"}},
+                    {"last_name": {"$regex": escaped, "$options": "i"}},
+                    {"email": {"$regex": escaped, "$options": "i"}},
+                    {"phone": {"$regex": escaped, "$options": "i"}},
+                    {
+                        "$expr": {
+                            "$regexMatch": {
+                                "input": {
+                                    "$concat": [
+                                        {"$ifNull": ["$first_name", ""]},
+                                        " ",
+                                        {"$ifNull": ["$last_name", ""]}
+                                    ]
+                                },
+                                "regex": escaped,
+                                "options": "i"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+
+        # PRIORITY ORDER
+        {
+            "$addFields": {
+                "priority": {
+                    "$switch": {
+                        "branches": [
+
+                            # Full name / first / last name matches
+                            {
+                                "case": {
+                                    "$or": [
+                                        {
+                                            "$regexMatch": {
+                                                "input": {
+                                                    "$concat": [
+                                                        {"$ifNull": ["$first_name", ""]},
+                                                        " ",
+                                                        {"$ifNull": ["$last_name", ""]}
+                                                    ]
+                                                },
+                                                "regex": escaped,
+                                                "options": "i"
+                                            }
+                                        },
+                                        {
+                                            "$regexMatch": {
+                                                "input": {"$ifNull": ["$first_name", ""]},
+                                                "regex": escaped,
+                                                "options": "i"
+                                            }
+                                        },
+                                        {
+                                            "$regexMatch": {
+                                                "input": {"$ifNull": ["$last_name", ""]},
+                                                "regex": escaped,
+                                                "options": "i"
+                                            }
+                                        }
+                                    ]
+                                },
+                                "then": 1
+                            },
+
+                            # Email match
+                            {
+                                "case": {
+                                    "$regexMatch": {
+                                        "input": {"$ifNull": ["$email", ""]},
+                                        "regex": escaped,
+                                        "options": "i"
+                                    }
+                                },
+                                "then": 2
+                            },
+
+                            # Phone match
+                            {
+                                "case": {
+                                    "$regexMatch": {
+                                        "input": {"$ifNull": ["$phone", ""]},
+                                        "regex": escaped,
+                                        "options": "i"
+                                    }
+                                },
+                                "then": 3
+                            }
+                        ],
+                        "default": 4
                     }
                 }
             }
-        ]
-    }).limit(5))
+        },
+
+        # SORT BY PRIORITY
+        {
+            "$sort": {
+                "priority": 1,
+                "first_name": 1
+            }
+        },
+
+        {
+            "$limit": 5
+        }
+    ]
+
+    users = list(current_app.db.users.aggregate(pipeline))
 
     results = []
+
     for u in users:
         results.append({
             "id": str(u["_id"]),
-            "name": f"{u.get('first_name','')} {u.get('last_name','')}".strip(),
+            "name": f"{u.get('first_name', '')} {u.get('last_name', '')}".strip(),
             "email": u.get("email", ""),
             "phone": u.get("phone", "")
         })
