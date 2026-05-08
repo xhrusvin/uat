@@ -159,8 +159,17 @@ def sync_agent_conversations_intro_call():
                 call_status_val = dc_map.get("call_status")   # ← NEW
                 eir_code_val = dc_map.get("eir_code")
 
-                
-                if eir_code_val:
+                # Check if user already has an address
+                existing_user = users.find_one(
+                   {"last_elevenlabs_conversation_id": conversation_id},
+                   {"address": 1}
+                )
+
+                user_needs_address = existing_user and not existing_user.get("address")
+
+                location = None
+                countydata = None 
+                if eir_code_val and user_needs_address:
                   resolved = _resolve(eir_code_val)
 
                   if resolved:
