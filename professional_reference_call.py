@@ -94,7 +94,7 @@ def register_professional_reference_call_routes(app):
             #"professional_reference_call_sent": {"$ne": 1},  # 0 or missing
             #"xn_user_id": "69452f8cf84265e6fd0a11b9",
             #"next_professional_reference_at": {"$lte": current_time},
-            "email": "juhi@xpresshealth.ie"
+            "email": "rusvin@xpresshealth.ie"
             }
 
         user = app.db.users.find_one(
