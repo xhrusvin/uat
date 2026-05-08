@@ -194,6 +194,12 @@ def reports():
     return render_template('admin/reports.html')
 
 
+
+# ------------------------------------------------------------------
+# USERS
+# ------------------------------------------------------------------
+
+
 @admin_bp.route('/users')
 @admin_required
 def users():
@@ -214,7 +220,7 @@ def users():
         query["designation"] = designation
 
     if county:
-        query["country"] = county
+        query["county"] = county
 
     # ====================== SEARCH FILTER ======================
     if search:
@@ -408,9 +414,14 @@ def users():
         {"designation": {"$nin": [None, ""]}}
     )
 
+    # counties = current_app.db.users.distinct(
+    #     "country",
+    #     {"country": {"$nin": [None, ""]}}
+    # )
+
     counties = current_app.db.users.distinct(
-        "country",
-        {"country": {"$nin": [None, ""]}}
+        "county",
+        {"county": {"$nin": [None, "", "-"]}}
     )
 
     designations = sorted([d for d in designations if d])
