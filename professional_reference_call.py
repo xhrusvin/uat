@@ -22,8 +22,8 @@ log = logging.getLogger(__name__)
 # Time window (UTC)
 # Example: 08:00 – 20:00 UTC
 # --------------------------------------------------
-ALLOWED_START_HOUR = 0
-ALLOWED_END_HOUR = 23
+ALLOWED_START_HOUR = 10
+ALLOWED_END_HOUR = 16
 XN_PORTAL_BASE_URL=os.getenv('XN_PORTAL_BASE_URL')
 XN_PORTAL_API_KEY=os.getenv('XN_PORTAL_API_KEY')
 XN_APP_COUNTRY=os.getenv('XN_APP_COUNTRY')

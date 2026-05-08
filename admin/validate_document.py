@@ -68,7 +68,10 @@ def validate_document():
     elif xn_user_id_filter:
         query["xn_user_id"] = xn_user_id_filter
     else:
-        query["document_fetched"] = {"$ne": 1}
+        query["$or"] = [
+            {"document_fetched": 0},
+            {"document_fetched": {"$exists": False}}
+        ]
         query["xn_user_id"] = {"$exists": True, "$ne": ""}
 
     if search:
