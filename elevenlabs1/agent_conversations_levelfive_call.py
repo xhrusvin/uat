@@ -151,7 +151,7 @@ def sync_agent_conversations_levelfive_call():
                 # transcript = full_details.get("transcript", [])
                 dc_results = analysis.get("data_collection_results", {})
                 dynamic_variables = analysis.get("dynamic_variables", {})
-                return jsonify({"success": True, "data": dynamic_variables})
+                return jsonify({"success": True, "data": analysis})
                 # Extract data collection map
                 dc_map = extract_data_collection_map(dc_results)
 
