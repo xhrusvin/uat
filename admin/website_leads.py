@@ -44,67 +44,43 @@ async def fetch_audio(url, api_key):
 def update_registration_status():
     db = current_app.db
 
-    pipeline = [
-        {
-            "$match": {
-                "email": {"$ne": None},
-                "registration_completed": {"$ne": 1}
+    leads = db.website_leads.find({
+        "email": {"$ne": None},
+        "registration_completed": {"$ne": 1}
+    })
+
+    for lead in leads:
+        email = lead.get("email", "").strip().lower()
+
+        if not email:
+            continue
+
+        existing_user = db.users.find_one({
+            "email": {
+                "$regex": f"^{email}$",
+                "$options": "i"
             }
-        },
-        {
-            "$lookup": {
-                "from": "users",
-                "let": {"lead_email": {"$toLower": "$email"}},
-                "pipeline": [
-                    {
-                        "$match": {
-                            "$expr": {
-                                "$eq": [
-                                    {"$toLower": "$email"},
-                                    "$$lead_email"
-                                ]
-                            }
-                        }
+        })
+
+        if existing_user:
+            db.website_leads.update_one(
+                {"_id": lead["_id"]},
+                {
+                    "$set": {
+                        "registration_completed": 1,
+                        "registration_completed_at": datetime.utcnow()
                     }
-                ],
-                "as": "matched_user"
-            }
-        },
-        {
-            "$match": {
-                "matched_user.0": {"$exists": True}
-            }
-        },
-        {
-            "$set": {
-                "registration_completed": 1,
-                "registration_completed_at": datetime.utcnow()
-            }
-        },
-        {
-            "$project": {
-                "matched_user": 0
-            }
-        },
-        {
-            "$merge": {
-                "into": "website_leads",
-                "on": "_id",
-                "whenMatched": "merge",
-                "whenNotMatched": "discard"
-            }
-        }
-    ]
-
-    db.website_leads.aggregate(pipeline)
+                }
+            )
 
 
 
-def run_update_registration_status():
-    try:
-        update_registration_status()
-    except Exception as e:
-        current_app.logger.error(f"Background job failed: {str(e)}")
+def run_update_registration_status(app):
+    with app.app_context():
+        try:
+            update_registration_status()
+        except Exception as e:
+            app.logger.error(f"Background job failed: {str(e)}")
 
 
 # ===============================
@@ -117,7 +93,11 @@ def run_update_registration_status():
 @admin_required
 def website_leads_list():
 
-    threading.Thread(target=run_update_registration_status).start()
+    # threading.Thread(target=run_update_registration_status).start()
+    threading.Thread(
+        target=run_update_registration_status,
+        args=(current_app._get_current_object(),)
+    ).start()
 
     page = int(request.args.get("page", 1))
     per_page = 25
