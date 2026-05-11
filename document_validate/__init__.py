@@ -11,4 +11,3 @@ bp = Blueprint(
 from . import validate_nmbi  # noqa
 from . import document_upload
 from . import changed_to_staff
-from . import jobs
