@@ -1,4 +1,4 @@
-# admin/website_leads.py
+# admin/transcriptions_followup.py
 from flask import (
     render_template, request, jsonify, current_app,
     redirect, url_for, flash, Response
@@ -16,8 +16,6 @@ import re
 from .views import admin_bp, admin_required
 
 now_utc = datetime.now(pytz.UTC)
-
-XN_APP_COUNTRY = os.getenv("XN_APP_COUNTRY", "").lower()
 
 
 # ===============================
@@ -45,13 +43,6 @@ async def fetch_audio(url, api_key):
 
 def _format_conv(conv):
     tz_utc = pytz.UTC
-    XN_APP_COUNTRY = os.getenv("XN_APP_COUNTRY", "").lower()
-
-    if XN_APP_COUNTRY == "ie":
-        tz = pytz.timezone("Europe/Dublin")   # Ireland time
-    else:
-        tz = pytz.timezone("UTC")    # India time
-    
     conv_id = str(conv.get('_id', ''))
     conv['conv_id'] = conv_id
 
@@ -83,9 +74,8 @@ def _format_conv(conv):
     conv['email'] = safe_str(user.get('email'), '—')          # ← ADD THIS LINE
     conv['designation'] = safe_str(user.get('designation'), '-')
     conv['county'] = safe_str(user.get('county'), '-')
-    conv['country'] = safe_str(user.get('country'), '-')
     conv['call_status'] = safe_str(conv.get('call_status'), '—')
-    conv['follow_up_sent'] = user.get('follow_up_sent')
+    conv['country'] = safe_str(user.get('country'), '-')
 
     # === DATE FORMATTING (also make safe) ===
     try:
@@ -93,9 +83,9 @@ def _format_conv(conv):
             if isinstance(conv['started_at'], str):
                 # Handle ISO strings with/without Z
                 dt = conv['started_at'].replace('Z', '+00:00') if 'Z' in conv['started_at'] else conv['started_at']
-                conv['started_at'] = datetime.fromisoformat(dt).astimezone(tz).strftime('%Y-%m-%d %H:%M:%S')
+                conv['started_at'] = datetime.fromisoformat(dt).astimezone(tz_utc).strftime('%Y-%m-%d %H:%M:%S')
             else:
-                conv['started_at'] = conv['started_at'].astimezone(tz).strftime('%Y-%m-%d %H:%M:%S')
+                conv['started_at'] = conv['started_at'].astimezone(tz_utc).strftime('%Y-%m-%d %H:%M:%S')
         else:
             conv['started_at'] = '—'
     except Exception:
@@ -106,9 +96,9 @@ def _format_conv(conv):
         if ended_at:
             if isinstance(ended_at, str):
                 dt = ended_at.replace('Z', '+00:00') if 'Z' in ended_at else ended_at
-                conv['ended_at'] = datetime.fromisoformat(dt).astimezone(tz).strftime('%Y-%m-%d %H:%M:%S')
+                conv['ended_at'] = datetime.fromisoformat(dt).astimezone(tz_utc).strftime('%Y-%m-%d %H:%M:%S')
             else:
-                conv['ended_at'] = ended_at.astimezone(tz).strftime('%Y-%m-%d %H:%M:%S')
+                conv['ended_at'] = ended_at.astimezone(tz_utc).strftime('%Y-%m-%d %H:%M:%S')
         else:
             conv['ended_at'] = 'Ongoing'
     except Exception:
@@ -118,7 +108,7 @@ def _format_conv(conv):
     formatted_turns = []
     for turn in conv.get('turns', []):
         try:
-            time_str = turn['ts'].astimezone(tz).strftime('%H:%M:%S') if turn.get('ts') else '—'
+            time_str = turn['ts'].astimezone(tz_utc).strftime('%H:%M:%S') if turn.get('ts') else '—'
         except Exception:
             time_str = '—'
         formatted_turns.append({
@@ -146,8 +136,7 @@ def _format_conv(conv):
         'ended_at': conv['ended_at'],
         'turns': conv['turns'],
         'elevenlabs_conversation_id': elevenlabs_id,
-        'has_audio': bool(elevenlabs_id),
-        'follow_up_sent': conv.get('follow_up_sent'),
+        'has_audio': bool(elevenlabs_id)
     }
 
 
@@ -181,25 +170,6 @@ def followup_tr():
     pre_match = {}
     post_match = None
     name_search_active = False
-
-    # ====================== DATE RANGE FILTER ======================
-    date_filter = {}
-    if date_range:
-        try:
-            parts = [p.strip() for p in date_range.split('to')]
-            if len(parts) == 2:
-                from_date = datetime.strptime(parts[0], '%Y-%m-%d').replace(tzinfo=utc)
-                to_date = datetime.strptime(parts[1], '%Y-%m-%d') \
-                            .replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=utc)
-                
-                date_filter = {"started_at": {"$gte": from_date, "$lte": to_date}}
-            elif len(parts) == 1:
-                single_date = datetime.strptime(parts[0], '%Y-%m-%d').replace(tzinfo=utc)
-                date_filter = {"started_at": {"$gte": single_date, "$lt": single_date + timedelta(days=1)}}
-        except Exception as e:
-            current_app.logger.warning(f"Invalid date_range: {date_range} | {e}")
-
-    
 
     # ====================== DESIGNATION FILTER ======================
     if designation:
@@ -250,8 +220,24 @@ def followup_tr():
             }
 
 
-# ====================== SEARCH FILTER (Phone + Name) ======================
+    # ====================== DATE RANGE FILTER ======================
+    date_filter = {}
+    if date_range:
+        try:
+            parts = [p.strip() for p in date_range.split('to')]
+            if len(parts) == 2:
+                from_date = datetime.strptime(parts[0], '%Y-%m-%d').replace(tzinfo=utc)
+                to_date = datetime.strptime(parts[1], '%Y-%m-%d') \
+                            .replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=utc)
+                
+                date_filter = {"started_at": {"$gte": from_date, "$lte": to_date}}
+            elif len(parts) == 1:
+                single_date = datetime.strptime(parts[0], '%Y-%m-%d').replace(tzinfo=utc)
+                date_filter = {"started_at": {"$gte": single_date, "$lt": single_date + timedelta(days=1)}}
+        except Exception as e:
+            current_app.logger.warning(f"Invalid date_range: {date_range} | {e}")
 
+    # ====================== SEARCH FILTER (Phone + Name) ======================
     if search:
         phone_pattern = safe_regex_pattern(search)
 
@@ -347,7 +333,6 @@ def followup_tr():
             "user_info.designation": 1,
             "user_info.country": 1,
             "user_info.county": 1,
-            "user_info.follow_up_sent": 1,
         }
     })
 
@@ -671,3 +656,4 @@ def recall_followup_call():
     except Exception as e:
         current_app.logger.error(f"Error recalling follow-up: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Internal server error"}), 500
+

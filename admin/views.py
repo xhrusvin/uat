@@ -1910,79 +1910,49 @@ def user_suggestions():
                     "$switch": {
                         "branches": [
 
-                            # Starts with full name / first / last name
+                            # FIRST NAME starts with query
                             {
                                 "case": {
-                                    "$or": [
-                                        {
-                                            "$regexMatch": {
-                                                "input": {
-                                                    "$concat": [
-                                                        {"$ifNull": ["$first_name", ""]},
-                                                        " ",
-                                                        {"$ifNull": ["$last_name", ""]}
-                                                    ]
-                                                },
-                                                "regex": f"^{escaped}",
-                                                "options": "i"
-                                            }
-                                        },
-                                        {
-                                            "$regexMatch": {
-                                                "input": {"$ifNull": ["$first_name", ""]},
-                                                "regex": f"^{escaped}",
-                                                "options": "i"
-                                            }
-                                        },
-                                        {
-                                            "$regexMatch": {
-                                                "input": {"$ifNull": ["$last_name", ""]},
-                                                "regex": f"^{escaped}",
-                                                "options": "i"
-                                            }
-                                        }
-                                    ]
+                                    "$regexMatch": {
+                                        "input": {"$ifNull": ["$first_name", ""]},
+                                        "regex": f"^{escaped}",
+                                        "options": "i"
+                                    }
                                 },
                                 "then": 1
                             },
 
-                            # Contains name somewhere
+                            # LAST NAME starts with query
                             {
                                 "case": {
-                                    "$or": [
-                                        {
-                                            "$regexMatch": {
-                                                "input": {
-                                                    "$concat": [
-                                                        {"$ifNull": ["$first_name", ""]},
-                                                        " ",
-                                                        {"$ifNull": ["$last_name", ""]}
-                                                    ]
-                                                },
-                                                "regex": escaped,
-                                                "options": "i"
-                                            }
-                                        },
-                                        {
-                                            "$regexMatch": {
-                                                "input": {"$ifNull": ["$first_name", ""]},
-                                                "regex": escaped,
-                                                "options": "i"
-                                            }
-                                        },
-                                        {
-                                            "$regexMatch": {
-                                                "input": {"$ifNull": ["$last_name", ""]},
-                                                "regex": escaped,
-                                                "options": "i"
-                                            }
-                                        }
-                                    ]
+                                    "$regexMatch": {
+                                        "input": {"$ifNull": ["$last_name", ""]},
+                                        "regex": f"^{escaped}",
+                                        "options": "i"
+                                    }
                                 },
                                 "then": 2
                             },
 
-                            # Email match
+                            # FULL NAME contains query
+                            {
+                                "case": {
+                                    "$regexMatch": {
+                                        "input": {
+                                            "$concat": [
+                                                {"$ifNull": ["$first_name", ""]},
+                                                " ",
+                                                {"$ifNull": ["$last_name", ""]}
+                                            ]
+                                        },
+                                        "regex": escaped,
+                                        "options": "i"
+                                    }
+                                },
+                                "then": 3
+                            },
+
+                            # EMAIL match
                             {
                                 "case": {
                                     "$regexMatch": {
@@ -1991,10 +1961,10 @@ def user_suggestions():
                                         "options": "i"
                                     }
                                 },
-                                "then": 3
+                                "then": 4
                             },
 
-                            # Phone match
+                            # PHONE match
                             {
                                 "case": {
                                     "$regexMatch": {
@@ -2003,7 +1973,7 @@ def user_suggestions():
                                         "options": "i"
                                     }
                                 },
-                                "then": 4
+                                "then": 5
                             }
                         ],
                         "default": 5
