@@ -95,7 +95,10 @@ def changed_to_staff_webhook():
         # 4. Insert into uploaded_documents (use insert_one for webhook style)
         result = table_name.insert_one(record)
 
-        onboarding_url = f"https://uat.expresshealth.ie/onboarding_call?xnid={user_id}"
+        if app_country == "ie":
+            onboarding_url = f"https://expresshealth.ie/onboarding_call?xnid={user_id}"
+        else:
+            onboarding_url = f"https://uat.expresshealth.ie/onboarding_call?xnid={user_id}"
 
         try:
             onboarding_response = requests.get(onboarding_url)

@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 # Time window (UTC)
 # Example: 08:00 – 20:00 UTC
 # --------------------------------------------------
-ALLOWED_START_HOUR = 10
+ALLOWED_START_HOUR = 9
 ALLOWED_END_HOUR = 16
 XN_PORTAL_BASE_URL=os.getenv('XN_PORTAL_BASE_URL')
 XN_PORTAL_API_KEY=os.getenv('XN_PORTAL_API_KEY')
@@ -108,7 +108,7 @@ def register_professional_reference_call_routes(app):
             return jsonify({
                 **response_base,
                 "status": "no_pending",
-                "message": "No users need a follow-up call at this time."
+                "message": "No users need a professional reference call at this time."
             }), 200
 
         xn_user_id = user.get("xn_user_id")

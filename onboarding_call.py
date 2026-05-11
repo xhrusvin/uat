@@ -93,7 +93,7 @@ def register_onboarding_call_routes(app):
           return jsonify({
               **response_base,
               "status": "no_pending",
-            "message": "No users need a compliance document call at this time."
+            "message": "No users need a onboarding call at this time."
           }), 200
 
         if not user['xn_user_id']:

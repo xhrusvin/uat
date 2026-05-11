@@ -1292,7 +1292,7 @@ def api_brief_summary_cov():
 
         now_utc = datetime.now(pytz.UTC)
         next_follow_up_at = now_utc + timedelta(hours=24)
-        next_compliance_document_at = now_utc + timedelta(hours=56)
+        next_compliance_document_at = now_utc + timedelta(hours=48)
         next_professional_reference_at = now_utc + timedelta(hours=57)
         
 

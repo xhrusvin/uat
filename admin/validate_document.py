@@ -94,18 +94,18 @@ def validate_document():
 
     processed_results = []
 
-    return jsonify({"error": "Failed to fetch documents", "response": json.dumps(users_list, default=str)}), 500
+    
 
     for u in users_list:
         local_id = u['_id']
         xn_user_id = u.get('xn_user_id')
-
+       
         try:
             api_url = f"{BASE_URL}/ai/recruitments/user-document-list"
             response = requests.get(api_url, headers=headers, json={"_id": xn_user_id}, timeout=15)
 
             if response.status_code != 200:
-                return jsonify({"error": "Failed to fetch documents", "response": response.json()}), 500
+               continue
 
             docs_array = response.json().get('data', [])
 
@@ -225,6 +225,7 @@ def validate_document():
                 # ── Call external verification update when both xn_user_id
                 #    and document_id are provided as URL parameters ──────────
                 verify_payload = ""
+                verify_resp = None
                 if xn_user_id_filter and document_id_filter:
                     try:
                         verify_url = f"{BASE_URL}/ai/document-validate/external-verification-update"
@@ -277,6 +278,7 @@ def validate_document():
             })
 
         except Exception as e:
+            return jsonify({"status": "error", "message": str(e)})
             current_app.logger.error(f"Sync error for {u.get('email')}: {e}")
 
     return jsonify({
