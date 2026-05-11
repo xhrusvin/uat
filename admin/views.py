@@ -1910,7 +1910,43 @@ def user_suggestions():
                     "$switch": {
                         "branches": [
 
-                            # Full name / first / last name matches
+                            # Starts with full name / first / last name
+                            {
+                                "case": {
+                                    "$or": [
+                                        {
+                                            "$regexMatch": {
+                                                "input": {
+                                                    "$concat": [
+                                                        {"$ifNull": ["$first_name", ""]},
+                                                        " ",
+                                                        {"$ifNull": ["$last_name", ""]}
+                                                    ]
+                                                },
+                                                "regex": f"^{escaped}",
+                                                "options": "i"
+                                            }
+                                        },
+                                        {
+                                            "$regexMatch": {
+                                                "input": {"$ifNull": ["$first_name", ""]},
+                                                "regex": f"^{escaped}",
+                                                "options": "i"
+                                            }
+                                        },
+                                        {
+                                            "$regexMatch": {
+                                                "input": {"$ifNull": ["$last_name", ""]},
+                                                "regex": f"^{escaped}",
+                                                "options": "i"
+                                            }
+                                        }
+                                    ]
+                                },
+                                "then": 1
+                            },
+
+                            # Contains name somewhere
                             {
                                 "case": {
                                     "$or": [
@@ -1943,7 +1979,7 @@ def user_suggestions():
                                         }
                                     ]
                                 },
-                                "then": 1
+                                "then": 2
                             },
 
                             # Email match
@@ -1955,7 +1991,7 @@ def user_suggestions():
                                         "options": "i"
                                     }
                                 },
-                                "then": 2
+                                "then": 3
                             },
 
                             # Phone match
@@ -1967,10 +2003,10 @@ def user_suggestions():
                                         "options": "i"
                                     }
                                 },
-                                "then": 3
+                                "then": 4
                             }
                         ],
-                        "default": 4
+                        "default": 5
                     }
                 }
             }

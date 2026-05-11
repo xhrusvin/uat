@@ -262,15 +262,36 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content rounded-4 shadow-lg border-0">
             <div class="modal-header text-white border-0" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                <h5 class="modal-title fw-bold">Call Transcript & Recording</h5>
+                <h5 class="modal-title fw-bold" id="transcript-modal-title">
+                    Call Transcript & Recording
+                </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="row g-4 mb-4">
-                    <div class="col-md-6"><small class="text-muted">Phone</small><h6 class="mb-0 fw-bold" id="modal-lead-phone">-</h6></div>
-                    <div class="col-md-6"><small class="text-muted">Name</small><h6 class="mb-0" id="modal-lead-name">Unknown</h6></div>
-                    <div class="col-md-6"><small class="text-muted">Started</small><h6 class="mb-0" id="modal-lead-started">-</h6></div>
-                    <div class="col-md-6"><small class="text-muted">Status</small><h6 class="mb-0"><span id="modal-lead-status" class="badge bg-success">Completed</span></h6></div>
+                    <div class="col-md-6">
+                        <small class="text-muted">Phone</small>
+                        <h6 class="mb-0 fw-bold" id="modal-lead-phone">-</h6>
+                    </div>
+
+                    <div class="col-md-6">
+                        <small class="text-muted">Email</small>
+                        <h6 class="mb-0" id="modal-lead-email">-</h6>
+                    </div>
+
+                    <div class="col-md-6">
+                        <small class="text-muted">Started</small>
+                        <h6 class="mb-0" id="modal-lead-started">-</h6>
+                    </div>
+
+                    <div class="col-md-6">
+                        <small class="text-muted">Status</small>
+                        <h6 class="mb-0">
+                            <span id="modal-lead-status" class="badge bg-success">
+                                Completed
+                            </span>
+                        </h6>
+                    </div>
                 </div>
                 <hr class="my-4">
 
@@ -422,7 +443,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Update header info
             document.getElementById('modal-lead-phone').textContent = d.phone || '—';
-            document.getElementById('modal-lead-name').textContent = d.name || 'Unknown';
+            
+            document.getElementById('modal-lead-email').textContent =
+                d.email || '—';
+
+            document.getElementById('transcript-modal-title').textContent =
+                d.name || 'Call Transcript & Recording';
             const startedTime = d.started 
                 ? new Date(d.started).toLocaleString([], {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) 
                 : '—';
