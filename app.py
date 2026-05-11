@@ -176,7 +176,9 @@ app.register_blueprint(booking_bp)
 app.register_blueprint(document_validate_bp)
 app.register_blueprint(document_worker_bp)
 
-
+from booking.mcp_jobs import mount_mcp   # ← ADD
+combined_app = mount_mcp(app)            # ← ADD
+app.mcp_combined = combined_app          # ← ADD (keeps reference)
 
 
 
