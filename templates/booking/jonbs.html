@@ -1,0 +1,540 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Job Management • Admin{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">Job Management</h2>
+        <div class="d-flex gap-3 flex-wrap">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#jobModal" onclick="prepareAddModal()">
+                <i class="bi bi-briefcase"></i> Add Job
+            </button>
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#importModal">
+                <i class="bi bi-upload"></i> Import from Excel
+            </button>
+            <a href="{{ url_for('booking.jobs') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-repeat"></i> Refresh
+            </a>
+            <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">{{ total }} Jobs</span>
+        </div>
+    </div>
+
+    <!-- Search -->
+    <form method="get" class="mb-5">
+        <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+            <span class="input-group-text bg-white border-0">Search</span>
+            <input type="text" name="search" class="form-control border-0 ps-0"
+                   placeholder="Search by title, client or location..." value="{{ search }}" autofocus>
+            <button class="btn btn-primary px-4" type="submit">Search</button>
+            {% if search %}
+            <a href="{{ url_for('booking.jobs') }}" class="btn btn-outline-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+
+    <!-- Table -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <tr>
+                            <th class="ps-4">Title</th>
+                            <th>Client</th>
+                            <th>Job Type</th>
+                            <th>Status</th>
+                            <th>Location</th>
+                            <th>Scheduled Date</th>
+                            <th>Notes</th>
+                            <th>Active</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for j in jobs %}
+                        <tr>
+                            <td class="ps-4 fw-semibold">{{ j.title }}</td>
+                            <td class="text-muted">{{ j.client_name or '—' }}</td>
+                            <td class="text-muted">{{ j.job_type or '—' }}</td>
+                            <td>
+                                {% set status_map = {
+                                    'Pending':     'warning',
+                                    'In Progress': 'info',
+                                    'Completed':   'success',
+                                    'Cancelled':   'danger',
+                                    'On Hold':     'secondary'
+                                } %}
+                                <span class="badge bg-{{ status_map.get(j.status, 'secondary') }} rounded-pill px-3">
+                                    {{ j.status or '—' }}
+                                </span>
+                            </td>
+                            <td class="text-muted">{{ j.location or '—' }}</td>
+                            <td class="text-muted">
+                                {% if j.scheduled_date %}
+                                    {{ j.scheduled_date.strftime('%d %b %Y') }}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-muted">{{ j.notes or '—' }}</td>
+                            <td>
+                                {% if j.is_active %}
+                                <span class="badge bg-success rounded-pill px-3">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary rounded-pill px-3">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 edit-btn"
+                                    type="button"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#jobModal"
+                                    data-job-id="{{ j._id }}"
+                                    data-job-title={{ j.title | tojson }}
+                                    data-job-client-id={{ j.client_id | string | tojson }}
+                                    data-job-client-name={{ j.client_name | default('') | tojson }}
+                                    data-job-type={{ j.job_type | default('') | tojson }}
+                                    data-job-status={{ j.status | default('Pending') | tojson }}
+                                    data-job-location={{ j.location | default('') | tojson }}
+                                    data-job-scheduled-date={{ j.scheduled_date.strftime('%Y-%m-%d') if j.scheduled_date else '' | tojson }}
+                                    data-job-description={{ j.description | default('') | tojson }}
+                                    data-job-notes={{ j.notes | default('') | tojson }}
+                                    data-job-active={{ j.is_active | tojson }}>
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
+                                        data-id="{{ j._id | string }}"
+                                        data-title="{{ j.title | tojson | safe }}">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center py-5 text-muted">
+                                <i class="bi bi-briefcase display-1 opacity-25 d-block mb-3"></i>
+                                <h5>No jobs found</h5>
+                                {% if search %}
+                                <p class="mb-0">Try adjusting your search term</p>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if total > per_page %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center pagination-lg">
+            {% if page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&search={{ search }}">Previous</a></li>
+            {% endif %}
+
+            {% set pages = ((total / per_page) | round(0, 'ceil')) | int %}
+            {% set start_page = [page - 2, 1] | max %}
+            {% set end_page = [start_page + 4, pages] | min %}
+
+            {% if start_page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page=1&search={{ search }}">1</a></li>
+            {% if start_page > 2 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            {% endif %}
+
+            {% for p in range(start_page, end_page + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}&search={{ search }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if end_page < pages %}
+            {% if end_page < pages - 1 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            <li class="page-item"><a class="page-link" href="?page={{ pages }}&search={{ search }}">{{ pages }}</a></li>
+            {% endif %}
+
+            {% if page < pages %}
+            <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&search={{ search }}">Next</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
+</div>
+
+<!-- Job Modal (Add / Edit) -->
+<div class="modal fade" id="jobModal" tabindex="-1" aria-labelledby="jobModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title fw-bold" id="jobModalLabel">Add New Job</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="jobForm" data-parsley-validate data-parsley-focus="first">
+                <div class="modal-body">
+                    <input type="hidden" name="job_id" id="job_id">
+                    <input type="hidden" name="client_id" id="client_id">
+
+                    <!-- Title -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold fs-5">Job Title <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-lg"
+                               id="title" name="title" required
+                               data-parsley-required-message="Job title is required"
+                               data-parsley-minlength="2"
+                               placeholder="e.g. Boiler Service, Electrical Inspection..."
+                               autofocus>
+                    </div>
+
+                    <!-- Client (Select2 / live search) -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Client <span class="text-danger">*</span></label>
+                        <select class="form-select" id="client_select" name="client_name"
+                                required
+                                data-parsley-required-message="Please select a client">
+                            <option value="">— Select Client —</option>
+                        </select>
+                        <div id="clientSearchHint" class="form-text">Start typing to search clients</div>
+                    </div>
+
+                    <div class="row g-3">
+                        <!-- Job Type -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Job Type</label>
+                            <input type="text" class="form-control" id="job_type" name="job_type"
+                                   placeholder="e.g. Maintenance, Installation, Survey...">
+                        </div>
+                        <!-- Status -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Status</label>
+                            <select class="form-select" id="status" name="status">
+                                <option value="Pending">Pending</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                                <option value="On Hold">On Hold</option>
+                                <option value="Cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-1">
+                        <!-- Location -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Location</label>
+                            <input type="text" class="form-control" id="location" name="location"
+                                   placeholder="Site address or county">
+                        </div>
+                        <!-- Scheduled Date -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Scheduled Date</label>
+                            <input type="date" class="form-control" id="scheduled_date" name="scheduled_date">
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div class="mt-3 mb-3">
+                        <label class="form-label fw-bold">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="2"
+                                  placeholder="Brief summary of the work required..."
+                                  data-parsley-maxlength="500"></textarea>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Notes / Preferences</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="2"
+                                  data-parsley-maxlength="500"></textarea>
+                    </div>
+
+                    <!-- Active toggle -->
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
+                        <label class="form-check-label fw-bold" for="is_active">Active job</label>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-5 fw-bold" id="submitBtn">Create Job</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header bg-success text-white rounded-top-4">
+                <h5 class="modal-title fw-bold" id="importModalLabel">Import Jobs from Excel</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">
+                    Upload an <strong>.xlsx</strong> file with columns:<br>
+                    <code>Title, Client Name, Job Type, Status, Location, Scheduled Date, Description, Notes</code><br>
+                    <small>Required: Title &nbsp;|&nbsp; Optional: all others</small>
+                </p>
+                <form id="importForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="importFile" class="form-label fw-bold">Select Excel File</label>
+                        <input type="file" class="form-control" id="importFile" name="file" accept=".xlsx,.xls" required>
+                    </div>
+                    <div id="importProgress" class="d-none alert alert-info mt-3">Processing...</div>
+                </form>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success px-5 fw-bold" id="importBtn">Import</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- Select2 for client live-search -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+// ── Client Select2 ─────────────────────────────────────────────────────────
+$(document).ready(function () {
+    $('#client_select').select2({
+        dropdownParent: $('#jobModal'),
+        placeholder: '— Select Client —',
+        allowClear: true,
+        minimumInputLength: 0,
+        ajax: {
+            url: "{{ url_for('booking.client_search') }}",
+            dataType: 'json',
+            delay: 250,
+            data: params => ({ q: params.term || '', page: params.page || 1 }),
+            processResults: data => ({
+                results: data.items.map(c => ({
+                    id: c._id,
+                    text: c.name,
+                    county: c.default_location
+                })),
+                pagination: { more: data.more }
+            }),
+            cache: true
+        }
+    }).on('select2:select', function (e) {
+        const d = e.params.data;
+        document.getElementById('client_id').value = d.id;
+        // Auto-fill location from client county if location is empty
+        const locField = document.getElementById('location');
+        if (!locField.value && d.county) locField.value = d.county;
+    }).on('select2:clear', function () {
+        document.getElementById('client_id').value = '';
+    });
+});
+
+// ── Prepare ADD modal ──────────────────────────────────────────────────────
+function prepareAddModal() {
+    document.getElementById('jobModalLabel').textContent  = 'Add New Job';
+    document.getElementById('submitBtn').textContent      = 'Create Job';
+    document.getElementById('job_id').value               = '';
+    document.getElementById('client_id').value            = '';
+    document.getElementById('title').value                = '';
+    document.getElementById('job_type').value             = '';
+    document.getElementById('status').value               = 'Pending';
+    document.getElementById('location').value             = '';
+    document.getElementById('scheduled_date').value       = '';
+    document.getElementById('description').value          = '';
+    document.getElementById('notes').value                = '';
+    document.getElementById('is_active').checked          = true;
+
+    // Reset Select2
+    $('#client_select').val(null).trigger('change');
+}
+
+// ── Populate EDIT modal via data-* attributes ──────────────────────────────
+const jobModal = document.getElementById('jobModal');
+
+if (jobModal) {
+    jobModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        if (!button || !button.classList.contains('edit-btn')) {
+            prepareAddModal();
+            return;
+        }
+
+        const id            = button.getAttribute('data-job-id');
+        const title         = button.getAttribute('data-job-title')         || '';
+        const clientId      = button.getAttribute('data-job-client-id')     || '';
+        const clientName    = button.getAttribute('data-job-client-name')   || '';
+        const jobType       = button.getAttribute('data-job-type')          || '';
+        const status        = button.getAttribute('data-job-status')        || 'Pending';
+        const location      = button.getAttribute('data-job-location')      || '';
+        const scheduledDate = button.getAttribute('data-job-scheduled-date')|| '';
+        const description   = button.getAttribute('data-job-description')   || '';
+        const notes         = button.getAttribute('data-job-notes')         || '';
+        const active        = button.getAttribute('data-job-active') === 'true';
+
+        document.getElementById('jobModalLabel').textContent   = 'Edit Job';
+        document.getElementById('submitBtn').textContent       = 'Save Changes';
+
+        document.getElementById('job_id').value                = id;
+        document.getElementById('client_id').value             = clientId;
+        document.getElementById('title').value                 = title;
+        document.getElementById('job_type').value              = jobType;
+        document.getElementById('status').value                = status;
+        document.getElementById('location').value              = location;
+        document.getElementById('scheduled_date').value        = scheduledDate;
+        document.getElementById('description').value           = description;
+        document.getElementById('notes').value                 = notes;
+        document.getElementById('is_active').checked           = active;
+
+        // Restore Select2 client option
+        if (clientId && clientName) {
+            const opt = new Option(clientName, clientId, true, true);
+            $('#client_select').append(opt).trigger('change');
+        }
+    });
+}
+
+// ── Form submit (AJAX) ─────────────────────────────────────────────────────
+document.getElementById('jobForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const form = e.target;
+    const parsleyForm = $(form).parsley();
+    if (!parsleyForm.isValid()) return;
+
+    const submitBtn = document.getElementById('submitBtn');
+    const isEdit    = !!document.getElementById('job_id').value;
+    const url       = isEdit
+        ? "{{ url_for('booking.job_edit') }}"
+        : "{{ url_for('booking.job_add') }}";
+
+    submitBtn.disabled    = true;
+    submitBtn.textContent = isEdit ? 'Saving...' : 'Creating...';
+
+    const formData = new FormData(form);
+    const data     = Object.fromEntries(formData);
+    data.is_active = form.querySelector('#is_active').checked;
+
+    try {
+        const res    = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: isEdit ? 'Job updated successfully' : 'Job created successfully',
+                timer: 1600,
+                showConfirmButton: false
+            }).then(() => {
+                bootstrap.Modal.getInstance(document.getElementById('jobModal')).hide();
+                location.reload();
+            });
+        } else {
+            Swal.fire('Error', result.error || 'Operation failed', 'error');
+        }
+    } catch {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    } finally {
+        submitBtn.disabled    = false;
+        submitBtn.textContent = isEdit ? 'Save Changes' : 'Create Job';
+    }
+});
+
+// ── Delete ─────────────────────────────────────────────────────────────────
+document.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', async function () {
+        const id    = this.dataset.id;
+        const title = this.dataset.title || 'this job';
+
+        const { isConfirmed } = await Swal.fire({
+            title: 'Delete Job?',
+            html: `Are you sure you want to delete <strong>${title}</strong>?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, delete'
+        });
+
+        if (isConfirmed) {
+            try {
+                const res  = await fetch("{{ url_for('booking.job_delete') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_id: id })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    Swal.fire('Deleted!', 'Job has been removed.', 'success')
+                        .then(() => location.reload());
+                } else {
+                    Swal.fire('Error', data.error || 'Failed to delete', 'error');
+                }
+            } catch {
+                Swal.fire('Error', 'Network error', 'error');
+            }
+        }
+    });
+});
+
+// ── Excel Import ───────────────────────────────────────────────────────────
+document.getElementById('importBtn')?.addEventListener('click', async function () {
+    const importBtn = this;
+    const fileInput = document.getElementById('importFile');
+    const progress  = document.getElementById('importProgress');
+
+    if (!fileInput.files.length) {
+        Swal.fire('Error', 'Please select an Excel file', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    importBtn.disabled    = true;
+    importBtn.textContent = 'Importing...';
+    progress.classList.remove('d-none');
+    progress.textContent = 'Uploading and processing...';
+
+    try {
+        const res    = await fetch("{{ url_for('booking.job_import') }}", {
+            method: 'POST',
+            body: formData
+        });
+        const result = await res.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Import Successful',
+                html: result.message.replace(/\n/g, '<br>'),
+                timer: 4000,
+                showConfirmButton: false
+            }).then(() => {
+                bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
+                location.reload();
+            });
+        } else {
+            Swal.fire('Error', result.error || 'Import failed', 'error');
+        }
+    } catch {
+        Swal.fire('Error', 'Network error during import', 'error');
+    } finally {
+        importBtn.disabled    = false;
+        importBtn.textContent = 'Import';
+        progress.classList.add('d-none');
+    }
+});
+</script>
+
+{% endblock %}

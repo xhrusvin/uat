@@ -50,6 +50,7 @@ def register_onboarding_call_routes(app):
     def auto_onboarding_call():
         allowed, server_time = is_within_call_window()
         user_id = request.args.get('user_id')
+        xnid = request.args.get('xnid')
 
         response_base = {
           "server_time": server_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -75,12 +76,13 @@ def register_onboarding_call_routes(app):
             query = {
             "is_admin": {"$ne": True},
             "xn_user_id": {"$ne": None},
+            "onboarding_call_sent": {"$ne": 1},
             # call_sent": {"$ne": 0},
             #"follow_up_sent": {"$ne": 0},  # 0 or missing
             #"compliance_documents_status": {"$ne": 1},
             # "xn_user_id": "69e7340f5f14105609094fb1",
             #"email": "rusvin@xpresshealth.ie"
-            # "xn_user_id": xnid
+            "xn_user_id": xnid
             }
 
         user = app.db.users.find_one(
@@ -104,49 +106,7 @@ def register_onboarding_call_routes(app):
             }), 200
 
         user_id = user["_id"]
-        xn_user_id = user.get("xn_user_id")
-
-        # === Fetch document list from external API ===
-        api_url = XN_PORTAL_BASE_URL.rstrip("/") + "/ai/recruitments/user-document-list"
-        headers = {
-         "Api-Key": os.getenv("XN_PORTAL_API_KEY"),      # Replace with env var in production
-          "X-App-Country": os.getenv("XN_APP_COUNTRY")    # Replace with env var in production
-        }
-        payload = {"_id": str(xn_user_id)}
-
-        try:
-             response = requests.get(api_url, params=payload, headers=headers, timeout=10)
-             response.raise_for_status()
-             api_data = response.json()
-        except Exception as e:
-          return jsonify({
-            **response_base,
-            "status": "api_error",
-            "message": f"Failed to fetch document list: {str(e)}",
-            "user_id": str(user_id)
-        }), 200
-
-        if not api_data.get("success") or "data" not in api_data:
-             return jsonify({
-               **response_base,
-               "status": "api_error",
-               "message": "Invalid or unsuccessful response from document API.",
-               "user_id": str(user_id)
-              }), 200
-
-        documents = api_data["data"]
-        pending_count = sum(1 for doc in documents if doc.get("status") == "pending")
-        has_pending = pending_count > 0
-
-        # === Only proceed if there are pending documents ===
-        if not has_pending:
-           return jsonify({
-            **response_base,
-            "status": "no_action_needed",
-            "message": "All compliance documents are complete. No call required.",
-            "user_id": str(user_id),
-            "pending_documents_count": 0
-        }), 200
+       
 
         # Prevent double-triggering (in case of concurrent requests)
         update_result = app.db.users.update_one(

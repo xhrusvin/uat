@@ -407,6 +407,12 @@ select.parsley-success {
             <span>Designations</span>
         </a>
 
+        <a class="nav-link {% if request.path.startswith('/booking/jobs') %}active{% endif %}"
+           href="{{ url_for('booking.jobs') }}">
+            <i class="bi bi-briefcase"></i>
+            <span>Jobs</span>
+        </a>
+
         <!-- <a class="nav-link {% if request.path.startswith('/booking/shifts_multiple') %}active{% endif %}"
            href="{{ url_for('booking.shifts_multiple') }}">
             <i class="bi bi-calendar3"></i>
@@ -414,6 +420,7 @@ select.parsley-success {
         </a> -->
         
     </div>
+
 
     <!-- System -->
     <div class="menu-header mt-4">System</div>
