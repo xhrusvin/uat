@@ -94,12 +94,12 @@
                                     data-bs-target="#jobModal"
                                     data-job-id="{{ j._id }}"
                                     data-job-title={{ j.title | tojson }}
-                                    data-job-client-id={{ j.client_id | string | tojson }}
+                                    data-job-client-id={{ (j.client_id | string) | tojson }}
                                     data-job-client-name={{ j.client_name | default('') | tojson }}
                                     data-job-type={{ j.job_type | default('') | tojson }}
                                     data-job-status={{ j.status | default('Pending') | tojson }}
                                     data-job-location={{ j.location | default('') | tojson }}
-                                    data-job-scheduled-date={{ j.scheduled_date.strftime('%Y-%m-%d') if j.scheduled_date else '' | tojson }}
+                                    data-job-scheduled-date={{ (j.scheduled_date.strftime('%Y-%m-%d') if j.scheduled_date else '') | tojson }}
                                     data-job-description={{ j.description | default('') | tojson }}
                                     data-job-notes={{ j.notes | default('') | tojson }}
                                     data-job-active={{ j.is_active | tojson }}>
