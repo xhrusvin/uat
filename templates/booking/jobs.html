@@ -295,14 +295,11 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<!-- Select2 for client live-search -->
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <script>
-// ── Client Select2 ─────────────────────────────────────────────────────────
 $(document).ready(function () {
+
+    // ── Select2 ──────────────────────────────────────────
     $('#client_select').select2({
         dropdownParent: $('#jobModal'),
         placeholder: '— Select Client —',
@@ -326,12 +323,12 @@ $(document).ready(function () {
     }).on('select2:select', function (e) {
         const d = e.params.data;
         document.getElementById('client_id').value = d.id;
-        // Auto-fill location from client county if location is empty
         const locField = document.getElementById('location');
         if (!locField.value && d.county) locField.value = d.county;
     }).on('select2:clear', function () {
         document.getElementById('client_id').value = '';
     });
+
 });
 
 // ── Prepare ADD modal ──────────────────────────────────────────────────────
