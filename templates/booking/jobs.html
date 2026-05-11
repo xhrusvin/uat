@@ -2,6 +2,10 @@
 
 {% block title %}Job Management • Admin{% endblock %}
 
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+{% endblock %}
+
 {% block content %}
 
 <div class="container-fluid px-4 py-4">
@@ -179,18 +183,16 @@
                     <input type="hidden" name="job_id" id="job_id">
                     <input type="hidden" name="client_id" id="client_id">
 
-                    <!-- Title -->
                     <div class="mb-4">
                         <label class="form-label fw-bold fs-5">Job Title <span class="text-danger">*</span></label>
                         <input type="text" class="form-control form-control-lg"
                                id="title" name="title" required
                                data-parsley-required-message="Job title is required"
                                data-parsley-minlength="2"
-                               placeholder="e.g. Boiler Service, Electrical Inspection..."
+                               placeholder="e.g. Morning Personal Care, Medication Round..."
                                autofocus>
                     </div>
 
-                    <!-- Client (Select2 / live search) -->
                     <div class="mb-4">
                         <label class="form-label fw-bold">Client <span class="text-danger">*</span></label>
                         <select class="form-select" id="client_select" name="client_name"
@@ -198,17 +200,15 @@
                                 data-parsley-required-message="Please select a client">
                             <option value="">— Select Client —</option>
                         </select>
-                        <div id="clientSearchHint" class="form-text">Start typing to search clients</div>
+                        <div class="form-text">Start typing to search clients</div>
                     </div>
 
                     <div class="row g-3">
-                        <!-- Job Type -->
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Job Type</label>
                             <input type="text" class="form-control" id="job_type" name="job_type"
-                                   placeholder="e.g. Maintenance, Installation, Survey...">
+                                   placeholder="e.g. Personal Care, Wound Care...">
                         </div>
-                        <!-- Status -->
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Status</label>
                             <select class="form-select" id="status" name="status">
@@ -222,20 +222,17 @@
                     </div>
 
                     <div class="row g-3 mt-1">
-                        <!-- Location -->
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Location</label>
                             <input type="text" class="form-control" id="location" name="location"
-                                   placeholder="Site address or county">
+                                   placeholder="Address or county">
                         </div>
-                        <!-- Scheduled Date -->
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Scheduled Date</label>
                             <input type="date" class="form-control" id="scheduled_date" name="scheduled_date">
                         </div>
                     </div>
 
-                    <!-- Description -->
                     <div class="mt-3 mb-3">
                         <label class="form-label fw-bold">Description</label>
                         <textarea class="form-control" id="description" name="description" rows="2"
@@ -243,14 +240,12 @@
                                   data-parsley-maxlength="500"></textarea>
                     </div>
 
-                    <!-- Notes -->
                     <div class="mb-4">
                         <label class="form-label fw-bold">Notes / Preferences</label>
                         <textarea class="form-control" id="notes" name="notes" rows="2"
                                   data-parsley-maxlength="500"></textarea>
                     </div>
 
-                    <!-- Active toggle -->
                     <div class="form-check form-switch mb-2">
                         <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
                         <label class="form-check-label fw-bold" for="is_active">Active job</label>
@@ -295,11 +290,20 @@
     </div>
 </div>
 
+{% endblock %}
+
+
+{# ============================================================
+   ALL JavaScript lives here — AFTER jQuery/Select2/Parsley
+   load in base.html's footer
+   ============================================================ #}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
 $(document).ready(function () {
 
-    // ── Select2 ──────────────────────────────────────────
+    // ── Select2 client live-search ────────────────────────────────────────
     $('#client_select').select2({
         dropdownParent: $('#jobModal'),
         placeholder: '— Select Client —',
@@ -323,132 +327,113 @@ $(document).ready(function () {
     }).on('select2:select', function (e) {
         const d = e.params.data;
         document.getElementById('client_id').value = d.id;
+        // Auto-fill location from client county if blank
         const locField = document.getElementById('location');
         if (!locField.value && d.county) locField.value = d.county;
     }).on('select2:clear', function () {
         document.getElementById('client_id').value = '';
     });
 
-});
-
-// ── Prepare ADD modal ──────────────────────────────────────────────────────
-function prepareAddModal() {
-    document.getElementById('jobModalLabel').textContent  = 'Add New Job';
-    document.getElementById('submitBtn').textContent      = 'Create Job';
-    document.getElementById('job_id').value               = '';
-    document.getElementById('client_id').value            = '';
-    document.getElementById('title').value                = '';
-    document.getElementById('job_type').value             = '';
-    document.getElementById('status').value               = 'Pending';
-    document.getElementById('location').value             = '';
-    document.getElementById('scheduled_date').value       = '';
-    document.getElementById('description').value          = '';
-    document.getElementById('notes').value                = '';
-    document.getElementById('is_active').checked          = true;
-
-    // Reset Select2
-    $('#client_select').val(null).trigger('change');
-}
-
-// ── Populate EDIT modal via data-* attributes ──────────────────────────────
-const jobModal = document.getElementById('jobModal');
-
-if (jobModal) {
-    jobModal.addEventListener('show.bs.modal', function (event) {
+    // ── Modal: populate EDIT or reset for ADD ─────────────────────────────
+    $('#jobModal').on('show.bs.modal', function (event) {
         const button = event.relatedTarget;
+
         if (!button || !button.classList.contains('edit-btn')) {
             prepareAddModal();
             return;
         }
 
         const id            = button.getAttribute('data-job-id');
-        const title         = button.getAttribute('data-job-title')         || '';
-        const clientId      = button.getAttribute('data-job-client-id')     || '';
-        const clientName    = button.getAttribute('data-job-client-name')   || '';
-        const jobType       = button.getAttribute('data-job-type')          || '';
-        const status        = button.getAttribute('data-job-status')        || 'Pending';
-        const location      = button.getAttribute('data-job-location')      || '';
-        const scheduledDate = button.getAttribute('data-job-scheduled-date')|| '';
-        const description   = button.getAttribute('data-job-description')   || '';
-        const notes         = button.getAttribute('data-job-notes')         || '';
+        const title         = button.getAttribute('data-job-title')          || '';
+        const clientId      = button.getAttribute('data-job-client-id')      || '';
+        const clientName    = button.getAttribute('data-job-client-name')    || '';
+        const jobType       = button.getAttribute('data-job-type')           || '';
+        const status        = button.getAttribute('data-job-status')         || 'Pending';
+        const location      = button.getAttribute('data-job-location')       || '';
+        const scheduledDate = button.getAttribute('data-job-scheduled-date') || '';
+        const description   = button.getAttribute('data-job-description')    || '';
+        const notes         = button.getAttribute('data-job-notes')          || '';
         const active        = button.getAttribute('data-job-active') === 'true';
 
-        document.getElementById('jobModalLabel').textContent   = 'Edit Job';
-        document.getElementById('submitBtn').textContent       = 'Save Changes';
+        $('#jobModalLabel').text('Edit Job');
+        $('#submitBtn').text('Save Changes');
 
-        document.getElementById('job_id').value                = id;
-        document.getElementById('client_id').value             = clientId;
-        document.getElementById('title').value                 = title;
-        document.getElementById('job_type').value              = jobType;
-        document.getElementById('status').value                = status;
-        document.getElementById('location').value              = location;
-        document.getElementById('scheduled_date').value        = scheduledDate;
-        document.getElementById('description').value           = description;
-        document.getElementById('notes').value                 = notes;
-        document.getElementById('is_active').checked           = active;
+        $('#job_id').val(id);
+        $('#client_id').val(clientId);
+        $('#title').val(title);
+        $('#job_type').val(jobType);
+        $('#status').val(status);
+        $('#location').val(location);
+        $('#scheduled_date').val(scheduledDate);
+        $('#description').val(description);
+        $('#notes').val(notes);
+        $('#is_active').prop('checked', active);
 
-        // Restore Select2 client option
+        // Restore Select2 with existing client
         if (clientId && clientName) {
-            const opt = new Option(clientName, clientId, true, true);
-            $('#client_select').append(opt).trigger('change');
+            const existing = $('#client_select').find(`option[value="${clientId}"]`);
+            if (!existing.length) {
+                $('#client_select').append(new Option(clientName, clientId, true, true));
+            } else {
+                existing.prop('selected', true);
+            }
+            $('#client_select').trigger('change');
         }
     });
-}
 
-// ── Form submit (AJAX) ─────────────────────────────────────────────────────
-document.getElementById('jobForm').addEventListener('submit', async function (e) {
-    e.preventDefault();
+    // ── Form submit ───────────────────────────────────────────────────────
+    $('#jobForm').on('submit', async function (e) {
+        e.preventDefault();
 
-    const form = e.target;
-    const parsleyForm = $(form).parsley();
-    if (!parsleyForm.isValid()) return;
+        const $form      = $(this);
+        const parsleyInst = $form.parsley();
+        if (!parsleyInst.isValid()) return;
 
-    const submitBtn = document.getElementById('submitBtn');
-    const isEdit    = !!document.getElementById('job_id').value;
-    const url       = isEdit
-        ? "{{ url_for('booking.job_edit') }}"
-        : "{{ url_for('booking.job_add') }}";
+        const submitBtn = document.getElementById('submitBtn');
+        const isEdit    = !!$('#job_id').val();
+        const url       = isEdit
+            ? "{{ url_for('booking.job_edit') }}"
+            : "{{ url_for('booking.job_add') }}";
 
-    submitBtn.disabled    = true;
-    submitBtn.textContent = isEdit ? 'Saving...' : 'Creating...';
+        submitBtn.disabled    = true;
+        submitBtn.textContent = isEdit ? 'Saving...' : 'Creating...';
 
-    const formData = new FormData(form);
-    const data     = Object.fromEntries(formData);
-    data.is_active = form.querySelector('#is_active').checked;
+        const formData = new FormData(this);
+        const data     = Object.fromEntries(formData);
+        data.is_active = $('#is_active').is(':checked');
 
-    try {
-        const res    = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        const result = await res.json();
-
-        if (result.success) {
-            Swal.fire({
-                icon: 'success',
-                title: 'Success',
-                text: isEdit ? 'Job updated successfully' : 'Job created successfully',
-                timer: 1600,
-                showConfirmButton: false
-            }).then(() => {
-                bootstrap.Modal.getInstance(document.getElementById('jobModal')).hide();
-                location.reload();
+        try {
+            const res    = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
             });
-        } else {
-            Swal.fire('Error', result.error || 'Operation failed', 'error');
-        }
-    } catch {
-        Swal.fire('Error', 'Network error – please try again', 'error');
-    } finally {
-        submitBtn.disabled    = false;
-        submitBtn.textContent = isEdit ? 'Save Changes' : 'Create Job';
-    }
-});
+            const result = await res.json();
 
-// ── Delete ─────────────────────────────────────────────────────────────────
-document.querySelectorAll('.btn-delete').forEach(btn => {
-    btn.addEventListener('click', async function () {
+            if (result.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Success',
+                    text: isEdit ? 'Job updated successfully' : 'Job created successfully',
+                    timer: 1600,
+                    showConfirmButton: false
+                }).then(() => {
+                    bootstrap.Modal.getInstance(document.getElementById('jobModal')).hide();
+                    location.reload();
+                });
+            } else {
+                Swal.fire('Error', result.error || 'Operation failed', 'error');
+            }
+        } catch {
+            Swal.fire('Error', 'Network error – please try again', 'error');
+        } finally {
+            submitBtn.disabled    = false;
+            submitBtn.textContent = isEdit ? 'Save Changes' : 'Create Job';
+        }
+    });
+
+    // ── Delete ────────────────────────────────────────────────────────────
+    $(document).on('click', '.btn-delete', async function () {
         const id    = this.dataset.id;
         const title = this.dataset.title || 'this job';
 
@@ -482,56 +467,71 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
             }
         }
     });
-});
 
-// ── Excel Import ───────────────────────────────────────────────────────────
-document.getElementById('importBtn')?.addEventListener('click', async function () {
-    const importBtn = this;
-    const fileInput = document.getElementById('importFile');
-    const progress  = document.getElementById('importProgress');
+    // ── Excel Import ──────────────────────────────────────────────────────
+    $('#importBtn').on('click', async function () {
+        const $btn     = $(this);
+        const fileInput = document.getElementById('importFile');
+        const $progress = $('#importProgress');
 
-    if (!fileInput.files.length) {
-        Swal.fire('Error', 'Please select an Excel file', 'error');
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-
-    importBtn.disabled    = true;
-    importBtn.textContent = 'Importing...';
-    progress.classList.remove('d-none');
-    progress.textContent = 'Uploading and processing...';
-
-    try {
-        const res    = await fetch("{{ url_for('booking.job_import') }}", {
-            method: 'POST',
-            body: formData
-        });
-        const result = await res.json();
-
-        if (result.success) {
-            Swal.fire({
-                icon: 'success',
-                title: 'Import Successful',
-                html: result.message.replace(/\n/g, '<br>'),
-                timer: 4000,
-                showConfirmButton: false
-            }).then(() => {
-                bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
-                location.reload();
-            });
-        } else {
-            Swal.fire('Error', result.error || 'Import failed', 'error');
+        if (!fileInput.files.length) {
+            Swal.fire('Error', 'Please select an Excel file', 'error');
+            return;
         }
-    } catch {
-        Swal.fire('Error', 'Network error during import', 'error');
-    } finally {
-        importBtn.disabled    = false;
-        importBtn.textContent = 'Import';
-        progress.classList.add('d-none');
-    }
-});
-</script>
 
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        $btn.prop('disabled', true).text('Importing...');
+        $progress.removeClass('d-none').text('Uploading and processing...');
+
+        try {
+            const res    = await fetch("{{ url_for('booking.job_import') }}", {
+                method: 'POST',
+                body: formData
+            });
+            const result = await res.json();
+
+            if (result.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Import Successful',
+                    html: result.message.replace(/\n/g, '<br>'),
+                    timer: 4000,
+                    showConfirmButton: false
+                }).then(() => {
+                    bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
+                    location.reload();
+                });
+            } else {
+                Swal.fire('Error', result.error || 'Import failed', 'error');
+            }
+        } catch {
+            Swal.fire('Error', 'Network error during import', 'error');
+        } finally {
+            $btn.prop('disabled', false).text('Import');
+            $progress.addClass('d-none');
+        }
+    });
+
+}); // end $(document).ready
+
+
+// ── Prepare ADD modal (called from onclick on the Add button) ─────────────
+function prepareAddModal() {
+    $('#jobModalLabel').text('Add New Job');
+    $('#submitBtn').text('Create Job');
+    $('#job_id').val('');
+    $('#client_id').val('');
+    $('#title').val('');
+    $('#job_type').val('');
+    $('#status').val('Pending');
+    $('#location').val('');
+    $('#scheduled_date').val('');
+    $('#description').val('');
+    $('#notes').val('');
+    $('#is_active').prop('checked', true);
+    $('#client_select').val(null).trigger('change');
+}
+</script>
 {% endblock %}
