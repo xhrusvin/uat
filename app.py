@@ -31,7 +31,6 @@ from elevenlabs1.agent_conversations_levelfive_call import bp as elevenlabs_bp_l
 from elevenlabs1.agent_conversations_onboarding_call import bp as elevenlabs_bp_onboarding_call
 
 
-
 from lead_registration import bp as lead_registration_bp
 from document_validate import bp as document_validate_bp
 from xpressgp import bp as xpressgp_bp
@@ -175,10 +174,6 @@ app.register_blueprint(gemini_call_bp)
 app.register_blueprint(booking_bp)
 app.register_blueprint(document_validate_bp)
 app.register_blueprint(document_worker_bp)
-
-from booking.mcp_jobs import mount_mcp   # ← ADD
-combined_app = mount_mcp(app)            # ← ADD
-app.mcp_combined = combined_app          # ← ADD (keeps reference)
 
 
 
