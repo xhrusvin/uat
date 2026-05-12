@@ -158,7 +158,8 @@ def register_professional_reference_call_routes(app):
         triggered_refs = []
 
         for ref in references:
-            if ref.get("status") == "pending":
+            # if ref.get("status") == "pending":
+            if ref.get("status") == "approved":   # For testing, we can trigger on approved references
                 try:
                     ref_id = ref.get("id")
                     ref_name = ref.get("name", "")
@@ -168,16 +169,16 @@ def register_professional_reference_call_routes(app):
                     # full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
 
                     # TEST NUMBER
-                    full_phone = "+916282908578"
+                    # full_phone = "+916282908578"
 
                     
-                    # if triggered_count == 0:
-                    #   #full_phone = "+91 7907044695"      # First reference
-                    #   full_phone = "+91 7034526952"
-                    # elif triggered_count == 1:
-                    #   full_phone = "+91 96311113392501"      # Second reference
-                    # else:
-                    #   full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
+                    if triggered_count == 0:
+                      #full_phone = "+91 7907044695"      # First reference
+                      full_phone = "+91 6282908578"
+                    elif triggered_count == 1:
+                      full_phone = "+91 96311113392501"      # Second reference
+                    else:
+                      full_phone = f"{ref_dial_code}{ref_phone}".replace(" ", "").replace("-", "")
 
 
                     # Trigger AI call for this reference
