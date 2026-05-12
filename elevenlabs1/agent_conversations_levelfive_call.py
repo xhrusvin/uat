@@ -228,35 +228,36 @@ def sync_agent_conversations_levelfive_call():
                 conv_doc = {
                     "elevenlabs_conversation_id": conversation_id,
 
-                    # Metadata
+                    # Agent
                     "agent_id": agent_id,
-                    "call_status": call_status_val,
 
                     # User mapping
                     "xn_user_id": xn_user_id,
                     "reference_id": ref_id,
 
-                    # Timing
-                    "created_at": full_details.get("created_at_unix_secs"),
-                    "call_duration_secs": full_details.get("call_duration_secs"),
+                    # Reference details
+                    "ref_name": dynamic_variables.get("ref_name"),
+                    "ref_email": dynamic_variables.get("ref_email"),
+                    "ref_phone": dynamic_variables.get("ref_phone"),
+                    "ref_job_title": dynamic_variables.get("ref_job_title"),
 
-                    # Transcript
-                    "transcript": minimal_transcript,
+                    # Call status
+                    "call_status": call_status_val,
 
-                    # Analysis
-                    "analysis": analysis,
+                    # Question answers
+                    "worked_more_than_three_month":
+                        dc_map.get("worked_more_than_three_month"),
 
-                    # Data collection
-                    "data_collection_results": dc_results,
-                    "data_collection_map": dc_map,
+                    "safeguarding_issues":
+                        dc_map.get("safeguarding_issues"),
 
-                    # Dynamic variables
-                    "dynamic_variables": dynamic_variables,
+                    "has_the_sufficient_skills":
+                        dc_map.get("has_the_sufficient_skills"),
 
-                    # Raw ElevenLabs response
-                    "full_conversation_details": full_details,
+                    "performance_rating":
+                        dc_map.get("performance_rating"),
 
-                    # Sync timestamps
+                    # Timestamp
                     "updated_at": datetime.utcnow(),
                 }
 
