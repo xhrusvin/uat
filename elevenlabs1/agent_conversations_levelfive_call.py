@@ -245,17 +245,17 @@ def sync_agent_conversations_levelfive_call():
                     "call_status": call_status_val,
 
                     # Question answers
-                    "worked_more_than_three_month":
-                        dc_map.get("worked_more_than_three_month"),
+                    # "worked_more_than_three_month":
+                    #     dc_map.get("worked_more_than_three_month"),
 
-                    "safeguarding_issues":
-                        dc_map.get("safeguarding_issues"),
+                    # "safeguarding_issues":
+                    #     dc_map.get("safeguarding_issues"),
 
-                    "has_the_sufficient_skills":
-                        dc_map.get("has_the_sufficient_skills"),
+                    # "has_the_sufficient_skills":
+                    #     dc_map.get("has_the_sufficient_skills"),
 
-                    "performance_rating":
-                        dc_map.get("performance_rating"),
+                    # "performance_rating":
+                    #     dc_map.get("performance_rating"),
 
                     # Timestamp
                     "updated_at": datetime.utcnow(),
