@@ -158,7 +158,7 @@
                             <th>Calls</th>
                             <th>Email</th>
                             <th>Summary</th>
-                            <th>Time</th>
+                            <!-- <th>Time</th> -->
                             <th class="text-end pe-4">Date</th>
                         </tr>
                     </thead>
@@ -247,18 +247,7 @@
     </button>
     {% endif %}
                             </td>
-                            <td>
-                                <!-- <span class="badge rounded-pill bg-info text-dark">{{ c.turn_count }} turns</span> -->
-                                <br>
-                                {% if c.ended_at and c.ended_at not in ['Ongoing', '—', ''] %}
-                                    {% set start_dt = c.started_at | strptime('%Y-%m-%d %H:%M:%S') %}
-                                    {% set end_dt   = c.ended_at   | strptime('%Y-%m-%d %H:%M:%S') %}
-                                    {% set duration_minutes = (end_dt - start_dt).total_seconds() / 60 %}
-                                    <span class="badge rounded-pill bg-secondary text-white">
-                                        {{ "%.1f"|format(duration_minutes) }} min
-                                    </span>
-                                {% endif %}
-                            </td>
+                            
                             <td class="text-end pe-4 small text-muted">
                                 {{ c.started_at | format_datetime_12h }}
                             </td>
@@ -1001,22 +990,64 @@ async function loadSummaryInto(
     // ══════════════════════════════════════════════════════════
 // ⓘ INFO BUTTON — open Brief Summary modal directly
 // ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// ⓘ INFO BUTTON — open Brief Summary modal directly
+// ══════════════════════════════════════════════════════════
 document.querySelectorAll('.info-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+
+    btn.addEventListener('click', async (e) => {
+
         e.stopPropagation();
 
-        const row = btn.closest('tr');
+        const row =
+            btn.closest('tr');
+
+        const rowCalls = JSON.parse(
+            row.dataset.calls || '[]'
+        );
+
+        // ─────────────────────────────
+        // ONLY SUCCESS CALLS
+        // ─────────────────────────────
+        const successCalls = rowCalls
+
+            .filter(call => {
+
+                const status =
+                    (call.call_status || '')
+                        .toLowerCase();
+
+                return status.includes('success');
+            })
+
+            // LATEST FIRST
+            .sort((a, b) =>
+                new Date(b.started_at) -
+                new Date(a.started_at)
+            )
+
+            // ONLY LAST 3
+            .slice(0, 3);
 
         activeCallData = {
+
+            calls: successCalls,
+
             elevenlabs_id:
-                btn.dataset.elevenlabsId?.trim() || ''
+                successCalls[0]
+                    ?.elevenlabs_conversation_id || ''
         };
 
-        document.getElementById('brief-summary-title').textContent =
+        document.getElementById(
+            'brief-summary-title'
+        ).textContent =
             row.dataset.name || 'Unknown User';
 
-        loadBriefSummary();
+        // OPEN MODAL FIRST
         briefSummaryModal.show();
+
+        // THEN LOAD CONTENT
+        await loadBriefSummary();
     });
 });
 
@@ -1337,48 +1368,222 @@ document.querySelectorAll('.transcript-row').forEach(row => {
     // ══════════════════════════════════════════════════════════
     // BRIEF SUMMARY MODAL
     // ══════════════════════════════════════════════════════════
-    async function loadBriefSummary() {
-    const bodyEl = document.getElementById('brief-summary-body');
-    const elevenlabsId =
-    activeCallData?.elevenlabs_id;
+async function loadBriefSummary() {
 
-    if (!elevenlabsId) {
-        bodyEl.innerHTML = `<div class="alert alert-warning text-center">No ElevenLabs conversation ID found.</div>`;
+    const bodyEl =
+        document.getElementById('brief-summary-body');
+
+    // ─────────────────────────────
+    // GET ALL CALLS
+    // ─────────────────────────────
+    const calls =
+        activeCallData?.calls || [];
+
+    // ─────────────────────────────
+    // NO SUCCESS CALLS
+    // ─────────────────────────────
+    if (!calls.length) {
+
+        bodyEl.innerHTML = `
+            <div class="text-center py-5 text-muted">
+
+                <i class="bi bi-info-circle-fill display-4"></i>
+
+                <h5 class="mt-3">
+                    No successful calls found
+                </h5>
+
+            </div>
+        `;
+
         return;
     }
-    bodyEl.innerHTML = `<div class="text-center py-5">
-        <div class="spinner-border text-primary"></div>
-        <p class="mt-3">Loading brief summary...</p>
-    </div>`;
-    try {
-        const data = await fetchBriefSummaryData();
 
-        if (!data.rows || data.rows.length === 0) {
-            bodyEl.innerHTML = `<div class="text-center py-5 text-info">
-                <i class="bi bi-info-circle-fill display-4"></i>
-                <h5 class="mt-3">No data collected</h5>
-            </div>`;
+    // ─────────────────────────────
+    // LOADING
+    // ─────────────────────────────
+    bodyEl.innerHTML = `
+        <div class="text-center py-5">
+
+            <div class="spinner-border text-primary"></div>
+
+            <p class="mt-3">
+                Loading brief summary...
+            </p>
+
+        </div>
+    `;
+
+    try {
+        let tabsHtml = `
+            <ul class="nav nav-pills mb-4 gap-2"
+                id="summaryTabs"
+                role="tablist">
+        `;
+
+        let contentHtml = `
+            <div class="tab-content">
+        `;
+
+        let tabIndex = 0;
+
+        // ─────────────────────────────
+        // LOOP SUCCESS CALLS
+        // ─────────────────────────────
+        for (const call of calls) {
+
+            const elevenlabsId =
+                call.elevenlabs_conversation_id;
+
+            if (!elevenlabsId) {
+                continue;
+            }
+
+            const resp = await fetch(
+                `/admin/elevenlabs/api/level_five_tr/${elevenlabsId}/summary`
+            );
+
+            if (!resp.ok) {
+                continue;
+            }
+
+            const data = await resp.json();
+
+            if (!data.rows || !data.rows.length) {
+                continue;
+            }
+
+            const activeClass =
+                tabIndex === 0
+                    ? 'active'
+                    : '';
+
+            const showClass =
+                tabIndex === 0
+                    ? 'show active'
+                    : '';
+
+            // ─────────────────────────────
+            // TAB BUTTON
+            // ─────────────────────────────
+            tabsHtml += `
+                <li class="nav-item">
+
+                    <button class="nav-link ${activeClass}"
+                            data-bs-toggle="tab"
+                            data-bs-target="#summary-tab-${tabIndex}"
+                            type="button">
+
+                        Call ${tabIndex + 1}
+
+                    </button>
+
+                </li>
+            `;
+
+            // ─────────────────────────────
+            // TAB CONTENT
+            // ─────────────────────────────
+            contentHtml += `
+                <div class="tab-pane fade ${showClass}"
+                    id="summary-tab-${tabIndex}">
+
+                    <div class="border rounded-4 p-4 bg-light">
+
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+
+                            <div>
+
+                                <h5 class="fw-bold text-success mb-1">
+                                    Successful Call
+                                </h5>
+
+                                <small class="text-muted">
+                                    ${call.started_at || ''}
+                                </small>
+
+                            </div>
+
+                            <span class="badge bg-success">
+                                Success
+                            </span>
+
+                        </div>
+            `;
+
+            contentHtml += data.rows.map(row => `
+
+                <div class="row mb-3 align-items-start">
+
+                    <div class="col-5">
+
+                        <small class="text-muted fw-semibold">
+                            ${row.label}
+                        </small>
+
+                    </div>
+
+                    <div class="col-7">
+
+                        <div class="
+                            ${row.is_null
+                                ? 'text-muted fst-italic'
+                                : 'text-dark fw-semibold'}
+                        ">
+
+                            ${row.value}
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            `).join('');
+
+            contentHtml += `
+                    </div>
+                </div>
+            `;
+
+            tabIndex++;
+        }
+
+        // ─────────────────────────────
+        // EMPTY
+        // ─────────────────────────────
+        if (tabIndex === 0) {
+
+            bodyEl.innerHTML = `
+                <div class="text-center py-5 text-muted">
+
+                    <i class="bi bi-info-circle display-4"></i>
+
+                    <h5 class="mt-3">
+                        No successful call summaries found
+                    </h5>
+
+                </div>
+            `;
+
             return;
         }
 
-        // ── Backend already structured the data, just render it ──
-        bodyEl.innerHTML = `<div class="px-3">` +
-            data.rows.map(row => `
-                <div class="row mb-3 align-items-start">
-                    <div class="col-6">
-                        <small class="text-muted fw-medium">${row.label}</small>
-                    </div>
-                    <div class="col-6">
-                        <div class="fs-5 ${row.is_null ? 'text-muted fst-italic' : 'text-dark'}">
-                            ${row.value}
-                        </div>
-                    </div>
-                </div>`
-            ).join('') +
-        `</div>`;
+        tabsHtml += `</ul>`;
+        contentHtml += `</div>`;
 
+        bodyEl.innerHTML =
+            tabsHtml + contentHtml;
+        
     } catch (err) {
-        bodyEl.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
+
+        bodyEl.innerHTML = `
+            <div class="alert alert-danger">
+
+                Error: ${err.message}
+
+            </div>
+        `;
     }
 }
 
