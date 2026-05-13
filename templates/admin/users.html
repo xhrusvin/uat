@@ -212,6 +212,7 @@
                             <!-- <th>Call Status</th>
                             <th>Email</th>
                             <th>Missed Call Email</th> -->
+                            <th>Tags</th>
                             <th class="text-center">Documents</th>
                             <th class="sortable" data-key="joined">
                             Joined <i class="bi bi-arrow-down-up sort-icon"></i>
@@ -288,6 +289,30 @@
                                 <span class="badge bg-warning text-dark rounded-pill">Not Sent</span>
                                 {% endif %}
                             </td> -->
+
+                            <td>
+                                <div class="d-flex flex-column gap-1">
+
+                                    {% if u.language_proficiency %}
+                                    <span class="badge rounded-pill bg-info-subtle text-info border px-3 py-2 text-start">
+                                        <i class="bi bi-translate me-1"></i>
+                                        {{ u.language_proficiency }}
+                                    </span>
+                                    {% endif %}
+
+                                    {% if u.experience_level %}
+                                    <span class="badge rounded-pill bg-warning-subtle text-dark border px-3 py-2 text-start">
+                                        <i class="bi bi-briefcase me-1"></i>
+                                        {{ u.experience_level }}
+                                    </span>
+                                    {% endif %}
+
+                                    {% if not u.language_proficiency and not u.experience_level %}
+                                    <span class="text-muted">—</span>
+                                    {% endif %}
+
+                                </div>
+                            </td>
 
                             <td class="text-center">
                             <button class="btn btn-outline-primary btn-sm rounded-circle view-docs-btn"

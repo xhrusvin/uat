@@ -156,8 +156,10 @@ def sync_agent_conversations_intro_call():
                 # Extract data collection map
                 dc_map = extract_data_collection_map(dc_results)
 
-                call_status_val = dc_map.get("call_status")   # ← NEW
+                call_status_val = dc_map.get("call_status") 
                 eir_code_val = dc_map.get("eir_code")
+                language_proficiency_val = dc_map.get("language_proficiency")
+                experience_level_val = dc_map.get("experience_level")
 
                 # Check if user already has an address
                 existing_user = users.find_one(
@@ -193,7 +195,13 @@ def sync_agent_conversations_intro_call():
 
                 users.update_one(
                     {"last_elevenlabs_conversation_id": conversation_id},
-                    {"$set": {"address": address, "county": county,"eir_checked": True}}
+                    {"$set": {
+                        "address": address,
+                        "county": county,
+                        "eir_checked": True,
+                        "language_proficiency": language_proficiency_val,
+                        "experience_level": experience_level_val
+                    }}
                 )
 
                 processed += 1
