@@ -161,6 +161,130 @@
                         </select>
                     </div>
 
+<!-- Language Proficiency -->
+<div class="col-12">
+    <label class="form-label fw-semibold text-muted small mb-2 d-block">
+        Language Proficiency
+    </label>
+
+    <div class="filter-chip-group">
+
+        <input type="radio"
+               class="btn-check"
+               name="language_proficiency"
+               id="lang-all"
+               value=""
+               {% if not language_proficiency %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="lang-all">
+            All
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="language_proficiency"
+               id="lang-basic"
+               value="Basic"
+               {% if language_proficiency == 'Basic' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="lang-basic">
+            Basic
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="language_proficiency"
+               id="lang-independent"
+               value="Independent"
+               {% if language_proficiency == 'Independent' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="lang-independent">
+            Independent
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="language_proficiency"
+               id="lang-proficient"
+               value="Proficient"
+               {% if language_proficiency == 'Proficient' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="lang-proficient">
+            Proficient
+        </label>
+
+    </div>
+</div>
+
+<!-- Experience Level -->
+<div class="col-12 mt-3">
+    <label class="form-label fw-semibold text-muted small mb-2 d-block">
+        Experience Level
+    </label>
+
+    <div class="filter-chip-group">
+
+        <input type="radio"
+               class="btn-check"
+               name="experience_level"
+               id="exp-all"
+               value=""
+               {% if not experience_level %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="exp-all">
+            All
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="experience_level"
+               id="exp-entry"
+               value="Entry"
+               {% if experience_level == 'Entry' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="exp-entry">
+            Entry
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="experience_level"
+               id="exp-intermediate"
+               value="Intermediate"
+               {% if experience_level == 'Intermediate' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="exp-intermediate">
+            Intermediate
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="experience_level"
+               id="exp-senior"
+               value="Senior"
+               {% if experience_level == 'Senior' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="exp-senior">
+            Senior
+        </label>
+
+    </div>
+</div>
+
                     <!-- Buttons -->
                     <div class="d-flex gap-2">
 
@@ -1486,7 +1610,42 @@
 
 
 
+.filter-chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
 
+.filter-chip {
+    padding: 10px 20px;
+    border-radius: 999px;
+    background: #f8f9fc;
+    border: 1px solid #e2e8f0;
+    color: #495057;
+    font-weight: 600;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.filter-chip:hover {
+    background: #eef2ff;
+    border-color: #667eea;
+    color: #4f46e5;
+    transform: translateY(-1px);
+}
+
+.btn-check:checked + .filter-chip {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 6px 18px rgba(102, 126, 234, 0.25);
+}
+
+.btn-check:checked + .filter-chip:hover {
+    color: white;
+}
 
 
 
