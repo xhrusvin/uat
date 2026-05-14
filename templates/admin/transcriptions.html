@@ -353,9 +353,23 @@
         </h6>
     </div>
     <div class="col-md-8">
-        <small class="text-muted">Address</small>
-        <h6 class="mb-0 fw-semibold" id="modal-address">—</h6>
-    </div>
+  <small class="text-muted">
+    Address
+  </small>
+  <div class="d-flex align-items-center gap-2">
+    <h6 class="mb-0 fw-semibold"
+        id="modal-address">—</h6>
+    <button id="recheck-address-btn"
+            class="btn btn-sm btn-outline-warning
+                   d-none"
+            title="Recheck address via EIR code">
+      <i class="bi bi-arrow-clockwise">
+      </i> Recheck
+    </button>
+    <span id="recheck-address-status"
+          class="small d-none"></span>
+  </div>
+</div>
 </div>
     <hr class="my-4">
 
@@ -589,11 +603,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const dataBtn   = document.getElementById('data-collected-btn');
     const briefBtn  = document.getElementById('brief-summary-btn');
 
+
+    const recheckBtn    = document.getElementById('recheck-address-btn');
+    const recheckStatus = document.getElementById('recheck-address-status');
+
     // State
     let currentConvId       = null;
     let currentElevenLabsId = null;
     let currentIsCompleted  = false;
 
+
+function updateRecheckVisibility(address) {
+    const missing = !address || address === '—' || address === '-' || address === '';
+    recheckBtn.classList.toggle('d-none', !missing);
+}
 
     // ══════════════════════════════════════════════════════════
 // ⓘ INFO BUTTON — open Brief Summary modal directly
@@ -833,6 +856,7 @@ if (!currentIsCompleted) {
             document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
             document.getElementById('modal-started').textContent = row.dataset.started || '—';
             document.getElementById('modal-address').textContent = row.dataset.address || '—';
+            updateRecheckVisibility(row.dataset.address);
             const statusEl = document.getElementById('modal-status');
             const callStatus = row.dataset.callStatus || '';
 
@@ -915,6 +939,36 @@ if (!currentIsCompleted) {
             turnsDiv.appendChild(bubble);
         });
     }
+
+    recheckBtn.addEventListener('click', async () => {
+    recheckBtn.disabled = true;
+    recheckStatus.textContent = 'Rechecking…';
+    recheckStatus.className = 'small text-primary d-inline';
+
+    try {
+        const res = await fetch(
+            `/admin/api/conversation/${currentConvId}/recheck-address`,
+            { method: 'POST' }
+        );
+        const data = await res.json();
+
+        if (res.ok && data.address) {
+            document.getElementById('modal-address').textContent = data.address;
+            updateRecheckVisibility(row.dataset.address);
+            recheckStatus.textContent = '✓ Updated';
+            recheckStatus.className = 'small text-success d-inline';
+            recheckBtn.classList.add('d-none');
+        } else {
+            recheckStatus.textContent = data.error || 'No address found';
+            recheckStatus.className = 'small text-danger d-inline';
+            recheckBtn.disabled = false;
+        }
+    } catch (err) {
+        recheckStatus.textContent = 'Request failed';
+        recheckStatus.className = 'small text-danger d-inline';
+        recheckBtn.disabled = false;
+    }
+});
 
     // ══════════════════════════════════════════════════════════
     // RETRY BUTTONS

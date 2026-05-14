@@ -2148,3 +2148,64 @@ def get_user_status(user_id):
         "professional_reference_status":    "Sent" if user.get("professional_reference_call_sent") == 1 else "Not Sent",
         "missed_call_email_status":         "Sent" if user.get("missed_call_email_sent") == 1 else "Not Sent"
     }), 200
+
+@admin_bp.route('/api/conversation/<conv_id>/recheck-address', methods=['POST'])
+@admin_required
+def recheck_address(conv_id):
+    from admin.location_lookup_autoaddress import _extract_location, _resolve
+    from admin.location_lookup import _geocode_postcode, _extract_locationgoogle
+
+    if not ObjectId.is_valid(conv_id):
+        return jsonify({"error": "Invalid conversation ID"}), 400
+
+    conv = current_app.db.conversations.find_one(
+        {"_id": ObjectId(conv_id)},
+        {"phone": 1, "elevenlabs_conversation_id": 1}
+    )
+    if not conv:
+        return jsonify({"error": "Conversation not found"}), 404
+
+    phone = conv.get("phone")
+    if not phone:
+        return jsonify({"error": "No phone number on conversation"}), 400
+
+    user = current_app.db.users.find_one({"phone": phone})
+    if not user:
+        return jsonify({"error": "No user found for this phone number"}), 404
+
+    eir_code = user.get("eir_code")
+    if not eir_code:
+        return jsonify({"error": "No EIR code stored for this user"}), 400
+
+    try:
+        resolved   = _resolve(eir_code)
+        location   = _extract_location(resolved) if resolved else None
+
+        resolved_g = _geocode_postcode(eir_code)
+        countydata = _extract_locationgoogle(resolved_g) if resolved_g else None
+
+        address = location["formatted_address"] if location else None
+        county  = countydata["county"] if countydata else None
+
+        if not address:
+            return jsonify({"error": "Could not resolve address from EIR code"}), 404
+
+        current_app.db.users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "address":     address,
+                "county":      county,
+                "eir_checked": True,
+                "updated_at":  datetime.utcnow()
+            }}
+        )
+
+        return jsonify({
+            "success": True,
+            "address": address,
+            "county":  county
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"recheck_address error for conv {conv_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
