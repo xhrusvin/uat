@@ -77,11 +77,11 @@ def register_compliance_doc_call_routes(app):
             "is_admin": {"$ne": True},
             "xn_user_id": {"$ne": None},
             "call_sent": {"$ne": 0},
-            "follow_up_sent": {"$ne": 0},  # 0 or missing
+            #"follow_up_sent": {"$ne": 0},  # 0 or missing
             "compliance_documents_status": {"$ne": 1},
             "next_compliance_document_at": {"$lte": datetime.utcnow()},
             #"xn_user_id": "69e7340f5f14105609094fb1",
-            #"email": "juhi@xpresshealth.ie"
+            #"email": "adria.luquecastro@gmail.com"
             }
 
         user = app.db.users.find_one(
@@ -141,16 +141,6 @@ def register_compliance_doc_call_routes(app):
         pending_count = sum(1 for doc in documents if doc.get("status") == "pending")
         has_pending = pending_count > 0
 
-        # === Only proceed if there are pending documents ===
-        if not has_pending:
-           return jsonify({
-            **response_base,
-            "status": "no_action_needed",
-            "message": "All compliance documents are complete. No call required.",
-            "user_id": str(user_id),
-            "pending_documents_count": 0
-        }), 200
-
         # Prevent double-triggering (in case of concurrent requests)
         update_result = app.db.users.update_one(
           {
@@ -163,6 +153,18 @@ def register_compliance_doc_call_routes(app):
             }
           }
         )
+
+        # === Only proceed if there are pending documents ===
+        if not has_pending:
+           return jsonify({
+            **response_base,
+            "status": "no_action_needed",
+            "message": "All compliance documents are complete. No call required.",
+            "user_id": str(user_id),
+            "pending_documents_count": 0
+        }), 200
+
+        
 
         if update_result.modified_count == 0:
              return jsonify({
