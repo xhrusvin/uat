@@ -174,6 +174,7 @@
                             data-call-status="{{ c.call_status }}"
                             data-turn-count="{{ c.turn_count }}"
                             data-county="{{ c.county }}"
+                            data-eir-code="{{ c.eir_code or '' }}"
                             data-elevenlabs-id="{{ c.elevenlabs_conversation_id or '' }}">
                             <td class="ps-4 fw-bold text-primary">{{ c.phone }}</td>
                             <td>
@@ -613,9 +614,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentIsCompleted  = false;
 
 
-function updateRecheckVisibility(address) {
-    const missing = !address || address === '—' || address === '-' || address === '';
-    recheckBtn.classList.toggle('d-none', !missing);
+function updateRecheckVisibility(address, eirCode) {
+    const addressMissing = !address || ['—', '-', ''].includes(address.trim());
+    const hasEir = eirCode && eirCode.trim() !== '';
+    const show = addressMissing && hasEir;
+    recheckBtn.classList.toggle('d-none', !show);
+    recheckStatus.textContent = '';
+    recheckStatus.className = 'small d-none';
+    recheckBtn.disabled = false;
 }
 
     // ══════════════════════════════════════════════════════════

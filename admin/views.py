@@ -712,6 +712,7 @@ def _format_conv(conv):
     conv['call_status'] = safe_str(conv.get('call_status'), '—')
     conv['garda_email_sent'] = user.get('garda_email_sent')
     conv['address'] = safe_str(user.get('address'), '-')
+    conv['eir_code'] = safe_str(user.get('eir_code'), '')
 
     # === DATE FORMATTING (also make safe) ===
     try:
@@ -772,6 +773,7 @@ def _format_conv(conv):
         'started_at': conv['started_at'],
         'ended_at': conv['ended_at'],
         'turns': conv['turns'],
+        'eir_code': conv.get('eir_code', ''),
         'elevenlabs_conversation_id': elevenlabs_id,
         'has_audio': bool(elevenlabs_id),
         'garda_email_sent': conv.get('garda_email_sent'),
