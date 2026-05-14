@@ -178,7 +178,7 @@ def sync_agent_conversations_intro_call():
             
 
                 if eir_code_val and user_needs_address:
-                  resolved = _resolve('D18K5R3')
+                  resolved = _resolve(eir_code_val)
                   location = _extract_location(resolved) if resolved else None
 
                   resolved = _geocode_postcode(eir_code_val)
@@ -203,6 +203,7 @@ def sync_agent_conversations_intro_call():
                     {"$set": {
                         "address": address,
                         "county": county,
+                        "eir_code_val": eir_code_val,
                         "eir_checked": True,
                         "language_proficiency": language_proficiency_val,
                         "experience_level": experience_level_val,
