@@ -266,7 +266,7 @@
 
         <label class="filter-chip"
                for="exp-intermediate">
-            Intermediate
+            Mid-level
         </label>
 
 
@@ -574,6 +574,13 @@
                                     'Senior': '5+ years of experience'
                                 } %}
 
+                                {% set experience_display = {
+                                    'Entry': 'Entry',
+                                    'Intermediate': 'Mid-Level',
+                                    'Senior': 'Senior'
+                                } %}
+
+
                                 {% set certification_description = {
                                     'Certified': 'CPR & BLF Certified',
                                     'Pending': 'CPR & BLF yet to certified'
@@ -595,7 +602,7 @@
                                     {% set _ = tags.append({
                                         'type': 'experience',
                                         'label': 'Experience',
-                                        'value': u.experience_level,
+                                        'value': experience_display.get(u.experience_level, u.experience_level),
                                         'icon': 'bi-briefcase',
                                         'tooltip': experience_description.get(u.experience_level, '')
                                     }) %}
