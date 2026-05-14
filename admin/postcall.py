@@ -326,8 +326,8 @@ def api_brief_summary_cov_new():
 
         now_utc = datetime.now(pytz.UTC)
         next_follow_up_at = now_utc + timedelta(hours=24)
-        next_compliance_document_at = now_utc + timedelta(hours=56)
-        next_professional_reference_at = now_utc + timedelta(hours=240)
+        next_compliance_document_at = now_utc + timedelta(hours=48)
+        next_professional_reference_at = now_utc + timedelta(hours=57)
         email_message_practical_training_institutes = ''
 
         if location_in_ireland:
@@ -376,6 +376,7 @@ def api_brief_summary_cov_new():
           "follow_up_sent": 1 if collection in ("2", 2) else 0,
           "updated_at": now_utc
         }
+        
 
     
 
