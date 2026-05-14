@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 # Time window (UTC)
 # Example: 08:00 – 20:00 UTC
 # --------------------------------------------------
-ALLOWED_START_HOUR = 10
+ALLOWED_START_HOUR = 9
 ALLOWED_END_HOUR = 20
 
 XN_PORTAL_BASE_URL = os.getenv("XN_PORTAL_BASE_URL")
