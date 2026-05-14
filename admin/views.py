@@ -210,7 +210,9 @@ def users():
     joined_to = request.args.get('joined_to', '').strip()
     designation = request.args.get('designation', '').strip()
     county = request.args.get('county', '').strip()
-   
+    language_proficiency = request.args.get('language_proficiency', '').strip()
+    certification_status = request.args.get('certification_status', '').strip()
+    experience_level = request.args.get('experience_level', '').strip()
     sort_order = request.args.get('sort', 'desc')
     sort_direction = -1 if sort_order == 'desc' else 1
 
@@ -221,6 +223,15 @@ def users():
 
     if county:
         query["county"] = county
+
+    if language_proficiency:
+        query["language_proficiency"] = language_proficiency
+
+    if experience_level:
+        query["experience_level"] = experience_level
+
+    if certification_status:
+        query["certification_status"] = certification_status
 
     # ====================== SEARCH FILTER ======================
     if search:
@@ -440,6 +451,9 @@ def users():
                            county=county,
                            designations=designations,
                            counties=counties,
+                           language_proficiency=language_proficiency,
+                           experience_level=experience_level,
+                           certification_status=certification_status,
                            sort=sort_order)
 
 

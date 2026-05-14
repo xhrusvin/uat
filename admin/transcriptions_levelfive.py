@@ -292,17 +292,19 @@ def level_five_tr():
         else:
             pre_match = date_filter
 
-    # ── Build Aggregation Pipeline ──
+
+    # ─────────────────────────────────────────────
+    # BUILD PIPELINE
+    # ─────────────────────────────────────────────
     pipeline = []
 
-    # 1. Early filtering (Date + Phone)
+    # 1. PRE FILTER
     if pre_match:
-        pipeline.append({"$match": pre_match})
+        pipeline.append({
+            "$match": pre_match
+        })
 
-    # 2. Sort by newest calls
-    pipeline.append({"$sort": {"started_at": -1}})
-
-    # 3. Lookup user info (needed for name search)
+    # 2. LOOKUP USER
     pipeline.append({
         "$lookup": {
             "from": "users",
@@ -312,18 +314,138 @@ def level_five_tr():
         }
     })
 
-    # 4. Unwind
+    # 3. SINGLE USER OBJECT
     pipeline.append({
-    "$addFields": {
-        "user_info": { "$arrayElemAt": ["$user_info", 0] }   # Take only first match
-    }
+        "$addFields": {
+            "user_info": {
+                "$arrayElemAt": ["$user_info", 0]
+            }
+        }
     })
 
-    # 5. Post-lookup filtering (Name search)
+    # 4. POST FILTER
     if post_match:
-        pipeline.append({"$match": post_match})
+        pipeline.append({
+            "$match": post_match
+        })
 
-    # 6. Project only needed fields
+    # ─────────────────────────────────────────────
+    # STATUS PRIORITY
+    # Success first
+    # Partial success second
+    # Others third
+    # ─────────────────────────────────────────────
+    pipeline.append({
+        "$addFields": {
+            "status_priority": {
+                "$switch": {
+                    "branches": [
+                        {
+                            "case": {
+                                "$regexMatch": {
+                                    "input": {
+                                        "$ifNull": ["$call_status", ""]
+                                    },
+                                    "regex": "success",
+                                    "options": "i"
+                                }
+                            },
+                            "then": 1
+                        },
+                        {
+                            "case": {
+                                "$regexMatch": {
+                                    "input": {
+                                        "$ifNull": ["$call_status", ""]
+                                    },
+                                    "regex": "partial",
+                                    "options": "i"
+                                }
+                            },
+                            "then": 2
+                        }
+                    ],
+                    "default": 3
+                }
+            }
+        }
+    })
+
+    # ─────────────────────────────────────────────
+    # SORT CALLS
+    # ─────────────────────────────────────────────
+    pipeline.append({
+        "$sort": {
+            "status_priority": 1,
+            "started_at": -1
+        }
+    })
+
+    # ─────────────────────────────────────────────
+    # GROUP USERS
+    # ONE USER = ONE ROW
+    # ─────────────────────────────────────────────
+    pipeline.append({
+        "$group": {
+
+            "_id": {
+                "$ifNull": ["$phone", "$_id"]
+            },
+
+            # latest call becomes row data
+            "latest_call": {
+                "$first": "$$ROOT"
+            },
+
+            # all calls
+            "calls": {
+                "$push": {
+                    "_id": "$_id",
+                    "phone": "$phone",
+                    "started_at": "$started_at",
+                    "ended_at": "$ended_at",
+                    "call_status": "$call_status",
+                    "elevenlabs_conversation_id":
+                        "$elevenlabs_conversation_id",
+                    "user_info": "$user_info"
+                }
+            },
+
+            "call_count": {
+                "$sum": 1
+            }
+        }
+    })
+
+    # ─────────────────────────────────────────────
+    # REPLACE ROOT
+    # ─────────────────────────────────────────────
+    pipeline.append({
+        "$replaceRoot": {
+            "newRoot": {
+                "$mergeObjects": [
+                    "$latest_call",
+                    {
+                        "calls": "$calls",
+                        "call_count": "$call_count"
+                    }
+                ]
+            }
+        }
+    })
+
+    # ─────────────────────────────────────────────
+    # FINAL SORT
+    # ─────────────────────────────────────────────
+    pipeline.append({
+        "$sort": {
+            "started_at": -1
+        }
+    })
+
+    # ─────────────────────────────────────────────
+    # PROJECT
+    # ─────────────────────────────────────────────
     pipeline.append({
         "$project": {
             "_id": 1,
@@ -332,21 +454,29 @@ def level_five_tr():
             "ended_at": 1,
             "call_status": 1,
             "elevenlabs_conversation_id": 1,
+            "calls": 1,
+            "call_count": 1,
+
             "user_info.first_name": 1,
             "user_info.last_name": 1,
             "user_info.email": 1,
             "user_info.designation": 1,
             "user_info.country": 1,
             "user_info.county": 1,
-            "user_info.professional_reference_call_sent": 1 
+            "user_info.professional_reference_call_sent": 1
         }
     })
 
-    # 7. Facet for total count + pagination
+    # ─────────────────────────────────────────────
+    # FACET
+    # ─────────────────────────────────────────────
     facet_pipeline = pipeline + [
         {
             "$facet": {
-                "total": [{"$count": "count"}],
+                "total": [
+                    {"$count": "count"}
+                ],
+
                 "results": [
                     {"$skip": (page - 1) * per_page},
                     {"$limit": per_page}
@@ -355,12 +485,39 @@ def level_five_tr():
         }
     ]
 
-    facet_result = list(current_app.db.level_five_cov.aggregate(facet_pipeline, allowDiskUse=True))[0]
+    facet_result = list(
+        current_app.db.level_five_cov.aggregate(
+            facet_pipeline,
+            allowDiskUse=True
+        )
+    )[0]
 
-    total = facet_result["total"][0]["count"] if facet_result.get("total") else 0
+    total = (
+        facet_result["total"][0]["count"]
+        if facet_result.get("total")
+        else 0
+    )
+
     raw_convs = facet_result.get("results", [])
 
-    convs = [_format_conv(c) for c in raw_convs]
+    convs = []
+
+    for conv in raw_convs:
+
+        formatted = _format_conv(conv)
+
+        formatted_calls = []
+
+        for call in conv.get("calls", []):
+
+            formatted_calls.append(
+                _format_conv(call)
+            )
+
+        formatted["calls"] = formatted_calls
+        formatted["call_count"] = conv.get("call_count", 0)
+
+        convs.append(formatted)
 
     # ====================== FILTER DROPDOWN DATA ======================
 

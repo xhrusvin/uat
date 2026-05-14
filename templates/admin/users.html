@@ -161,6 +161,181 @@
                         </select>
                     </div>
 
+<!-- Language Proficiency -->
+<div class="col-12">
+    <label class="form-label fw-semibold text-muted small mb-2 d-block">
+        Language Proficiency
+    </label>
+
+    <div class="filter-chip-group">
+
+        <input type="radio"
+               class="btn-check"
+               name="language_proficiency"
+               id="lang-all"
+               value=""
+               {% if not language_proficiency %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="lang-all">
+            All
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="language_proficiency"
+               id="lang-basic"
+               value="Basic"
+               {% if language_proficiency == 'Basic' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="lang-basic">
+            Basic
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="language_proficiency"
+               id="lang-independent"
+               value="Independent"
+               {% if language_proficiency == 'Independent' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="lang-independent">
+            Independent
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="language_proficiency"
+               id="lang-proficient"
+               value="Proficient"
+               {% if language_proficiency == 'Proficient' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="lang-proficient">
+            Proficient
+        </label>
+
+    </div>
+</div>
+
+<!-- Experience Level -->
+<div class="col-12 mt-3">
+    <label class="form-label fw-semibold text-muted small mb-2 d-block">
+        Experience Level
+    </label>
+
+    <div class="filter-chip-group">
+
+        <input type="radio"
+               class="btn-check"
+               name="experience_level"
+               id="exp-all"
+               value=""
+               {% if not experience_level %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="exp-all">
+            All
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="experience_level"
+               id="exp-entry"
+               value="Entry"
+               {% if experience_level == 'Entry' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="exp-entry">
+            Entry
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="experience_level"
+               id="exp-intermediate"
+               value="Intermediate"
+               {% if experience_level == 'Intermediate' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="exp-intermediate">
+            Intermediate
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="experience_level"
+               id="exp-senior"
+               value="Senior"
+               {% if experience_level == 'Senior' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="exp-senior">
+            Senior
+        </label>
+
+    </div>
+</div>
+
+<!-- Certification Status -->
+<div class="col-12 mt-3">
+    <label class="form-label fw-semibold text-muted small mb-2 d-block">
+        Certification Status
+    </label>
+
+    <div class="filter-chip-group">
+
+        <input type="radio"
+               class="btn-check"
+               name="certification_status"
+               id="cert-all"
+               value=""
+               {% if not certification_status %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="cert-all">
+            All
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="certification_status"
+               id="cert-certified"
+               value="Certified"
+               {% if certification_status == 'Certified' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="cert-certified">
+            <i class="bi bi-patch-check me-1"></i>
+            Certified
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="certification_status"
+               id="cert-pending"
+               value="Pending"
+               {% if certification_status == 'Pending' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="cert-pending">
+            <i class="bi bi-hourglass-split me-1"></i>
+            Pending
+        </label>
+
+    </div>
+</div>
+
                     <!-- Buttons -->
                     <div class="d-flex gap-2">
 
@@ -212,6 +387,7 @@
                             <!-- <th>Call Status</th>
                             <th>Email</th>
                             <th>Missed Call Email</th> -->
+                            <th>Tags</th>
                             <th class="text-center">Documents</th>
                             <th class="sortable" data-key="joined">
                             Joined <i class="bi bi-arrow-down-up sort-icon"></i>
@@ -288,6 +464,92 @@
                                 <span class="badge bg-warning text-dark rounded-pill">Not Sent</span>
                                 {% endif %}
                             </td> -->
+
+                            <td>
+                                <div class="d-flex flex-column gap-1">
+
+                                    {% if u.language_proficiency %}
+
+                                    {% set language_description = {
+                                        'Basic': 'Can understand and use simple English communication',
+                                        'Independent': 'Can communicate confidently in most workplace situations',
+                                        'Proficient': 'Fluent professional-level communication skills'
+                                    } %}
+
+                                    <span class="badge rounded-pill bg-info-subtle text-info border px-3 py-2 text-start"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="{{ language_description.get(u.language_proficiency, '') }}">
+
+                                        <i class="bi bi-translate me-1"></i>
+                                        {{ u.language_proficiency }}
+
+                                    </span>
+                                    {% endif %}
+
+
+                                    {% if u.experience_level %}
+
+                                    {% set experience_description = {
+                                        'Entry': '6 months to 2 years of experience',
+                                        'Intermediate': '2 to 5 years of experience',
+                                        'Senior': '5+ years of experience'
+                                    } %}
+
+                                    <span class="badge rounded-pill bg-warning-subtle text-dark border px-3 py-2 text-start"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="{{ experience_description.get(u.experience_level, '') }}">
+
+                                        <i class="bi bi-briefcase me-1"></i>
+                                        {{ u.experience_level }}
+
+                                    </span>
+                                    {% endif %}
+
+
+
+
+                                    {% if u.certification_status %}
+
+                                    {% set certification_description = {
+                                        'Certified': 'DPL and NMR Certified',
+                                        'Pending': 'DPL and NMR yet to certified'
+                                    } %}
+
+                                    {% set certification_icon = {
+                                        'Certified': 'bi-patch-check',
+                                        'Pending': 'bi-hourglass-split'
+                                    } %}
+
+                                    {% set certification_class = {
+                                        'Certified': 'bg-success-subtle text-success',
+                                        'Pending': 'bg-secondary-subtle text-secondary'
+                                    } %}
+
+                                    <span class="badge rounded-pill border px-3 py-2 text-start
+                                                {{ certification_class.get(u.certification_status, 'bg-light text-dark') }}"
+
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="{{ certification_description.get(u.certification_status, '') }}">
+
+                                        <i class="bi {{ certification_icon.get(u.certification_status, 'bi-patch') }} me-1"></i>
+
+                                        {{ u.certification_status }}
+
+                                    </span>
+
+                                    {% endif %}
+
+                                    {% if not u.language_proficiency
+                                    and not u.experience_level
+                                    and not u.certification_status %}
+                                    <span class="text-muted">—</span>
+                                    {% endif %}
+
+                                </div>
+                            </td>
 
                             <td class="text-center">
                             <button class="btn btn-outline-primary btn-sm rounded-circle view-docs-btn"
@@ -1461,7 +1723,42 @@
 
 
 
+.filter-chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
 
+.filter-chip {
+    padding: 10px 20px;
+    border-radius: 999px;
+    background: #f8f9fc;
+    border: 1px solid #e2e8f0;
+    color: #495057;
+    font-weight: 600;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.filter-chip:hover {
+    background: #eef2ff;
+    border-color: #667eea;
+    color: #4f46e5;
+    transform: translateY(-1px);
+}
+
+.btn-check:checked + .filter-chip {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 6px 18px rgba(102, 126, 234, 0.25);
+}
+
+.btn-check:checked + .filter-chip:hover {
+    color: white;
+}
 
 
 
@@ -3401,5 +3698,23 @@ $(document).ready(function () {
     });
 
 });
+
+
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    const tooltipTriggerList = [].slice.call(
+        document.querySelectorAll('[data-bs-toggle="tooltip"]')
+    );
+
+    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+        new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+});
+
+
+
+
 </script>
 {% endblock %}

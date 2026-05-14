@@ -205,18 +205,74 @@ def sync_agent_conversations_levelfive_call():
                 call_status_val = dc_map.get("call_status")   # ← NEW
 
                 # ==================== website_leads_conv (UI Transcript) ====================
-                conv_doc = {
-                    "call_status": call_status_val,           # ← ADDED AS REQUESTED
-                }
+                # conv_doc = {
+                #     "call_status": call_status_val,           # ← ADDED AS REQUESTED
+                # }
 
-                conversations_collection.update_one(
-                    {"elevenlabs_conversation_id": conversation_id},     # or {"elevenlabs_conversation_id": conversation_id} if you prefer
-                    {"$set": conv_doc}
-                )
+                # conversations_collection.update_one(
+                #     {"elevenlabs_conversation_id": conversation_id},     # or {"elevenlabs_conversation_id": conversation_id} if you prefer
+                #     {"$set": conv_doc}
+                # )
 
                 
 
-                processed += 1
+                # processed += 1
+
+
+                # ==================== Extract transcript ====================
+                transcript = full_details.get("transcript", [])
+
+                minimal_transcript = extract_minimal_transcript(transcript)
+
+                # ==================== Conversation Document ====================
+                conv_doc = {
+                    "elevenlabs_conversation_id": conversation_id,
+
+                    # Agent
+                    "agent_id": agent_id,
+
+                    # User mapping
+                    "xn_user_id": xn_user_id,
+                    "reference_id": ref_id,
+
+                    # Reference details
+                    "ref_name": dynamic_variables.get("ref_name"),
+                    "ref_email": dynamic_variables.get("ref_email"),
+                    "ref_phone": dynamic_variables.get("ref_phone"),
+                    "ref_job_title": dynamic_variables.get("ref_job_title"),
+
+                    # Call status
+                    "call_status": call_status_val,
+
+                    # Question answers
+                    # "worked_more_than_three_month":
+                    #     dc_map.get("worked_more_than_three_month"),
+
+                    # "safeguarding_issues":
+                    #     dc_map.get("safeguarding_issues"),
+
+                    # "has_the_sufficient_skills":
+                    #     dc_map.get("has_the_sufficient_skills"),
+
+                    # "performance_rating":
+                    #     dc_map.get("performance_rating"),
+
+                    # Timestamp
+                    "updated_at": datetime.utcnow(),
+                }
+
+                # ==================== Upsert ====================
+                result = conversations_collection.update_one(
+                    {"elevenlabs_conversation_id": conversation_id},
+                    {"$set": conv_doc},
+                    upsert=True
+                )
+
+                if result.upserted_id:
+                    inserted += 1
+                    processed += 1
+                else:
+                    updated += 1
 
             except Exception as e:
                 print(f"Failed processing conversation {conversation_id}: {e}")
