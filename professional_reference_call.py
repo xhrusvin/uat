@@ -137,7 +137,7 @@ def register_professional_reference_call_routes(app):
                 return jsonify({
                     **response_base,
                     "status": "api_failed",
-                    "message": f"XN API returned {api_response.status_code}",
+                    "message": f"XN API returned {api_response.text}",
                     "references": []
                 }), 200
 

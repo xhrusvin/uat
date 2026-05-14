@@ -309,7 +309,7 @@ def api_brief_summary_cov_new():
           if field_id == "right_to_work_ireland" and value:
             right_to_work_ireland = value
 
-          if field_id == "employment_duration_months" and value:
+          if field_id == "months_experience_ireland" and value:
             try:
              # Convert to float first (handles "2.0", "6.5", etc.)
              num = float(str(value).strip())
