@@ -266,7 +266,7 @@
 
         <label class="filter-chip"
                for="exp-intermediate">
-            Intermediate
+            Mid-level
         </label>
 
 
@@ -443,33 +443,48 @@
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover mb-0 align-middle">
-                    <thead class="text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <thead class="table-header-modern">
                         <tr>
                             <th class="ps-4 sortable" data-key="name">
-                                Name <i class="bi bi-arrow-down-up sort-icon"></i>
-                                </th>
-                            <th class="sortable" data-key="email">
-  Email <i class="bi bi-arrow-down-up sort-icon"></i>
-</th>
-                            <th>Phone</th>
-                            <th class="sortable" data-key="county">
-                                County <i class="bi bi-arrow-down-up sort-icon"></i>
-                                </th>
-
-
-
-                                            <th class="sortable" data-key="designation">
-                Designation <i class="bi bi-arrow-down-up sort-icon"></i>
-                </th>
-                            <!-- <th>Call Status</th>
-                            <th>Email</th>
-                            <th>Missed Call Email</th> -->
-                            <th>Tags</th>
-                            <th class="text-center">Documents</th>
-                            <th class="sortable" data-key="joined">
-                            Joined <i class="bi bi-arrow-down-up sort-icon"></i>
+                                <span>Name</span>
+                                <i class="bi bi-arrow-down-up sort-icon"></i>
                             </th>
-                            <th class="text-center">Action</th>
+
+                            <th class="sortable" data-key="email">
+                                <span>Email</span>
+                                <i class="bi bi-arrow-down-up sort-icon"></i>
+                            </th>
+
+                            <th>
+                                <span>Phone</span>
+                            </th>
+
+                            <th class="sortable" data-key="county">
+                                <span>County</span>
+                                <i class="bi bi-arrow-down-up sort-icon"></i>
+                            </th>
+
+                            <th class="sortable" data-key="designation">
+                                <span>Designation</span>
+                                <i class="bi bi-arrow-down-up sort-icon"></i>
+                            </th>
+
+                            <th>
+                                <span>Tags</span>
+                            </th>
+
+                            <th class="text-center">
+                                <span>Documents</span>
+                            </th>
+
+                            <th class="sortable" data-key="joined">
+                                <span>Joined</span>
+                                <i class="bi bi-arrow-down-up sort-icon"></i>
+                            </th>
+
+                            <th class="text-center">
+                                <span>Action</span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
@@ -510,7 +525,11 @@
         </div>
     </div>
 </td>
-                            <td><span class="text-primary fw-medium">{{ u.email }}</span></td>
+                            <td class="email-column">
+                                <span class="text-primary fw-medium email-text">
+                                    {{ u.email }}
+                                </span>
+                            </td>
                             <td>{{ u.phone or '<span class="text-muted">—</span>'|safe }}</td>
                             <td>
                                 {% if u.county and u.county != '-' %}
@@ -541,7 +560,7 @@
                                 <span class="badge bg-warning text-dark rounded-pill">Not Sent</span>
                                 {% endif %}
                             </td> -->
-                            <td style="min-width: 180px;">
+                            <td style="min-width: 150px;">
 
                                 {% set language_description = {
                                     'Basic': 'Can understand and use simple English communication',
@@ -554,6 +573,13 @@
                                     'Intermediate': '2 to 5 years of experience',
                                     'Senior': '5+ years of experience'
                                 } %}
+
+                                {% set experience_display = {
+                                    'Entry': 'Entry',
+                                    'Intermediate': 'Mid-Level',
+                                    'Senior': 'Senior'
+                                } %}
+
 
                                 {% set certification_description = {
                                     'Certified': 'CPR & BLF Certified',
@@ -576,7 +602,7 @@
                                     {% set _ = tags.append({
                                         'type': 'experience',
                                         'label': 'Experience',
-                                        'value': u.experience_level,
+                                        'value': experience_display.get(u.experience_level, u.experience_level),
                                         'icon': 'bi-briefcase',
                                         'tooltip': experience_description.get(u.experience_level, '')
                                     }) %}
@@ -1731,6 +1757,75 @@
 <style>
 
     /*  CSS for the users table and modals */
+.email-column {
+    width: 200px;
+    min-width: 200px;
+    max-width: 200px;
+}
+
+.email-text {
+    display: inline-block;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+.table-header-modern {
+    background: #f8fafc;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.table-header-modern th,
+.table-header-modern th span,
+.table-header-modern th i {
+    color: #374151 !important;
+    background: transparent !important;
+}
+
+.table-header-modern th {
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 15px 14px;
+    border: none;
+    white-space: nowrap;
+    vertical-align: middle;
+    transition: all 0.2s ease;
+}
+
+.table-header-modern .sortable {
+    cursor: pointer;
+}
+
+.table-header-modern .sortable:hover,
+.table-header-modern th:hover {
+    background: #eef2ff !important;
+    color: #4f46e5 !important;
+}
+
+.table-header-modern .sortable:hover i,
+.table-header-modern th:hover i {
+    color: #4f46e5 !important;
+}
+
+.table-header-modern .sort-icon {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    margin-left: 6px;
+}
+
+.table-header-modern tr {
+    border-bottom: 1px solid #e5e7eb;
+}
+
+
+
+
+
+
+
+
 .sortable {
     cursor: pointer;
     user-select: none;
