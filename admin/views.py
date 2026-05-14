@@ -620,6 +620,7 @@ def _format_conv(conv):
     conv['email'] = safe_str(user.get('email'), '—')          # ← ADD THIS LINE
     conv['designation'] = safe_str(user.get('designation'), '-')
     conv['country'] = safe_str(user.get('country'), '-')
+    conv['county'] = safe_str(user.get('county'), '-')
     conv['call_status'] = safe_str(conv.get('call_status'), '—')
     conv['garda_email_sent'] = user.get('garda_email_sent')
     conv['address'] = safe_str(user.get('address'), '-')
@@ -679,6 +680,7 @@ def _format_conv(conv):
         'designation': conv['designation'],
         'call_status': conv['call_status'],
         'country': conv['country'],
+        'county': conv['county'],
         'started_at': conv['started_at'],
         'ended_at': conv['ended_at'],
         'turns': conv['turns'],
@@ -828,6 +830,7 @@ def transcriptions():
             "user_info.address": 1,
             "user_info.designation": 1,
             "user_info.country": 1,
+            "user_info.county": 1,
             "user_info.garda_email_sent": 1
         }
     })
