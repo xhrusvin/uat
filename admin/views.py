@@ -22,7 +22,9 @@ import pandas as pd
 from io import BytesIO
 
 
+
 now_utc = datetime.now(pytz.UTC)
+
 
 
 XN_PORTAL_BASE_URL = os.getenv('XN_PORTAL_BASE_URL')
@@ -213,8 +215,10 @@ def users():
     language_proficiency = request.args.get('language_proficiency', '').strip()
     certification_status = request.args.get('certification_status', '').strip()
     experience_level = request.args.get('experience_level', '').strip()
+    age_group = request.args.get('age_group', '').strip()
     sort_order = request.args.get('sort', 'desc')
     sort_direction = -1 if sort_order == 'desc' else 1
+    
 
     query = {"is_admin": {"$ne": True}}
 
@@ -233,7 +237,55 @@ def users():
     if certification_status:
         query["certification_status"] = certification_status
 
+    # ====================== AGE GROUP FILTER ======================
+
+
+    if age_group:
+
+        today = datetime.utcnow()
+
+        if age_group == "18-30":
+
+            dob_from = today - timedelta(days=30 * 365.25)
+            dob_to = today - timedelta(days=18 * 365.25)
+
+            query["dob"] = {
+                "$gte": dob_from,
+                "$lte": dob_to
+            }
+
+        elif age_group == "30-40":
+
+            dob_from = today - timedelta(days=40 * 365.25)
+            dob_to = today - timedelta(days=30 * 365.25)
+
+            query["dob"] = {
+                "$gte": dob_from,
+                "$lte": dob_to
+            }
+
+        elif age_group == "40-50":
+
+            dob_from = today - timedelta(days=50 * 365.25)
+            dob_to = today - timedelta(days=40 * 365.25)
+
+            query["dob"] = {
+                "$gte": dob_from,
+                "$lte": dob_to
+            }
+
+        elif age_group == "50+":
+
+            dob_to = today - timedelta(days=50 * 365.25)
+
+            query["dob"] = {
+                "$lte": dob_to
+            }
+    
+
+
     # ====================== SEARCH FILTER ======================
+
     if search:
         escaped = re.escape(search)
         regex = {"$regex": escaped, "$options": "i"}
@@ -425,6 +477,41 @@ def users():
         {"designation": {"$nin": [None, ""]}}
     )
 
+
+    # Age Group Filter
+    today = datetime.utcnow()
+
+    for user in users_list:
+
+        dob = user.get("dob")
+
+        if dob:
+
+            try:
+
+                age = int((today - dob).days / 365.25)
+
+                user["computed_age"] = age
+
+                if 18 <= age < 30:
+                    user["computed_age_group"] = "18 - 30"
+
+                elif 30 <= age < 40:
+                    user["computed_age_group"] = "30 - 40"
+
+                elif 40 <= age < 50:
+                    user["computed_age_group"] = "40 - 50"
+
+                else:
+                    user["computed_age_group"] = "50+"
+
+            except Exception:
+                user["computed_age"] = None
+                user["computed_age_group"] = None
+
+    
+
+
     # counties = current_app.db.users.distinct(
     #     "country",
     #     {"country": {"$nin": [None, ""]}}
@@ -454,6 +541,7 @@ def users():
                            language_proficiency=language_proficiency,
                            experience_level=experience_level,
                            certification_status=certification_status,
+                           age_group=age_group,
                            sort=sort_order)
 
 

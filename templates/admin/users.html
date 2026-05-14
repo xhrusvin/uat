@@ -288,7 +288,7 @@
 <!-- Certification Status -->
 <div class="col-12 mt-3">
     <label class="form-label fw-semibold text-muted small mb-2 d-block">
-        Certification Status
+        CPR & BLF Certification Status
     </label>
 
     <div class="filter-chip-group">
@@ -335,6 +335,83 @@
 
     </div>
 </div>
+
+<!-- Age Group -->
+<div class="col-12 mt-3">
+    <label class="form-label fw-semibold text-muted small mb-2 d-block">
+        Age Group
+    </label>
+
+    <div class="filter-chip-group">
+
+        <input type="radio"
+               class="btn-check"
+               name="age_group"
+               id="age-all"
+               value=""
+               {% if not age_group %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="age-all">
+            All
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="age_group"
+               id="age-18-30"
+               value="18-30"
+               {% if age_group == '18-30' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="age-18-30">
+            18 - 30
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="age_group"
+               id="age-30-40"
+               value="30-40"
+               {% if age_group == '30-40' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="age-30-40">
+            30 - 40
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="age_group"
+               id="age-40-50"
+               value="40-50"
+               {% if age_group == '40-50' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="age-40-50">
+            40 - 50
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="age_group"
+               id="age-50-plus"
+               value="50+"
+               {% if age_group == '50+' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="age-50-plus">
+            50+
+        </label>
+
+    </div>
+</div>
+
+
 
                     <!-- Buttons -->
                     <div class="d-flex gap-2">
@@ -464,91 +541,157 @@
                                 <span class="badge bg-warning text-dark rounded-pill">Not Sent</span>
                                 {% endif %}
                             </td> -->
+                            <td style="min-width: 180px;">
 
-                            <td>
-                                <div class="d-flex flex-column gap-1">
+                                {% set language_description = {
+                                    'Basic': 'Can understand and use simple English communication',
+                                    'Independent': 'Can communicate confidently in most workplace situations',
+                                    'Proficient': 'Fluent professional-level communication skills'
+                                } %}
 
-                                    {% if u.language_proficiency %}
+                                {% set experience_description = {
+                                    'Entry': '6 months to 2 years of experience',
+                                    'Intermediate': '2 to 5 years of experience',
+                                    'Senior': '5+ years of experience'
+                                } %}
 
-                                    {% set language_description = {
-                                        'Basic': 'Can understand and use simple English communication',
-                                        'Independent': 'Can communicate confidently in most workplace situations',
-                                        'Proficient': 'Fluent professional-level communication skills'
-                                    } %}
+                                {% set certification_description = {
+                                    'Certified': 'CPR & BLF Certified',
+                                    'Pending': 'CPR & BLF yet to certified'
+                                } %}
 
-                                    <span class="badge rounded-pill bg-info-subtle text-info border px-3 py-2 text-start"
-                                        data-bs-toggle="tooltip"
-                                        data-bs-placement="top"
-                                        title="{{ language_description.get(u.language_proficiency, '') }}">
+                                {% set tags = [] %}
 
-                                        <i class="bi bi-translate me-1"></i>
-                                        {{ u.language_proficiency }}
+                                {% if u.language_proficiency %}
+                                    {% set _ = tags.append({
+                                        'type': 'language',
+                                        'label': 'Language',
+                                        'value': u.language_proficiency,
+                                        'icon': 'bi-translate',
+                                        'tooltip': language_description.get(u.language_proficiency, '')
+                                    }) %}
+                                {% endif %}
 
-                                    </span>
-                                    {% endif %}
-
-
-                                    {% if u.experience_level %}
-
-                                    {% set experience_description = {
-                                        'Entry': '6 months to 2 years of experience',
-                                        'Intermediate': '2 to 5 years of experience',
-                                        'Senior': '5+ years of experience'
-                                    } %}
-
-                                    <span class="badge rounded-pill bg-warning-subtle text-dark border px-3 py-2 text-start"
-                                        data-bs-toggle="tooltip"
-                                        data-bs-placement="top"
-                                        title="{{ experience_description.get(u.experience_level, '') }}">
-
-                                        <i class="bi bi-briefcase me-1"></i>
-                                        {{ u.experience_level }}
-
-                                    </span>
-                                    {% endif %}
+                                {% if u.experience_level %}
+                                    {% set _ = tags.append({
+                                        'type': 'experience',
+                                        'label': 'Experience',
+                                        'value': u.experience_level,
+                                        'icon': 'bi-briefcase',
+                                        'tooltip': experience_description.get(u.experience_level, '')
+                                    }) %}
+                                {% endif %}
 
 
+                                {% if u.computed_age_group %}
 
+                                    {% set _ = tags.append({
+                                        'type': 'age',
+                                        'label': 'Age Group',
+                                        'value': u.computed_age_group,
+                                        'icon': 'bi-person-badge',
+                                        'tooltip': u.computed_age ~ ' years old'
+                                    }) %}
 
-                                    {% if u.certification_status %}
+                                {% endif %}
 
-                                    {% set certification_description = {
-                                        'Certified': 'DPL and NMR Certified',
-                                        'Pending': 'DPL and NMR yet to certified'
-                                    } %}
+                                {% if u.certification_status == 'Pending' %}
+                                    {% set _ = tags.append({
+                                        'type': 'certification',
+                                        'label': 'Certification',
+                                        'value': u.certification_status,
+                                        'icon': 'bi-hourglass-split',
+                                        'tooltip': certification_description.get(u.certification_status, '')
+                                    }) %}
+                                {% endif %}
 
-                                    {% set certification_icon = {
-                                        'Certified': 'bi-patch-check',
-                                        'Pending': 'bi-hourglass-split'
-                                    } %}
+                                {% if tags|length == 0 %}
 
-                                    {% set certification_class = {
-                                        'Certified': 'bg-success-subtle text-success',
-                                        'Pending': 'bg-secondary-subtle text-secondary'
-                                    } %}
-
-                                    <span class="badge rounded-pill border px-3 py-2 text-start
-                                                {{ certification_class.get(u.certification_status, 'bg-light text-dark') }}"
-
-                                        data-bs-toggle="tooltip"
-                                        data-bs-placement="top"
-                                        title="{{ certification_description.get(u.certification_status, '') }}">
-
-                                        <i class="bi {{ certification_icon.get(u.certification_status, 'bi-patch') }} me-1"></i>
-
-                                        {{ u.certification_status }}
-
-                                    </span>
-
-                                    {% endif %}
-
-                                    {% if not u.language_proficiency
-                                    and not u.experience_level
-                                    and not u.certification_status %}
                                     <span class="text-muted">—</span>
+
+                                {% else %}
+
+                                <div class="d-flex flex-column gap-2">
+
+                                    <!-- First 2 Tags -->
+                                    {% for tag in tags[:2] %}
+
+                                    <div class="user-tag tag-{{ tag.type }}"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="{{ tag.tooltip }}">
+
+                                        <div class="tag-icon">
+                                            <i class="bi {{ tag.icon }}"></i>
+                                        </div>
+
+                                        <div class="tag-content">
+                                            <div class="tag-label">
+                                                {{ tag.label }}
+                                            </div>
+
+                                            <div class="tag-value">
+                                                {{ tag.value }}
+                                            </div>
+                                        </div>
+
+                                    </div>
+
+                                    {% endfor %}
+
+                                    <!-- Remaining Tags Dropdown -->
+                                    {% if tags|length > 2 %}
+
+                                    <div class="dropdown"
+                                        onclick="event.stopPropagation();">
+
+                                        <button class="btn btn-sm more-tags-btn dropdown-toggle"
+                                            type="button"
+                                            data-bs-toggle="dropdown"
+                                            onclick="event.stopPropagation();">
+
+                                            +{{ tags|length - 2 }} more
+
+                                        </button>
+
+                                        <div class="dropdown-menu p-2 border-0 shadow rounded-4"
+                                            onclick="event.stopPropagation();">
+
+                                            {% for tag in tags[2:] %}
+
+                                            <div class="user-tag tag-{{ tag.type }} mb-2"
+                                                data-bs-toggle="tooltip"
+                                                data-bs-placement="top"
+                                                title="{{ tag.tooltip }}">
+
+                                                <div class="tag-icon">
+                                                    <i class="bi {{ tag.icon }}"></i>
+                                                </div>
+
+                                                <div class="tag-content">
+                                                    <div class="tag-label">
+                                                        {{ tag.label }}
+                                                    </div>
+
+                                                    <div class="tag-value">
+                                                        {{ tag.value }}
+                                                    </div>
+                                                </div>
+
+                                            </div>
+
+                                            {% endfor %}
+
+                                        </div>
+
+                                    </div>
+
                                     {% endif %}
 
                                 </div>
+
+                                {% endif %}
+
                             </td>
 
                             <td class="text-center">
@@ -1586,6 +1729,8 @@
 
 {% block extra_css %}
 <style>
+
+    /*  CSS for the users table and modals */
 .sortable {
     cursor: pointer;
     user-select: none;
@@ -1720,7 +1865,10 @@
 }
 
 
-
+.tag-age .tag-icon {
+    background: rgba(168, 85, 247, 0.14);
+    color: #9333ea;
+}
 
 
 .filter-chip-group {
@@ -1761,8 +1909,117 @@
 }
 
 
+.user-tags-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.user-tag {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    padding: 10px 14px;
+
+    border-radius: 16px;
+
+    background: #ffffff;
+
+    border: 1px solid #edf0f7;
+
+    box-shadow:
+        0 2px 8px rgba(15, 23, 42, 0.04);
+
+    transition: all 0.2s ease;
+
+    cursor: pointer;
+}
+
+.user-tag:hover {
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.tag-icon {
+    width: 38px;
+    height: 38px;
+
+    border-radius: 12px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 1rem;
+
+    flex-shrink: 0;
+}
+
+.tag-content {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+}
+
+.tag-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+
+    color: #94a3b8;
+
+    margin-bottom: 4px;
+}
+
+.tag-value {
+    font-size: 0.92rem;
+    font-weight: 700;
+
+    color: #1e293b;
+}
+
+/* Language */
+.tag-language .tag-icon {
+    background: rgba(59, 130, 246, 0.12);
+    color: #2563eb;
+}
+
+/* Experience */
+.tag-experience .tag-icon {
+    background: rgba(245, 158, 11, 0.14);
+    color: #d97706;
+}
+
+/* Certification */
+.tag-certification .tag-icon {
+    background: rgba(16, 185, 129, 0.14);
+    color: #059669;
+}
 
 
+.more-tags-btn {
+    border: none;
+    background: #f1f5f9;
+    color: #475569;
+
+    border-radius: 999px;
+
+    font-size: 0.82rem;
+    font-weight: 600;
+
+    padding: 6px 14px;
+
+    transition: all 0.2s ease;
+}
+
+.more-tags-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
 
 </style>
 {% endblock %}
