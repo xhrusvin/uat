@@ -74,6 +74,7 @@ def api_brief_summary_cov_new():
 
         first_name = user.get("first_name", "").strip()
         last_name = user.get("last_name", "").strip()
+        address = user.get("address", "").strip()
         caller_name = " ".join(filter(None, [first_name, last_name])) or "Unknown Caller"
         phone = user.get("phone")
 
@@ -497,6 +498,9 @@ def api_brief_summary_cov_new():
 
             if user_data.get("permission_to_work") is None:
                 update_payload["permission_to_work"] = right_to_work_ireland
+
+            if user_data.get("address") is None:
+                update_payload["address"] = address
              # ────────────────────────────────────────────────
              # Only send request if we actually have something to update
              # (besides _id)
