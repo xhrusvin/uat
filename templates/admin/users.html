@@ -285,6 +285,57 @@
     </div>
 </div>
 
+<!-- Certification Status -->
+<div class="col-12 mt-3">
+    <label class="form-label fw-semibold text-muted small mb-2 d-block">
+        Certification Status
+    </label>
+
+    <div class="filter-chip-group">
+
+        <input type="radio"
+               class="btn-check"
+               name="certification_status"
+               id="cert-all"
+               value=""
+               {% if not certification_status %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="cert-all">
+            All
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="certification_status"
+               id="cert-certified"
+               value="Certified"
+               {% if certification_status == 'Certified' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="cert-certified">
+            <i class="bi bi-patch-check me-1"></i>
+            Certified
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="certification_status"
+               id="cert-pending"
+               value="Pending"
+               {% if certification_status == 'Pending' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="cert-pending">
+            <i class="bi bi-hourglass-split me-1"></i>
+            Pending
+        </label>
+
+    </div>
+</div>
+
                     <!-- Buttons -->
                     <div class="d-flex gap-2">
 
@@ -457,7 +508,43 @@
                                     {% endif %}
 
 
-                                    {% if not u.language_proficiency and not u.experience_level %}
+
+
+                                    {% if u.certification_status %}
+
+                                    {% set certification_description = {
+                                        'Certified': 'DPL and NMR Certified',
+                                        'Pending': 'DPL and NMR yet to certified'
+                                    } %}
+
+                                    {% set certification_icon = {
+                                        'Certified': 'bi-patch-check',
+                                        'Pending': 'bi-hourglass-split'
+                                    } %}
+
+                                    {% set certification_class = {
+                                        'Certified': 'bg-success-subtle text-success',
+                                        'Pending': 'bg-secondary-subtle text-secondary'
+                                    } %}
+
+                                    <span class="badge rounded-pill border px-3 py-2 text-start
+                                                {{ certification_class.get(u.certification_status, 'bg-light text-dark') }}"
+
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="{{ certification_description.get(u.certification_status, '') }}">
+
+                                        <i class="bi {{ certification_icon.get(u.certification_status, 'bi-patch') }} me-1"></i>
+
+                                        {{ u.certification_status }}
+
+                                    </span>
+
+                                    {% endif %}
+
+                                    {% if not u.language_proficiency
+                                    and not u.experience_level
+                                    and not u.certification_status %}
                                     <span class="text-muted">—</span>
                                     {% endif %}
 
