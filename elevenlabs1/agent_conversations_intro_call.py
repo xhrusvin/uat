@@ -160,6 +160,8 @@ def sync_agent_conversations_intro_call():
                 eir_code_val = dc_map.get("eir_code")
                 language_proficiency_val = dc_map.get("language_proficiency")
                 experience_level_val = dc_map.get("experience_level")
+                certification_status_val = dc_map.get("certification_status")
+                dob_val = dc_map.get("dob")
 
                 # Check if user already has an address
                 existing_user = users.find_one(
@@ -203,7 +205,9 @@ def sync_agent_conversations_intro_call():
                         "county": county,
                         "eir_checked": True,
                         "language_proficiency": language_proficiency_val,
-                        "experience_level": experience_level_val
+                        "experience_level": experience_level_val,
+                        "certification_status": certification_status_val,
+                        "dob": dob_val
                     }}
                   )
 
