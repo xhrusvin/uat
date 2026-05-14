@@ -134,6 +134,8 @@ def validate_document():
                 docs_to_process = pending_docs[:2]
 
             ai_checked_count = 0
+            verify_payload = ""   
+            verify_resp = None   
 
             for doc in docs_to_process:
                 doc_url = doc.get('url')
@@ -142,8 +144,6 @@ def validate_document():
                 ai_status = False
                 ai_reason = "No URL"
                 ai_raw_response = ""
-                verify_payload = ""    # ← ADD THIS LINE
-                verify_resp = None     # ← ADD THIS LINE (move it here from below)
                 user_name = (
                     u.get('name') or
                     f"{u.get('first_name', '')} {u.get('last_name', '')}".strip()
