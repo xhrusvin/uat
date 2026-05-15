@@ -199,11 +199,12 @@
         {% if c.call_status == 'User Busy' %}
             <span class="text-warning fw-bold">User Busy</span>
         
-        {% elif c.call_status == 'Empty' %}
-            <span class="text-muted fw-bold">{{ c.call_status }}</span>
-        
-        {% elif c.call_status == 'Voice call Detected' %}
-            <span class="text-info fw-bold">Voice call Detected</span>
+        {% elif c.call_status == 'Call Rejected by User' %}
+            <span class="text-danger fw-bold">{{ c.call_status }}</span>
+
+    
+        {% elif c.call_status == 'Voice Mail Detected' %}
+            <span class="text-info fw-bold">Voice Mail Detected</span>
         
         {% elif c.call_status == 'No Required Experience' %}
             <span class="text-primary fw-bold">No Required Experience</span>
