@@ -158,7 +158,26 @@ def sync_agent_conversations_levelfive_call():
                 
                 xn_user_id = dynamic_variables.get("xn_user_id")
                 ref_id = dynamic_variables.get("ref_id")
+                ref_post = dynamic_variables.get("ref_job_title")
 
+
+                allowedposts = [
+                        "HR",
+                        "Shift Manager",
+                        "Team Manager",
+                        "Team Lead",
+                        "CNM1",
+                        "CNM2",
+                        "CNM3",
+                        "Clinical Nurse Manager",
+                        "Senior Nurse",
+                        "Enhanced Nurse",
+                        "DON",
+                        "Director of Nursing",
+                        "ADON",
+                        "Assistant Director of Nursing"
+                ]
+                
                 user_url = os.getenv("XN_PORTAL_BASE_URL")
                 user_external_api_key = os.getenv("XN_PORTAL_API_KEY")
                 xn_app_country = os.getenv("XN_APP_COUNTRY")
@@ -186,20 +205,24 @@ def sync_agent_conversations_levelfive_call():
                     "response": question_answers
                 }
 
-                # reference_headers = {
-                #     "Api-Key": user_external_api_key,
-                #     "X-App-Country": xn_app_country,
-                #     "Content-Type": "application/json"
-                # }
+                reference_headers = {
+                    "Api-Key": user_external_api_key,
+                    "X-App-Country": xn_app_country,
+                    "Content-Type": "application/json"
+                }
+                if ref_post and any(post.lower() in ref_post.lower() for post in allowedposts):
 
-                # ref_resp = requests.post(
-                #     f"{user_url}/ai/recruitments/submit-reference-request",
-                #     json=reference_payload,
-                #     headers=reference_headers,
-                #     timeout=60
-                # )
-                # ref_resp.raise_for_status()
-                # ref_result = ref_resp.json()
+                   ref_resp = requests.post(
+                     f"{user_url}/ai/recruitments/submit-reference-request",
+                     json=reference_payload,
+                     headers=reference_headers,
+                     timeout=60
+                 )
+                   ref_resp.raise_for_status()
+                   #ref_result = ref_resp.json()
+                   xn_update = True
+                else:
+                   xn_update = False
 
                 
                 call_status_val = dc_map.get("call_status")   # ← NEW
@@ -243,6 +266,8 @@ def sync_agent_conversations_levelfive_call():
 
                     # Call status
                     "call_status": call_status_val,
+                    "xn_update" : xn_update,
+                    "xn_reason" : f"Job title ({ref_post}) not allowed" if not xn_update else "Updated",
 
                     # Question answers
                     # "worked_more_than_three_month":
