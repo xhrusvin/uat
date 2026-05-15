@@ -132,6 +132,8 @@ def _format_conv(conv):
         'email': conv.get('email', '—'),
         'designation': conv['designation'],
         'call_status': conv['call_status'],
+        'xn_reason': safe_str(conv.get('xn_reason'), '—'),
+        'xn_update': conv.get('xn_update', False),
         'country': conv['country'],
         'county': conv['county'],
         'started_at': conv['started_at'],
@@ -405,6 +407,8 @@ def level_five_tr():
                     "started_at": "$started_at",
                     "ended_at": "$ended_at",
                     "call_status": "$call_status",
+                    "xn_reason": "$xn_reason",
+                    "xn_update": "$xn_update",
                     "elevenlabs_conversation_id":
                         "$elevenlabs_conversation_id",
                     "user_info": "$user_info"
@@ -453,6 +457,8 @@ def level_five_tr():
             "started_at": 1,
             "ended_at": 1,
             "call_status": 1,
+            "xn_reason": 1,
+            "xn_update": 1,
             "elevenlabs_conversation_id": 1,
             "calls": 1,
             "call_count": 1,

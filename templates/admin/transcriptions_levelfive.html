@@ -385,6 +385,13 @@
                 </span>
             </h6>
         </div>
+        <div class="col-md-8" id="modal-xn-reason-wrapper" style="display:none;">
+            <small class="text-muted">XN Reason</small>
+            <h6 class="mb-0">
+                <span id="modal-xn-reason" class="badge bg-danger text-wrap" style="white-space:normal;"></span>
+                <span id="modal-xn-update" class="badge bg-success ms-1 d-none">Updated</span>
+            </h6>
+        </div>
 
     </div>
 
@@ -1182,6 +1189,21 @@ document.querySelectorAll('.transcript-row').forEach(row => {
             row.dataset.phone || '—';
 
         renderCallTabs(calls);
+
+        // XN Reason
+        const xnReason = row.dataset.xnReason || '';
+        const xnUpdate = row.dataset.xnUpdate === 'true';
+        const xnWrapper = document.getElementById('modal-xn-reason-wrapper');
+        const xnSpan    = document.getElementById('modal-xn-reason');
+        const xnUpdSpan = document.getElementById('modal-xn-update');
+
+        if (xnReason && xnReason !== '—') {
+            xnSpan.textContent = xnReason;
+            xnUpdSpan.classList.toggle('d-none', !xnUpdate);
+            xnWrapper.style.display = '';
+        } else {
+            xnWrapper.style.display = 'none';
+        }
 
         const statusEl =
             document.getElementById('modal-status');
