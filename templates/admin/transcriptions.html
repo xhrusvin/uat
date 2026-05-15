@@ -925,7 +925,7 @@ if (!currentIsCompleted) {
 } else if (callStatus === 'Empty') {
     statusEl.textContent = 'Empty';
     statusEl.className   = 'badge bg-secondary';
-} else if (callStatus === 'Voice call Detected') {
+} else if (callStatus === 'Voice call Detected' || callStatus === 'voicemail_detection') {
     statusEl.textContent = 'Voice call Detected';
     statusEl.className   = 'badge bg-info text-dark';
 } else if (callStatus === 'Scheduled a follow up call') {
