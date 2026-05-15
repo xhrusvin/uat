@@ -20,6 +20,8 @@ from pymongo.errors import OperationFailure
 import requests
 import pandas as pd
 from io import BytesIO
+from collections import Counter
+
 
 
 
@@ -509,7 +511,70 @@ def users():
                 user["computed_age"] = None
                 user["computed_age_group"] = None
 
+    # =========================
+    # Analytics Data
+    # =========================
+
     
+    analytics_users = list(
+        current_app.db.users.find(query)
+    )
+
+    designation_stats = Counter()
+    experience_stats = Counter()
+    language_stats = Counter()
+    country_stats = Counter()
+    age_stats = Counter()
+
+    current_year = datetime.utcnow().year
+
+    for user in analytics_users:
+
+        # Designation
+        designation = (user.get("designation") or "Unknown").strip()
+        designation_stats[designation] += 1
+
+        # Experience
+        experience = (user.get("experience_level") or "Unknown").strip()
+        experience_stats[experience] += 1
+
+        # Language
+        language = (user.get("language_proficiency") or "Unknown").strip()
+        language_stats[language] += 1
+
+        # Country
+        country = (user.get("country") or "Unknown").strip()
+        country_stats[country] += 1
+
+        # Age
+        dob = user.get("dob")
+
+        if dob:
+
+            try:
+
+                age = current_year - dob.year
+
+                if age < 25:
+                    age_stats["18-24"] += 1
+
+                elif age < 35:
+                    age_stats["25-34"] += 1
+
+                elif age < 45:
+                    age_stats["35-44"] += 1
+
+                elif age < 55:
+                    age_stats["45-54"] += 1
+
+                else:
+                    age_stats["55+"] += 1
+
+            except:
+                age_stats["Unknown"] += 1
+
+        else:
+            age_stats["Unknown"] += 1
 
 
     # counties = current_app.db.users.distinct(
@@ -525,6 +590,20 @@ def users():
     designations = sorted([d for d in designations if d])
     counties = sorted([c for c in counties if c])
 
+    
+    
+    filters_active = any([
+            (search or '').strip(),
+            (joined_from or '').strip(),
+            (joined_to or '').strip(),
+            (designation or '').strip(),
+            (county or '').strip(),
+            (language_proficiency or '').strip(),
+            (certification_status or '').strip(),
+            (experience_level or '').strip(),
+            (age_group or '').strip()
+        ])
+    
     # ====================== RENDER TEMPLATE ======================
     return render_template('admin/users.html',
                            users=users_list,
@@ -542,7 +621,15 @@ def users():
                            experience_level=experience_level,
                            certification_status=certification_status,
                            age_group=age_group,
-                           sort=sort_order)
+                           total_candidates=len(analytics_users),
+                           designation_stats=dict(designation_stats),
+                           experience_stats=dict(experience_stats),
+                           language_stats=dict(language_stats),
+                           country_stats=dict(country_stats),
+                           age_stats=dict(age_stats),
+                           sort=sort_order,
+                           filters_active=filters_active
+    )
 
 
 
@@ -2212,3 +2299,8 @@ def recheck_address(conv_id):
     except Exception as e:
         current_app.logger.error(f"recheck_address error for conv {conv_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+
+
+
+
