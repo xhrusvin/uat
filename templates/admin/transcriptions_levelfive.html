@@ -1,4 +1,4 @@
-<!-- transcriptions.html -->
+<!-- transcriptions_levelfive.html -->
 {% extends "admin/base.html" %}
 
 {% block title %}Transcriptions • Admin{% endblock %}
@@ -39,7 +39,6 @@
                 <!-- Search Button -->
                 <button class="btn btn-primary px-4 border-0"
                         type="submit">
-
                     Search
                 </button>
             </div>
@@ -51,6 +50,7 @@
             </div>
 
         </div>
+
         <!-- Filter Dropdown -->
         <div class="dropdown">
 
@@ -75,7 +75,6 @@
                     <label class="form-label fw-semibold text-muted small mb-2">
                         Date Range
                     </label>
-
                     <input type="text"
                            id="date-range"
                            name="date_range"
@@ -89,15 +88,10 @@
                     <label class="form-label fw-semibold text-muted small mb-2">
                         Designation
                     </label>
-
-                    <select name="designation"
-                            class="form-select rounded-3">
-
+                    <select name="designation" class="form-select rounded-3">
                         <option value="">All Designations</option>
-
                         {% for d in designations %}
-                            <option value="{{ d }}"
-                                {% if designation == d %}selected{% endif %}>
+                            <option value="{{ d }}" {% if designation == d %}selected{% endif %}>
                                 {{ d }}
                             </option>
                         {% endfor %}
@@ -109,15 +103,10 @@
                     <label class="form-label fw-semibold text-muted small mb-2">
                         County
                     </label>
-
-                    <select name="county"
-                            class="form-select rounded-3">
-
+                    <select name="county" class="form-select rounded-3">
                         <option value="">All Counties</option>
-
                         {% for cty in counties %}
-                            <option value="{{ cty }}"
-                                {% if county == cty %}selected{% endif %}>
+                            <option value="{{ cty }}" {% if county == cty %}selected{% endif %}>
                                 {{ cty }}
                             </option>
                         {% endfor %}
@@ -126,15 +115,11 @@
 
                 <!-- Buttons -->
                 <div class="d-flex gap-2">
-                    <button type="submit"
-                            class="btn btn-primary flex-fill rounded-3">
-
+                    <button type="submit" class="btn btn-primary flex-fill rounded-3">
                         Apply Filters
                     </button>
-
                     <a href="{{ url_for('admin.followup_tr') }}"
                        class="btn btn-outline-secondary rounded-3">
-
                         Clear
                     </a>
                 </div>
@@ -155,10 +140,10 @@
                             <th>Designation</th>
                             <th>County</th>
                             <th>Status</th>
+                            <th>XN Reason</th>
                             <th>Calls</th>
                             <th>Email</th>
                             <th>Summary</th>
-                            <!-- <th>Time</th> -->
                             <th class="text-end pe-4">Date</th>
                         </tr>
                     </thead>
@@ -173,10 +158,16 @@
                             data-started="{{ c.started_at }}"
                             data-ended="{{ c.ended_at }}"
                             data-call-status="{{ c.call_status }}"
+                            data-xn-reason="{{ c.xn_reason or '' }}"
+                            data-xn-update="{{ c.xn_update | lower }}"
                             data-turn-count="{{ c.turn_count }}"
                             data-pr-call="{{ c.professional_reference_call_sent }}"
                             data-elevenlabs-id="{{ c.elevenlabs_conversation_id or '' }}">
+
+                            <!-- Phone -->
                             <td class="ps-4 fw-bold text-primary">{{ c.phone }}</td>
+
+                            <!-- Name -->
                             <td>
                                 <div class="d-flex align-items-center">
                                     <div class="avatar avatar-sm bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
@@ -185,76 +176,92 @@
                                     <div><div class="fw-semibold">{{ c.name }}</div></div>
                                 </div>
                             </td>
+
+                            <!-- Designation -->
                             <td><span class="text-muted">{{ c.designation }}</span></td>
+
+                            <!-- County -->
                             <td>
                                 {% if c.county != '-' %}
-                                <span class="badge bg-light text-dark border">{{ c.county }}</span>
+                                    <span class="badge bg-light text-dark border">{{ c.county }}</span>
                                 {% else %}
-                                <span class="text-muted">—</span>
+                                    <span class="text-muted">—</span>
                                 {% endif %}
                             </td>
-                            <td>
-    {% if c.ended_at != 'Ongoing' and c.ended_at != '—' %}
-        
-        {% if c.call_status == 'User Busy' %}
-            <span class="text-warning fw-bold">User Busy</span>
-        
-        {% elif c.call_status == 'Empty' %}
-            <span class="text-muted fw-bold">{{ c.call_status }}</span>
-        
-        {% elif c.call_status == 'Voice call Detected' %}
-            <span class="text-info fw-bold">Voice call Detected</span>
-        
-        {% elif c.call_status == 'No Required Experience' %}
-            <span class="text-primary fw-bold">No Required Experience</span>
-        
-        {% else %}
-            <span class="text-success fw-bold">{{ c.call_status }}</span>
-        
-        {% endif %}
 
-        
-    
-    {% else %}
-        <span class="text-warning fw-bold">Ongoing</span>
-    {% endif %}
-</td>
-
-<td>
-    <span class="badge bg-primary">
-        {{ c.call_count }} Calls
-    </span>
-</td>
-<td>
-{% if c.professional_reference_call_sent == 1 %}
-            <div class="small text-success mt-1">
-                <span class="badge bg-success mt-1">Send</span>
-            </div>
-        {% else %}
-            <div class="small text-muted mt-1">
-                <span class="badge bg-warning">Not Send</span>
-            </div>
-        {% endif %}
-        </td>
+                            <!-- Status -->
                             <td>
-                         
-    {% if c.elevenlabs_conversation_id %}
-    <button class="btn btn-sm btn-outline-info rounded-circle info-btn mt-1"
-            title="Brief Summary"
-            data-elevenlabs-id="{{ c.elevenlabs_conversation_id }}"
-            style="width:32px;height:32px;padding:0;line-height:1;">
-        <i class="bi bi-info-lg"></i>
-    </button>
-    {% endif %}
+                                {% if c.ended_at != 'Ongoing' and c.ended_at != '—' %}
+                                    {% if c.call_status == 'User Busy' %}
+                                        <span class="text-warning fw-bold">User Busy</span>
+                                    {% elif c.call_status == 'Call Rejected by User' %}
+                                        <span class="text-danger fw-bold">{{ c.call_status }}</span>
+                                    {% elif c.call_status == 'Voice Mail Detected' %}
+                                        <span class="text-info fw-bold">Voice Mail Detected</span>
+                                    {% elif c.call_status == 'No Required Experience' %}
+                                        <span class="text-primary fw-bold">No Required Experience</span>
+                                    {% else %}
+                                        <span class="text-success fw-bold">{{ c.call_status }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-warning fw-bold">Ongoing</span>
+                                {% endif %}
                             </td>
-                            
+
+                            <!-- XN Reason -->
+                            <td>
+                                {% if c.xn_reason and c.xn_reason != '—' %}
+                                    <span class="badge bg-danger text-wrap xn-reason-badge">
+                                        {{ c.xn_reason }}
+                                    </span>
+                                    {% if c.xn_update %}
+                                        <span class="badge bg-success ms-1 mt-1 d-block" style="width:fit-content;">Updated</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Calls count -->
+                            <td>
+                                <span class="badge bg-primary">
+                                    {{ c.call_count }} Calls
+                                </span>
+                            </td>
+
+                            <!-- Email sent -->
+                            <td>
+                                {% if c.professional_reference_call_sent == 1 %}
+                                    <div class="small text-success mt-1">
+                                        <span class="badge bg-success mt-1">Send</span>
+                                    </div>
+                                {% else %}
+                                    <div class="small text-muted mt-1">
+                                        <span class="badge bg-warning">Not Send</span>
+                                    </div>
+                                {% endif %}
+                            </td>
+
+                            <!-- Summary button -->
+                            <td>
+                                {% if c.elevenlabs_conversation_id %}
+                                <button class="btn btn-sm btn-outline-info rounded-circle info-btn mt-1"
+                                        title="Brief Summary"
+                                        data-elevenlabs-id="{{ c.elevenlabs_conversation_id }}"
+                                        style="width:32px;height:32px;padding:0;line-height:1;">
+                                    <i class="bi bi-info-lg"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+
+                            <!-- Date -->
                             <td class="text-end pe-4 small text-muted">
                                 {{ c.started_at | format_datetime_12h }}
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center py-6">
+                            <td colspan="10" class="text-center py-6">
                                 <div class="py-5">
                                     <i class="bi bi-headset display-1 text-muted opacity-25 d-block mb-3"></i>
                                     <h5 class="text-muted">No transcriptions found</h5>
@@ -276,14 +283,22 @@
     {% if total > per_page %}
     <nav class="mt-4">
         <ul class="pagination justify-content-center pagination-lg">
-            {% if page > 1 %}<li class="page-item"><a class="page-link" href="?page={{ page - 1 }}&search={{ search }}&date_range={{ date_range|urlencode }}">Previous</a></li>{% endif %}
+            {% if page > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page - 1 }}&search={{ search }}&date_range={{ date_range|urlencode }}">Previous</a>
+            </li>
+            {% endif %}
 
             {% set start_page = [page - 2, 1] | max %}
             {% set end_page = [start_page + 4, ((total / per_page) | round(0, 'ceil') | int)] | min %}
 
             {% if start_page > 1 %}
-            <li class="page-item"><a class="page-link" href="?page=1&search={{ search }}&date_range={{ date_range|urlencode }}">1</a></li>
-            {% if start_page > 2 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            <li class="page-item">
+                <a class="page-link" href="?page=1&search={{ search }}&date_range={{ date_range|urlencode }}">1</a>
+            </li>
+            {% if start_page > 2 %}
+            <li class="page-item disabled"><span class="page-link">...</span></li>
+            {% endif %}
             {% endif %}
 
             {% for p in range(start_page, end_page + 1) %}
@@ -304,7 +319,10 @@
             {% endif %}
 
             {% if page < (total / per_page) | round(0, 'ceil') | int %}
-            <li class="page-item"><a class="page-link" href="?page={{ page + 1 }}&search={{ search }}&date_range={{ date_range|urlencode }}">Next</a></li>{% endif %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page + 1 }}&search={{ search }}&date_range={{ date_range|urlencode }}">Next</a>
+            </li>
+            {% endif %}
         </ul>
     </nav>
     {% endif %}
@@ -323,90 +341,62 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
 
-<div class="modal-body">
+            <div class="modal-body">
 
-    <!-- USER DETAILS -->
-    <div class="row g-4 mb-4">
+                <!-- USER DETAILS -->
+                <div class="row g-4 mb-4">
 
-        <div class="col-md-4">
-            <small class="text-muted">
-                Caller Name
-            </small>
+                    <div class="col-md-4">
+                        <small class="text-muted">Caller Name</small>
+                        <h6 class="mb-0 fw-bold" id="modal-name"></h6>
+                    </div>
 
-            <h6 class="mb-0 fw-bold"
-                id="modal-name">
-            </h6>
-        </div>
+                    <div class="col-md-4">
+                        <small class="text-muted">Email</small>
+                        <h6 class="mb-0 fw-semibold text-primary" id="modal-email">—</h6>
+                    </div>
 
-        <div class="col-md-4">
-            <small class="text-muted">
-                Email
-            </small>
+                    <div class="col-md-4">
+                        <small class="text-muted">Phone</small>
+                        <h6 class="mb-0 fw-bold text-primary" id="modal-phone"></h6>
+                    </div>
 
-            <h6 class="mb-0 fw-semibold text-primary"
-                id="modal-email">
-                —
-            </h6>
-        </div>
+                    <div class="col-md-4">
+                        <small class="text-muted">Started</small>
+                        <h6 class="mb-0" id="modal-started"></h6>
+                    </div>
 
-        <div class="col-md-4">
-            <small class="text-muted">
-                Phone
-            </small>
+                    <div class="col-md-4">
+                        <small class="text-muted">Status</small>
+                        <h6 class="mb-0">
+                            <span id="modal-status" class="badge bg-success">Completed</span>
+                        </h6>
+                    </div>
 
-            <h6 class="mb-0 fw-bold text-primary"
-                id="modal-phone">
-            </h6>
-        </div>
+                    <!-- XN Reason — hidden by default, shown only when present -->
+                    <div class="col-md-4" id="modal-xn-reason-wrapper" style="display:none;">
+                        <small class="text-muted">XN Reason</small>
+                        <h6 class="mb-0">
+                            <span id="modal-xn-reason" class="badge bg-danger text-wrap" style="white-space:normal; max-width:100%;"></span>
+                            <span id="modal-xn-update" class="badge bg-success ms-1 d-none">Updated</span>
+                        </h6>
+                    </div>
 
-        <div class="col-md-4">
-            <small class="text-muted">
-                Started
-            </small>
+                </div>
 
-            <h6 class="mb-0"
-                id="modal-started">
-            </h6>
-        </div>
+                <hr class="my-4">
 
-        <div class="col-md-4">
-            <small class="text-muted">
-                Status
-            </small>
+                <!-- CALL TABS -->
+                <div class="call-tabs-wrapper mb-4">
+                    <div class="call-tabs-scroll">
+                        <ul class="nav call-tabs flex-nowrap pb-2" id="callTabs"></ul>
+                    </div>
+                </div>
 
-            <h6 class="mb-0">
-                <span id="modal-status"
-                      class="badge bg-success">
+                <!-- TAB CONTENT -->
+                <div class="tab-content" id="callTabsContent"></div>
 
-                    Completed
-
-                </span>
-            </h6>
-        </div>
-
-    </div>
-
-    <hr class="my-4">
-
-    <!-- CALL TABS -->
-    <div class="call-tabs-wrapper mb-4">
-
-        <div class="call-tabs-scroll">
-
-            <ul class="nav call-tabs flex-nowrap pb-2"
-                id="callTabs">
-            </ul>
-
-        </div>
-
-    </div>
-
-    <!-- TAB CONTENT -->
-    <div class="tab-content"
-         id="callTabsContent">
-    </div>
-
-</div>
+            </div>
 
             <div class="modal-footer border-0 d-flex justify-content-between">
                 <div>
@@ -472,13 +462,24 @@
 ════════════════════════════════════════════════ -->
 <style>
     .avatar-sm { width: 40px; height: 40px; font-size: 1rem; }
+
     tr.transcript-row:hover {
         background-color: #f8f9ff !important;
         transform: translateY(-1px);
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         transition: all 0.2s;
     }
+
     #audio-error { max-width: 100%; margin: 1rem 0; }
+
+    /* XN Reason badge in table — constrain width */
+    .xn-reason-badge {
+        max-width: 160px;
+        white-space: normal !important;
+        text-align: left;
+        line-height: 1.4;
+        display: inline-block;
+    }
 
     /* Transcript bubble animation */
     #modal-turns .turn-bubble {
@@ -488,474 +489,236 @@
         from { opacity: 0; transform: translateY(6px); }
         to   { opacity: 1; transform: translateY(0); }
     }
+
+    /* =========================================
+       FIX DROPDOWN INSIDE MODAL
+    ========================================= */
+    #transcriptModal .modal-content,
+    #transcriptModal .modal-body,
+    #transcriptModal .tab-content,
+    #transcriptModal .call-tabs-wrapper,
+    #transcriptModal .call-tabs-scroll {
+        overflow: visible !important;
+    }
+
+    #transcriptModal .modal-dialog-scrollable .modal-body {
+        overflow-y: visible !important;
+        overflow-x: visible !important;
+    }
+
+    #transcriptModal .dropdown-menu {
+        position: absolute !important;
+        inset: auto auto auto 0 !important;
+        z-index: 999999 !important;
+        display: none;
+        min-width: 280px;
+        background: #ffffff !important;
+        border-radius: 18px !important;
+        border: 0 !important;
+        padding: 10px !important;
+        box-shadow: 0 24px 48px rgba(0,0,0,0.18) !important;
+    }
+
+    #transcriptModal .dropdown-menu.show {
+        display: block !important;
+    }
+
+    #transcriptModal .dropdown-item,
+    #transcriptModal .dropdown-item *,
+    #transcriptModal .call-dropdown-item,
+    #transcriptModal .call-dropdown-item * {
+        color: #111827 !important;
+    }
+
+    #transcriptModal .dropdown-item:hover,
+    #transcriptModal .call-dropdown-item:hover {
+        background: #f3f4f6 !important;
+    }
+
+    .avatar-sm {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+    }
+
+    #audio-error {
+        max-width: 100%;
+        margin: 1rem 0;
+    }
+
+    /* Suggestions dropdown */
+    #suggestionsBox {
+        border-radius: 1rem;
+        overflow: hidden;
+        max-height: 320px;
+        overflow-y: auto;
+    }
+
+    #suggestionsBox .list-group-item {
+        border: 0;
+        padding: 12px 16px;
+    }
+
+    #suggestionsBox .list-group-item:hover {
+        background: #f8f9ff;
+    }
+
+    .call-tabs-wrapper {
+        position: relative;
+        overflow: visible !important;
+    }
+
+    .call-tabs-scroll {
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: 6px;
+        scrollbar-width: none;
+        position: relative;
+    }
+
+    .call-tabs-scroll::-webkit-scrollbar {
+        display: none;
+    }
+
+    .call-tabs {
+        border: 0;
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+        width: max-content;
+        overflow: visible !important;
+    }
+
+    .call-tab-pill {
+        border: 0 !important;
+        border-radius: 18px !important;
+        background: #f8f9fc !important;
+        padding: 14px 18px !important;
+        min-width: 185px;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    }
+
+    .call-tab-pill:hover {
+        transform: translateY(-2px);
+        background: white !important;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    }
+
+    .call-tab-pill.active {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        box-shadow: 0 10px 24px rgba(102,126,234,0.28);
+    }
+
+    .call-tab-pill.active * {
+        color: white !important;
+    }
+
+    .call-tab-pill.active .tab-date {
+        color: rgba(255,255,255,0.75);
+    }
+
+    .tab-date {
+        font-size: 0.78rem;
+        color: #6c757d;
+        margin-top: 2px;
+    }
+
+    .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .dot-success { background: #22c55e; }
+    .dot-warning { background: #f59e0b; }
+    .dot-danger  { background: #ef4444; }
+
+    .others-pill {
+        background: #111827 !important;
+        color: white !important;
+    }
+
+    .others-pill:hover {
+        background: #1f2937 !important;
+        color: white !important;
+    }
+
+    .call-tabs .dropdown-item {
+        background: white !important;
+        color: #111827 !important;
+        border: 0 !important;
+        transition: all 0.15s ease;
+    }
+
+    .call-tabs .dropdown-item * {
+        color: inherit !important;
+    }
+
+    .call-tabs .dropdown-item:hover,
+    .call-tabs .dropdown-item:focus,
+    .call-tabs .dropdown-item:active {
+        background: #f3f4f6 !important;
+        color: #111827 !important;
+        transform: translateX(2px);
+    }
+
+    .call-tabs .dropdown-item:hover small,
+    .call-tabs .dropdown-item:focus small {
+        color: #6b7280 !important;
+    }
+
+    .call-dropdown-item {
+        all: unset;
+        display: block;
+        width: 100%;
+        cursor: pointer;
+        box-sizing: border-box;
+        border-radius: 14px;
+        padding: 14px 16px !important;
+        background: white !important;
+        color: #111827 !important;
+    }
+
+    .call-dropdown-item:hover {
+        background: #f8fafc !important;
+        color: #111827 !important;
+    }
+
+    .call-dropdown-item .fw-semibold {
+        color: #111827 !important;
+    }
+
+    .call-dropdown-item small {
+        color: #6b7280 !important;
+    }
+
+    .call-tabs .dropdown-menu {
+        z-index: 999999 !important;
+        min-width: 280px;
+        margin-top: 10px !important;
+        border: 0 !important;
+        overflow: hidden;
+        border-radius: 20px !important;
+        background: #ffffff !important;
+        box-shadow: 0 24px 48px rgba(0,0,0,0.16) !important;
+        padding: 10px !important;
+    }
 </style>
+
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
 <!-- ═══════════════════════════════════════════════
      SCRIPTS
 ════════════════════════════════════════════════ -->
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 
-
- function renderCallTabs(calls) {
-
-    const tabsEl =
-        document.getElementById('callTabs');
-
-    const contentEl =
-        document.getElementById('callTabsContent');
-
-    tabsEl.innerHTML = '';
-    contentEl.innerHTML = '';
-
-    // ─────────────────────────────
-    // STATUS COLOR HELPER
-    // ─────────────────────────────
-    function getTabClass(status) {
-
-        const s = (status || '').toLowerCase();
-
-        if (s.includes('success')) {
-            return 'bg-success text-white';
-        }
-
-        if (s.includes('partial')) {
-            return 'bg-warning text-dark';
-        }
-
-        return 'bg-danger text-white';
-    }
-
-    function getStatusDotClass(status) {
-
-            const s = (status || '').toLowerCase();
-
-            if (s.includes('success')) {
-                return 'dot-success';
-            }
-
-            if (s.includes('partial')) {
-                return 'dot-warning';
-            }
-
-            return 'dot-danger';
-        }
-
-        function formatStatus(status) {
-
-            if (!status) return 'Unknown';
-
-            return status
-                .replace(/_/g, ' ')
-                .replace(/\b\w/g, l => l.toUpperCase());
-        }
-
-        function formatTabDate(dateStr) {
-
-            if (!dateStr) return '';
-
-            const d = new Date(dateStr);
-
-            return d.toLocaleString('en-IN', {
-                day: '2-digit',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        }
-
-    // ─────────────────────────────
-    // FIRST 3 CALLS
-    // ─────────────────────────────
-    const visibleCalls = calls.slice(0, 3);
-
-    // ─────────────────────────────
-    // REMAINING CALLS
-    // ─────────────────────────────
-    const remainingCalls = calls.slice(3);
-
-    // ─────────────────────────────
-    // NORMAL TABS
-    // ─────────────────────────────
-    visibleCalls.forEach((call, index) => {
-
-        const active =
-            index === 0 ? 'active' : '';
-
-        const tabClass =
-            getTabClass(call.call_status);
-
-        // TAB BUTTON
-        tabsEl.innerHTML += `
-            <li class="nav-item me-3">
-
-                <button class="nav-link call-tab-pill ${active}"
-                        data-bs-toggle="tab"
-                        data-bs-target="#call-tab-${index}"
-                        data-conv-id="${call.conv_id || ''}"
-                        data-elevenlabs-id="${call.elevenlabs_conversation_id || ''}"
-                        data-call-status="${call.call_status || ''}">
-
-                    <div class="d-flex align-items-center gap-2">
-
-                        <span class="status-dot ${getStatusDotClass(call.call_status)}">
-                        </span>
-
-                        <div class="text-start">
-
-                            <div class="fw-semibold small">
-                                ${formatStatus(call.call_status)}
-                            </div>
-
-                            <div class="tab-date">
-                                ${formatTabDate(call.started_at)}
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </button>
-
-            </li>
-        `;
-
-        // TAB CONTENT
-        contentEl.innerHTML += createTabContent(
-            call,
-            index,
-            active
-        );
-    });
-
-    // ─────────────────────────────
-    // OTHERS DROPDOWN
-    // ─────────────────────────────
-    if (remainingCalls.length > 0) {
-
-        let dropdownItems = '';
-
-        remainingCalls.forEach((call, idx) => {
-
-            const realIndex = idx + 3;
-
-            dropdownItems += `
-                <li>
-
-                    <button class="dropdown-item call-dropdown-item rounded-3 py-3 px-3 call-tab-btn"
-                            type="button"
-                            data-bs-toggle="tab"
-                            data-bs-target="#call-tab-${realIndex}"
-                            data-conv-id="${call.conv_id || ''}"
-                            data-elevenlabs-id="${call.elevenlabs_conversation_id || ''}"
-                            data-call-status="${call.call_status || ''}">
-
-                        <div class="d-flex align-items-center gap-2">
-
-                            <span class="status-dot ${getStatusDotClass(call.call_status)}">
-                            </span>
-
-                            <div>
-
-                                <div class="fw-semibold">
-                                    ${formatStatus(call.call_status)}
-                                </div>
-
-                                <small class="text-muted">
-                                    ${formatTabDate(call.started_at)}
-                                </small>
-
-                            </div>
-
-                        </div>
-
-                    </button>
-
-                </li>
-            `;
-
-            contentEl.innerHTML += createTabContent(
-                call,
-                realIndex,
-                ''
-            );
-        });
-
-        tabsEl.innerHTML += `
-            <li class="nav-item dropdown position-static">
-
-                <button class="nav-link call-tab-pill dropdown-toggle others-pill"
-                        data-bs-toggle="dropdown">
-
-                    +${remainingCalls.length} More
-
-                </button>
-
-                <ul class="dropdown-menu shadow-lg border-0 rounded-4 p-2">
-
-                    ${dropdownItems}
-
-                </ul>
-
-            </li>
-        `;
-    }
-
-    // ─────────────────────────────
-    // LOAD CONTENT
-    // ─────────────────────────────
-    calls.forEach((call, index) => {
-
-        loadTranscriptInto(
-            `turns-${index}`,
-            call.conv_id
-        );
-
-        if (call.elevenlabs_conversation_id) {
-
-            loadSummaryInto(
-                `summary-${index}`,
-                call.elevenlabs_conversation_id
-            );
-        }
-    });
-
-function updateActionButtons() {
-
-    const hasElevenLabs =
-        !!activeCallData?.elevenlabs_id;
-
-    dataBtn.classList.toggle(
-        'd-none',
-        !hasElevenLabs
-    );
-
-    briefBtn.classList.toggle(
-        'd-none',
-        !hasElevenLabs
-    );
-}
-    // ─────────────────────────────
-// ACTIVE TAB TRACKING
-// ─────────────────────────────
-setTimeout(() => {
-
-    const tabButtons =
-        document.querySelectorAll('.call-tab-btn');
-
-    tabButtons.forEach(btn => {
-
-        btn.addEventListener('shown.bs.tab', () => {
-
-            activeCallData = {
-                conv_id:
-                    btn.dataset.convId,
-
-                elevenlabs_id:
-                    btn.dataset.elevenlabsId,
-
-                call_status:
-                    btn.dataset.callStatus
-            };
-
-            updateActionButtons();
-        });
-    });
-
-    // DEFAULT ACTIVE TAB
-    const firstTab =
-        document.querySelector('.call-tab-btn');
-
-    if (firstTab) {
-
-        activeCallData = {
-            conv_id:
-                firstTab.dataset.convId,
-
-            elevenlabs_id:
-                firstTab.dataset.elevenlabsId,
-
-            call_status:
-                firstTab.dataset.callStatus
-        };
-
-        updateActionButtons();
-    }
-
-}, 100);
-
-
-}
-
-
-function createTabContent(
-    call,
-    index,
-    active
-) {
-
-    return `
-        <div class="tab-pane fade show ${active}"
-             id="call-tab-${index}">
-
-            <div class="row g-4 mt-2">
-
-                <!-- LEFT -->
-                <div class="col-lg-7">
-
-                    <h6 class="fw-bold text-primary mb-3">
-                        Full Call Recording
-                    </h6>
-
-                    <audio controls
-                           class="w-100 mb-4">
-
-                        <source src="/admin/level_five_tr/${call.conv_id}/audio">
-                    </audio>
-
-                    <h6 class="fw-bold text-primary mb-3">
-                        Conversation Transcript
-                    </h6>
-
-                    <div id="turns-${index}">
-                        <div class="spinner-border spinner-border-sm"></div>
-                    </div>
-
-                </div>
-
-                <!-- RIGHT -->
-                <div class="col-lg-5">
-
-                    <h6 class="fw-bold text-primary mb-3">
-                        Brief Lead Summary
-                    </h6>
-
-                    <div id="summary-${index}">
-                        <div class="spinner-border spinner-border-sm"></div>
-                    </div>
-
-                </div>
-
-            </div>
-        </div>
-    `;
-}
-
-async function loadTranscriptInto(
-    containerId,
-    convId
-) {
-
-    const el =
-        document.getElementById(containerId);
-
-    try {
-
-        const res = await fetch(
-            `/admin/api/level_five_tr/${convId}/transcript`
-        );
-
-        const data = await res.json();
-
-        el.innerHTML = '';
-
-        (data.turns || []).forEach(turn => {
-
-            const isAgent =
-                turn.role === 'agent';
-
-            el.innerHTML += `
-                <div class="mb-3 text-${isAgent ? 'end' : 'start'}">
-
-                    <div class="d-inline-block p-3 rounded-3 shadow-sm
-                        ${isAgent
-                            ? 'bg-primary text-white'
-                            : 'bg-light'}"
-                        style="max-width:80%;">
-
-                        <div class="small fw-bold mb-1">
-
-                            ${isAgent
-                                ? 'Agent'
-                                : 'Caller'}
-
-                        </div>
-
-                        ${turn.text || ''}
-
-                    </div>
-                </div>
-            `;
-        });
-
-    } catch(err) {
-
-        el.innerHTML = `
-            <div class="alert alert-danger">
-                Failed to load transcript
-            </div>
-        `;
-    }
-}
-
-
-async function loadSummaryInto(
-    containerId,
-    elevenlabsId
-) {
-
-    const el =
-        document.getElementById(containerId);
-
-    try {
-
-        const res = await fetch(
-            `/admin/elevenlabs/api/level_five_tr/${elevenlabsId}/summary`
-        );
-
-        const data = await res.json();
-
-        if (!data.rows?.length) {
-
-            el.innerHTML = `
-                <div class="text-muted">
-                    No summary available
-                </div>
-            `;
-
-            return;
-        }
-
-        el.innerHTML =
-            data.rows.map(row => `
-
-                <div class="row mb-3">
-
-                    <div class="col-5">
-                        <strong>${row.label}</strong>
-                    </div>
-
-                    <div class="col-7">
-                        ${row.value}
-                    </div>
-
-                </div>
-
-            `).join('');
-
-    } catch(err) {
-
-        el.innerHTML = `
-            <div class="alert alert-danger">
-                Failed to load summary
-            </div>
-        `;
-    }
-}
-
-
-
-
+    // ══════════════════════════════════════════════════════════
+    // FLATPICKR DATE RANGE
+    // ══════════════════════════════════════════════════════════
     const dateRangeInput = document.getElementById('date-range');
     if (dateRangeInput) {
         flatpickr(dateRangeInput, {
@@ -973,331 +736,328 @@ async function loadSummaryInto(
     const dataModal         = new bootstrap.Modal('#dataCollectedModal');
     const briefSummaryModal = new bootstrap.Modal('#briefSummaryModal');
 
-
-
-
-    const dataBtn   = document.getElementById('data-collected-btn');
-    const briefBtn  = document.getElementById('brief-summary-btn');
-
-    // State
-    // let currentConvId       = null;
-    // let currentElevenLabsId = null;
-    // let currentIsCompleted  = false;
+    const dataBtn  = document.getElementById('data-collected-btn');
+    const briefBtn = document.getElementById('brief-summary-btn');
 
     let activeCallData = null;
 
-
     // ══════════════════════════════════════════════════════════
-// ⓘ INFO BUTTON — open Brief Summary modal directly
-// ══════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════
-// ⓘ INFO BUTTON — open Brief Summary modal directly
-// ══════════════════════════════════════════════════════════
-document.querySelectorAll('.info-btn').forEach(btn => {
-
-    btn.addEventListener('click', async (e) => {
-
-        e.stopPropagation();
-
-        const row =
-            btn.closest('tr');
-
-        const rowCalls = JSON.parse(
-            row.dataset.calls || '[]'
-        );
-
-        // ─────────────────────────────
-        // ONLY SUCCESS CALLS
-        // ─────────────────────────────
-        const successCalls = rowCalls
-
-            .filter(call => {
-
-                const status =
-                    (call.call_status || '')
-                        .toLowerCase();
-
-                return status.includes('success');
-            })
-
-            // LATEST FIRST
-            .sort((a, b) =>
-                new Date(b.started_at) -
-                new Date(a.started_at)
-            )
-
-            // ONLY LAST 3
-            .slice(0, 3);
-
-        activeCallData = {
-
-            calls: successCalls,
-
-            elevenlabs_id:
-                successCalls[0]
-                    ?.elevenlabs_conversation_id || ''
-        };
-
-        document.getElementById(
-            'brief-summary-title'
-        ).textContent =
-            row.dataset.name || 'Unknown User';
-
-        // OPEN MODAL FIRST
-        briefSummaryModal.show();
-
-        // THEN LOAD CONTENT
-        await loadBriefSummary();
-    });
-});
-
+    // RENDER CALL TABS
     // ══════════════════════════════════════════════════════════
-    // AUDIO HELPERS
-    // ══════════════════════════════════════════════════════════
-    function resetAudioUI() {
-        audioLoading.classList.add('d-none');
-        audioError.classList.add('d-none');
-        audioContainer.classList.add('d-none');
-    }
+    function renderCallTabs(calls) {
 
-    function showAudioError(msg) {
-        errorMessageEl.textContent = msg;
-        audioError.classList.remove('d-none');
-        audioLoading.classList.add('d-none');
-    }
+        const tabsEl    = document.getElementById('callTabs');
+        const contentEl = document.getElementById('callTabsContent');
 
-    async function loadAudio() {
-        resetAudioUI();
-        audioLoading.classList.remove('d-none');
-        try {
-            const res = await fetch(`/admin/level_five_tr/${currentConvId}/audio`);
-            if (!res.ok) {
-                throw new Error(res.status === 404
-                    ? 'Audio is still being generated by ElevenLabs'
-                    : 'Audio not available yet');
-            }
-            // Revoke previous blob URL to free memory
-            if (audioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(audioPlayer.src);
-            const blob = await res.blob();
-            audioPlayer.src = URL.createObjectURL(blob);
-            audioContainer.classList.remove('d-none');
-            audioLoading.classList.add('d-none');
-        } catch (err) {
-            showAudioError(err.message);
-        }
-    }
+        tabsEl.innerHTML    = '';
+        contentEl.innerHTML = '';
 
-    function resetTranscriptUI() {
-        turnsDiv.innerHTML = '';
-        transcriptLoading.classList.add('d-none');
-        transcriptError.classList.add('d-none');
-        transcriptEmpty.classList.add('d-none');
-    }
-
-    function resetBriefSummaryUI() {
-        briefSummaryLoading.classList.remove('d-none');
-        briefSummaryContent.classList.add('d-none');
-        briefSummaryEmpty.classList.add('d-none');
-        briefSummaryContent.innerHTML = '';
-    }
-
-    // ====================== LOAD BRIEF SUMMARY ======================
-    async function loadBriefSummaryIntoModal() {
-    if (!elevenlabsId) {
-        briefSummaryLoading.classList.add('d-none');
-        briefSummaryEmpty.classList.remove('d-none');
-        return;
-    }
-    resetBriefSummaryUI();
-    try {
-        const data = await fetchBriefSummaryData();
-
-        if (!data.rows || data.rows.length === 0) {
-            briefSummaryLoading.classList.add('d-none');
-            briefSummaryEmpty.classList.remove('d-none');
-            return;
+        function getStatusDotClass(status) {
+            const s = (status || '').toLowerCase();
+            if (s.includes('success')) return 'dot-success';
+            if (s.includes('partial')) return 'dot-warning';
+            return 'dot-danger';
         }
 
-        // ── Backend already structured the data, just render it ──
-        let html = '';
-        if (data.call_summary) {
-            html += `<div class="alert alert-info">
-                        <strong>Call Summary:</strong> ${data.call_summary}
-                     </div>`;
+        function formatStatus(status) {
+            if (!status) return 'Unknown';
+            return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
         }
 
-        html += '<h6 class="text-success mt-3 mb-3">Collected Information</h6>';
-        html += data.rows.map(row => `
-            <div class="row mb-3">
-                <div class="col-md-5">
-                    <strong class="text-muted">${row.label}</strong>
-                </div>
-                <div class="col-md-7">
-                    <span class="fw-semibold ${row.is_null ? 'text-muted fst-italic' : ''}">
-                        ${row.value}
-                    </span>
-                </div>
-            </div>`
-        ).join('');
-
-        briefSummaryContent.innerHTML = html;
-        briefSummaryLoading.classList.add('d-none');
-        briefSummaryContent.classList.remove('d-none');
-
-    } catch (err) {
-        console.error(err);
-        briefSummaryLoading.classList.add('d-none');
-        briefSummaryEmpty.classList.remove('d-none');
-    }
-}
-
-    // ====================== ROW CLICK (Main Modal) ======================
-document.querySelectorAll('.transcript-row').forEach(row => {
-    row.addEventListener('click', () => {
-      
-        const calls = JSON.parse(
-            row.dataset.calls || '[]'
-        );
-
-        document.getElementById(
-            'transcript-modal-title'
-        ).textContent =
-            row.dataset.name || 'Unknown User';
-
-        document.getElementById(
-            'modal-name'
-        ).textContent =
-            row.dataset.name || 'Unknown';
-
-        document.getElementById(
-            'modal-email'
-        ).textContent =
-            row.dataset.email || '—';
-
-        document.getElementById(
-            'modal-phone'
-        ).textContent =
-            row.dataset.phone || '—';
-
-        renderCallTabs(calls);
-
-        const statusEl =
-            document.getElementById('modal-status');
-
-        const firstCall =
-            calls[0] || {};
-
-        const callStatus =
-            firstCall.call_status || '';
-
-        if (callStatus.toLowerCase().includes('partial')) {
-
-            statusEl.textContent =
-                callStatus;
-
-            statusEl.className =
-                'badge bg-warning text-dark';
-
-        } else if (
-            callStatus.toLowerCase().includes('success')
-        ) {
-
-            statusEl.textContent =
-                callStatus;
-
-            statusEl.className =
-                'badge bg-success';
-
-        } else {
-
-            statusEl.textContent =
-                callStatus || 'Failed';
-
-            statusEl.className =
-                'badge bg-danger';
+        function formatTabDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            return d.toLocaleString('en-IN', {
+                day: '2-digit', month: 'short',
+                hour: '2-digit', minute: '2-digit'
+            });
         }
 
-        transcriptModal.show();
+        const visibleCalls   = calls.slice(0, 3);
+        const remainingCalls = calls.slice(3);
 
+        // Normal tabs (first 3)
+        visibleCalls.forEach((call, index) => {
+            const active = index === 0 ? 'active' : '';
 
+            tabsEl.innerHTML += `
+                <li class="nav-item me-3">
+                    <button class="nav-link call-tab-pill call-tab-btn ${active}"
+                            data-bs-toggle="tab"
+                            data-bs-target="#call-tab-${index}"
+                            data-conv-id="${call.conv_id || ''}"
+                            data-elevenlabs-id="${call.elevenlabs_conversation_id || ''}"
+                            data-call-status="${call.call_status || ''}">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="status-dot ${getStatusDotClass(call.call_status)}"></span>
+                            <div class="text-start">
+                                <div class="fw-semibold small">${formatStatus(call.call_status)}</div>
+                                <div class="tab-date">${formatTabDate(call.started_at)}</div>
+                            </div>
+                        </div>
+                    </button>
+                </li>
+            `;
 
-    });
-});
-
-    
-
-    // ══════════════════════════════════════════════════════════
-    // ROW CLICK — open modal
-    // ══════════════════════════════════════════════════════════
-    
-
-    function renderTurns(turns) {
-        turnsDiv.innerHTML = '';
-        if (!turns || turns.length === 0) {
-            transcriptEmpty.classList.remove('d-none');
-            return;
-        }
-        turns.forEach((turn, idx) => {
-            const isAgent = turn.role === 'agent';
-            const bubble  = document.createElement('div');
-            bubble.className = `turn-bubble mb-4 ${isAgent ? 'text-end' : ''}`;
-            bubble.style.animationDelay = `${idx * 30}ms`;   // stagger effect
-            bubble.innerHTML = `
-                <div class="d-inline-block p-3 rounded-3 shadow-sm
-                            ${isAgent ? 'bg-primary text-white' : 'bg-light'}"
-                     style="max-width:80%;">
-                    <div class="small fw-bold mb-1
-                                ${isAgent ? 'text-white opacity-75' : 'text-primary'}">
-                        ${isAgent ? 'Agent' : 'Caller'} &bull; ${turn.time || '—'}
-                    </div>
-                    <div style="white-space:pre-wrap;">
-                        ${(turn.text || '').replace(/\n/g, '<br>')}
-                    </div>
-                </div>`;
-            turnsDiv.appendChild(bubble);
+            contentEl.innerHTML += createTabContent(call, index, active);
         });
-    }
 
-    
+        // Others dropdown (4+)
+        if (remainingCalls.length > 0) {
+
+            let dropdownItems = '';
+
+            remainingCalls.forEach((call, idx) => {
+                const realIndex = idx + 3;
+
+                dropdownItems += `
+                    <li>
+                        <button class="dropdown-item call-dropdown-item rounded-3 py-3 px-3 call-tab-btn"
+                                type="button"
+                                data-bs-toggle="tab"
+                                data-bs-target="#call-tab-${realIndex}"
+                                data-conv-id="${call.conv_id || ''}"
+                                data-elevenlabs-id="${call.elevenlabs_conversation_id || ''}"
+                                data-call-status="${call.call_status || ''}">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="status-dot ${getStatusDotClass(call.call_status)}"></span>
+                                <div>
+                                    <div class="fw-semibold">${formatStatus(call.call_status)}</div>
+                                    <small class="text-muted">${formatTabDate(call.started_at)}</small>
+                                </div>
+                            </div>
+                        </button>
+                    </li>
+                `;
+
+                contentEl.innerHTML += createTabContent(call, realIndex, '');
+            });
+
+            tabsEl.innerHTML += `
+                <li class="nav-item dropdown position-static">
+                    <button class="nav-link call-tab-pill dropdown-toggle others-pill"
+                            data-bs-toggle="dropdown">
+                        +${remainingCalls.length} More
+                    </button>
+                    <ul class="dropdown-menu shadow-lg border-0 rounded-4 p-2">
+                        ${dropdownItems}
+                    </ul>
+                </li>
+            `;
+        }
+
+        // Load content for all calls
+        calls.forEach((call, index) => {
+            loadTranscriptInto(`turns-${index}`, call.conv_id);
+            if (call.elevenlabs_conversation_id) {
+                loadSummaryInto(`summary-${index}`, call.elevenlabs_conversation_id);
+            }
+        });
+
+        // Action buttons helper
+        function updateActionButtons() {
+            const hasElevenLabs = !!activeCallData?.elevenlabs_id;
+            dataBtn.classList.toggle('d-none', !hasElevenLabs);
+            briefBtn.classList.toggle('d-none', !hasElevenLabs);
+        }
+
+        // Active tab tracking
+        setTimeout(() => {
+            const tabButtons = document.querySelectorAll('.call-tab-btn');
+
+            tabButtons.forEach(btn => {
+                btn.addEventListener('shown.bs.tab', () => {
+                    activeCallData = {
+                        conv_id:       btn.dataset.convId,
+                        elevenlabs_id: btn.dataset.elevenlabsId,
+                        call_status:   btn.dataset.callStatus
+                    };
+                    updateActionButtons();
+                });
+            });
+
+            // Default: first tab
+            const firstTab = document.querySelector('.call-tab-btn');
+            if (firstTab) {
+                activeCallData = {
+                    conv_id:       firstTab.dataset.convId,
+                    elevenlabs_id: firstTab.dataset.elevenlabsId,
+                    call_status:   firstTab.dataset.callStatus
+                };
+                updateActionButtons();
+            }
+        }, 100);
+    }
 
     // ══════════════════════════════════════════════════════════
-    // DATA COLLECTED MODAL
+    // CREATE TAB CONTENT HTML
     // ══════════════════════════════════════════════════════════
-
-    async function fetchBriefSummaryData() {
-
-    const elevenlabsId =
-        activeCallData?.elevenlabs_id;
-
-    if (!elevenlabsId) {
-        throw new Error(
-            'No ElevenLabs conversation ID found'
-        );
+    function createTabContent(call, index, active) {
+        return `
+            <div class="tab-pane fade show ${active}" id="call-tab-${index}">
+                <div class="row g-4 mt-2">
+                    <!-- LEFT -->
+                    <div class="col-lg-7">
+                        <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
+                        <audio controls class="w-100 mb-4">
+                            <source src="/admin/level_five_tr/${call.conv_id}/audio">
+                        </audio>
+                        <h6 class="fw-bold text-primary mb-3">Conversation Transcript</h6>
+                        <div id="turns-${index}">
+                            <div class="spinner-border spinner-border-sm"></div>
+                        </div>
+                    </div>
+                    <!-- RIGHT -->
+                    <div class="col-lg-5">
+                        <h6 class="fw-bold text-primary mb-3">Brief Lead Summary</h6>
+                        <div id="summary-${index}">
+                            <div class="spinner-border spinner-border-sm"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
-    const resp = await fetch(
-        `/admin/elevenlabs/api/level_five_tr/${elevenlabsId}/summary`
-    );
-
-    if (!resp.ok) {
-        throw new Error(
-            'Failed to fetch summary'
-        );
+    // ══════════════════════════════════════════════════════════
+    // LOAD TRANSCRIPT INTO TAB
+    // ══════════════════════════════════════════════════════════
+    async function loadTranscriptInto(containerId, convId) {
+        const el = document.getElementById(containerId);
+        try {
+            const res  = await fetch(`/admin/api/level_five_tr/${convId}/transcript`);
+            const data = await res.json();
+            el.innerHTML = '';
+            (data.turns || []).forEach(turn => {
+                const isAgent = turn.role === 'agent';
+                el.innerHTML += `
+                    <div class="mb-3 text-${isAgent ? 'end' : 'start'}">
+                        <div class="d-inline-block p-3 rounded-3 shadow-sm
+                            ${isAgent ? 'bg-primary text-white' : 'bg-light'}"
+                            style="max-width:80%;">
+                            <div class="small fw-bold mb-1">
+                                ${isAgent ? 'Agent' : 'Caller'}
+                            </div>
+                            ${turn.text || ''}
+                        </div>
+                    </div>
+                `;
+            });
+        } catch(err) {
+            el.innerHTML = `<div class="alert alert-danger">Failed to load transcript</div>`;
+        }
     }
 
-    const data = await resp.json();
-
-    if (data.error) {
-        throw new Error(data.error);
+    // ══════════════════════════════════════════════════════════
+    // LOAD SUMMARY INTO TAB
+    // ══════════════════════════════════════════════════════════
+    async function loadSummaryInto(containerId, elevenlabsId) {
+        const el = document.getElementById(containerId);
+        try {
+            const res  = await fetch(`/admin/elevenlabs/api/level_five_tr/${elevenlabsId}/summary`);
+            const data = await res.json();
+            if (!data.rows?.length) {
+                el.innerHTML = `<div class="text-muted">No summary available</div>`;
+                return;
+            }
+            el.innerHTML = data.rows.map(row => `
+                <div class="row mb-3">
+                    <div class="col-5"><strong>${row.label}</strong></div>
+                    <div class="col-7">${row.value}</div>
+                </div>
+            `).join('');
+        } catch(err) {
+            el.innerHTML = `<div class="alert alert-danger">Failed to load summary</div>`;
+        }
     }
 
-    return data;
-}
+    // ══════════════════════════════════════════════════════════
+    // ⓘ INFO BUTTON — open Brief Summary modal directly
+    // ══════════════════════════════════════════════════════════
+    document.querySelectorAll('.info-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
 
+            const row      = btn.closest('tr');
+            const rowCalls = JSON.parse(row.dataset.calls || '[]');
+
+            const successCalls = rowCalls
+                .filter(call => (call.call_status || '').toLowerCase().includes('success'))
+                .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+                .slice(0, 3);
+
+            activeCallData = {
+                calls:         successCalls,
+                elevenlabs_id: successCalls[0]?.elevenlabs_conversation_id || ''
+            };
+
+            document.getElementById('brief-summary-title').textContent =
+                row.dataset.name || 'Unknown User';
+
+            briefSummaryModal.show();
+            await loadBriefSummary();
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════
+    // ROW CLICK — open main transcript modal
+    // ══════════════════════════════════════════════════════════
+    document.querySelectorAll('.transcript-row').forEach(row => {
+        row.addEventListener('click', () => {
+
+            const calls = JSON.parse(row.dataset.calls || '[]');
+
+            document.getElementById('transcript-modal-title').textContent =
+                row.dataset.name || 'Unknown User';
+            document.getElementById('modal-name').textContent =
+                row.dataset.name || 'Unknown';
+            document.getElementById('modal-email').textContent =
+                row.dataset.email || '—';
+            document.getElementById('modal-phone').textContent =
+                row.dataset.phone || '—';
+
+            // XN Reason
+            const xnReason  = row.dataset.xnReason || '';
+            const xnUpdate  = row.dataset.xnUpdate === 'true';
+            const xnWrapper = document.getElementById('modal-xn-reason-wrapper');
+            const xnSpan    = document.getElementById('modal-xn-reason');
+            const xnUpdSpan = document.getElementById('modal-xn-update');
+
+            if (xnReason && xnReason !== '—') {
+                xnSpan.textContent = xnReason;
+                xnUpdSpan.classList.toggle('d-none', !xnUpdate);
+                xnWrapper.style.display = '';
+            } else {
+                xnWrapper.style.display = 'none';
+            }
+
+            // Status badge
+            const statusEl  = document.getElementById('modal-status');
+            const firstCall = calls[0] || {};
+            const callStatus = firstCall.call_status || '';
+
+            if (callStatus.toLowerCase().includes('partial')) {
+                statusEl.textContent = callStatus;
+                statusEl.className   = 'badge bg-warning text-dark';
+            } else if (callStatus.toLowerCase().includes('success')) {
+                statusEl.textContent = callStatus;
+                statusEl.className   = 'badge bg-success';
+            } else {
+                statusEl.textContent = callStatus || 'Failed';
+                statusEl.className   = 'badge bg-danger';
+            }
+
+            renderCallTabs(calls);
+            transcriptModal.show();
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════
+    // DATA COLLECTED
+    // ══════════════════════════════════════════════════════════
     async function loadCollectedData() {
-        const elevenlabsId =activeCallData?.elevenlabs_id;
-
-    if (!elevenlabsId) {
+        const elevenlabsId = activeCallData?.elevenlabs_id;
+        if (!elevenlabsId) {
             document.getElementById('data-collected-body').innerHTML =
                 `<div class="alert alert-warning text-center">No ElevenLabs conversation ID found.</div>`;
             return;
@@ -1368,257 +1128,124 @@ document.querySelectorAll('.transcript-row').forEach(row => {
     // ══════════════════════════════════════════════════════════
     // BRIEF SUMMARY MODAL
     // ══════════════════════════════════════════════════════════
-async function loadBriefSummary() {
+    async function loadBriefSummary() {
+        const bodyEl = document.getElementById('brief-summary-body');
+        const calls  = activeCallData?.calls || [];
 
-    const bodyEl =
-        document.getElementById('brief-summary-body');
-
-    // ─────────────────────────────
-    // GET ALL CALLS
-    // ─────────────────────────────
-    const calls =
-        activeCallData?.calls || [];
-
-    // ─────────────────────────────
-    // NO SUCCESS CALLS
-    // ─────────────────────────────
-    if (!calls.length) {
-
-        bodyEl.innerHTML = `
-            <div class="text-center py-5 text-muted">
-
-                <i class="bi bi-info-circle-fill display-4"></i>
-
-                <h5 class="mt-3">
-                    No successful calls found
-                </h5>
-
-            </div>
-        `;
-
-        return;
-    }
-
-    // ─────────────────────────────
-    // LOADING
-    // ─────────────────────────────
-    bodyEl.innerHTML = `
-        <div class="text-center py-5">
-
-            <div class="spinner-border text-primary"></div>
-
-            <p class="mt-3">
-                Loading brief summary...
-            </p>
-
-        </div>
-    `;
-
-    try {
-        let tabsHtml = `
-            <ul class="nav nav-pills mb-4 gap-2"
-                id="summaryTabs"
-                role="tablist">
-        `;
-
-        let contentHtml = `
-            <div class="tab-content">
-        `;
-
-        let tabIndex = 0;
-
-        // ─────────────────────────────
-        // LOOP SUCCESS CALLS
-        // ─────────────────────────────
-        for (const call of calls) {
-
-            const elevenlabsId =
-                call.elevenlabs_conversation_id;
-
-            if (!elevenlabsId) {
-                continue;
-            }
-
-            const resp = await fetch(
-                `/admin/elevenlabs/api/level_five_tr/${elevenlabsId}/summary`
-            );
-
-            if (!resp.ok) {
-                continue;
-            }
-
-            const data = await resp.json();
-
-            if (!data.rows || !data.rows.length) {
-                continue;
-            }
-
-            const activeClass =
-                tabIndex === 0
-                    ? 'active'
-                    : '';
-
-            const showClass =
-                tabIndex === 0
-                    ? 'show active'
-                    : '';
-
-            // ─────────────────────────────
-            // TAB BUTTON
-            // ─────────────────────────────
-            tabsHtml += `
-                <li class="nav-item">
-
-                    <button class="nav-link ${activeClass}"
-                            data-bs-toggle="tab"
-                            data-bs-target="#summary-tab-${tabIndex}"
-                            type="button">
-
-                        Call ${tabIndex + 1}
-
-                    </button>
-
-                </li>
-            `;
-
-            // ─────────────────────────────
-            // TAB CONTENT
-            // ─────────────────────────────
-            contentHtml += `
-                <div class="tab-pane fade ${showClass}"
-                    id="summary-tab-${tabIndex}">
-
-                    <div class="border rounded-4 p-4 bg-light">
-
-                        <div class="d-flex justify-content-between align-items-center mb-4">
-
-                            <div>
-
-                                <h5 class="fw-bold text-success mb-1">
-                                    Successful Call
-                                </h5>
-
-                                <small class="text-muted">
-                                    ${call.started_at || ''}
-                                </small>
-
-                            </div>
-
-                            <span class="badge bg-success">
-                                Success
-                            </span>
-
-                        </div>
-            `;
-
-            contentHtml += data.rows.map(row => `
-
-                <div class="row mb-3 align-items-start">
-
-                    <div class="col-5">
-
-                        <small class="text-muted fw-semibold">
-                            ${row.label}
-                        </small>
-
-                    </div>
-
-                    <div class="col-7">
-
-                        <div class="
-                            ${row.is_null
-                                ? 'text-muted fst-italic'
-                                : 'text-dark fw-semibold'}
-                        ">
-
-                            ${row.value}
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            `).join('');
-
-            contentHtml += `
-                    </div>
-                </div>
-            `;
-
-            tabIndex++;
-        }
-
-        // ─────────────────────────────
-        // EMPTY
-        // ─────────────────────────────
-        if (tabIndex === 0) {
-
+        if (!calls.length) {
             bodyEl.innerHTML = `
                 <div class="text-center py-5 text-muted">
-
-                    <i class="bi bi-info-circle display-4"></i>
-
-                    <h5 class="mt-3">
-                        No successful call summaries found
-                    </h5>
-
-                </div>
-            `;
-
+                    <i class="bi bi-info-circle-fill display-4"></i>
+                    <h5 class="mt-3">No successful calls found</h5>
+                </div>`;
             return;
         }
 
-        tabsHtml += `</ul>`;
-        contentHtml += `</div>`;
-
-        bodyEl.innerHTML =
-            tabsHtml + contentHtml;
-        
-    } catch (err) {
-
         bodyEl.innerHTML = `
-            <div class="alert alert-danger">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary"></div>
+                <p class="mt-3">Loading brief summary...</p>
+            </div>`;
 
-                Error: ${err.message}
+        try {
+            let tabsHtml    = `<ul class="nav nav-pills mb-4 gap-2" id="summaryTabs" role="tablist">`;
+            let contentHtml = `<div class="tab-content">`;
+            let tabIndex    = 0;
 
-            </div>
-        `;
+            for (const call of calls) {
+                const elevenlabsId = call.elevenlabs_conversation_id;
+                if (!elevenlabsId) continue;
+
+                const resp = await fetch(`/admin/elevenlabs/api/level_five_tr/${elevenlabsId}/summary`);
+                if (!resp.ok) continue;
+
+                const data = await resp.json();
+                if (!data.rows || !data.rows.length) continue;
+
+                const activeClass = tabIndex === 0 ? 'active'      : '';
+                const showClass   = tabIndex === 0 ? 'show active'  : '';
+
+                tabsHtml += `
+                    <li class="nav-item">
+                        <button class="nav-link ${activeClass}"
+                                data-bs-toggle="tab"
+                                data-bs-target="#summary-tab-${tabIndex}"
+                                type="button">
+                            Call ${tabIndex + 1}
+                        </button>
+                    </li>`;
+
+                contentHtml += `
+                    <div class="tab-pane fade ${showClass}" id="summary-tab-${tabIndex}">
+                        <div class="border rounded-4 p-4 bg-light">
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <div>
+                                    <h5 class="fw-bold text-success mb-1">Successful Call</h5>
+                                    <small class="text-muted">${call.started_at || ''}</small>
+                                </div>
+                                <span class="badge bg-success">Success</span>
+                            </div>`;
+
+                contentHtml += data.rows.map(row => `
+                    <div class="row mb-3 align-items-start">
+                        <div class="col-5">
+                            <small class="text-muted fw-semibold">${row.label}</small>
+                        </div>
+                        <div class="col-7">
+                            <div class="${row.is_null ? 'text-muted fst-italic' : 'text-dark fw-semibold'}">
+                                ${row.value}
+                            </div>
+                        </div>
+                    </div>`).join('');
+
+                contentHtml += `</div></div>`;
+                tabIndex++;
+            }
+
+            if (tabIndex === 0) {
+                bodyEl.innerHTML = `
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-info-circle display-4"></i>
+                        <h5 class="mt-3">No successful call summaries found</h5>
+                    </div>`;
+                return;
+            }
+
+            tabsHtml    += `</ul>`;
+            contentHtml += `</div>`;
+            bodyEl.innerHTML = tabsHtml + contentHtml;
+
+        } catch (err) {
+            bodyEl.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
+        }
     }
-}
 
+    // ── Button listeners ──
     dataBtn.addEventListener('click',  () => { loadCollectedData(); dataModal.show(); });
     briefBtn.addEventListener('click', () => { loadBriefSummary(); briefSummaryModal.show(); });
 
-    // ══════════════════════════════════════════════════════════
-    // MODAL CLOSE — cleanup
-    // ══════════════════════════════════════════════════════════
+    // ── Modal close cleanup ──
     document.getElementById('transcriptModal').addEventListener('hidden.bs.modal', () => {
-        audioPlayer.pause();
-        if (audioPlayer.src?.startsWith('blob:')) {
-            URL.revokeObjectURL(audioPlayer.src);
-            audioPlayer.src = '';
-        }
-        resetAudioUI();
-        resetTranscriptUI();
+        // nothing to revoke with per-tab audio, tabs are re-rendered on next open
     });
+
 });
 </script>
-<script>
 
+<script>
+// ══════════════════════════════════════════════════════════
+// SEARCH SUGGESTIONS
+// ══════════════════════════════════════════════════════════
 const SUGGESTION_URL = "{{ url_for('admin.user_suggestions') }}";
 
 const input = document.getElementById('userSearch');
-const box = document.getElementById('suggestionsBox');
+const box   = document.getElementById('suggestionsBox');
 
 let debounceTimer;
 
 if (input) {
-
     input.addEventListener('input', function () {
-
         clearTimeout(debounceTimer);
-
         const query = this.value.trim();
 
         if (query.length < 2) {
@@ -1627,15 +1254,9 @@ if (input) {
         }
 
         debounceTimer = setTimeout(async () => {
-
             try {
-
-                const res = await fetch(
-                    `${SUGGESTION_URL}?q=${encodeURIComponent(query)}`
-                );
-
+                const res  = await fetch(`${SUGGESTION_URL}?q=${encodeURIComponent(query)}`);
                 const data = await res.json();
-
                 box.innerHTML = '';
 
                 if (!data.length) {
@@ -1644,325 +1265,34 @@ if (input) {
                 }
 
                 data.forEach(user => {
-
                     const item = document.createElement('a');
-
-                    item.className =
-                        'list-group-item list-group-item-action';
-
+                    item.className = 'list-group-item list-group-item-action';
                     item.innerHTML = `
-                        <div>
-                            <strong>${user.name || 'No Name'}</strong>
-                        </div>
-
-                        <small class="text-muted">
-                            ${user.email} • ${user.phone}
-                        </small>
+                        <div><strong>${user.name || 'No Name'}</strong></div>
+                        <small class="text-muted">${user.email} • ${user.phone}</small>
                     `;
-
                     item.onclick = () => {
-
                         input.value = user.name || user.email;
-
                         box.style.display = 'none';
-
                         input.form.submit();
                     };
-
                     box.appendChild(item);
                 });
 
                 box.style.display = 'block';
-
             } catch (err) {
-
                 console.error(err);
             }
-
         }, 300);
     });
 
-    // Hide on outside click
     document.addEventListener('click', function (e) {
-
-        if (!input.contains(e.target) &&
-            !box.contains(e.target)) {
-
+        if (!input.contains(e.target) && !box.contains(e.target)) {
             box.style.display = 'none';
         }
     });
 }
-
-/* =========================================
-   FIX DROPDOWN INSIDE MODAL
-========================================= */
-
-#transcriptModal .modal-content,
-#transcriptModal .modal-body,
-#transcriptModal .tab-content,
-#transcriptModal .call-tabs-wrapper,
-#transcriptModal .call-tabs-scroll {
-    overflow: visible !important;
-}
-
-#transcriptModal .modal-dialog-scrollable .modal-body {
-    overflow-y: visible !important;
-    overflow-x: visible !important;
-}
-
-/* DROPDOWN MUST FLOAT ABOVE MODAL */
-#transcriptModal .dropdown-menu {
-    position: absolute !important;
-    inset: auto auto auto 0 !important;
-
-    z-index: 999999 !important;
-
-    display: none;
-
-    min-width: 280px;
-
-    background: #ffffff !important;
-
-    border-radius: 18px !important;
-
-    border: 0 !important;
-
-    padding: 10px !important;
-
-    box-shadow:
-        0 24px 48px rgba(0,0,0,0.18) !important;
-}
-
-/* SHOW WHEN OPEN */
-#transcriptModal .dropdown-menu.show {
-    display: block !important;
-}
-
-/* FIX TEXT */
-#transcriptModal .dropdown-item,
-#transcriptModal .dropdown-item *,
-#transcriptModal .call-dropdown-item,
-#transcriptModal .call-dropdown-item * {
-    color: #111827 !important;
-}
-
-/* HOVER */
-#transcriptModal .dropdown-item:hover,
-#transcriptModal .call-dropdown-item:hover {
-    background: #f3f4f6 !important;
-}
-
-
 </script>
 
-<style>
-    .avatar-sm {
-        width: 40px;
-        height: 40px;
-        font-size: 1rem;
-    }
-
-    tr.transcript-row:hover {
-        background-color: #f8f9ff !important;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        transition: all 0.2s;
-    }
-
-    #audio-error {
-        max-width: 100%;
-        margin: 1rem 0;
-    }
-
-    /* Suggestions dropdown */
-    #suggestionsBox {
-        border-radius: 1rem;
-        overflow: hidden;
-        max-height: 320px;
-        overflow-y: auto;
-    }
-
-    #suggestionsBox .list-group-item {
-        border: 0;
-        padding: 12px 16px;
-    }
-
-    #suggestionsBox .list-group-item:hover {
-        background: #f8f9ff;
-    }
-
-
-.call-tabs-wrapper {
-    position: relative;
-    overflow: visible !important;
-}
-
-.call-tabs-scroll {
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-bottom: 6px;
-    scrollbar-width: none;
-    position: relative;
-}
-
-.call-tabs-scroll::-webkit-scrollbar {
-    display: none;
-}
-
-.call-tabs {
-    border: 0;
-    gap: 0.5rem;
-    flex-wrap: nowrap;
-    width: max-content;
-    overflow: visible !important;
-}
-
-.call-tab-pill {
-    border: 0 !important;
-    border-radius: 18px !important;
-    background: #f8f9fc !important;
-    padding: 14px 18px !important;
-    min-width: 185px;
-    transition: all 0.2s ease;
-    box-shadow:
-        0 2px 6px rgba(0,0,0,0.04);
-}
-
-.call-tab-pill:hover {
-    transform: translateY(-2px);
-    background: white !important;
-    box-shadow:
-        0 8px 20px rgba(0,0,0,0.08);
-}
-
-.call-tab-pill.active {
-    background: linear-gradient(
-        135deg,
-        #667eea 0%,
-        #764ba2 100%
-    ) !important;
-
-    color: white !important;
-
-    box-shadow:
-        0 10px 24px rgba(102,126,234,0.28);
-}
-
-.call-tab-pill.active * {
-    color: white !important;
-}
-
-.call-tab-pill.active .tab-date {
-    color: rgba(255,255,255,0.75);
-}
-
-.tab-date {
-    font-size: 0.78rem;
-    color: #6c757d;
-    margin-top: 2px;
-}
-
-.status-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.dot-success {
-    background: #22c55e;
-}
-
-.dot-warning {
-    background: #f59e0b;
-}
-
-.dot-danger {
-    background: #ef4444;
-}
-
-.others-pill {
-    background: #111827 !important;
-    color: white !important;
-}
-
-.others-pill:hover {
-    background: #1f2937 !important;
-    color: white !important;
-}
-
-.call-tabs .dropdown-item {
-    background: white !important;
-    color: #111827 !important;
-    border: 0 !important;
-    transition: all 0.15s ease;
-}
-
-.call-tabs .dropdown-item * {
-    color: inherit !important;
-}
-
-.call-tabs .dropdown-item:hover,
-.call-tabs .dropdown-item:focus,
-.call-tabs .dropdown-item:active {
-    background: #f3f4f6 !important;
-    color: #111827 !important;
-    transform: translateX(2px);
-}
-
-.call-tabs .dropdown-item:hover small,
-.call-tabs .dropdown-item:focus small {
-    color: #6b7280 !important;
-}
-
-
-
-.call-dropdown-item {
-    all: unset;
-    display: block;
-    width: 100%;
-    cursor: pointer;
-    box-sizing: border-box;
-    border-radius: 14px;
-    padding: 14px 16px !important;
-    background: white !important;
-    color: #111827 !important;
-}
-
-.call-dropdown-item:hover {
-    background: #f8fafc !important;
-    color: #111827 !important;
-}
-
-.call-dropdown-item .fw-semibold {
-    color: #111827 !important;
-}
-
-.call-dropdown-item small {
-    color: #6b7280 !important;
-}
-
-
-.call-tabs .dropdown-menu {
-    z-index: 999999 !important;
-    min-width: 280px;
-    margin-top: 10px !important;
-    border: 0 !important;
-    overflow: hidden;
-    border-radius: 20px !important;
-
-    background: #ffffff !important;
-
-    box-shadow:
-        0 24px 48px rgba(0,0,0,0.16) !important;
-
-    padding: 10px !important;
-}
-
-</style>
-
-
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<link rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 {% endblock %}
