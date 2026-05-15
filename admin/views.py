@@ -2267,6 +2267,18 @@ def recheck_address(conv_id):
     if not eir_code:
         return jsonify({"error": "No EIR code stored for this user"}), 400
 
+    # ✅ Check if address already exists and was previously resolved
+    existing_address = user.get("address")
+    existing_county  = user.get("county")
+    
+    if existing_address:
+        return jsonify({
+            "success":  True,
+            "address":  existing_address,
+            "county":   existing_county,
+            "source":   "existing"          # lets the caller know this was cached
+        }), 200
+
     try:
         resolved   = _resolve(eir_code)
         location   = _extract_location(resolved) if resolved else None
@@ -2293,7 +2305,8 @@ def recheck_address(conv_id):
         return jsonify({
             "success": True,
             "address": address,
-            "county":  county
+            "county":  county,
+            "source":  "resolved"           # lets the caller know this was freshly resolved
         }), 200
 
     except Exception as e:
