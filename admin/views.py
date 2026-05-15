@@ -921,6 +921,7 @@ def transcriptions():
             "user_info.designation": 1,
             "user_info.country": 1,
             "user_info.county": 1,
+            "user_info.eir_code": 1,
             "user_info.garda_email_sent": 1
         }
     })
