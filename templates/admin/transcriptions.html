@@ -615,6 +615,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentConvId       = null;
     let currentElevenLabsId = null;
     let currentIsCompleted  = false;
+    let currentEirCode      = null;
 
 
 function updateRecheckVisibility(address, eirCode) {
@@ -778,6 +779,9 @@ document.querySelectorAll('.transcript-row').forEach(row => {
         document.getElementById('modal-address').textContent = row.dataset.address || '—';
         document.getElementById('modal-started').textContent = row.dataset.started || '—';
 
+        currentEirCode = row.dataset.eirCode?.trim() || null;  
+        updateRecheckVisibility(row.dataset.address, currentEirCode); 
+
         
 
         const statusEl = document.getElementById('modal-status');
@@ -868,7 +872,8 @@ if (!currentIsCompleted) {
             document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
             document.getElementById('modal-started').textContent = row.dataset.started || '—';
             document.getElementById('modal-address').textContent = row.dataset.address || '—';
-            updateRecheckVisibility(row.dataset.address);
+            currentEirCode = row.dataset.eirCode?.trim() || null;  
+            updateRecheckVisibility(row.dataset.address, currentEirCode);  
             const statusEl = document.getElementById('modal-status');
             const callStatus = row.dataset.callStatus || '';
 
@@ -966,7 +971,7 @@ if (!currentIsCompleted) {
 
         if (res.ok && data.address) {
             document.getElementById('modal-address').textContent = data.address;
-            updateRecheckVisibility(row.dataset.address);
+            updateRecheckVisibility(data.address, currentEirCode); 
             recheckStatus.textContent = '✓ Updated';
             recheckStatus.className = 'small text-success d-inline';
             recheckBtn.classList.add('d-none');
