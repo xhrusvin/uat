@@ -205,6 +205,9 @@
         {% elif c.call_status == 'Voice Mail Detected' %}
             <span class="text-info fw-bold">Voice Mail</span>
 
+        {% elif c.call_status == 'Scheduled a follow up call' %}
+            <span class="text-primary fw-bold">Scheduled a follow up call</span>
+
         {% elif c.call_status == 'Call Rejected by User' %}
             <span class="text-danger fw-bold">Call Rejected by User</span>
 
@@ -925,6 +928,9 @@ if (!currentIsCompleted) {
 } else if (callStatus === 'Voice call Detected') {
     statusEl.textContent = 'Voice call Detected';
     statusEl.className   = 'badge bg-info text-dark';
+} else if (callStatus === 'Scheduled a follow up call') {
+    statusEl.textContent = 'Scheduled a follow up call';
+    statusEl.className   = 'badge bg-primary'; 
 } else if (callStatus === 'No Required Experience') {
     statusEl.textContent = 'No Required Experience';
     statusEl.className   = 'badge bg-primary';  
