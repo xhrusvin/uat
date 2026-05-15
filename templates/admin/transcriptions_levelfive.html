@@ -1198,12 +1198,23 @@ document.querySelectorAll('.transcript-row').forEach(row => {
         const xnSpan    = document.getElementById('modal-xn-reason');
         const xnUpdSpan = document.getElementById('modal-xn-update');
 
-        if (xnReason && xnReason !== '—') {
-            xnSpan.textContent = xnReason;
-            xnUpdSpan.classList.toggle('d-none', !xnUpdate);
-            xnWrapper.style.display = '';
+        if (xnUpdate) {
+                // xn_update is true → show "Updated" badge only
+                xnSpan.textContent = '';
+                xnSpan.className   = 'd-none';
+                xnUpdSpan.classList.remove('d-none');
+                xnWrapper.style.display = '';
+        } else if (xnReason && xnReason !== '—') {
+                // xn_update is false but reason exists → show reason badge only
+                xnSpan.textContent = xnReason;
+                xnSpan.className   = 'badge bg-danger text-wrap';
+                xnSpan.style.whiteSpace = 'normal';
+                xnSpan.style.maxWidth   = '100%';
+                xnUpdSpan.classList.add('d-none');
+                xnWrapper.style.display = '';
         } else {
-            xnWrapper.style.display = 'none';
+                // nothing to show
+                xnWrapper.style.display = 'none';
         }
 
         const statusEl =
