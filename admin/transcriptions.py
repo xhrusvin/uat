@@ -58,13 +58,14 @@ def _format_conv(conv):
     else:
         conv['ended_at'] = 'Ongoing'
 
-    user = (conv.get('user_info') or [{}])[0]
+    user = conv.get('user_info') or {}
     conv['name'] = f"{user.get('first_name','')} {user.get('last_name','')}".strip() or "Unknown"
     conv['designation'] = user.get('designation', '-')
     conv['county'] = user.get('county', '-')
     conv['practical_training_institutes_email_sent'] = user.get(
         'practical_training_institutes_email_sent', 0
     )
+    conv['garda_email_sent'] = user.get('garda_email_sent', 0)
 
     for turn in conv.get('turns', []):
         if turn.get('ts'):
@@ -375,8 +376,15 @@ def transcriptions():
                 "started_at": 1,
                 "ended_at": 1,
                 "turns": 1,
-                "user_info": 1,
-                "elevenlabs_conversation_id": 1
+                "elevenlabs_conversation_id": 1,
+
+                "user_info.first_name": 1,
+                "user_info.last_name": 1,
+                "user_info.designation": 1,
+                "user_info.county": 1,
+
+                "user_info.garda_email_sent": 1,
+                "user_info.practical_training_institutes_email_sent": 1
             }
         }
     ]
