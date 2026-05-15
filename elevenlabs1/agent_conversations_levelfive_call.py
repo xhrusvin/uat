@@ -175,7 +175,8 @@ def sync_agent_conversations_levelfive_call():
                         "DON",
                         "Director of Nursing",
                         "ADON",
-                        "Assistant Director of Nursing"
+                        "Assistant Director of Nursing",
+                        "Human Resources"
                 ]
                 
                 user_url = os.getenv("XN_PORTAL_BASE_URL")
