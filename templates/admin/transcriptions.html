@@ -224,11 +224,47 @@
     {% endif %}
 </td>
 <td>
-    {% if c.garda_email_sent == 1 %}
-        <span class="badge bg-success">Sent</span>
-    {% else %}
-        <span class="badge bg-warning">Not Sent</span>
-    {% endif %}
+    <div class="email-status-group d-flex flex-column gap-2">
+
+        <!-- Garda -->
+        <div class="email-status-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <span class="email-label">
+                    <i class="bi bi-shield-check me-1"></i> Garda
+                </span>
+
+                {% if c.garda_email_sent == 1 %}
+                    <span class="badge rounded-pill bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                        <i class="bi bi-check-circle-fill me-1"></i> Sent
+                    </span>
+                {% else %}
+                    <span class="badge rounded-pill bg-warning-subtle text-warning border border-warning-subtle px-3 py-2">
+                        <i class="bi bi-clock-history me-1"></i> Pending
+                    </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- PTI -->
+        <div class="email-status-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <span class="email-label">
+                    <i class="bi bi-mortarboard me-1"></i> PTI
+                </span>
+
+                {% if c.practical_training_institutes_email_sent == 1 %}
+                    <span class="badge rounded-pill bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                        <i class="bi bi-check-circle-fill me-1"></i> Sent
+                    </span>
+                {% else %}
+                    <span class="badge rounded-pill bg-warning-subtle text-warning border border-warning-subtle px-3 py-2">
+                        <i class="bi bi-clock-history me-1"></i> Pending
+                    </span>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
 </td>
 <td>
                          
@@ -1262,6 +1298,38 @@ if (input) {
     #suggestionsBox .list-group-item:hover {
         background: #f8f9ff;
     }
+
+
+.email-status-group {
+    min-width: 150px;
+    gap: 0.45rem !important;
+}
+
+.email-status-card {
+    background: #f8f9ff;
+    border: 1px solid #edf0ff;
+    border-radius: 10px;
+    padding: 6px 8px;
+    transition: all 0.18s ease;
+}
+
+.email-status-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.05);
+}
+
+.email-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #495057;
+    display: flex;
+    align-items: center;
+}
+
+.email-status-card .badge {
+    font-size: 0.68rem;
+    padding: 0.35rem 0.55rem !important;
+}
 
 </style>
 

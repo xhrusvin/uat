@@ -62,6 +62,9 @@ def _format_conv(conv):
     conv['name'] = f"{user.get('first_name','')} {user.get('last_name','')}".strip() or "Unknown"
     conv['designation'] = user.get('designation', '-')
     conv['county'] = user.get('county', '-')
+    conv['practical_training_institutes_email_sent'] = user.get(
+        'practical_training_institutes_email_sent', 0
+    )
 
     for turn in conv.get('turns', []):
         if turn.get('ts'):
