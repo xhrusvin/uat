@@ -75,6 +75,8 @@ def api_brief_summary_cov_new():
         first_name = user.get("first_name", "").strip()
         last_name = user.get("last_name", "").strip()
         address = user.get("address", "").strip()
+        county = user.get("county", "").strip()
+
         caller_name = " ".join(filter(None, [first_name, last_name])) or "Unknown Caller"
         phone = user.get("phone")
 
@@ -331,21 +333,21 @@ def api_brief_summary_cov_new():
         next_professional_reference_at = now_utc + timedelta(hours=57)
         email_message_practical_training_institutes = ''
 
-        if location_in_ireland:
-         try:
-                 county_doc = current_app.db.county.find_one({
-                   "_id": ObjectId(location_in_ireland)
-                  })
+        if county:
+            location_in_ireland_name = county.replace("County ", "").strip()
+        #  try:
+                #  county_doc = current_app.db.county.find_one({
+                #    "_id": ObjectId(location_in_ireland)
+                #   })
 
-                 if county_doc:
-                   location_in_ireland_name = county_doc.get("name", "")
-                 else:
-                   location_in_ireland_name = ""
+                #  if county_doc:
+                #    location_in_ireland_name = county_doc.get("name", "")
+                #  else:
+                #    location_in_ireland_name = ""
+                  
+          #  except Exception:
+          #         location_in_ireland_name = ""
 
-                 
-
-         except Exception:
-                location_in_ireland_name = ""
                
         email_message_practical_training_institutes = location_in_ireland_name      
         if location_in_ireland_name:
