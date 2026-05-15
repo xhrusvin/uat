@@ -175,7 +175,14 @@ def sync_agent_conversations_intro_call():
                 countydata = None 
 
 
-            
+                conv_doc = {
+                    "call_status": call_status_val
+                }
+
+                conversations_collection.update_one(
+                    {"elevenlabs_conversation_id": conversation_id},     # or {"elevenlabs_conversation_id": conversation_id} if you prefer
+                    {"$set": conv_doc}
+                )
 
                 if eir_code_val and user_needs_address:
                   resolved = _resolve(eir_code_val)
@@ -186,14 +193,7 @@ def sync_agent_conversations_intro_call():
 
                 
                   # ==================== website_leads_conv (UI Transcript) ====================
-                  conv_doc = {
-                    "call_status": call_status_val
-                  }
-
-                  conversations_collection.update_one(
-                    {"elevenlabs_conversation_id": conversation_id},     # or {"elevenlabs_conversation_id": conversation_id} if you prefer
-                    {"$set": conv_doc}
-                  )
+                  
 
                   address = location["formatted_address"] if location else None
                   county = countydata["county"] if countydata else None
@@ -203,7 +203,7 @@ def sync_agent_conversations_intro_call():
                     {"$set": {
                         "address": address,
                         "county": county,
-                        "eir_code_val": eir_code_val,
+                        "eir_code": eir_code_val,
                         "eir_checked": True,
                         "language_proficiency": language_proficiency_val,
                         "experience_level": experience_level_val,
