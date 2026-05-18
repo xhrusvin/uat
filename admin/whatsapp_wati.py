@@ -89,9 +89,8 @@ def _send_template_message(phone: str, template_name: str, parameters: list[dict
     POST /api/v1/sendTemplateMessage
     Phone goes in the JSON body as 'whatsappNumber', NOT as a query param.
     """
-    url = f"{_base()}/api/v1/sendTemplateMessage"
+    url = f"{_base()}/api/v1/sendTemplateMessage?whatsappNumber={_normalise_phone(phone)}"
     payload = {
-        "whatsappNumber": _normalise_phone(phone),
         "template_name":  template_name,
         "broadcast_name": template_name,
         "parameters":     parameters,
