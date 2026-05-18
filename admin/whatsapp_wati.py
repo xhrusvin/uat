@@ -200,6 +200,9 @@ def whatsapp_wati_send_template():
     if not template_name:
         return jsonify({"success": False, "error": "template_name is required"}), 400
 
+    result = _send_template_message(phone, template_name, parameters)
+    return jsonify({"success": True, "result": result})
+    
     try:
         result = _send_template_message(phone, template_name, parameters)
         return jsonify({"success": True, "result": result})
