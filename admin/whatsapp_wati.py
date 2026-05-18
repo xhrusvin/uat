@@ -96,11 +96,13 @@ def _send_template_message(phone: str, template_name: str, parameters: list[dict
         "parameters":     parameters,
     }
     resp = requests.post(url, headers=_headers(), json=payload, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
 
-    return json.dumps(data)
-    die
+    return resp.text
+    # resp.raise_for_status()
+    # data = resp.json()
+
+    # return data
+    # die
 
     # WATI returns HTTP 200 even on logical failures
     if data.get("result") is False:
