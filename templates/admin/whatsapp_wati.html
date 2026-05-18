@@ -1,0 +1,636 @@
+{% extends "admin/base.html" %}
+{% block title %}WhatsApp Messaging (WATI) • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">
+            WhatsApp Messaging
+            <span class="badge ms-2 fs-6 align-middle"
+                  style="background:linear-gradient(135deg,#25d366,#128c7e);">
+                <i class="bi bi-whatsapp me-1"></i>WATI
+            </span>
+        </h2>
+        <span class="badge bg-primary fs-5 px-3 py-2" id="resultBadge" style="display:none;">
+            0 Users
+        </span>
+    </div>
+
+    <!-- ── Send Message Panel ──────────────────────────────────────────────── -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <p class="small fw-bold text-muted text-uppercase mb-3" style="letter-spacing:.06em;">
+                <i class="bi bi-send me-1"></i> Send Message
+            </p>
+
+            <!-- Tabs: Session vs Template -->
+            <ul class="nav nav-pills mb-3" id="msgTypeTabs">
+                <li class="nav-item">
+                    <button class="nav-link active px-4" id="tabSession"
+                            onclick="switchTab('session')">
+                        <i class="bi bi-chat-text me-1"></i> Session Message
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link px-4" id="tabTemplate"
+                            onclick="switchTab('template')">
+                        <i class="bi bi-layout-text-window me-1"></i> Template Message
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Phone input shared by both tabs -->
+            <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden mb-3" style="max-width:520px;">
+                <span class="input-group-text bg-white border-0">
+                    <i class="bi bi-telephone text-muted"></i>
+                </span>
+                <input type="text" id="phoneInput" class="form-control border-0 ps-0"
+                       placeholder="WhatsApp number, e.g. 353851234567"
+                       autocomplete="off">
+            </div>
+
+            <!-- ── Session Message Form ────────────────────────────────────── -->
+            <div id="sessionForm">
+                <div style="max-width:520px;">
+                    <textarea id="sessionMessage" class="form-control rounded-3 shadow-sm"
+                              rows="4" maxlength="4096"
+                              placeholder="Type your message… (max 4 096 chars)"></textarea>
+                    <div class="d-flex justify-content-between align-items-center mt-1">
+                        <small class="text-muted" id="charCount">0 / 4096</small>
+                        <button class="btn btn-success px-4 rounded-pill"
+                                onclick="sendSession()">
+                            <i class="bi bi-whatsapp me-1"></i> Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Template Message Form ──────────────────────────────────── -->
+            <div id="templateForm" style="display:none; max-width:520px;">
+                <input type="text" id="templateName" class="form-control rounded-3 shadow-sm mb-2"
+                       placeholder="Template name, e.g. order_confirmation">
+
+                <div id="parametersWrap">
+                    <p class="small text-muted mb-1">Parameters</p>
+                    <div id="paramList"></div>
+                    <button class="btn btn-outline-secondary btn-sm mt-1 rounded-pill"
+                            onclick="addParam()">
+                        <i class="bi bi-plus-circle me-1"></i> Add Parameter
+                    </button>
+                </div>
+
+                <button class="btn btn-success px-4 rounded-pill mt-3"
+                        onclick="sendTemplate()">
+                    <i class="bi bi-whatsapp me-1"></i> Send Template
+                </button>
+            </div>
+
+            <div id="sendResult" class="mt-3"></div>
+        </div>
+    </div>
+
+    <!-- ── Contact Search ─────────────────────────────────────────────────── -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <p class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing:.06em;">
+                <i class="bi bi-person-lines-fill me-1"></i> Search Contacts
+            </p>
+
+            <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden" style="max-width:520px;">
+                <span class="input-group-text bg-white border-0">
+                    <i class="bi bi-search text-muted"></i>
+                </span>
+                <input type="text" id="searchInput" class="form-control border-0 ps-0"
+                       placeholder="Search by name, phone, or email…"
+                       autocomplete="off">
+                <button class="btn btn-primary px-4" onclick="doSearch()">Search</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Results Table ──────────────────────────────────────────────────── -->
+    <div id="emptyState" class="text-center py-5 text-muted">
+        <i class="bi bi-whatsapp fs-1 opacity-25"></i>
+        <p class="mt-2">Search for a user to send a WhatsApp message.</p>
+    </div>
+
+    <div id="noResultsState" class="text-center py-5 text-muted" style="display:none;">
+        <i class="bi bi-person-x fs-1 opacity-25"></i>
+        <p class="mt-2">No users matched your search.</p>
+    </div>
+
+    <div id="resultsCard" class="card border-0 shadow-sm rounded-4" style="display:none;">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4 text-muted small fw-semibold">#</th>
+                            <th class="text-muted small fw-semibold">Name</th>
+                            <th class="text-muted small fw-semibold">Email</th>
+                            <th class="text-muted small fw-semibold">Phone</th>
+                            <th class="text-muted small fw-semibold">City</th>
+                            <th class="text-muted small fw-semibold">WATI</th>
+                            <th class="text-muted small fw-semibold text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── User Message Modal ──────────────────────────────────────────────────── -->
+<div class="modal fade" id="userModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header text-white rounded-top-4"
+                 style="background: linear-gradient(135deg,#25d366 0%,#128c7e 100%);">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-whatsapp me-2"></i>Send WhatsApp Message
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+
+                <!-- User summary -->
+                <div class="text-center mb-4">
+                    <div id="userAvatar"
+                         class="rounded-circle d-inline-flex align-items-center justify-content-center fw-bold fs-2 text-white mb-2"
+                         style="width:80px;height:80px;background:linear-gradient(135deg,#25d366,#128c7e);">
+                    </div>
+                    <h5 class="mb-0 fw-bold" id="modalFullName"></h5>
+                    <small class="text-muted" id="modalEmail"></small>
+                </div>
+
+                <hr>
+
+                <!-- Contact details -->
+                <ul class="list-unstyled mb-0">
+                    <li class="d-flex align-items-center gap-3 py-2 border-bottom">
+                        <span class="badge bg-light text-dark border" style="min-width:36px;">
+                            <i class="bi bi-telephone-fill text-success"></i>
+                        </span>
+                        <div>
+                            <div class="small text-muted">WhatsApp Number</div>
+                            <div class="fw-semibold font-monospace" id="modalPhone"></div>
+                        </div>
+                    </li>
+                    <li class="d-flex align-items-center gap-3 py-2 border-bottom">
+                        <span class="badge bg-light text-dark border" style="min-width:36px;">
+                            <i class="bi bi-building text-info"></i>
+                        </span>
+                        <div>
+                            <div class="small text-muted">City / Country</div>
+                            <div class="fw-semibold" id="modalLocation"></div>
+                        </div>
+                    </li>
+                    <li class="d-flex align-items-center gap-3 py-2" id="watiStatusRow">
+                        <span class="badge bg-light text-dark border" style="min-width:36px;">
+                            <i class="bi bi-whatsapp text-success"></i>
+                        </span>
+                        <div>
+                            <div class="small text-muted">WATI Opt-In</div>
+                            <div class="fw-semibold" id="modalWatiStatus"></div>
+                        </div>
+                    </li>
+                </ul>
+
+                <hr class="mt-3 mb-3">
+
+                <!-- In-modal send tabs -->
+                <ul class="nav nav-pills mb-3" id="modalMsgTypeTabs">
+                    <li class="nav-item">
+                        <button class="nav-link active px-3" id="modalTabSession"
+                                onclick="switchModalTab('session')">
+                            <i class="bi bi-chat-text me-1"></i> Session
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link px-3" id="modalTabTemplate"
+                                onclick="switchModalTab('template')">
+                            <i class="bi bi-layout-text-window me-1"></i> Template
+                        </button>
+                    </li>
+                    <li class="nav-item ms-auto">
+                        <button class="nav-link px-3" onclick="loadHistory()">
+                            <i class="bi bi-clock-history me-1"></i> History
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- Session send -->
+                <div id="modalSessionForm">
+                    <textarea id="modalSessionMsg" class="form-control rounded-3" rows="3"
+                              maxlength="4096" placeholder="Type your message…"></textarea>
+                    <div class="d-flex justify-content-end mt-2">
+                        <button class="btn btn-success rounded-pill px-4"
+                                onclick="modalSendSession()">
+                            <i class="bi bi-send me-1"></i> Send
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Template send -->
+                <div id="modalTemplateForm" style="display:none;">
+                    <input type="text" id="modalTemplateName" class="form-control rounded-3 mb-2"
+                           placeholder="Template name, e.g. order_confirmation">
+                    <div id="modalParamList"></div>
+                    <button class="btn btn-outline-secondary btn-sm mt-1 rounded-pill"
+                            onclick="addModalParam()">
+                        <i class="bi bi-plus-circle me-1"></i> Add Parameter
+                    </button>
+                    <div class="d-flex justify-content-end mt-3">
+                        <button class="btn btn-success rounded-pill px-4"
+                                onclick="modalSendTemplate()">
+                            <i class="bi bi-send me-1"></i> Send Template
+                        </button>
+                    </div>
+                </div>
+
+                <!-- History -->
+                <div id="modalHistoryForm" style="display:none;">
+                    <div id="historyContent" class="text-muted small text-center py-3">
+                        <span class="spinner-border spinner-border-sm me-2"></span>Loading history…
+                    </div>
+                </div>
+
+                <div id="modalSendResult" class="mt-3"></div>
+
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+let searchTimeout  = null;
+let _currentUser   = null;
+let _paramCount    = 0;
+let _modalParamCnt = 0;
+
+// ── Tab switching (main panel) ────────────────────────────────────────
+function switchTab(tab) {
+    document.getElementById('sessionForm').style.display  = tab === 'session'  ? '' : 'none';
+    document.getElementById('templateForm').style.display = tab === 'template' ? '' : 'none';
+    document.getElementById('tabSession').classList.toggle('active',  tab === 'session');
+    document.getElementById('tabTemplate').classList.toggle('active', tab === 'template');
+    document.getElementById('sendResult').innerHTML = '';
+}
+
+// ── Character counter ─────────────────────────────────────────────────
+document.getElementById('sessionMessage').addEventListener('input', function () {
+    document.getElementById('charCount').textContent = `${this.value.length} / 4096`;
+});
+
+// ── Parameters (main panel) ───────────────────────────────────────────
+function addParam() {
+    _paramCount++;
+    const row = document.createElement('div');
+    row.className = 'd-flex gap-2 mb-2 align-items-center';
+    row.innerHTML = `
+        <input type="text" class="form-control form-control-sm rounded-3 param-name"
+               placeholder="Name (e.g. 1)" style="max-width:120px;">
+        <input type="text" class="form-control form-control-sm rounded-3 param-value"
+               placeholder="Value">
+        <button class="btn btn-outline-danger btn-sm rounded-circle"
+                onclick="this.parentElement.remove()">
+            <i class="bi bi-x"></i>
+        </button>`;
+    document.getElementById('paramList').appendChild(row);
+}
+
+function collectParams(containerId) {
+    return Array.from(document.querySelectorAll(`#${containerId} .param-name`))
+        .map((el, i) => {
+            const val = el.closest('.d-flex').querySelector('.param-value').value.trim();
+            return { name: el.value.trim() || String(i + 1), value: val };
+        })
+        .filter(p => p.value);
+}
+
+// ── Send session (main panel) ─────────────────────────────────────────
+async function sendSession() {
+    const phone   = document.getElementById('phoneInput').value.trim();
+    const message = document.getElementById('sessionMessage').value.trim();
+    const div     = document.getElementById('sendResult');
+
+    if (!phone || !message) {
+        div.innerHTML = '<div class="alert alert-warning py-2">Phone number and message are required.</div>';
+        return;
+    }
+
+    div.innerHTML = '<div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Sending…</div>';
+
+    try {
+        const res  = await fetch('/admin/whatsapp_wati/send_session', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ phone, message }),
+        });
+        const data = await res.json();
+        div.innerHTML = data.success
+            ? `<div class="alert alert-success py-2"><i class="bi bi-check-circle-fill me-1"></i>Message sent successfully.</div>`
+            : `<div class="alert alert-danger py-2">${data.error}</div>`;
+    } catch (err) {
+        div.innerHTML = `<div class="alert alert-danger py-2">Request failed: ${err}</div>`;
+    }
+}
+
+// ── Send template (main panel) ────────────────────────────────────────
+async function sendTemplate() {
+    const phone         = document.getElementById('phoneInput').value.trim();
+    const template_name = document.getElementById('templateName').value.trim();
+    const parameters    = collectParams('paramList');
+    const div           = document.getElementById('sendResult');
+
+    if (!phone || !template_name) {
+        div.innerHTML = '<div class="alert alert-warning py-2">Phone number and template name are required.</div>';
+        return;
+    }
+
+    div.innerHTML = '<div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Sending…</div>';
+
+    try {
+        const res  = await fetch('/admin/whatsapp_wati/send_template', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ phone, template_name, parameters }),
+        });
+        const data = await res.json();
+        div.innerHTML = data.success
+            ? `<div class="alert alert-success py-2"><i class="bi bi-check-circle-fill me-1"></i>Template sent successfully.</div>`
+            : `<div class="alert alert-danger py-2">${data.error}</div>`;
+    } catch (err) {
+        div.innerHTML = `<div class="alert alert-danger py-2">Request failed: ${err}</div>`;
+    }
+}
+
+// ── User search ───────────────────────────────────────────────────────
+document.getElementById('searchInput').addEventListener('keyup', function (e) {
+    if (e.key === 'Enter') { doSearch(); return; }
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(doSearch, 400);
+});
+
+async function doSearch() {
+    const q = document.getElementById('searchInput').value.trim();
+    if (!q) { clearSearch(); return; }
+
+    try {
+        const res  = await fetch(`/admin/whatsapp_wati/search_users?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!data.success) { Swal.fire('Error', data.error || 'Search failed', 'error'); return; }
+        renderResults(data.users, q);
+    } catch {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    }
+}
+
+function renderResults(users, q) {
+    const body      = document.getElementById('resultsBody');
+    const card      = document.getElementById('resultsCard');
+    const empty     = document.getElementById('emptyState');
+    const noResults = document.getElementById('noResultsState');
+    const badge     = document.getElementById('resultBadge');
+
+    body.innerHTML = '';
+
+    if (!users.length) {
+        card.style.display      = 'none';
+        empty.style.display     = 'none';
+        noResults.style.display = '';
+        badge.style.display     = 'none';
+        return;
+    }
+
+    noResults.style.display = 'none';
+    empty.style.display     = 'none';
+    card.style.display      = '';
+    badge.style.display     = '';
+    badge.textContent       = `${users.length} User${users.length !== 1 ? 's' : ''}`;
+
+    users.forEach((u, i) => {
+        const initials = ((u.first_name?.[0] || '') + (u.last_name?.[0] || '')).toUpperCase() || '?';
+        const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ') || '—';
+
+        // WATI opt-in badge
+        const watiBadge = u.wati == null
+            ? '<span class="badge bg-secondary">—</span>'
+            : u.wati.opted_in
+                ? '<span class="badge" style="background:#25d366"><i class="bi bi-check-circle-fill me-1"></i>Opted In</span>'
+                : '<span class="badge bg-warning text-dark">Not Opted In</span>';
+
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.innerHTML = `
+            <td class="ps-4 text-muted small">${i + 1}</td>
+            <td>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white flex-shrink-0"
+                         style="width:36px;height:36px;font-size:.8rem;background:linear-gradient(135deg,#25d366,#128c7e);">
+                        ${initials}
+                    </div>
+                    <span class="fw-semibold">${highlight(fullName, q)}</span>
+                </div>
+            </td>
+            <td class="text-muted small">${highlight(u.email || '—', q)}</td>
+            <td class="text-muted small font-monospace">${highlight(u.phone || '—', q)}</td>
+            <td class="text-muted small">${highlight(u.city || '—', q)}</td>
+            <td>${watiBadge}</td>
+            <td class="text-center">
+                <button class="btn btn-outline-success btn-sm rounded-pill px-3"
+                        onclick='showUser(${JSON.stringify(u)})'>
+                    <i class="bi bi-whatsapp"></i> Message
+                </button>
+            </td>`;
+        body.appendChild(tr);
+    });
+}
+
+function highlight(text, q) {
+    if (!q || !text) return text;
+    const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return String(text).replace(new RegExp(`(${esc})`, 'gi'),
+        '<mark class="px-0 bg-warning bg-opacity-50 rounded-1">$1</mark>');
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value            = '';
+    document.getElementById('resultsCard').style.display    = 'none';
+    document.getElementById('noResultsState').style.display = 'none';
+    document.getElementById('emptyState').style.display     = '';
+    document.getElementById('resultBadge').style.display    = 'none';
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────
+function showUser(u) {
+    _currentUser   = u;
+    _modalParamCnt = 0;
+
+    const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ') || '—';
+    const initials = ((u.first_name?.[0] || '') + (u.last_name?.[0] || '')).toUpperCase() || '?';
+    const location = [u.city, u.country].filter(Boolean).join(', ') || '—';
+
+    document.getElementById('userAvatar').textContent    = initials;
+    document.getElementById('modalFullName').textContent = fullName;
+    document.getElementById('modalEmail').textContent    = u.email    || '—';
+    document.getElementById('modalPhone').textContent    = u.phone    || '—';
+    document.getElementById('modalLocation').textContent = location;
+
+    const watiDiv = document.getElementById('modalWatiStatus');
+    if (u.wati == null) {
+        watiDiv.innerHTML = '<span class="badge bg-secondary">Unknown</span>';
+    } else if (u.wati.opted_in) {
+        const tags = (u.wati.tags || []).map(t => `<span class="badge bg-light text-dark border ms-1">${t}</span>`).join('');
+        watiDiv.innerHTML = `<span class="badge" style="background:#25d366"><i class="bi bi-check-circle-fill me-1"></i>Opted In</span>${tags}`;
+    } else {
+        watiDiv.innerHTML = '<span class="badge bg-warning text-dark">Not Opted In</span>';
+    }
+
+    // Reset forms
+    document.getElementById('modalSessionMsg').value    = '';
+    document.getElementById('modalTemplateName').value  = '';
+    document.getElementById('modalParamList').innerHTML = '';
+    document.getElementById('modalSendResult').innerHTML = '';
+    switchModalTab('session');
+
+    new bootstrap.Modal(document.getElementById('userModal')).show();
+}
+
+function switchModalTab(tab) {
+    document.getElementById('modalSessionForm').style.display  = tab === 'session'  ? '' : 'none';
+    document.getElementById('modalTemplateForm').style.display = tab === 'template' ? '' : 'none';
+    document.getElementById('modalHistoryForm').style.display  = tab === 'history'  ? '' : 'none';
+
+    document.getElementById('modalTabSession').classList.toggle('active',  tab === 'session');
+    document.getElementById('modalTabTemplate').classList.toggle('active', tab === 'template');
+    document.getElementById('modalSendResult').innerHTML = '';
+}
+
+// ── Modal: parameters ─────────────────────────────────────────────────
+function addModalParam() {
+    _modalParamCnt++;
+    const row = document.createElement('div');
+    row.className = 'd-flex gap-2 mb-2 align-items-center';
+    row.innerHTML = `
+        <input type="text" class="form-control form-control-sm rounded-3 param-name"
+               placeholder="Name (e.g. 1)" style="max-width:120px;" value="${_modalParamCnt}">
+        <input type="text" class="form-control form-control-sm rounded-3 param-value"
+               placeholder="Value">
+        <button class="btn btn-outline-danger btn-sm rounded-circle"
+                onclick="this.parentElement.remove()">
+            <i class="bi bi-x"></i>
+        </button>`;
+    document.getElementById('modalParamList').appendChild(row);
+}
+
+// ── Modal: send session ───────────────────────────────────────────────
+async function modalSendSession() {
+    const phone   = _currentUser?.phone;
+    const message = document.getElementById('modalSessionMsg').value.trim();
+    const div     = document.getElementById('modalSendResult');
+
+    if (!phone) { div.innerHTML = '<div class="alert alert-warning py-2">This user has no phone number.</div>'; return; }
+    if (!message) { div.innerHTML = '<div class="alert alert-warning py-2">Message cannot be empty.</div>'; return; }
+
+    div.innerHTML = '<div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Sending…</div>';
+
+    try {
+        const res  = await fetch('/admin/whatsapp_wati/send_session', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ phone, message }),
+        });
+        const data = await res.json();
+        div.innerHTML = data.success
+            ? `<div class="alert alert-success py-2"><i class="bi bi-check-circle-fill me-1"></i>Message sent!</div>`
+            : `<div class="alert alert-danger py-2">${data.error}</div>`;
+        if (data.success) document.getElementById('modalSessionMsg').value = '';
+    } catch (err) {
+        div.innerHTML = `<div class="alert alert-danger py-2">Request failed: ${err}</div>`;
+    }
+}
+
+// ── Modal: send template ──────────────────────────────────────────────
+async function modalSendTemplate() {
+    const phone         = _currentUser?.phone;
+    const template_name = document.getElementById('modalTemplateName').value.trim();
+    const parameters    = collectParams('modalParamList');
+    const div           = document.getElementById('modalSendResult');
+
+    if (!phone)          { div.innerHTML = '<div class="alert alert-warning py-2">This user has no phone number.</div>'; return; }
+    if (!template_name)  { div.innerHTML = '<div class="alert alert-warning py-2">Template name is required.</div>'; return; }
+
+    div.innerHTML = '<div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Sending…</div>';
+
+    try {
+        const res  = await fetch('/admin/whatsapp_wati/send_template', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ phone, template_name, parameters }),
+        });
+        const data = await res.json();
+        div.innerHTML = data.success
+            ? `<div class="alert alert-success py-2"><i class="bi bi-check-circle-fill me-1"></i>Template sent!</div>`
+            : `<div class="alert alert-danger py-2">${data.error}</div>`;
+    } catch (err) {
+        div.innerHTML = `<div class="alert alert-danger py-2">Request failed: ${err}</div>`;
+    }
+}
+
+// ── Modal: message history ────────────────────────────────────────────
+async function loadHistory() {
+    switchModalTab('history');
+    const phone = _currentUser?.phone;
+    const div   = document.getElementById('historyContent');
+
+    if (!phone) {
+        div.innerHTML = '<div class="alert alert-warning py-2">This user has no phone number.</div>';
+        return;
+    }
+
+    div.innerHTML = '<div class="text-muted text-center py-3"><span class="spinner-border spinner-border-sm me-2"></span>Loading history…</div>';
+
+    try {
+        const res  = await fetch(`/admin/whatsapp_wati/messages?phone=${encodeURIComponent(phone)}`);
+        const data = await res.json();
+
+        if (!data.success) {
+            div.innerHTML = `<div class="alert alert-danger py-2">${data.error}</div>`;
+            return;
+        }
+        if (!data.messages.length) {
+            div.innerHTML = '<div class="text-muted text-center py-3"><i class="bi bi-chat-x fs-4 opacity-25 d-block mb-1"></i>No messages found.</div>';
+            return;
+        }
+
+        div.innerHTML = data.messages.map(m => {
+            const isOut  = m.direction === 'outbound';
+            const align  = isOut ? 'ms-auto text-end' : '';
+            const bg     = isOut ? 'style="background:#dcf8c6"' : '';
+            const icon   = isOut ? '<i class="bi bi-arrow-up-circle-fill text-success me-1"></i>'
+                                 : '<i class="bi bi-arrow-down-circle-fill text-primary me-1"></i>';
+            const status = m.status
+                ? `<span class="badge bg-light text-muted border ms-1">${m.status}</span>`
+                : '';
+            const ts     = m.created_at ? `<div class="text-muted" style="font-size:.7rem;">${new Date(m.created_at).toLocaleString()}</div>` : '';
+            return `
+                <div class="rounded-3 p-2 mb-2 shadow-sm ${align}" ${bg} style="max-width:80%;display:inline-block;">
+                    <div class="small">${icon}${m.text || '<em class="text-muted">Non-text message</em>'}${status}</div>
+                    ${ts}
+                </div>
+                <div class="clearfix"></div>`;
+        }).join('');
+    } catch (err) {
+        div.innerHTML = `<div class="alert alert-danger py-2">Request failed: ${err}</div>`;
+    }
+}
+</script>
+{% endblock %}

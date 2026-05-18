@@ -29,9 +29,10 @@ users_collection = db['users']   # ← direct access, no app.py needed
 # ==================== API CONFIG ====================
 API_URL = f"{XN_PORTAL_BASE_URL}admin/recruitments/staff-list"
 API_KEY = os.getenv("XN_PORTAL_API_KEY")
+XN_APP_COUNTRY = os.getenv("XN_APP_COUNTRY")
 HEADERS = {
     "Api-key": API_KEY,
-    "X-App-Country": "ie"
+    "X-App-Country": XN_APP_COUNTRY
 }
 TRIGGER_KEY = os.getenv("TRIGGER_KEY", "1234")
 MAX_LEADS = 10
