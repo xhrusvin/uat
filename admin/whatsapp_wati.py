@@ -92,7 +92,7 @@ def _send_template_message(phone: str, template_name: str, parameters: list[dict
 
     parameters: [{"name": "1", "value": "John"}, ...]
     """
-    url = f"{_base()}/api/v1/sendTemplateMessage?whatsappNumber{_normalise_phone(phone)}"
+    url = f"{_base()}/api/v1/sendTemplateMessage?whatsappNumber={_normalise_phone(phone)}"
     payload = {
         "template_name": template_name,
         "broadcast_name": template_name,
