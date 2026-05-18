@@ -67,7 +67,6 @@ def _send_session_message(phone: str, message: str) -> dict:
         params={"messageText": message},   # ← query param, not json=
         timeout=10,
     )
-    return resp.text
     resp.raise_for_status()
     data = resp.json()
 
@@ -133,8 +132,9 @@ def _get_messages(phone: str, page_size: int = 20, page: int = 1) -> dict:
         params={"pageSize": page_size, "page": page},
         timeout=10,
     )
-    resp.raise_for_status()
-    return resp.json()
+    return resp.text
+    #resp.raise_for_status()
+    #return resp.json()
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
