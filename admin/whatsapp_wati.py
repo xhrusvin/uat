@@ -129,6 +129,7 @@ def _get_messages(phone: str, page_size: int = 20, page: int = 1) -> dict:
         params={"pageSize": page_size, "page": page},
         timeout=10,
     )
+    return resp.text
     resp.raise_for_status()
     
     # WATI sometimes returns a raw list instead of a dict
