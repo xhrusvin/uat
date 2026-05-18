@@ -99,7 +99,7 @@ def _send_template_message(phone: str, template_name: str, parameters: list[dict
     resp.raise_for_status()
     data = resp.json()
 
-    return data
+    return json.dumps(data)
     die
 
     # WATI returns HTTP 200 even on logical failures
