@@ -86,22 +86,25 @@ def _send_session_message(phone: str, message: str) -> dict:
 
 def _send_template_message(phone: str, template_name: str, parameters: list[dict]) -> dict:
     """
-    POST /api/v1/sendTemplateMessage/{whatsappNumber}
-
-    Sends an approved WhatsApp Business template message.
-
-    parameters: [{"name": "1", "value": "John"}, ...]
+    POST /api/v1/sendTemplateMessage
+    Phone goes in the JSON body as 'whatsappNumber', NOT as a query param.
     """
-    url = f"{_base()}/api/v1/sendTemplateMessage?whatsappNumber={_normalise_phone(phone)}"
+    url = f"{_base()}/api/v1/sendTemplateMessage"
     payload = {
-        "template_name": template_name,
+        "whatsappNumber": _normalise_phone(phone),
+        "template_name":  template_name,
         "broadcast_name": template_name,
-        "parameters": parameters,
+        "parameters":     parameters,
     }
     resp = requests.post(url, headers=_headers(), json=payload, timeout=10)
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
 
+    # WATI returns HTTP 200 even on logical failures
+    if data.get("result") is False:
+        raise ValueError(data.get("message") or "WATI template send failed")
+
+    return data
 
 def _get_contacts(search: str = "", page_size: int = 20, page: int = 1) -> dict:
     """
@@ -178,20 +181,8 @@ def whatsapp_wati_send_session():
 @admin_bp.route("/whatsapp_wati/send_template", methods=["POST"])
 @admin_required
 def whatsapp_wati_send_template():
-    """
-    POST /admin/whatsapp_wati/send_template
-    Body:
-    {
-        "phone":         "353851234567",
-        "template_name": "order_confirmation",
-        "parameters":    [{"name": "1", "value": "John"}, {"name": "2", "value": "#12345"}]
-    }
-
-    Response:
-        { "success": true, "result": { ...wati response... } }
-    """
     data          = request.get_json(force=True) or {}
-    phone         = (data.get("phone") or "").strip()
+    phone         = (data.get("phone")         or "").strip()
     template_name = (data.get("template_name") or "").strip()
     parameters    = data.get("parameters") or []
 
@@ -200,12 +191,11 @@ def whatsapp_wati_send_template():
     if not template_name:
         return jsonify({"success": False, "error": "template_name is required"}), 400
 
-    result = _send_template_message(phone, template_name, parameters)
-    return jsonify({"success": True, "result": result})
-    
     try:
         result = _send_template_message(phone, template_name, parameters)
         return jsonify({"success": True, "result": result})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 422
     except requests.exceptions.Timeout:
         return jsonify({"success": False, "error": "WATI request timed out"}), 504
     except requests.exceptions.HTTPError as e:
