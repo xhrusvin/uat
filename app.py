@@ -82,6 +82,7 @@ def _jinja2_filter_strptime(date_string, fmt='%Y-%m-%d %H:%M:%S'):
 # 1. SESSION CONFIG (CRITICAL)
 # =========================
 app.secret_key = os.getenv('SECRET_KEY')  # Must be strong!
+port = os.getenv('PORT')
 if not app.secret_key or app.secret_key == 'dev':
     raise ValueError("SECRET_KEY must be set in .env")
     
@@ -196,4 +197,4 @@ def _jinja2_filter_strftime(date, fmt='%Y-%m-%d %H:%M'):
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=1000, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=True)
