@@ -122,9 +122,6 @@ def _get_contacts(search: str = "", page_size: int = 20, page: int = 1) -> dict:
 
 
 def _get_messages(phone: str, page_size: int = 20, page: int = 1) -> dict:
-    """
-    GET /api/v1/getMessages/{whatsappNumber}
-    """
     url = f"{_base()}/api/v1/getMessages/{_normalise_phone(phone)}"
     resp = requests.get(
         url,
@@ -132,9 +129,13 @@ def _get_messages(phone: str, page_size: int = 20, page: int = 1) -> dict:
         params={"pageSize": page_size, "page": page},
         timeout=10,
     )
-    return resp.text
-    #resp.raise_for_status()
-    #return resp.json()
+    resp.raise_for_status()
+    
+    # WATI sometimes returns a raw list instead of a dict
+    data = resp.json()
+    if isinstance(data, list):
+        return {"messages": data}
+    return data
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
