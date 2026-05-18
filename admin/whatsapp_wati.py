@@ -129,7 +129,6 @@ def _get_messages(phone: str, page_size: int = 20, page: int = 1) -> dict:
         params={"pageSize": page_size, "page": page},
         timeout=10,
     )
-    return resp.text
     resp.raise_for_status()
     
     # WATI sometimes returns a raw list instead of a dict
@@ -300,17 +299,17 @@ def whatsapp_wati_messages():
 
     try:
         raw      = _get_messages(phone, page_size=page_size, page=page)
-        raw_msgs = raw.get("messages") or raw.get("data") or []
+        raw_msgs = (raw.get("messages") or {}).get("items") or []  # ← nested under messages.items
         messages = [
-            {
-                "id":         m.get("id", ""),
-                "text":       m.get("text") or m.get("body") or "",
-                "type":       m.get("type", "text"),
-                "direction":  "inbound" if m.get("owner") is False or m.get("direction") == "inbound" else "outbound",
-                "status":     m.get("statusString") or m.get("status", ""),
-                "created_at": m.get("created") or m.get("created_at", ""),
-            }
-            for m in raw_msgs
+        {
+        "id":         m.get("id", ""),
+        "text":       m.get("finalText") or "",             # ← finalText, not text/body
+        "type":       m.get("eventType", "text"),
+        "direction":  "inbound" if m.get("owner") is False or m.get("direction") == "inbound" else "outbound",
+        "status":     m.get("statusString") or m.get("status", ""),
+        "created_at": m.get("created") or m.get("created_at", ""),
+        }
+        for m in raw_msgs
         ]
         return jsonify({"success": True, "messages": messages})
     except requests.exceptions.Timeout:
