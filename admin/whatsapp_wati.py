@@ -299,19 +299,57 @@ def whatsapp_wati_messages():
 
     try:
         raw      = _get_messages(phone, page_size=page_size, page=page)
-        raw_msgs = (raw.get("messages") or {}).get("items") or []  # ← nested under messages.items
-        messages = [
-        {
-        "id":         m.get("id", ""),
-        "text":       m.get("finalText") or "",             # ← finalText, not text/body
-        "type":       m.get("eventType", "text"),
-        "direction":  "inbound" if m.get("owner") is False or m.get("direction") == "inbound" else "outbound",
-        "status":     m.get("statusString") or m.get("status", ""),
-        "created_at": m.get("created") or m.get("created_at", ""),
-        }
-        for m in raw_msgs
-        ]
-        return jsonify({"success": True, "messages": messages})
+        raw_msgs = (raw.get("messages") or {}).get("items") or []
+
+        messages = []
+        for m in raw_msgs:
+          event_type = m.get("eventType", "")
+
+          if event_type == "message":
+            messages.append({
+            "id":         m.get("id", ""),
+            "text":       m.get("text") or "",
+            "type":       m.get("type", "text"),
+            "event_type": event_type,
+            "direction":  "inbound" if m.get("owner") is False else "outbound",
+            "status":     m.get("statusString") or "",
+            "created_at": m.get("created") or "",
+        })
+
+          elif event_type == "broadcastMessage":
+            messages.append({
+            "id":         m.get("id", ""),
+            "text":       m.get("finalText") or m.get("eventDescription") or "",
+            "type":       "broadcast",
+            "event_type": event_type,
+            "direction":  "outbound",
+            "status":     m.get("statusString") or "",
+            "created_at": m.get("created") or "",
+        })
+
+          elif event_type == "ticket":
+            messages.append({
+            "id":         m.get("id", ""),
+            "text":       m.get("eventDescription") or "",
+            "type":       "system",
+            "event_type": event_type,
+            "direction":  "system",
+            "status":     "",
+            "created_at": m.get("created") or "",
+        })
+
+          else:
+            messages.append({
+            "id":         m.get("id", ""),
+            "text":       m.get("text") or m.get("finalText") or m.get("eventDescription") or "",
+            "type":       event_type or "unknown",
+            "event_type": event_type,
+            "direction":  "unknown",
+            "status":     m.get("statusString") or "",
+            "created_at": m.get("created") or "",
+        })
+
+        return jsonify({"success": True, "messages": messages, "total": (raw.get("messages") or {}).get("total", 0)})
     except requests.exceptions.Timeout:
         return jsonify({"success": False, "error": "WATI request timed out"}), 504
     except requests.exceptions.HTTPError as e:
