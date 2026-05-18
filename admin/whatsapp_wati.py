@@ -60,11 +60,6 @@ def _normalise_phone(phone: str) -> str:
 
 
 def _send_session_message(phone: str, message: str) -> dict:
-    """
-    POST /api/v1/sendSessionMessage/{whatsappNumber}
-
-    Used for free-form text replies within a 24-hour customer service window.
-    """
     url = f"{_base()}/api/v1/sendSessionMessage/{_normalise_phone(phone)}"
     resp = requests.post(
         url,
@@ -73,7 +68,20 @@ def _send_session_message(phone: str, message: str) -> dict:
         timeout=10,
     )
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+
+    # WATI returns 200 even on logical failures — check the result flag
+    if data.get("result") is False:
+        msg = data.get("message", "Unknown WATI error")
+        status = data.get("ticketStatus", "")
+        if "expired" in msg.lower() or status == "BROADCAST":
+            raise ValueError(
+                "Session window expired (>24 h since last inbound message). "
+                "Use a Template Message instead."
+            )
+        raise ValueError(msg)
+
+    return data
 
 
 def _send_template_message(phone: str, template_name: str, parameters: list[dict]) -> dict:
@@ -84,7 +92,7 @@ def _send_template_message(phone: str, template_name: str, parameters: list[dict
 
     parameters: [{"name": "1", "value": "John"}, ...]
     """
-    url = f"{_base()}/api/v1/sendTemplateMessage/{_normalise_phone(phone)}"
+    url = f"{_base()}/api/v1/sendTemplateMessage?whatsappNumber{_normalise_phone(phone)}"
     payload = {
         "template_name": template_name,
         "broadcast_name": template_name,
