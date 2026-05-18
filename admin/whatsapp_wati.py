@@ -64,11 +64,10 @@ def _send_session_message(phone: str, message: str) -> dict:
     resp = requests.post(
         url,
         headers=_headers(),
-        json={"messageText": message},
+        params={"messageText": message},   # ← query param, not json=
         timeout=10,
     )
     return resp.text
-    
     resp.raise_for_status()
     data = resp.json()
 
