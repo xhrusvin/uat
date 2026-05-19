@@ -1,12 +1,14 @@
 import os
+import logging
 import requests
 from flask import request, jsonify
 
 from . import bp
 
-# Read once at module load; set CARE_LEARNING_TOKEN in your environment / .env file
-API_BASE   = "https://admin.care-learning.com/api/mcp/v1"
-API_TOKEN  = os.environ.get("CARE_LEARNING_TOKEN", "")
+logger = logging.getLogger(__name__)
+
+API_BASE  = "https://admin.care-learning.com/api/mcp/v1"
+API_TOKEN = os.environ.get("CARE_LEARNING_TOKEN", "")
 
 
 def _auth_headers():
@@ -16,15 +18,59 @@ def _auth_headers():
     }
 
 
+def _extract_jobs(data: any) -> list:
+    """
+    Robustly extract a list of job dicts from whatever shape the API returns.
+    Logs the raw structure so you can see exactly what came back.
+    """
+    logger.warning("RAW API RESPONSE TYPE: %s", type(data))
+    logger.warning("RAW API RESPONSE: %s", str(data)[:1000])  # first 1000 chars
+
+    # Already a plain list
+    if isinstance(data, list):
+        return data
+
+    if isinstance(data, dict):
+        # Try common wrapper keys in order
+        for key in ("data", "jobs", "results", "items", "records"):
+            candidate = data.get(key)
+            if isinstance(candidate, list):
+                return candidate
+            # Some APIs wrap further: {"data": {"data": [...], "total": N}}
+            if isinstance(candidate, dict):
+                for inner_key in ("data", "jobs", "results", "items"):
+                    inner = candidate.get(inner_key)
+                    if isinstance(inner, list):
+                        return inner
+
+    logger.error("Could not extract a job list from: %s", str(data)[:500])
+    return []
+
+
+def _normalise_job(j: any) -> dict:
+    """Safely map one job item to the expected shape."""
+    if not isinstance(j, dict):
+        logger.error("Expected a dict for job, got %s: %r", type(j).__name__, j)
+        return {"_id": str(j), "error": f"Unexpected job format: {type(j).__name__}"}
+
+    return {
+        "_id":            j.get("id") or j.get("_id", ""),
+        "title":          j.get("title", ""),
+        "client_name":    j.get("client_name") or j.get("company", ""),
+        "job_type":       j.get("job_type") or j.get("type", ""),
+        "status":         j.get("status", ""),
+        "location":       j.get("location", ""),
+        "scheduled_date": j.get("scheduled_date") or j.get("date"),
+        "description":    j.get("description", ""),
+        "notes":          j.get("notes", ""),
+        "is_active":      j.get("is_active", True),
+        "created_at":     j.get("created_at"),
+        "updated_at":     j.get("updated_at"),
+    }
+
+
 @bp.route('/jobs-mcp/list', methods=['GET'])
 def jobs_mcp_list():
-    """
-    Proxies the upstream jobs list API.
-    Accepted query params (all optional):
-      keyword, location, designation, sector, date, page, limit
-      (legacy: status, job_type – passed through as-is if the upstream accepts them)
-    """
-    # Forward every recognised query param the upstream API supports
     upstream_params = {}
     for key in ("keyword", "location", "designation", "sector",
                 "date", "page", "limit", "status", "job_type"):
@@ -50,22 +96,16 @@ def jobs_mcp_list():
         return jsonify({"success": False, "error": str(exc)}), 502
 
     data = resp.json()
-
-    # Normalise to the shape your callers already expect
-    raw_jobs = data.get("data") or data.get("jobs") or []
+    raw_jobs = _extract_jobs(data)
 
     return jsonify({
         "success": True,
-        "jobs": [_normalise_job(j) for j in raw_jobs],
+        "jobs":    [_normalise_job(j) for j in raw_jobs],
     })
 
 
 @bp.route('/jobs-mcp/detail/<job_id>', methods=['GET'])
 def jobs_mcp_detail(job_id):
-    """
-    Proxies the upstream single-job API.
-    Example: /jobs-mcp/detail/019d77dc-d199-7148-8c31-1b5260361fd7
-    """
     try:
         resp = requests.get(
             f"{API_BASE}/jobs/{job_id}",
@@ -86,28 +126,12 @@ def jobs_mcp_detail(job_id):
         return jsonify({"success": False, "error": str(exc)}), 502
 
     data = resp.json()
-    raw_job = data.get("data") or data.get("job") or data
+    logger.warning("DETAIL RAW API RESPONSE: %s", str(data)[:1000])
+
+    # Detail endpoint may return the object directly or wrapped
+    if isinstance(data, dict):
+        raw_job = data.get("data") or data.get("job") or data
+    else:
+        raw_job = data
 
     return jsonify({"success": True, "job": _normalise_job(raw_job)})
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _normalise_job(j: dict) -> dict:
-    """Map upstream field names to the shape your API consumers expect."""
-    return {
-        "_id":            j.get("id") or j.get("_id", ""),
-        "title":          j.get("title", ""),
-        "client_name":    j.get("client_name") or j.get("company", ""),
-        "job_type":       j.get("job_type") or j.get("type", ""),
-        "status":         j.get("status", ""),
-        "location":       j.get("location", ""),
-        "scheduled_date": j.get("scheduled_date") or j.get("date"),
-        "description":    j.get("description", ""),
-        "notes":          j.get("notes", ""),
-        "is_active":      j.get("is_active", True),
-        "created_at":     j.get("created_at"),
-        "updated_at":     j.get("updated_at"),
-    }
