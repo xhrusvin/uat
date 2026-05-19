@@ -13,3 +13,4 @@ bp = Blueprint(
 
 # Import routes at the bottom to avoid circular imports
 from . import chatgpt
+from . import jobs_mcp
