@@ -197,7 +197,7 @@
             <span class="text-warning fw-bold">User Busy</span>
         
         {% elif c.call_status == 'User Rejected Call' %}
-            <span class="text-muted fw-bold">{{ c.call_status }}</span>
+            <span class="text-danger fw-bold">{{ c.call_status }}</span>
         
         {% elif c.call_status == 'Voice Mail Detected' %}
             <span class="text-info fw-bold">Voice Mail Detected</span>
@@ -783,11 +783,11 @@ if (!currentIsCompleted) {
 } else if (callStatus === 'User Busy') {
     statusEl.textContent = 'User Busy';
     statusEl.className   = 'badge bg-warning text-dark';
-} else if (callStatus === 'Empty') {
-    statusEl.textContent = 'Empty';
-    statusEl.className   = 'badge bg-secondary';
-} else if (callStatus === 'Voice call Detected') {
-    statusEl.textContent = 'Voice call Detected';
+} else if (callStatus === 'User Rejected Call') {
+    statusEl.textContent = 'User Rejected Call';
+    statusEl.className   = 'badge bg-danger text-white';
+} else if (callStatus === 'Voice Mail Detected') {
+    statusEl.textContent = 'Voice Mail Detected';
     statusEl.className   = 'badge bg-info text-dark';
 } else if (callStatus) {
     statusEl.textContent = callStatus;
