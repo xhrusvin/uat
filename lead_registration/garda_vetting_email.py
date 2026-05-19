@@ -24,6 +24,8 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)
 TO_EMAIL = "rusvin@xpresshealth.ie"  # Or make this configurable
 
+XN_APP_COUNTRY = os.getenv("XN_APP_COUNTRY", "ie").lower()
+
 # ==================== MONGO DB CONFIG ====================
 MONGO_URI = os.getenv('MONGO_URI')
 DB_NAME = os.getenv('DB_NAME')
@@ -201,11 +203,20 @@ def send_lead_email(first_name, last_name, dial_code, phone_number, email, lead_
     msg["Bcc"] = BCC_EMAIL
     msg["Cc"] = CC_EMAIL
 
-    msg["Subject"] = "Garda Vetting Request – Next Steps for Your Application"
+
+    if XN_APP_COUNTRY == "ni":
+        subject = "Access NI Request – Next Steps for Your Application"
+        template_name = "email/acesss_ni_mail.html"
+    else:
+        subject = "Garda Vetting Request – Next Steps for Your Application"
+        template_name = "email/garda_vetting_mail.html"
+
+    msg["Subject"] = subject
+
 
     # Render the HTML template with variables
     html_content = render_template(
-        "email/garda_vetting_mail.html",
+        template_name,
         first_name=first_name,
         last_name=last_name,
         dial_code=dial_code,
@@ -217,13 +228,19 @@ def send_lead_email(first_name, last_name, dial_code, phone_number, email, lead_
     )
     # Attach HTML part
     msg.attach(MIMEText(html_content, "html"))
+    
+    if XN_APP_COUNTRY == "ni":
+        pdf_filename = "Access_NI_Form.pdf"
+    else:
+        pdf_filename = "Garda_Vetting_Form.pdf"
 
     pdf_path = os.path.join(
-    current_app.root_path,          # almost always the folder that contains app.py / your package
-    "static",
-    "documents",
-    "Garda_Vetting_Form.pdf"
+        current_app.root_path,
+        "static",
+        "documents",
+        pdf_filename
     )
+
 
     try:
         with open(pdf_path, "rb") as pdf_file:
@@ -231,7 +248,7 @@ def send_lead_email(first_name, last_name, dial_code, phone_number, email, lead_
             attach.add_header(
                 'Content-Disposition',
                 'attachment',
-                filename="Garda_Vetting_Form.pdf"  # Name shown in email
+                filename=pdf_filename  # Name shown in email
             )
             msg.attach(attach)
     except FileNotFoundError:
