@@ -750,8 +750,7 @@ function updateActionButtons() {
 // ─────────────────────────────
 setTimeout(() => {
 
-    const tabButtons =
-        document.querySelectorAll('.call-tab-btn');
+    const tabButtons = document.querySelectorAll('.call-tab-pill');
 
     tabButtons.forEach(btn => {
 
@@ -773,8 +772,7 @@ setTimeout(() => {
     });
 
     // DEFAULT ACTIVE TAB
-    const firstTab =
-        document.querySelector('.call-tab-btn');
+    const firstTab = document.querySelector('.call-tab-pill');
 
     if (firstTab) {
 
