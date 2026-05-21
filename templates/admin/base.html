@@ -421,6 +421,12 @@ select.parsley-success {
         
     </div>
 
+    <a class="nav-link {% if request.path == '/booking/mail' or request.path == '/booking/mail/' %}active{% endif %}"
+       href="{{ url_for('booking.mail_inbox') }}">
+        <i class="bi bi-envelope"></i>
+        <span>Zoho mail</span>
+    </a>
+
 
     <!-- System -->
     <div class="menu-header mt-4">System</div>
