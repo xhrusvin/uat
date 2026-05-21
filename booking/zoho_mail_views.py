@@ -12,10 +12,10 @@ from flask import render_template, request, jsonify, current_app
 from . import bp
 from admin.views import admin_required
 from booking.models.zoho_mail import ZohoMail
-
+from utils.zoho_token_refresh import load_token_from_file
 
 def _mail_client() -> ZohoMail:
-    token = current_app.config.get("ZOHO_ACCESS_TOKEN", "")
+    token = load_token_from_file() or current_app.config.get("ZOHO_ACCESS_TOKEN", "")
     email = current_app.config.get("ZOHO_MAIL_ADDRESS", "rusvin@xpresshealth.ie")
     return ZohoMail(access_token=token, account_email=email)
 
