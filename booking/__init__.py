@@ -18,3 +18,5 @@ from . import shift_users
 from . import shift_multiple
 from . import designation
 from . import jobs
+from . import zoho_mail_views
+
