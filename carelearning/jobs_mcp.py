@@ -3,6 +3,7 @@ import requests
 from flask import request, jsonify
 
 from . import bp
+from database import db
 
 API_BASE  = "https://admin.care-learning.com/api/mcp/v1"
 API_TOKEN = os.environ.get("CARE_LEARNING_TOKEN", "")
@@ -118,3 +119,42 @@ def courses_mcp_detail(course_id):
         return jsonify({"success": False, "error": str(exc)}), 502
 
     return jsonify(resp.json())
+
+
+# ─── Register ────────────────────────────────────────────────────────────────
+
+@bp.route('/register-mcp', methods=['POST'])
+def register_mcp():
+    payload = request.get_json(silent=True) or {}
+
+    name  = (payload.get("name")  or "").strip()
+    email = (payload.get("email") or "").strip()
+
+    if not name or not email:
+        return jsonify({
+            "success": False,
+            "error":   "Both 'name' and 'email' are required.",
+        }), 400
+
+    collection = db["care-learning"]
+
+    # Prevent duplicate registrations by email
+    if collection.find_one({"email": email}):
+        return jsonify({
+            "success": False,
+            "error":   "This email is already registered.",
+        }), 409
+
+    doc = {
+        "name":         name,
+        "email":        email,
+        "registered_at": __import__("datetime").datetime.utcnow(),
+    }
+
+    result = collection.insert_one(doc)
+
+    return jsonify({
+        "success": True,
+        "message": f"Thank you, {name}! You have been successfully registered.",
+        "id":      str(result.inserted_id),
+    }), 201
