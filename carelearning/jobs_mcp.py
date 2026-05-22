@@ -127,8 +127,9 @@ def courses_mcp_detail(course_id):
 def register_mcp():
     payload = request.get_json(silent=True) or {}
 
-    name  = (payload.get("name")  or "").strip()
-    email = (payload.get("email") or "").strip()
+    name       = payload.get("name",  "").strip()
+    last_name  = payload.get("last_name", "").strip()
+    email      = payload.get("email", "").strip()
 
     if not name or not email:
         return jsonify({
@@ -136,7 +137,7 @@ def register_mcp():
             "error":   "Both 'name' and 'email' are required.",
         }), 400
 
-    collection = db["care_learning"]
+    collection = db["care-learning"]
 
     # Prevent duplicate registrations by email
     if collection.find_one({"email": email}):
@@ -145,16 +146,44 @@ def register_mcp():
             "error":   "This email is already registered.",
         }), 409
 
-    doc = {
-        "name":         name,
-        "email":        email,
-        "registered_at": __import__("datetime").datetime.utcnow(),
+    # ── Call upstream Care Learning registration API ──────────────────────
+    temp_password = os.urandom(8).hex()   # 16-char hex password if not supplied
+    upstream_payload = {
+        "name":                  name,
+        "last_name":             last_name,
+        "email":                 email,
+        "password":              temp_password,
+        "password_confirmation": temp_password,
     }
 
-    result = collection.insert_one(doc)
+    try:
+        upstream_resp = requests.post(
+            "https://admin.care-learning.com/api/register",
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            json=upstream_payload,
+            timeout=15,
+        )
+        upstream_resp.raise_for_status()
+        upstream_data = upstream_resp.json()
+    except requests.exceptions.HTTPError as exc:
+        return jsonify({
+            "success": False,
+            "error":  f"Upstream registration failed: {exc.response.status_code}",
+            "detail":  exc.response.text,
+        }), exc.response.status_code
+    except requests.exceptions.RequestException as exc:
+        return jsonify({"success": False, "error": str(exc)}), 502
+
+    # ── Save to local MongoDB after successful upstream registration ───────
+    result = collection.insert_one({
+        "name":          name,
+        "last_name":     last_name,
+        "email":         email,
+        "upstream_data": upstream_data,
+    })
 
     return jsonify({
         "success": True,
-        "message": f"Thank you, {name}! You have been successfully registered.",
+        "message": f"Thank you {name}, you have been registered successfully!",
         "id":      str(result.inserted_id),
     }), 201
