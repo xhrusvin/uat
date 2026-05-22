@@ -136,7 +136,7 @@ def register_mcp():
             "error":   "Both 'name' and 'email' are required.",
         }), 400
 
-    collection = db["care-learning"]
+    collection = db["care_learning"]
 
     # Prevent duplicate registrations by email
     if collection.find_one({"email": email}):
