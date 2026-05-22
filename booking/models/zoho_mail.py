@@ -8,7 +8,7 @@ import requests
 from datetime import datetime
 
 
-ZOHO_API_BASE = "https://www.zohoapis.eu"   # EU data centre – change to zoho.com if US
+ZOHO_API_BASE = "https://mail.zoho.eu/api"   # EU data centre – change to zoho.com if US
 
 
 class ZohoMail:
