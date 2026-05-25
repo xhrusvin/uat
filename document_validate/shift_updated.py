@@ -27,7 +27,7 @@ table_name = db['shift_updated']
 
 
 # ==================== ROUTE ====================
-@bp.route("/shift-updated", methods=["POST"])
+@bp.route("/staff-deatils", methods=["POST"])
 def shift_updated_webhook():
     """
     Webhook endpoint triggered when a shift is updated.
