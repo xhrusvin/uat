@@ -12,3 +12,4 @@ from . import validate_nmbi  # noqa
 from . import document_upload
 from . import changed_to_staff
 from . import staff_details
+from . import shift_updated
