@@ -67,34 +67,34 @@ def shift_updated_webhook():
             }), 400
 
         # 3. Call external shift-updated API
-        # if app_country and app_country.lower() == "ie":
-        #     shift_updated_url = "https://expresshealth.ie/document-validate/shift-updated"
-        # else:
-        #     shift_updated_url = "https://uat.expresshealth.ie/document-validate/shift-updated"
+        if app_country and app_country.lower() == "ie":
+            shift_updated_url = "https://expresshealth.ie/document-validate/shift-updated"
+        else:
+            shift_updated_url = "https://uat.expresshealth.ie/document-validate/shift-updated"
 
-        # shift_api_status = None
-        # shift_api_body = None
+        shift_api_status = None
+        shift_api_body = None
 
-        # try:
-        #     shift_response = requests.post(
-        #         shift_updated_url,
-        #         headers={
-        #             "Api-Key": "sk-8f3a9c1b7d4e6f0a2b9c8d7e7",
-        #             "X-App-Country": app_country or APP_COUNTRY,
-        #             "Content-Type": "application/json"
-        #         },
-        #         json={"shift_id": shift_id},
-        #         timeout=10
-        #     )
-        #     shift_api_status = shift_response.status_code
-        #     shift_api_body = shift_response.text
-        #     print("Shift updated response status:", shift_api_status)
-        #     print("Shift updated response body:", shift_api_body)
+        try:
+            shift_response = requests.post(
+                shift_updated_url,
+                headers={
+                    "Api-Key": "sk-8f3a9c1b7d4e6f0a2b9c8d7e7",
+                    "X-App-Country": app_country or APP_COUNTRY,
+                    "Content-Type": "application/json"
+                },
+                json={"shift_id": shift_id},
+                timeout=10
+            )
+            shift_api_status = shift_response.status_code
+            shift_api_body = shift_response.text
+            print("Shift updated response status:", shift_api_status)
+            print("Shift updated response body:", shift_api_body)
 
-        # except Exception as e:
-        #     shift_api_status = "failed"
-        #     shift_api_body = str(e)
-        #     print("Shift updated API call failed:", str(e))
+        except Exception as e:
+            shift_api_status = "failed"
+            shift_api_body = str(e)
+            print("Shift updated API call failed:", str(e))
 
         # 4. Prepare record for shift_updated collection
         record = {
@@ -102,8 +102,8 @@ def shift_updated_webhook():
             "uploaded_at": datetime.utcnow(),
             "country": app_country,
             "status": "1",
-            #"shift_api_status": str(shift_api_status),
-            #"shift_api_response": shift_api_body
+            "shift_api_status": str(shift_api_status),
+            "shift_api_response": shift_api_body
         }
 
         # 5. Insert into shift_updated collection
@@ -114,8 +114,8 @@ def shift_updated_webhook():
             "message": "Shift updated recorded successfully",
             "record_id": str(result.inserted_id),
             "shift_id": shift_id,
-            # "shift_api_status": shift_api_status,
-            # "shift_api_response": shift_api_body,
+            "shift_api_status": shift_api_status,
+            "shift_api_response": shift_api_body,
             "timestamp": record["uploaded_at"].isoformat()
         }), 201
 
