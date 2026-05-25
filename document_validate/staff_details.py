@@ -71,34 +71,34 @@ def staff_details_webhook():
             }), 400
 
         # 3. Call external staff-details API
-        # if app_country and app_country.lower() == "ie":
-        #     staff_details_url = f"https://expresshealth.ie/document-validate/staff-deatils?xnid={user_id}"
-        # else:
-        #     staff_details_url = f"https://uat.expresshealth.ie/document-validate/staff-deatils?xnid={user_id}"
+        if app_country and app_country.lower() == "ie":
+            staff_details_url = f"https://expresshealth.ie/document-validate/staff-deatils?xnid={user_id}"
+        else:
+            staff_details_url = f"https://uat.expresshealth.ie/document-validate/staff-deatils?xnid={user_id}"
 
         staff_api_status = None
         staff_api_body = None
 
-        #try:
-            # staff_response = requests.post(
-            #     staff_details_url,
-            #     headers={
-            #         "Api-Key": "sk-8f3a9c1b7d4e6f0a2b9c8d7e6f5e4f3a2b1c0d9e8f7",
-            #         "X-App-Country": app_country or APP_COUNTRY,
-            #         "Content-Type": "application/json"
-            #     },
-            #     json={"user_id": user_id},
-            #     timeout=10
-            # )
-            # staff_api_status = staff_response.status_code
-            # staff_api_body = staff_response.text
-            # print("Staff details response status:", staff_api_status)
-            # print("Staff details response body:", staff_api_body)
+        try:
+            staff_response = requests.post(
+                staff_details_url,
+                headers={
+                    "Api-Key": "sk-8f3a9c1b7d4e6f0a2b9c8d7e6f5e4f3a2b1c0d9e8f7",
+                    "X-App-Country": app_country or APP_COUNTRY,
+                    "Content-Type": "application/json"
+                },
+                json={"user_id": user_id},
+                timeout=10
+            )
+            staff_api_status = staff_response.status_code
+            staff_api_body = staff_response.text
+            print("Staff details response status:", staff_api_status)
+            print("Staff details response body:", staff_api_body)
 
-        # except Exception as e:
-        #     staff_api_status = "failed"
-        #     staff_api_body = str(e)
-        #     print("Staff details API call failed:", str(e))
+        except Exception as e:
+            staff_api_status = "failed"
+            staff_api_body = str(e)
+            print("Staff details API call failed:", str(e))
 
         # 4. Prepare record for staff_updated collection
         record = {
@@ -106,8 +106,8 @@ def staff_details_webhook():
             "uploaded_at": datetime.utcnow(),
             "country": app_country,
             "status": "1",
-            #"staff_api_status": str(staff_api_status),
-            #"staff_api_response": staff_api_body
+            "staff_api_status": str(staff_api_status),
+            "staff_api_response": staff_api_body
         }
 
         # 5. Insert into staff_updated collection
@@ -118,8 +118,8 @@ def staff_details_webhook():
             "message": "Staff details recorded successfully",
             "record_id": str(result.inserted_id),
             "user_id": user_id,
-            # "staff_api_status": staff_api_status,
-            # "staff_api_response": staff_api_body,
+            "staff_api_status": staff_api_status,
+            "staff_api_response": staff_api_body,
             "timestamp": record["uploaded_at"].isoformat()
         }), 201
 
