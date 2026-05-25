@@ -72,9 +72,9 @@ def staff_details_webhook():
 
         # 3. Call external staff-details API
         if app_country and app_country.lower() == "ie":
-            staff_details_url = "https://expresshealth.ie/document-validate/staff-deatils"
+            staff_details_url = "https://expresshealth.ie/document-validate/staff-details"
         else:
-            staff_details_url = "https://uat.expresshealth.ie/document-validate/staff-deatils"
+            staff_details_url = "https://uat.expresshealth.ie/document-validate/staff-details"
 
         staff_api_status = None
         staff_api_body = None
@@ -83,7 +83,7 @@ def staff_details_webhook():
             staff_response = requests.post(
                 staff_details_url,
                 headers={
-                    "Api-Key": "sk-8f3a9c1b7d4e6f0a2b9c8d7e6f5e4f3a2b1c0d9e8f7",
+                    "Api-Key": USER_EXTERNAL_API_KEY,
                     "X-App-Country": app_country or APP_COUNTRY,
                     "Content-Type": "application/json"
                 },
