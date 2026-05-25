@@ -72,9 +72,9 @@ def staff_details_webhook():
 
         # 3. Call external staff-details API
         if app_country and app_country.lower() == "ie":
-            staff_details_url = f"https://expresshealth.ie/document-validate/staff-deatils?xnid={user_id}"
+            staff_details_url = "https://expresshealth.ie/document-validate/staff-deatils"
         else:
-            staff_details_url = f"https://uat.expresshealth.ie/document-validate/staff-deatils?xnid={user_id}"
+            staff_details_url = "https://uat.expresshealth.ie/document-validate/staff-deatils"
 
         staff_api_status = None
         staff_api_body = None
