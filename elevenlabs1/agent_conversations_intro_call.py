@@ -162,6 +162,7 @@ def sync_agent_conversations_intro_call():
                 experience_level_val = dc_map.get("experience_level")
                 certification_status_val = dc_map.get("certification_status")
                 dob_val = dc_map.get("dob")
+                county_val = dc_map.get("location_county")
 
                 # Check if user already has an address
                 existing_user = users.find_one(
@@ -196,13 +197,13 @@ def sync_agent_conversations_intro_call():
                   
 
                   address = location["formatted_address"] if location else None
-                  county = countydata["county"] if countydata else None
+                #   county = countydata["county"] if countydata else None
 
                   users.update_one(
                     {"last_elevenlabs_conversation_id": conversation_id},
                     {"$set": {
                         "address": address,
-                        "county": county,
+                        "county": county_val,
                         "eir_code": eir_code_val,
                         "eir_checked": True,
                         "language_proficiency": language_proficiency_val,

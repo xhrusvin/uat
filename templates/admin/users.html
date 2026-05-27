@@ -381,17 +381,16 @@
                         </label>
 
                         <select name="designation"
-                                class="form-select rounded-3">
+                            class="form-select rounded-3">
 
-                            <option value="">All Designations</option>
+                        <option value="" selected>All Designations</option>
 
-                            {% for d in designations %}
-                                <option value="{{ d }}"
-                                    {% if designation == d %}selected{% endif %}>
-                                    {{ d }}
-                                </option>
-                            {% endfor %}
-                        </select>
+                        {% for d in designations %}
+                            <option value="{{ d }}">
+                                {{ d }}
+                            </option>
+                        {% endfor %}
+                    </select>
                     </div>
 
                     <!-- County -->
@@ -2776,8 +2775,40 @@ if (icon) {
 $(document).ready(function () {
 
     // ── Flatpickr date filters ──
-    flatpickr("#joined_from", { dateFormat: "Y-m-d", allowInput: true });
-    flatpickr("#joined_to",   { dateFormat: "Y-m-d", allowInput: true });
+    const joinedToPicker = flatpickr("#joined_to", {
+        dateFormat: "Y-m-d",
+        allowInput: true
+    });
+
+    const joinedFromPicker = flatpickr("#joined_from", {
+        dateFormat: "Y-m-d",
+        allowInput: true,
+
+        onChange: function(selectedDates, dateStr) {
+
+            // Set minimum selectable date for Joined To
+            joinedToPicker.set("minDate", dateStr);
+
+            // Get current Joined To value
+            const joinedToInput = document.querySelector("#joined_to");
+
+            // If Joined To is before Joined From, clear it
+            if (
+                joinedToInput.value &&
+                new Date(joinedToInput.value) < new Date(dateStr)
+            ) {
+                joinedToInput.value = "";
+            }
+        }
+    });
+
+
+    // If Joined From already has value on page load
+    const existingJoinedFrom = document.querySelector("#joined_from").value;
+
+    if (existingJoinedFrom) {
+        joinedToPicker.set("minDate", existingJoinedFrom);
+    }
 
     // ── Import modal wiring ──
     const $fileInput  = $('#excelFile');
