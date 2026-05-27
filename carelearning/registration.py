@@ -1,5 +1,8 @@
 from flask import render_template
 
+from . import bp
+from database import db
+
 # ─── Registration Page ────────────────────────────────────────────────────────
 
 @bp.route('/register', methods=['GET'])
