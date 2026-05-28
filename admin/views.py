@@ -367,6 +367,27 @@ def users():
         else:
             u['created_at_formatted'] = '—'
             u['created_at_time'] = ''
+            
+        
+        
+        # ======================
+        # ONBOARDING FIELDS
+        # ======================
+
+        u['onboarded'] = int(u.get('onboarded', 0) or 0)
+
+        created_at = u.get('created_at')
+        onboarded_at = u.get('onboarded_at')
+
+        # if isinstance(created_at, datetime):
+        #     u['created_at_iso'] = created_at.isoformat()
+        # else:
+        #     u['created_at_iso'] = str(created_at or '')
+
+        # if isinstance(onboarded_at, datetime):
+        #     u['onboarded_at_iso'] = onboarded_at.isoformat()
+        # else:
+        #     u['onboarded_at_iso'] = str(onboarded_at or '')
 
     # ==================== CONVERSATION ID ATTACHMENTS (YOUR ORIGINAL CODE - UNCHANGED) ====================
     # 1. Regular conversations
