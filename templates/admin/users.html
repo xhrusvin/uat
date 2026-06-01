@@ -968,19 +968,19 @@
 
                                         {% if u.call_status == 'Voice Mail Detected' %}
                                             <span class="call-pill call-pill-info">
-                                                <i class="bi bi-telephone-fill"></i>
+                                                <i class="bi bi-cassette-fill"></i>
                                                 Voice Mail
                                             </span>
 
                                         {% elif u.call_status == 'User Busy' %}
                                             <span class="call-pill call-pill-warning">
-                                                <i class="bi bi-telephone-fill"></i>
+                                                <i class="bi bi-telephone-forward-fill"></i>
                                                 User Busy
                                             </span>
 
                                         {% elif u.call_status == 'Call Rejected by User' %}
                                             <span class="call-pill call-pill-danger">
-                                                <i class="bi bi-telephone-fill"></i>
+                                                <i class="bi bi-telephone-minus-fill"></i>
                                                 Rejected
                                             </span>
 
@@ -991,14 +991,17 @@
                                             </span>
 
                                         {% else %}
-                                            <span class="call-pill call-pill-success">
-                                                <i class="bi bi-check-circle-fill"></i>
+                                            
+                                            <span class="call-pill call-pill-danger">
+                                                <i class="bi bi-x-circle-fill"></i>
                                                 {{ u.call_status }}
                                             </span>
                                         {% endif %}
 
                                     {% else %}
-                                        <span class="text-muted small">
+                                        
+                                        <span class="call-pill call-pill-secondary text-muted">
+                                            <i class="bi bi-telephone-x"></i>
                                             No Intro Call
                                         </span>
                                     {% endif %}
