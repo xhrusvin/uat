@@ -122,6 +122,7 @@ app.config['SESSION_USE_SIGNER'] = True        # Signs cookies
 app.config['SESSION_COOKIE_SECURE'] = False    # HTTPS only
 app.config['SESSION_COOKIE_HTTPONLY'] = True   # No JS access
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
+app.config['XN_APP_COUNTRY'] = os.environ.get('XN_APP_COUNTRY', 'N/A')
 
 # Optional: Use Redis in production
 # from flask_session import Session
@@ -178,6 +179,7 @@ app.register_blueprint(booking_bp)
 app.register_blueprint(carelearning_bp)
 app.register_blueprint(document_validate_bp)
 app.register_blueprint(document_worker_bp)
+
 
 
 
