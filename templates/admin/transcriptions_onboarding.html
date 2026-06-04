@@ -172,7 +172,11 @@
                             data-ended="{{ c.ended_at }}"
                             data-call-status="{{ c.call_status }}"
                             data-turn-count="{{ c.turn_count }}"
-                            data-elevenlabs-id="{{ c.elevenlabs_conversation_id or '' }}">
+                            data-elevenlabs-id="{{ c.elevenlabs_conversation_id or '' }}"
+                            data-created-at="{{ c.created_at or '' }}"
+                            data-onboarded="{{ c.onboarded or 0 }}"
+                            data-onboarded-at="{{ c.onboarded_at or '' }}"   >
+
                             <td class="ps-4 fw-bold text-primary">{{ c.phone }}</td>
                             <td>
                                 <div class="d-flex align-items-center">
@@ -332,6 +336,22 @@
         <small class="text-muted">Started</small>
         <h6 class="mb-0" id="modal-started"></h6>
     </div>
+
+    <div class="col-md-6">
+        <small class="text-muted">Lead Created</small>
+        <h6 class="mb-0 fw-bold text-dark" id="modal-lead-created">
+            —
+        </h6>
+    </div>
+
+    <div class="col-md-6">
+        <small class="text-muted">Onboarded</small>
+        <h6 class="mb-0 fw-bold" id="modal-onboarded">
+            —
+        </h6>
+    </div>
+
+
     <div class="col-md-4">
         <small class="text-muted">Status</small>
         <h6 class="mb-0">
@@ -773,6 +793,69 @@ if (!currentIsCompleted) {
             document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
             document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
             document.getElementById('modal-started').textContent = row.dataset.started || '—';
+
+
+            // ===============================
+            // Lead Created + Onboarded Logic
+            // ===============================
+
+            const createdAt = row.dataset.createdAt;
+            const onboarded = row.dataset.onboarded;
+            const onboardedAt = row.dataset.onboardedAt;
+
+            const leadCreatedEl = document.getElementById('modal-lead-created');
+            const onboardedEl   = document.getElementById('modal-onboarded');
+
+            function daysBetween(date1, date2) {
+                const diff = Math.abs(date2 - date1);
+                return Math.floor(diff / (1000 * 60 * 60 * 24));
+            }
+
+            // Lead created days ago
+            if (createdAt) {
+
+                const createdDate = new Date(createdAt);
+                const now         = new Date();
+
+                const createdDays = daysBetween(createdDate, now);
+
+                leadCreatedEl.textContent =
+                    `${createdDays} day${createdDays !== 1 ? 's' : ''} ago`;
+
+            } else {
+
+                leadCreatedEl.textContent = '—';
+            }
+
+            // Onboarded status
+            if (String(onboarded) === '1') {
+
+                if (createdAt && onboardedAt) {
+
+                    const createdDate    = new Date(createdAt);
+                    const onboardedDate  = new Date(onboardedAt);
+
+                    const onboardDays = daysBetween(createdDate, onboardedDate);
+
+                    onboardedEl.innerHTML =
+                        `<span class="text-success">
+                            Yes (After ${onboardDays} day${onboardDays !== 1 ? 's' : ''})
+                        </span>`;
+
+                } else {
+
+                    onboardedEl.innerHTML =
+                        `<span class="text-success">Yes</span>`;
+                }
+
+            } else {
+
+                onboardedEl.innerHTML =
+                    `<span class="text-danger">No</span>`;
+            }
+
+
+
 
             const statusEl = document.getElementById('modal-status');
 const callStatus = row.dataset.callStatus || '';

@@ -218,6 +218,7 @@ def users():
     certification_status = request.args.get('certification_status', '').strip()
     experience_level = request.args.get('experience_level', '').strip()
     age_group = request.args.get('age_group', '').strip()
+    onboarded = request.args.get('onboarded', '').strip()
     sort_order = request.args.get('sort', 'desc')
     sort_direction = -1 if sort_order == 'desc' else 1
     
@@ -238,6 +239,12 @@ def users():
 
     if certification_status:
         query["certification_status"] = certification_status
+    
+    if onboarded == "1":
+        query["onboarded"] = 1
+
+    elif onboarded == "0":
+        query["onboarded"] = {"$ne": 1}
 
     # ====================== AGE GROUP FILTER ======================
 
@@ -352,6 +359,18 @@ def users():
         u['garda_email_sent_status'] = "Sent" if u.get('garda_email_sent') == 1 else "No"
         u['missed_call_email_sent_status'] = "Sent" if u.get('missed_call_email_sent') == 1 else "No"
         
+        
+        
+        latest_conv = current_app.db.conversations.find_one(
+            {"phone": u.get("phone")},
+            sort=[("started_at", -1)]
+        )
+
+        u["call_status"] = ""
+
+        if latest_conv:
+            u["call_status"] = latest_conv.get("call_status", "")
+        
         created = u.get('created_at')
         if isinstance(created, datetime):
             u['created_at_formatted'] = created.strftime('%d %b %Y')
@@ -367,6 +386,27 @@ def users():
         else:
             u['created_at_formatted'] = '—'
             u['created_at_time'] = ''
+            
+        
+        
+        # ======================
+        # ONBOARDING FIELDS
+        # ======================
+
+        u['onboarded'] = int(u.get('onboarded', 0) or 0)
+
+        created_at = u.get('created_at')
+        onboarded_at = u.get('onboarded_at')
+
+        # if isinstance(created_at, datetime):
+        #     u['created_at_iso'] = created_at.isoformat()
+        # else:
+        #     u['created_at_iso'] = str(created_at or '')
+
+        # if isinstance(onboarded_at, datetime):
+        #     u['onboarded_at_iso'] = onboarded_at.isoformat()
+        # else:
+        #     u['onboarded_at_iso'] = str(onboarded_at or '')
 
     # ==================== CONVERSATION ID ATTACHMENTS (YOUR ORIGINAL CODE - UNCHANGED) ====================
     # 1. Regular conversations
@@ -593,16 +633,17 @@ def users():
     
     
     filters_active = any([
-            (search or '').strip(),
-            (joined_from or '').strip(),
-            (joined_to or '').strip(),
-            (designation or '').strip(),
-            (county or '').strip(),
-            (language_proficiency or '').strip(),
-            (certification_status or '').strip(),
-            (experience_level or '').strip(),
-            (age_group or '').strip()
-        ])
+        (search or '').strip(),
+        (joined_from or '').strip(),
+        (joined_to or '').strip(),
+        (designation or '').strip(),
+        (county or '').strip(),
+        (language_proficiency or '').strip(),
+        (certification_status or '').strip(),
+        (experience_level or '').strip(),
+        (age_group or '').strip(),
+        (onboarded or '').strip()
+    ])
     
     # ====================== RENDER TEMPLATE ======================
     return render_template('admin/users.html',
@@ -627,6 +668,7 @@ def users():
                            language_stats=dict(language_stats),
                            country_stats=dict(country_stats),
                            age_stats=dict(age_stats),
+                           onboarded=onboarded,
                            sort=sort_order,
                            filters_active=filters_active
     )

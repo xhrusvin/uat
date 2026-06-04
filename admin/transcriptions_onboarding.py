@@ -76,6 +76,20 @@ def _format_conv(conv):
     conv['country'] = safe_str(user.get('country'), '-')
     conv['county'] = safe_str(user.get('county'), '-')
     conv['call_status'] = safe_str(conv.get('call_status'), '—')
+    
+
+    created_at = user.get('created_at')
+    onboarded_at = user.get('onboarded_at')
+
+    if isinstance(created_at, datetime):
+        created_at = created_at.isoformat()
+
+    if isinstance(onboarded_at, datetime):
+        onboarded_at = onboarded_at.isoformat()
+
+    conv['created_at'] = created_at
+    conv['onboarded'] = user.get('onboarded', 0)
+    conv['onboarded_at'] = onboarded_at
 
     # === DATE FORMATTING (also make safe) ===
     try:
@@ -136,6 +150,9 @@ def _format_conv(conv):
         'ended_at': conv['ended_at'],
         'turns': conv['turns'],
         'elevenlabs_conversation_id': elevenlabs_id,
+        'created_at': conv.get('created_at'),
+        'onboarded': conv.get('onboarded', 0),
+        'onboarded_at': conv.get('onboarded_at'),
         'has_audio': bool(elevenlabs_id)
     }
 
@@ -332,6 +349,9 @@ def onboarding_tr():
             "user_info.designation": 1,
             "user_info.country": 1,
             "user_info.county": 1,
+            "user_info.created_at": 1,
+            "user_info.onboarded": 1,
+            "user_info.onboarded_at": 1,
         }
     })
 

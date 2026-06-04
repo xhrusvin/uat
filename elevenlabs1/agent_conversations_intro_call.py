@@ -163,6 +163,10 @@ def sync_agent_conversations_intro_call():
                 certification_status_val = dc_map.get("certification_status")
                 dob_val = dc_map.get("dob")
                 county_val = dc_map.get("location_county")
+                county_id_val = dc_map.get("county_id")
+                booking_interest_cpr_val = dc_map.get("booking_interest_cpr")
+                booking_interest_mhp_val = dc_map.get("booking_interest_mhp")
+                
 
                 # Check if user already has an address
                 existing_user = users.find_one(
@@ -204,6 +208,9 @@ def sync_agent_conversations_intro_call():
                     {"$set": {
                         "address": address,
                         "county": county_val,
+                        "county_id": county_id_val,
+                        "booking_interest_cpr": booking_interest_cpr_val,
+                        "booking_interest_mhp": booking_interest_mhp_val,
                         "eir_code": eir_code_val,
                         "eir_checked": True,
                         "language_proficiency": language_proficiency_val,

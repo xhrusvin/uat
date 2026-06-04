@@ -412,6 +412,59 @@
                             {% endfor %}
                         </select>
                     </div>
+                    
+<!-- Onboarding Status -->
+<div class="col-12 mt-3">
+    <label class="form-label fw-semibold text-muted small mb-2 d-block">
+        Onboarding Status
+    </label>
+
+    <div class="filter-chip-group">
+
+        <input type="radio"
+               class="btn-check"
+               name="onboarded"
+               id="onboarded-all"
+               value=""
+               {% if not onboarded %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="onboarded-all">
+            All
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="onboarded"
+               id="onboarded-yes"
+               value="1"
+               {% if onboarded == '1' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="onboarded-yes">
+            <i class="bi bi-check-circle-fill me-1"></i>
+            Staff
+        </label>
+
+
+        <input type="radio"
+               class="btn-check"
+               name="onboarded"
+               id="onboarded-no"
+               value="0"
+               {% if onboarded == '0' %}checked{% endif %}>
+
+        <label class="filter-chip"
+               for="onboarded-no">
+            <i class="bi bi-clock-history me-1"></i>
+            Not a Staff
+        </label>
+
+    </div>
+</div>
+
+
 
 <!-- Language Proficiency -->
 <div class="col-12">
@@ -722,7 +775,7 @@
                             </th>
 
                             <th>
-                                <span>Tags</span>
+                                <span>Tags/Call Status</span>
                             </th>
 
                             <th class="text-center">
@@ -755,28 +808,53 @@
     data-profref2-elevenlabs-id="{{ u.get('level_five_elevenlabs_conversation_id', '') }}"
     data-onboarding-conv-id="{{ u.get('last_onboarding_conv_id', '') }}"
     data-onboarding-elevenlabs-id="{{ u.get('onboarding_elevenlabs_conversation_id', '') }}"
+    data-created-at="{{ u.get('created_at', '') }}"
+    
+    data-onboarded-at="{{ u.get('onboarded_at', '') }}"
+    data-onboarded="{{ u.get('onboarded', 0) }}"
     data-ref-name="{{ u.get('ref_name', '') | e }}"
 
     data-ref-name2="{{ u.get('ref_name2', '') | e }}"
     data-address="{{ u.get('address', '') | e }}"
     data-county="{{ u.get('county', '') | e }}"
     style="cursor: pointer;">
-                            <td class="ps-4">
-    <div class="d-flex align-items-center">
-       {% set first = u.get('first_name', '') or '' %}
-{% set last  = u.get('last_name', '')  or '' %}
+            <td class="ps-4">
+            <div class="d-flex align-items-center">
+            {% set first = u.get('first_name', '') or '' %}
+                {% set last  = u.get('last_name', '')  or '' %}
 
-        <div class="avatar bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
-            {{ first[0] if first else 'U' }}{{ last[0] if last else '' }}
-        </div>
-        <div>
-            <div class="fw-semibold">{{ first }} {{ last }}</div>
-            {% if not first and not last %}
-            <small class="text-muted">Name not set</small>
-            {% endif %}
-        </div>
-    </div>
-</td>
+                        <div class="avatar bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
+                            {{ first[0] if first else 'U' }}{{ last[0] if last else '' }}
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+
+                                <div class="fw-semibold">
+                                    {{ first }} {{ last }}
+                                </div>
+
+                                {% if u.get('onboarded') == 1 %}
+
+                                <span title="Onboarded"
+                                    style="
+                                        color: #416dff;
+                                        font-size: 0.9rem;
+                                    ">
+
+                                    <i class="bi bi-check-circle-fill"></i>
+
+                                </span>
+
+                                {% endif %}
+
+                            </div>
+
+                            {% if not first and not last %}
+                            <small class="text-muted">Name not set</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                </td>
                             <td class="email-column">
                                 <span class="text-primary fw-medium email-text">
                                     {{ u.email }}
@@ -883,11 +961,53 @@
                                     }) %}
                                 {% endif %}
 
+                                
                                 {% if tags|length == 0 %}
 
-                                    <span class="text-muted">—</span>
+                                    {% if u.get('call_status') %}
+
+                                        {% if u.call_status == 'Voice Mail Detected' %}
+                                            <span class="call-pill call-pill-info">
+                                                <i class="bi bi-cassette-fill"></i>
+                                                Voice Mail
+                                            </span>
+
+                                        {% elif u.call_status == 'User Busy' %}
+                                            <span class="call-pill call-pill-warning">
+                                                <i class="bi bi-telephone-forward-fill"></i>
+                                                User Busy
+                                            </span>
+
+                                        {% elif u.call_status == 'Call Rejected by User' %}
+                                            <span class="call-pill call-pill-danger">
+                                                <i class="bi bi-telephone-minus-fill"></i>
+                                                Rejected
+                                            </span>
+
+                                        {% elif u.call_status == 'Scheduled a follow up call' %}
+                                            <span class="call-pill call-pill-primary">
+                                                <i class="bi bi-calendar-check"></i>
+                                                Follow Up
+                                            </span>
+
+                                        {% else %}
+                                            
+                                            <span class="call-pill call-pill-danger">
+                                                <i class="bi bi-x-circle-fill"></i>
+                                                {{ u.call_status }}
+                                            </span>
+                                        {% endif %}
+
+                                    {% else %}
+                                        
+                                        <span class="call-pill call-pill-secondary text-muted">
+                                            <i class="bi bi-telephone-x"></i>
+                                            No Intro Call
+                                        </span>
+                                    {% endif %}
 
                                 {% else %}
+
 
                                 <div class="d-flex flex-column gap-2">
 
@@ -1216,10 +1336,28 @@
                 </div>
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <div class="info-card">
                 <small>County</small>
                 <div id="ud-county">—</div>
+                </div>
+            </div>
+
+            <div class="col-md-2">
+                <div class="info-card">
+                    <small>Lead Created</small>
+                    <div id="ud-lead-created" class="fw-bold text-dark">
+                        —
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-2">
+                <div class="info-card">
+                    <small>Moved to Staff</small>
+                    <div id="ud-onboarded" class="fw-bold">
+                        —
+                    </div>
                 </div>
             </div>
 
@@ -2007,6 +2145,54 @@
 
 {% block extra_css %}
 <style>
+
+.call-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:6px 12px;
+    border-radius:999px;
+    font-size:.72rem;
+    font-weight:600;
+    line-height:1;
+    white-space:nowrap;
+    border:1px solid transparent;
+}
+
+.call-pill i{
+    font-size:.7rem;
+}
+
+.call-pill-info{
+    background:#e7f5ff;
+    color:#0c8599;
+    border-color:#bee3f8;
+}
+
+.call-pill-warning{
+    background:#fff3bf;
+    color:#e67700;
+    border-color:#ffe066;
+}
+
+.call-pill-danger{
+    background:#ffe3e3;
+    color:#c92a2a;
+    border-color:#ffc9c9;
+}
+
+.call-pill-primary{
+    background:#edf2ff;
+    color:#364fc7;
+    border-color:#bac8ff;
+}
+
+.call-pill-success{
+    background:#ebfbee;
+    color:#2b8a3e;
+    border-color:#b2f2bb;
+}
+
 
     /*  CSS for the users table and modals */
 .email-column {
@@ -3214,12 +3400,93 @@ window.currentMissedCallStatus    = this.dataset.missedCallEmailStatus;
             document.getElementById('userModalEmail').textContent = userEmail;
 
 
-
-
             document.getElementById('ud-phone').textContent   = cells[2]?.textContent?.trim() || '—';
             document.getElementById('ud-country').textContent = cells[3]?.textContent?.trim() || '—';
             document.getElementById('ud-address').textContent = this.dataset.address || '—';
             document.getElementById('ud-county').textContent = this.dataset.county || '—';
+
+
+
+            // ======================================
+            // Lead Created & Onboarded Logic
+            // ======================================
+
+            const createdAt   = row.dataset.createdAt;
+            const onboarded   = row.dataset.onboarded;
+            const onboardedAt = row.dataset.onboardedAt;
+
+            const leadCreatedEl = document.getElementById('ud-lead-created');
+            const onboardedEl   = document.getElementById('ud-onboarded');
+
+            function daysBetween(date1, date2) {
+
+                const diff = Math.abs(date2 - date1);
+
+                return Math.floor(
+                    diff / (1000 * 60 * 60 * 24)
+                );
+            }
+
+            // Lead created
+            if (createdAt) {
+
+                const createdDate = new Date(createdAt);
+                const now         = new Date();
+
+                const daysAgo = daysBetween(createdDate, now);
+
+                if (daysAgo < 7) {
+
+                    leadCreatedEl.textContent =
+                        `${daysAgo} day${daysAgo !== 1 ? 's' : ''} ago`;
+
+                } else {
+
+                    const weeksAgo = Math.floor(daysAgo / 7);
+
+                    leadCreatedEl.textContent =
+                        `${weeksAgo} week${weeksAgo !== 1 ? 's' : ''} ago`;
+                }
+
+            } else {
+
+                leadCreatedEl.textContent = '—';
+            }
+
+            // Onboarded
+            if (String(onboarded) === '1') {
+
+                if (createdAt && onboardedAt) {
+
+                    const createdDate   = new Date(createdAt);
+                    const onboardedDate = new Date(onboardedAt);
+
+                    const onboardDays =
+                        daysBetween(createdDate, onboardedDate);
+
+                    onboardedEl.innerHTML = `
+                        <span class="text-success">
+                            Yes (After ${onboardDays} day${onboardDays !== 1 ? 's' : ''})
+                        </span>
+                    `;
+
+                } else {
+
+                    onboardedEl.innerHTML = `
+                        <span class="text-success">
+                            Yes
+                        </span>
+                    `;
+                }
+
+            } else {
+
+                onboardedEl.innerHTML = `
+                    <span class="text-danger">
+                        -
+                    </span>
+                `;
+            }
 
 
 

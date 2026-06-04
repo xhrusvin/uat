@@ -61,7 +61,14 @@ def make_onboarding_ai_call(app, phone: str, user_doc: dict, user_object_id):
 
             app.db.users.update_one(
                 {"_id": user_object_id},
-                {"$set": {"call_sent": 1, "updated_at": datetime.utcnow()}}
+                {
+                    "$set": {
+                        "call_sent": 1,
+                        "onboarded": 1,
+                        "onboarded_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow()
+                    }
+                }
             )
     except Exception as e:
         print(f"Call failed: {e}")
