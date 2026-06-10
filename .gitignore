@@ -5,3 +5,5 @@ __pycache__/
 __pycache__/registration.cpython-314.pyc
 __pycache__/lead_call.cpython-314.pyc
 __pycache__/routes.cpython-314.pyc
+uat-xnapi/admin-panel/node_modules/
+uat-xnapi/node_modules/.env 
