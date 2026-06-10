@@ -16,13 +16,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="User Management API",
+    openapi_url="/xnapi/openapi.json",
+    docs_url="/xnapi/docs",
+    redoc_url="/xnapi/redoc",
     description=(
         "FastAPI + MongoDB (`xpress_health_uat`) — API key authenticated.\n\n"
         "## Authentication\n"
         "All endpoints require a `Bearer` token in the `Authorization` header:\n"
         "```\nAuthorization: Bearer <your-api-key>\n```\n"
-        "Set `API_KEY` in your `.env` file.\n\n"
-        "Click **Authorize 🔒** above and enter your API key to test here.\n"
     ),
     version="1.0.0",
     lifespan=lifespan,
@@ -39,6 +40,6 @@ app.add_middleware(
 app.include_router(users.router)
 
 
-@app.get("/xnapi", tags=["Health"])
+@app.get("/", tags=["Health"])
 async def root():
     return {"status": "ok", "message": "User Management API — xpress_health_uat"}
