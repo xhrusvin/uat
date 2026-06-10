@@ -39,6 +39,6 @@ app.add_middleware(
 app.include_router(users.router)
 
 
-@app.get("/", tags=["Health"])
+@app.get("/xnapi", tags=["Health"])
 async def root():
     return {"status": "ok", "message": "User Management API — xpress_health_uat"}
