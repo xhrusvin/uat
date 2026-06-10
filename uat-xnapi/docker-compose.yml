@@ -11,11 +11,3 @@ services:
       MONGODB_URI: mongodb://127.0.0.1:27017
       MONGODB_DB: xpress_health_uat
       API_KEY: xh-live-4f9a2b8c1d3e7f6a0b5c9d2e4f8a1b3c
-    extra_hosts:
-      - "host.docker.internal:host-gateway"   # lets container reach host MongoDB
-    networks:
-      - app_network
-
-networks:
-  app_network:
-    driver: bridge
