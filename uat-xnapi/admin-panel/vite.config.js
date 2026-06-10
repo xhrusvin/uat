@@ -5,15 +5,17 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const isProd = mode === 'production'
 
+  const adminPort = parseInt(env.VITE_ADMIN_PORT || '8051')
+  const apiPort   = parseInt(env.VITE_API_PORT   || '8050')
+
   return {
     plugins: [react()],
-    // In production, app is served under /xnadmin/
     base: isProd ? '/xnadmin/' : '/',
     server: {
-      port: 8051,
+      port: adminPort,
       proxy: {
-        '/auth': { target: 'http://127.0.0.1:8050', changeOrigin: true },
-        '/users': { target: 'http://127.0.0.1:8050', changeOrigin: true },
+        '/auth':  { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/users': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
       }
     },
     build: { outDir: 'dist' }

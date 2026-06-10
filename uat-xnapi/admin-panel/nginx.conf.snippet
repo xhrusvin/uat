@@ -1,5 +1,5 @@
-# ── Add this block inside your existing HTTPS server { } in Nginx ─────────────
-# The admin panel Docker container runs on port 8051 (host networking)
+# ── Add inside your HTTPS server { } block ────────────────────────────────────
+# Change 8051 to match ADMIN_PORT in your .env.docker
 
 location /xnadmin/ {
     proxy_pass         http://127.0.0.1:8051/xnadmin/;
