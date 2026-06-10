@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.security import verify_api_key
 from app.models.user import User
-from app.routers.auth import get_current_admin
 from app.schemas.user import UserListResponse, UserResponse, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -27,7 +26,7 @@ def _user_to_response(user: User) -> UserResponse:
     )
 
 
-# ── READ (list) — excludes admin users ───────────────────────────────────────
+# ── READ (list) ───────────────────────────────────────────────────────────────
 
 @router.get(
     "/",
@@ -38,24 +37,18 @@ def _user_to_response(user: User) -> UserResponse:
 async def list_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    search: Optional[str] = Query(None, description="Filter by name, email, or phone"),
+    search: Optional[str] = Query(None),
 ):
     not_admin = {"is_admin": {"$ne": True}}
-
     if search:
-        query = User.find({
-            "$and": [
-                not_admin,
-                {"$or": [
-                    {"email": {"$regex": search, "$options": "i"}},
-                    {"first_name": {"$regex": search, "$options": "i"}},
-                    {"last_name": {"$regex": search, "$options": "i"}},
-                    {"phone": {"$regex": search, "$options": "i"}},
-                    {"xn_user_id": {"$regex": search, "$options": "i"}},
-                    {"designation": {"$regex": search, "$options": "i"}},
-                ]},
-            ]
-        })
+        query = User.find({"$and": [not_admin, {"$or": [
+            {"email":       {"$regex": search, "$options": "i"}},
+            {"first_name":  {"$regex": search, "$options": "i"}},
+            {"last_name":   {"$regex": search, "$options": "i"}},
+            {"phone":       {"$regex": search, "$options": "i"}},
+            {"xn_user_id":  {"$regex": search, "$options": "i"}},
+            {"designation": {"$regex": search, "$options": "i"}},
+        ]}]})
     else:
         query = User.find(not_admin)
 
@@ -78,25 +71,21 @@ async def get_user(user_id: str):
         oid = PydanticObjectId(user_id)
     except Exception:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid user ID")
-
     user = await User.get(oid)
     if not user or user.is_admin is True:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return _user_to_response(user)
 
 
-# ── UPDATE xn_user_id + designation (JWT admin auth) ─────────────────────────
+# ── UPDATE xn_user_id + designation (API key auth) ────────────────────────────
 
 @router.patch(
     "/{user_id}",
     response_model=UserResponse,
-    summary="Update user xn_user_id and designation — admin JWT required",
+    summary="Update user xn_user_id and designation",
+    dependencies=[Depends(verify_api_key)],
 )
-async def update_user(
-    user_id: str,
-    payload: UserUpdate,
-    _: User = Depends(get_current_admin),
-):
+async def update_user(user_id: str, payload: UserUpdate):
     from beanie import PydanticObjectId
     try:
         oid = PydanticObjectId(user_id)
@@ -108,7 +97,6 @@ async def update_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     update_data = payload.model_dump(exclude_unset=True)
-
     if "xn_user_id" in update_data:
         user.xn_user_id = update_data["xn_user_id"]
     if "designation" in update_data:

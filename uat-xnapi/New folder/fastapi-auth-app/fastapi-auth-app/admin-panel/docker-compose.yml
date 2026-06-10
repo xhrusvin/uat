@@ -1,8 +1,0 @@
-services:
-  admin:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: xh_admin_panel
-    restart: unless-stopped
-    network_mode: host

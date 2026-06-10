@@ -11,18 +11,10 @@ authClient.interceptors.request.use((config) => {
   return config
 })
 
-// ── Users read client — API key ───────────────────────────────────────────────
-const usersReadClient = axios.create({ baseURL: BASE_URL, timeout: 15000 })
-usersReadClient.interceptors.request.use((config) => {
+// ── Users client — API key for all /users/ calls (GET + PATCH) ───────────────
+const usersClient = axios.create({ baseURL: BASE_URL, timeout: 15000 })
+usersClient.interceptors.request.use((config) => {
   config.headers.Authorization = `Bearer ${API_KEY}`
-  return config
-})
-
-// ── Users write client — JWT token (PATCH requires admin JWT) ─────────────────
-const usersWriteClient = axios.create({ baseURL: BASE_URL, timeout: 15000 })
-usersWriteClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('xh_admin_token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
@@ -32,10 +24,10 @@ export const authApi = {
 }
 
 export const usersApi = {
-  list:   (params) => usersReadClient.get('/users/', { params }),
-  get:    (id)     => usersReadClient.get(`/users/${id}`),
-  update: (id, data) => usersWriteClient.patch(`/users/${id}`, data),
+  list:   (params)     => usersClient.get('/users/', { params }),
+  get:    (id)         => usersClient.get(`/users/${id}`),
+  update: (id, data)   => usersClient.patch(`/users/${id}`, data),
 }
 
-// Default export — used by ProtectedRoute interceptor for session expiry
+// Default export — used by ProtectedRoute for session expiry detection
 export default authClient
