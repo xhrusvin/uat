@@ -21,7 +21,17 @@ app = FastAPI(
     redoc_url="/redoc",
     root_path="/xnapi",
     root_path_in_servers=False,
-    servers=[{"url": "https://uat.expresshealth.ie/xnapi", "description": "UAT Server"}],
+    servers=[
+        {"url": "https://uat.expresshealth.ie/xnapi", "description": "UAT Server"},
+        {"url": "http://127.0.0.1:8050", "description": "Local Server"},
+    ],
+    description=(
+        "FastAPI + MongoDB (`xpress_health_uat`) — API key authenticated.\n\n"
+        "## Authentication\n"
+        "All endpoints require a `Bearer` token in the `Authorization` header:\n"
+        "```\nAuthorization: Bearer <your-api-key>\n```\n"
+        "Click **Authorize 🔒** above and enter your API key to test here.\n"
+    ),
     version="1.0.0",
     lifespan=lifespan,
 )
