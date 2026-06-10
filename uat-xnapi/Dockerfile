@@ -22,9 +22,9 @@ COPY app/ ./app/
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 USER appuser
 
-EXPOSE 8000
+EXPOSE 8050
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8050/')" || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8050"]
