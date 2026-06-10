@@ -9,7 +9,7 @@ services:
     container_name: fastapi_app
     restart: unless-stopped
     ports:
-      - "80:8000"
+      - "8000:8000"
     environment:
       MONGODB_URI: mongodb://mongo:27017
       MONGODB_DB: ${MONGODB_DB:-xpress_health_uat}
