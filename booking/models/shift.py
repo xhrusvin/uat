@@ -5,7 +5,7 @@ from bson import ObjectId
 class Shift:
     def __init__(self, collection):
         self.collection = collection
-
+ 
     def get_all(self, search=None, page=1, per_page=10):
         query = {}
         if search:
