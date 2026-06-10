@@ -9,6 +9,3 @@ venv/
 .pytest_cache/
 htmlcov/
 .coverage
-uat-xnapi/admin-panel/node_modules/
-uat-xnapi/admin-panel/.env
-

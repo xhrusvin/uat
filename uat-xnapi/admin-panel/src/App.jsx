@@ -6,15 +6,15 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import UsersPage from './pages/UsersPage'
 
+// In production the app is mounted at /xnadmin/
+const basename = import.meta.env.PROD ? '/xnadmin' : '/'
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
       <Routes>
-        {/* Public */}
         <Route path="/login" element={<LoginPage />} />
-
-        {/* Protected */}
         <Route
           path="/"
           element={
@@ -27,8 +27,6 @@ export default function App() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="users" element={<UsersPage />} />
         </Route>
-
-        {/* Fallback */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
