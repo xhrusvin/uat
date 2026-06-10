@@ -21,6 +21,7 @@ app = FastAPI(
     redoc_url="/redoc",
     root_path="/xnapi",
     root_path_in_servers=False,
+    servers=[{"url": "https://uat.expresshealth.ie/xnapi", "description": "UAT Server"}],
     version="1.0.0",
     lifespan=lifespan,
 )
