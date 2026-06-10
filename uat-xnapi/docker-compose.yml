@@ -9,7 +9,7 @@ services:
     ports:
       - "8050:8000"
     environment:
-      MONGODB_URI: mongodb://host.docker.internal:27017
+      MONGODB_URI: mongodb://172.17.0.1:27017
       MONGODB_DB: ${MONGODB_DB:-xpress_health_uat}
       API_KEY: ${API_KEY:-change-me}
     extra_hosts:
