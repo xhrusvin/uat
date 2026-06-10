@@ -36,23 +36,29 @@ async def list_users(
     limit: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None, description="Filter by name, email, or phone"),
 ):
-    from beanie.operators import And, Or, RegEx
+    # Exclude only documents explicitly marked as admin
+    # Using raw query to also match documents where is_admin field is missing
+    not_admin = {"is_admin": {"$ne": True}}
 
     if search:
         pattern = f".*{search}.*"
         query = User.find(
-            And(
-                User.is_admin == False,  # noqa: E712
-                Or(
-                    RegEx(User.email, pattern, options="i"),
-                    RegEx(User.first_name, pattern, options="i"),
-                    RegEx(User.last_name, pattern, options="i"),
-                    RegEx(User.phone, pattern, options="i"),
-                ),
-            )
+            {
+                "$and": [
+                    not_admin,
+                    {
+                        "$or": [
+                            {"email": {"$regex": search, "$options": "i"}},
+                            {"first_name": {"$regex": search, "$options": "i"}},
+                            {"last_name": {"$regex": search, "$options": "i"}},
+                            {"phone": {"$regex": search, "$options": "i"}},
+                        ]
+                    },
+                ]
+            }
         )
     else:
-        query = User.find(User.is_admin == False)  # noqa: E712
+        query = User.find(not_admin)
 
     total = await query.count()
     users = await query.skip(skip).limit(limit).to_list()
@@ -75,6 +81,6 @@ async def get_user(user_id: str):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid user ID")
 
     user = await User.get(oid)
-    if not user or user.is_admin:
+    if not user or user.is_admin is True:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return _user_to_response(user)
