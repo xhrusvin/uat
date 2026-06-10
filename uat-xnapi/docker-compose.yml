@@ -6,12 +6,11 @@ services:
       target: runtime
     container_name: fastapi_app
     restart: unless-stopped
-    ports:
-      - "8050:8000"
+    network_mode: host
     environment:
-      MONGODB_URI: mongodb://172.17.0.1:27017
-      MONGODB_DB: ${MONGODB_DB:-xpress_health_uat}
-      API_KEY: ${API_KEY:-change-me}
+      MONGODB_URI: mongodb://127.0.0.1:27017
+      MONGODB_DB: xpress_health_uat
+      API_KEY: xh-live-4f9a2b8c1d3e7f6a0b5c9d2e4f8a1b3c
     extra_hosts:
       - "host.docker.internal:host-gateway"   # lets container reach host MongoDB
     networks:
