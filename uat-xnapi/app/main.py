@@ -2,13 +2,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.db.database import close_db, connect_db
-from app.routers import auth, users
+from app.routers import auth, users, shifts
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -34,18 +33,16 @@ app = FastAPI(
     description=(
         "XpressHealth User Management API\n\n"
         "## Authentication\n"
-        "- **API Key** (`/users/` endpoints): `Authorization: Bearer <api-key>`\n"
+        "- **API Key** (`/users/`, `/shifts/` endpoints): `Authorization: Bearer <api-key>`\n"
         "- **JWT** (`/auth/` endpoints): Login via `/auth/login`, then use the returned token\n"
     ),
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# ── Rate limiting ─────────────────────────────────────────────────────────────
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -56,6 +53,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(shifts.router)
 
 
 @app.get("/", tags=["Health"])

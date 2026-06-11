@@ -23,6 +23,10 @@ export const authApi = {
   me:    ()                 => authClient.get('/auth/me'),
 }
 
+export const shiftsApi = {
+  list: (payload) => usersClient.post('/shifts/list', payload),
+}
+
 export const usersApi = {
   // signal is an AbortController.signal — cancels the request if a new one starts
   list:   (params, signal) => usersClient.get('/users/', { params, signal }),

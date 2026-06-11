@@ -15,7 +15,8 @@ export default defineConfig(({ mode }) => {
       port: adminPort,
       proxy: {
         '/auth':  { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
-        '/users': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/users':  { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/shifts': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
       }
     },
     build: { outDir: 'dist' }
