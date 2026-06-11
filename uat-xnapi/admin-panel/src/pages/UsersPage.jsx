@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useUsersStore } from '../store/usersStore'
 import Pagination from '../components/Pagination'
 import UserDrawer from '../components/UserDrawer'
+import DateRangePicker from '../components/DateRangePicker'
 
 function StatusBadge({ status }) {
   const cls = status?.toLowerCase() === 'enabled'  ? 'badge-enabled'
@@ -13,8 +14,7 @@ function StatusBadge({ status }) {
 function Avatar({ user }) {
   const initials = user.first_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'
   return (
-    <div className="w-8 h-8 rounded-full flex items-center justify-center
-                    text-xs font-bold flex-shrink-0"
+    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
          style={{ backgroundColor: '#e8f5ec', color: '#1e7a38' }}>
       {initials}
     </div>
@@ -28,10 +28,9 @@ export default function UsersPage() {
     setDateRange, clearFilters,
   } = useUsersStore()
 
-  const [searchInput, setSearchInput] = useState(search)
-  const [fromInput, setFromInput]     = useState(dateFrom)
-  const [toInput, setToInput]         = useState(dateTo)
-  const [selectedId, setSelectedId]   = useState(null)
+  const [searchInput, setSearchInput]   = useState(search)
+  const [dateValue, setDateValue]       = useState([dateFrom, dateTo])
+  const [selectedId, setSelectedId]     = useState(null)
 
   useEffect(() => { fetchUsers() }, [])
 
@@ -43,12 +42,19 @@ export default function UsersPage() {
     return () => clearTimeout(t)
   }, [searchInput])
 
-  const handleDateApply = () => setDateRange(fromInput, toInput)
+  const handleDateChange = ([from, to]) => {
+    setDateValue([from, to])
+    setDateRange(from, to)
+  }
+
+  const handleDateClear = () => {
+    setDateValue(['', ''])
+    setDateRange('', '')
+  }
 
   const handleClearAll = () => {
     setSearchInput('')
-    setFromInput('')
-    setToInput('')
+    setDateValue(['', ''])
     clearFilters()
   }
 
@@ -68,7 +74,7 @@ export default function UsersPage() {
 
       {/* Filters */}
       <div className="card mb-5 p-4">
-        <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex flex-wrap gap-3 items-center">
 
           {/* Search */}
           <div className="relative flex-1 min-w-48">
@@ -86,51 +92,30 @@ export default function UsersPage() {
             />
           </div>
 
-          {/* Date from */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">Joined from</label>
-            <input
-              type="date"
-              className="input w-40"
-              value={fromInput}
-              onChange={(e) => setFromInput(e.target.value)}
+          {/* Flatpickr date range */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 whitespace-nowrap">Joined</span>
+            <DateRangePicker
+              value={dateValue}
+              onChange={handleDateChange}
+              onClear={handleDateClear}
+              placeholder="Pick date range…"
             />
           </div>
 
-          {/* Date to */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">Joined to</label>
-            <input
-              type="date"
-              className="input w-40"
-              value={toInput}
-              onChange={(e) => setToInput(e.target.value)}
-            />
-          </div>
-
-          {/* Apply date button */}
-          <button
-            onClick={handleDateApply}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-            style={{ backgroundColor: '#1e7a38' }}
-          >
-            Apply
-          </button>
-
-          {/* Clear all */}
+          {/* Clear all filters */}
           {hasFilters && (
             <button
               onClick={handleClearAll}
-              className="btn-secondary px-4 py-2 text-sm flex items-center gap-1.5"
+              className="btn-secondary flex items-center gap-1.5 text-sm"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
-              Clear
+              Clear all
             </button>
           )}
 
-          {/* Spacer */}
           <div className="flex-1" />
 
           {/* Per page */}
@@ -169,16 +154,10 @@ export default function UsersPage() {
                 Search: "{search}"
               </span>
             )}
-            {dateFrom && (
+            {(dateFrom || dateTo) && (
               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs
                                bg-purple-50 text-purple-700 font-medium">
-                From: {dateFrom}
-              </span>
-            )}
-            {dateTo && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs
-                               bg-purple-50 text-purple-700 font-medium">
-                To: {dateTo}
+                Joined: {dateFrom || '…'} → {dateTo || '…'}
               </span>
             )}
           </div>
