@@ -58,22 +58,22 @@ def _build_doc(item: dict, now: datetime) -> dict:
     date_obj = _parse_date(item.get("date"))
 
     return {
-        "name":               item.get("shift_code") or item.get("shift_id", ""),
+        "name":               item.get("shift_code", ""),
         "slots":              [{
             "date":        date_obj,
             "start_time":  start_time,
             "end_time":    end_time,
-            "shift_xn_id": item.get("shift_id", ""),
+            "shift_xn_id": item.get("shift_code", ""),
             "shift_type":  timing.split("(")[0].strip() if "(" in timing else timing,
         }],
         "date":               date_obj,
         "start_time":         start_time,
         "end_time":           end_time,
-        "shift_xn_id":        item.get("shift_id", ""),
+        "shift_xn_id":        item.get("shift_code", ""),
         "description":        "",
         "client_id":          item.get("client_id", ""),
         "client_type":        item.get("type_of_client") or "Private",
-        "location":           item.get("location") or item.get("client_county") or "",
+        "location":           item.get("client_county") or "",
         "postal_code":        None,
         "is_active":          True,
         "is_premium":         (item.get("type") or "").lower() == "premium",
@@ -103,7 +103,7 @@ async def _upsert_shifts(items: list) -> dict:
         if not isinstance(item, dict):
             skipped += 1
             continue
-        shift_id = item.get("shift_id")
+        shift_id = item.get("shift_code")
         if not shift_id:
             skipped += 1
             continue
