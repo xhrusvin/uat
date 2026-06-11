@@ -1,16 +1,15 @@
 // Module-level singleton service — NOT a React hook.
-// Owns all users fetching. Components call these functions directly.
-// No useEffect loops possible because nothing here subscribes to React.
+// All fetch logic lives here. Components call these functions directly.
 
 import { useUsersStore } from '../store/usersStore'
 import { usersApi } from './api'
 
 let abortController = null
-let initialized = false   // module-level — survives component unmounts
-let fetchTimer = null     // debounce timer
+let initialized     = false
+let fetchTimer      = null
 
-function buildParams() {
-  const { page, perPage, search, dateFrom, dateTo } = useUsersStore.getState()
+// Build params from EXPLICIT values — never reads from store during fetch
+function makeParams({ page, perPage, search, dateFrom, dateTo }) {
   const params = { skip: (page - 1) * perPage, limit: perPage }
   if (search)   params.search    = search
   if (dateFrom) params.date_from = dateFrom
@@ -18,25 +17,22 @@ function buildParams() {
   return params
 }
 
-function scheduleFetch() {
-  // Debounce: wait 50ms before actually fetching — collapses rapid calls into one
+// Debounced fetch with explicit params
+function scheduleFetch(params) {
   clearTimeout(fetchTimer)
-  fetchTimer = setTimeout(doFetch, 50)
+  fetchTimer = setTimeout(() => doFetch(params), 80)
 }
 
-async function doFetch() {
-  const store = useUsersStore.getState()
-
-  // Cancel previous in-flight request
+async function doFetch(params) {
   if (abortController) abortController.abort()
   const controller = new AbortController()
   abortController = controller
 
-  store.setListLoading(true)
-  store.setError(null)
+  useUsersStore.getState().setListLoading(true)
+  useUsersStore.getState().setError(null)
 
   try {
-    const { data } = await usersApi.list(buildParams(), controller.signal)
+    const { data } = await usersApi.list(params, controller.signal)
     if (controller.signal.aborted) return
     useUsersStore.getState().setUsers(data.users, data.total)
     initialized = true
@@ -50,46 +46,59 @@ async function doFetch() {
   }
 }
 
+// Read current state snapshot for cases where we don't have explicit values
+function currentParams() {
+  const { page, perPage, search, dateFrom, dateTo } = useUsersStore.getState()
+  return makeParams({ page, perPage, search, dateFrom, dateTo })
+}
+
 export const usersService = {
-  // Call on UsersPage mount — only fetches the FIRST time ever
+  // Only fetches the first time — safe to call on every page mount
   init() {
-    if (!initialized) doFetch()
+    if (!initialized && !useUsersStore.getState().listLoading) {
+      doFetch(currentParams())
+    }
   },
 
-  // Explicit refresh (Refresh button)
+  // Force refresh with current filters
   refresh() {
-    scheduleFetch()
+    doFetch(currentParams())
   },
 
   setPage(page) {
     useUsersStore.getState().setPage(page)
-    scheduleFetch()
+    // Read other params from store, use explicit page
+    const { perPage, search, dateFrom, dateTo } = useUsersStore.getState()
+    scheduleFetch(makeParams({ page, perPage, search, dateFrom, dateTo }))
   },
 
   setPerPage(perPage) {
     useUsersStore.getState().setPerPage(perPage)
-    scheduleFetch()
+    const { search, dateFrom, dateTo } = useUsersStore.getState()
+    scheduleFetch(makeParams({ page: 1, perPage, search, dateFrom, dateTo }))
   },
 
   setSearch(search) {
     useUsersStore.getState().setSearch(search)
-    scheduleFetch()
+    const { perPage, dateFrom, dateTo } = useUsersStore.getState()
+    scheduleFetch(makeParams({ page: 1, perPage, search, dateFrom, dateTo }))
   },
 
-  setDateRange(from, to) {
-    useUsersStore.getState().setDateRange(from, to)
-    scheduleFetch()
+  setDateRange(dateFrom, dateTo) {
+    useUsersStore.getState().setDateRange(dateFrom, dateTo)
+    const { perPage, search } = useUsersStore.getState()
+    scheduleFetch(makeParams({ page: 1, perPage, search, dateFrom, dateTo }))
   },
 
   clearFilters() {
     useUsersStore.getState().clearFilters()
-    scheduleFetch()
+    const { perPage } = useUsersStore.getState()
+    scheduleFetch(makeParams({ page: 1, perPage, search: '', dateFrom: '', dateTo: '' }))
   },
 
   async fetchUser(id) {
-    const store = useUsersStore.getState()
-    store.setDrawerLoading(true)
-    store.clearSelected()
+    useUsersStore.getState().setDrawerLoading(true)
+    useUsersStore.getState().clearSelected()
     try {
       const { data } = await usersApi.get(id)
       useUsersStore.getState().setSelectedUser(data)
@@ -99,8 +108,7 @@ export const usersService = {
   },
 
   async updateUser(id, payload) {
-    const store = useUsersStore.getState()
-    store.setSaving(true)
+    useUsersStore.getState().setSaving(true)
     try {
       const { data } = await usersApi.update(id, payload)
       useUsersStore.getState().updateUserInList(id, data)
