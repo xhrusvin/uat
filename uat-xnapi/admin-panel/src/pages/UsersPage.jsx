@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
-import { useUsers } from '../hooks/useUsers'
+import { useEffect, useState, useRef } from 'react'
+import { useUsersStore } from '../store/usersStore'
+import { usersService } from '../services/usersService'
 import Pagination from '../components/Pagination'
 import UserDrawer from '../components/UserDrawer'
 import DateRangePicker from '../components/DateRangePicker'
@@ -22,37 +23,47 @@ function Avatar({ user }) {
 }
 
 export default function UsersPage() {
-  const {
-    users, total, page, perPage, search, dateFrom, dateTo,
-    listLoading, error,
-    setPage, setPerPage, setSearch, setDateRange, clearFilters, refresh,
-  } = useUsers()
+  // Read-only state subscription — rendering only, no actions
+  const users       = useUsersStore((s) => s.users)
+  const total       = useUsersStore((s) => s.total)
+  const page        = useUsersStore((s) => s.page)
+  const perPage     = useUsersStore((s) => s.perPage)
+  const search      = useUsersStore((s) => s.search)
+  const dateFrom    = useUsersStore((s) => s.dateFrom)
+  const dateTo      = useUsersStore((s) => s.dateTo)
+  const listLoading = useUsersStore((s) => s.listLoading)
+  const error       = useUsersStore((s) => s.error)
 
   const [searchInput, setSearchInput] = useState(search)
   const [dateValue, setDateValue]     = useState([dateFrom, dateTo])
   const [selectedId, setSelectedId]   = useState(null)
   const debounceRef                   = useRef(null)
 
+  // init() is module-guarded — runs the fetch only the very first time
+  useEffect(() => {
+    usersService.init()
+  }, [])
+
   const handleSearchChange = (value) => {
     setSearchInput(value)
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => setSearch(value), 500)
+    debounceRef.current = setTimeout(() => usersService.setSearch(value), 500)
   }
 
   const handleDateChange = ([from, to]) => {
     setDateValue([from, to])
-    setDateRange(from, to)
+    usersService.setDateRange(from, to)
   }
 
   const handleDateClear = () => {
     setDateValue(['', ''])
-    setDateRange('', '')
+    usersService.setDateRange('', '')
   }
 
   const handleClearAll = () => {
     setSearchInput('')
     setDateValue(['', ''])
-    clearFilters()
+    usersService.clearFilters()
   }
 
   const hasFilters = search || dateFrom || dateTo
@@ -109,12 +120,14 @@ export default function UsersPage() {
 
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 whitespace-nowrap">Show</span>
-            <select value={perPage} onChange={(e) => setPerPage(Number(e.target.value))} className="input w-20 py-1.5">
+            <select value={perPage} onChange={(e) => usersService.setPerPage(Number(e.target.value))}
+                    className="input w-20 py-1.5">
               {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
 
-          <button onClick={refresh} disabled={listLoading} className="btn-secondary flex items-center gap-2 py-2">
+          <button onClick={() => usersService.refresh()} disabled={listLoading}
+                  className="btn-secondary flex items-center gap-2 py-2">
             <svg className={`w-4 h-4 ${listLoading ? 'animate-spin' : ''}`}
               fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -144,13 +157,9 @@ export default function UsersPage() {
       {error && (
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg flex items-center
                         justify-between text-sm text-red-700">
-          <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            {error}
-          </div>
-          <button onClick={refresh} className="ml-4 font-medium underline hover:no-underline">Retry</button>
+          <span>{error}</span>
+          <button onClick={() => usersService.refresh()}
+                  className="ml-4 font-medium underline hover:no-underline">Retry</button>
         </div>
       )}
 
@@ -190,10 +199,6 @@ export default function UsersPage() {
               ) : !error && users.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-16 text-center text-gray-400">
-                    <svg className="w-12 h-12 mx-auto mb-3 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
                     <p className="text-sm">No users found{hasFilters ? ' — try adjusting your filters' : ''}</p>
                   </td>
                 </tr>
@@ -217,12 +222,9 @@ export default function UsersPage() {
                       }) : '—'}
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <button onClick={(e) => { e.stopPropagation(); setSelectedId(u.id) }}
-                              className="text-gray-400 hover:text-green-600 transition-colors">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
                     </td>
                   </tr>
                 ))
@@ -230,7 +232,7 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
-        <Pagination page={page} perPage={perPage} total={total} onPage={setPage} />
+        <Pagination page={page} perPage={perPage} total={total} onPage={(p) => usersService.setPage(p)} />
       </div>
 
       {selectedId && (
