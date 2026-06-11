@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useUsersStore } from '../store/usersStore'
 import Pagination from '../components/Pagination'
 import UserDrawer from '../components/UserDrawer'
