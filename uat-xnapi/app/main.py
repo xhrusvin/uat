@@ -1,13 +1,13 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.db.database import close_db, connect_db
-from app.routers import auth, users, shifts
+from app.routers import auth, users, shifts, shifts_db
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -33,8 +33,8 @@ app = FastAPI(
     description=(
         "XpressHealth User Management API\n\n"
         "## Authentication\n"
-        "- **API Key** (`/users/`, `/shifts/` endpoints): `Authorization: Bearer <api-key>`\n"
-        "- **JWT** (`/auth/` endpoints): Login via `/auth/login`, then use the returned token\n"
+        "- **API Key**: `Authorization: Bearer <api-key>`\n"
+        "- **JWT** (`/auth/`): Login via `/auth/login`\n"
     ),
     version="1.0.0",
     lifespan=lifespan,
@@ -54,6 +54,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(shifts.router)
+app.include_router(shifts_db.router)
 
 
 @app.get("/", tags=["Health"])

@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import UsersPage from './pages/UsersPage'
 import ShiftListPage from './pages/ShiftListPage'
+import ShiftsPage from './pages/ShiftsPage'
 
 const basename = import.meta.env.PROD ? '/xnadmin' : '/'
 
@@ -19,6 +20,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard"      element={<DashboardPage />} />
           <Route path="users"          element={<UsersPage />} />
+          <Route path="shifts"         element={<ShiftsPage />} />
           <Route path="xn-api/shifts"  element={<ShiftListPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

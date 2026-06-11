@@ -23,6 +23,11 @@ export const authApi = {
   me:    ()                 => authClient.get('/auth/me'),
 }
 
+export const shiftsDbApi = {
+  list:   (params) => usersClient.get('/shifts-db/', { params }),
+  get:    (id)     => usersClient.get(`/shifts-db/${id}`),
+}
+
 export const shiftsApi = {
   list: (payload) => usersClient.post('/shifts/list', payload),
 }
