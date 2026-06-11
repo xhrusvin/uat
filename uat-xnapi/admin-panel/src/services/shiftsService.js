@@ -12,12 +12,22 @@ async function execute(payload) {
 
   try {
     const { data } = await shiftsApi.list(payload)
+
+    if (data.success === false) {
+      // Upstream returned an error — show the message from the Shift API
+      useShiftsStore.getState().setError(data.message || 'Shift API returned an error')
+      useShiftsStore.getState().setLoading(false)
+      return
+    }
+
     useShiftsStore.getState().setData(data)
   } catch (err) {
     if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return
-    useShiftsStore.getState().setError(
-      err.response?.data?.detail || 'Failed to fetch shifts'
-    )
+    const msg = err.response?.data?.message
+      || err.response?.data?.detail
+      || err.message
+      || 'Failed to fetch shifts'
+    useShiftsStore.getState().setError(msg)
     useShiftsStore.getState().setLoading(false)
   }
 }
