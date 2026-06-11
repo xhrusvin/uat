@@ -26,6 +26,61 @@ def _user_to_response(user: User) -> UserResponse:
     )
 
 
+def _build_date_filter(date_from: Optional[str], date_to: Optional[str]) -> dict:
+    """
+    Build a MongoDB filter for created_at that works whether the field is
+    stored as a datetime object OR as an ISO string (both formats exist in
+    the existing collection).
+
+    Strategy: use $or so either storage format matches.
+    """
+    if not date_from and not date_to:
+        return {}
+
+    try:
+        if date_from:
+            dt_from = datetime.strptime(date_from, "%Y-%m-%d").replace(
+                hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc
+            )
+            # String equivalents for $regex boundary
+            str_from = date_from  # "2026-04-09"
+
+        if date_to:
+            dt_to = datetime.strptime(date_to, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc
+            )
+            str_to = date_to  # "2026-04-09"
+
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid date format. Use YYYY-MM-DD",
+        )
+
+    # Build conditions for datetime storage
+    datetime_cond = {}
+    if date_from:
+        datetime_cond["$gte"] = dt_from
+    if date_to:
+        datetime_cond["$lte"] = dt_to
+
+    # Build conditions for string storage — ISO strings sort lexicographically
+    # so plain string comparison works correctly for YYYY-MM-DD prefix
+    string_cond = {}
+    if date_from:
+        string_cond["$gte"] = str_from  # "2026-04-09T00:00:00" >= "2026-04-09"
+    if date_to:
+        # "2026-04-09T23:59:59" <= "2026-04-09~" (tilde comes after digits in ASCII)
+        string_cond["$lte"] = str_to + "~"
+
+    return {
+        "$or": [
+            {"created_at": datetime_cond},    # stored as datetime
+            {"created_at": string_cond},      # stored as ISO string
+        ]
+    }
+
+
 # ── READ (list) ───────────────────────────────────────────────────────────────
 
 @router.get(
@@ -55,26 +110,10 @@ async def list_users(
             {"designation": {"$regex": search, "$options": "i"}},
         ]})
 
-    # ── Date range filter ─────────────────────────────────────────────────────
-    if date_from or date_to:
-        date_filter = {}
-        try:
-            if date_from:
-                dt_from = datetime.strptime(date_from, "%Y-%m-%d").replace(
-                    hour=0, minute=0, second=0, tzinfo=timezone.utc
-                )
-                date_filter["$gte"] = dt_from
-            if date_to:
-                dt_to = datetime.strptime(date_to, "%Y-%m-%d").replace(
-                    hour=23, minute=59, second=59, tzinfo=timezone.utc
-                )
-                date_filter["$lte"] = dt_to
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid date format. Use YYYY-MM-DD",
-            )
-        filters.append({"created_at": date_filter})
+    # ── Date range filter — handles both datetime and ISO string storage ───────
+    date_filter = _build_date_filter(date_from, date_to)
+    if date_filter:
+        filters.append(date_filter)
 
     mongo_filter = {"$and": filters} if len(filters) > 1 else filters[0]
     query = User.find(mongo_filter).sort("+created_at")
