@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useUsersStore } from '../store/usersStore'
 import Pagination from '../components/Pagination'
 import UserDrawer from '../components/UserDrawer'
 
 function StatusBadge({ status }) {
-  const cls = status?.toLowerCase() === 'enabled' ? 'badge-enabled'
+  const cls = status?.toLowerCase() === 'enabled'  ? 'badge-enabled'
     : status?.toLowerCase() === 'disabled' ? 'badge-disabled'
     : 'badge-default'
   return <span className={cls}>{status || '—'}</span>
@@ -13,8 +13,9 @@ function StatusBadge({ status }) {
 function Avatar({ user }) {
   const initials = user.first_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'
   return (
-    <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center
-                    justify-center text-xs font-bold flex-shrink-0">
+    <div className="w-8 h-8 rounded-full flex items-center justify-center
+                    text-xs font-bold flex-shrink-0"
+         style={{ backgroundColor: '#e8f5ec', color: '#1e7a38' }}>
       {initials}
     </div>
   )
@@ -22,24 +23,36 @@ function Avatar({ user }) {
 
 export default function UsersPage() {
   const {
-    users, total, page, perPage, search,
+    users, total, page, perPage, search, dateFrom, dateTo,
     loading, error, fetchUsers, setSearch, setPage, setPerPage,
+    setDateRange, clearFilters,
   } = useUsersStore()
 
   const [searchInput, setSearchInput] = useState(search)
-  const [selectedId, setSelectedId] = useState(null)
+  const [fromInput, setFromInput]     = useState(dateFrom)
+  const [toInput, setToInput]         = useState(dateTo)
+  const [selectedId, setSelectedId]   = useState(null)
 
   useEffect(() => { fetchUsers() }, [])
 
   // Debounced search
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const t = setTimeout(() => {
       if (searchInput !== search) setSearch(searchInput)
     }, 400)
-    return () => clearTimeout(timer)
+    return () => clearTimeout(t)
   }, [searchInput])
 
-  const totalPages = Math.ceil(total / perPage)
+  const handleDateApply = () => setDateRange(fromInput, toInput)
+
+  const handleClearAll = () => {
+    setSearchInput('')
+    setFromInput('')
+    setToInput('')
+    clearFilters()
+  }
+
+  const hasFilters = search || dateFrom || dateTo
 
   return (
     <div className="p-8">
@@ -48,56 +61,128 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Users</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {total} total user{total !== 1 ? 's' : ''}
+            {total} user{total !== 1 ? 's' : ''} — sorted by join date (oldest first)
           </p>
         </div>
       </div>
 
-      {/* Filters bar */}
-      <div className="card mb-5 px-4 py-3 flex flex-wrap items-center gap-3">
-        {/* Search */}
-        <div className="relative flex-1 min-w-48">
-          <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
-            fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            className="input pl-9"
-            placeholder="Search name, email, phone…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
-        </div>
+      {/* Filters */}
+      <div className="card mb-5 p-4">
+        <div className="flex flex-wrap gap-3 items-end">
 
-        {/* Per page */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">Show</span>
-          <select
-            value={perPage}
-            onChange={(e) => setPerPage(Number(e.target.value))}
-            className="input w-20 py-1.5"
+          {/* Search */}
+          <div className="relative flex-1 min-w-48">
+            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
+              fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              className="input pl-9"
+              placeholder="Search name, email, phone…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
+
+          {/* Date from */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Joined from</label>
+            <input
+              type="date"
+              className="input w-40"
+              value={fromInput}
+              onChange={(e) => setFromInput(e.target.value)}
+            />
+          </div>
+
+          {/* Date to */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Joined to</label>
+            <input
+              type="date"
+              className="input w-40"
+              value={toInput}
+              onChange={(e) => setToInput(e.target.value)}
+            />
+          </div>
+
+          {/* Apply date button */}
+          <button
+            onClick={handleDateApply}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+            style={{ backgroundColor: '#1e7a38' }}
           >
-            {[10, 20, 50, 100].map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
+            Apply
+          </button>
+
+          {/* Clear all */}
+          {hasFilters && (
+            <button
+              onClick={handleClearAll}
+              className="btn-secondary px-4 py-2 text-sm flex items-center gap-1.5"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Clear
+            </button>
+          )}
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Per page */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 whitespace-nowrap">Show</span>
+            <select
+              value={perPage}
+              onChange={(e) => setPerPage(Number(e.target.value))}
+              className="input w-20 py-1.5"
+            >
+              {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+
+          {/* Refresh */}
+          <button
+            onClick={fetchUsers}
+            disabled={loading}
+            className="btn-secondary flex items-center gap-2 py-2"
+          >
+            <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
         </div>
 
-        {/* Refresh */}
-        <button
-          onClick={fetchUsers}
-          disabled={loading}
-          className="btn-secondary flex items-center gap-2 py-1.5"
-        >
-          <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
-            fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          Refresh
-        </button>
+        {/* Active filter pills */}
+        {hasFilters && (
+          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+            {search && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs
+                               bg-blue-50 text-blue-700 font-medium">
+                Search: "{search}"
+              </span>
+            )}
+            {dateFrom && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs
+                               bg-purple-50 text-purple-700 font-medium">
+                From: {dateFrom}
+              </span>
+            )}
+            {dateTo && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs
+                               bg-purple-50 text-purple-700 font-medium">
+                To: {dateTo}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -115,7 +200,14 @@ export default function UsersPage() {
                     <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Phone</th>
                     <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Designation</th>
                     <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Joined</th>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      <div className="flex items-center gap-1">
+                        Joined
+                        <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      </div>
+                    </th>
                     <th className="px-5 py-3" />
                   </tr>
                 </thead>
@@ -123,7 +215,7 @@ export default function UsersPage() {
                   {loading && users.length === 0 ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i}>
-                        {Array.from({ length: 6 }).map((_, j) => (
+                        {Array.from({ length: 7 }).map((_, j) => (
                           <td key={j} className="px-5 py-3.5">
                             <div className="h-4 bg-gray-100 rounded animate-pulse" />
                           </td>
@@ -133,12 +225,13 @@ export default function UsersPage() {
                   ) : users.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-5 py-12 text-center text-gray-400">
-                        <svg className="w-10 h-10 mx-auto mb-3 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-10 h-10 mx-auto mb-3 text-gray-200"
+                          fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                             d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                         No users found
-                        {search && <span> for "<strong>{search}</strong>"</span>}
+                        {hasFilters && <span> — try adjusting your filters</span>}
                       </td>
                     </tr>
                   ) : (
@@ -159,16 +252,17 @@ export default function UsersPage() {
                         <td className="px-5 py-3.5 text-gray-500 text-xs">{u.designation || '—'}</td>
                         <td className="px-5 py-3.5"><StatusBadge status={u.status} /></td>
                         <td className="px-5 py-3.5 text-gray-400 text-xs">
-                          {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
+                          {u.created_at ? new Date(u.created_at).toLocaleDateString('en-GB', {
+                            day: '2-digit', month: 'short', year: 'numeric'
+                          }) : '—'}
                         </td>
                         <td className="px-5 py-3.5 text-right">
                           <button
                             onClick={(e) => { e.stopPropagation(); setSelectedId(u.id) }}
-                            className="text-gray-400 hover:text-brand-500 transition-colors"
+                            className="text-gray-400 hover:text-green-600 transition-colors"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M9 5l7 7-7 7" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
                           </button>
                         </td>
@@ -178,18 +272,11 @@ export default function UsersPage() {
                 </tbody>
               </table>
             </div>
-
-            <Pagination
-              page={page}
-              perPage={perPage}
-              total={total}
-              onPage={setPage}
-            />
+            <Pagination page={page} perPage={perPage} total={total} onPage={setPage} />
           </>
         )}
       </div>
 
-      {/* User drawer */}
       {selectedId && (
         <UserDrawer userId={selectedId} onClose={() => setSelectedId(null)} />
       )}

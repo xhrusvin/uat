@@ -31,26 +31,53 @@ def _user_to_response(user: User) -> UserResponse:
 @router.get(
     "/",
     response_model=UserListResponse,
-    summary="List all non-admin users",
+    summary="List all non-admin users — sorted by joined date ascending",
     dependencies=[Depends(verify_api_key)],
 )
 async def list_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    search: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description="Search by name, email, phone, designation, xn_user_id"),
+    date_from: Optional[str] = Query(None, description="Filter joined from date (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Filter joined to date (YYYY-MM-DD)"),
 ):
     not_admin = {"is_admin": {"$ne": True}}
+    filters = [not_admin]
+
+    # ── Search filter ─────────────────────────────────────────────────────────
     if search:
-        query = User.find({"$and": [not_admin, {"$or": [
+        filters.append({"$or": [
             {"email":       {"$regex": search, "$options": "i"}},
             {"first_name":  {"$regex": search, "$options": "i"}},
             {"last_name":   {"$regex": search, "$options": "i"}},
             {"phone":       {"$regex": search, "$options": "i"}},
             {"xn_user_id":  {"$regex": search, "$options": "i"}},
             {"designation": {"$regex": search, "$options": "i"}},
-        ]}]})
-    else:
-        query = User.find(not_admin)
+        ]})
+
+    # ── Date range filter ─────────────────────────────────────────────────────
+    if date_from or date_to:
+        date_filter = {}
+        try:
+            if date_from:
+                dt_from = datetime.strptime(date_from, "%Y-%m-%d").replace(
+                    hour=0, minute=0, second=0, tzinfo=timezone.utc
+                )
+                date_filter["$gte"] = dt_from
+            if date_to:
+                dt_to = datetime.strptime(date_to, "%Y-%m-%d").replace(
+                    hour=23, minute=59, second=59, tzinfo=timezone.utc
+                )
+                date_filter["$lte"] = dt_to
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid date format. Use YYYY-MM-DD",
+            )
+        filters.append({"created_at": date_filter})
+
+    mongo_filter = {"$and": filters} if len(filters) > 1 else filters[0]
+    query = User.find(mongo_filter).sort("+created_at")
 
     total = await query.count()
     users = await query.skip(skip).limit(limit).to_list()
