@@ -11,7 +11,7 @@ authClient.interceptors.request.use((config) => {
   return config
 })
 
-// ── Users client — API key for all /users/ calls (GET + PATCH) ───────────────
+// ── Users client — API key for all /users/ calls ─────────────────────────────
 const usersClient = axios.create({ baseURL: BASE_URL, timeout: 15000 })
 usersClient.interceptors.request.use((config) => {
   config.headers.Authorization = `Bearer ${API_KEY}`
@@ -19,15 +19,15 @@ usersClient.interceptors.request.use((config) => {
 })
 
 export const authApi = {
-  login:  (email, password) => authClient.post('/auth/login', { email, password }),
-  me:     ()                 => authClient.get('/auth/me'),
+  login: (email, password) => authClient.post('/auth/login', { email, password }),
+  me:    ()                 => authClient.get('/auth/me'),
 }
 
 export const usersApi = {
-  list:   (params)     => usersClient.get('/users/', { params }),
-  get:    (id)         => usersClient.get(`/users/${id}`),
-  update: (id, data)   => usersClient.patch(`/users/${id}`, data),
+  // signal is an AbortController.signal — cancels the request if a new one starts
+  list:   (params, signal) => usersClient.get('/users/', { params, signal }),
+  get:    (id)             => usersClient.get(`/users/${id}`),
+  update: (id, data)       => usersClient.patch(`/users/${id}`, data),
 }
 
-// Default export — used by ProtectedRoute for session expiry detection
 export default authClient

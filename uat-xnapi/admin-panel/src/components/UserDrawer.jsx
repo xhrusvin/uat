@@ -19,7 +19,7 @@ function StatusBadge({ status }) {
 }
 
 export default function UserDrawer({ userId, onClose }) {
-  const { selectedUser: user, loading, saving, fetchUser, updateUser, clearSelected } = useUsersStore()
+  const { selectedUser: user, drawerLoading: loading, saving, fetchUser, updateUser, clearSelected } = useUsersStore()
 
   const [editMode, setEditMode] = useState(false)
   const [xnUserId, setXnUserId]     = useState('')
