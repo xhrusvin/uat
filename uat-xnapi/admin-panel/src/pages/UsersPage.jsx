@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useUsersStore } from '../store/usersStore'
 import Pagination from '../components/Pagination'
 import UserDrawer from '../components/UserDrawer'
@@ -24,7 +24,7 @@ function Avatar({ user }) {
 export default function UsersPage() {
   const {
     users, total, page, perPage, search, dateFrom, dateTo,
-    listLoading, error, fetchUsers, setSearch, setPage, setPerPage,
+    listLoading, error, fetchUsers, initUsers, setSearch, setPage, setPerPage,
     setDateRange, clearFilters,
   } = useUsersStore()
 
@@ -32,15 +32,8 @@ export default function UsersPage() {
   const [dateValue, setDateValue]     = useState([dateFrom, dateTo])
   const [selectedId, setSelectedId]   = useState(null)
   const searchDebounce                = useRef(null)
-  const mounted                       = useRef(false)
-
-  // Fetch only once on mount
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true
-      fetchUsers()
-    }
-  }, [])
+  // initUsers only fetches if not already loaded — safe to call on every mount
+  useEffect(() => { initUsers() }, [])
 
   // Debounced search — skip on mount
   const handleSearchChange = (value) => {
