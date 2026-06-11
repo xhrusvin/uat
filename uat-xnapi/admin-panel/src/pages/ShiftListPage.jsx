@@ -3,72 +3,52 @@ import { useShiftsStore } from '../store/shiftsStore'
 import { shiftsService } from '../services/shiftsService'
 import DateRangePicker from '../components/DateRangePicker'
 
-function StatusBadge({ status }) {
-  const s = (status || '').toLowerCase()
-  const cls = s === 'open'      ? 'badge-enabled'
-    : s === 'filled'  ? 'badge-default'
-    : s === 'cancelled' || s === 'canceled' ? 'badge-disabled'
-    : 'badge-default'
-  return <span className={cls}>{status || '—'}</span>
+const STATUS_COLORS = {
+  'Upcoming':            'bg-blue-100 text-blue-700',
+  'To Be Filled':        'bg-yellow-100 text-yellow-700',
+  'Completed':           'bg-green-100 text-green-700',
+  'Cancelled By Client': 'bg-red-100 text-red-600',
+  'Cancelled By Staff':  'bg-red-100 text-red-600',
+  'In Progress':         'bg-purple-100 text-purple-700',
 }
 
-function ShiftRow({ shift }) {
-  const [expanded, setExpanded] = useState(false)
-
+function StatusBadge({ status }) {
+  const cls = STATUS_COLORS[status] || 'bg-gray-100 text-gray-600'
   return (
-    <>
-      <tr
-        className="hover:bg-gray-50 cursor-pointer transition-colors"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <td className="px-5 py-3.5 text-gray-700 font-medium text-sm">
-          {shift.date || shift.shift_date || '—'}
-        </td>
-        <td className="px-5 py-3.5 text-gray-600 text-sm">
-          {shift.title || shift.name || shift.shift_title || '—'}
-        </td>
-        <td className="px-5 py-3.5 text-gray-500 text-sm">
-          {shift.location?.name || shift.location || shift.area || '—'}
-        </td>
-        <td className="px-5 py-3.5 text-gray-500 text-sm">
-          {shift.start_time || shift.time || '—'}
-          {shift.end_time ? ` – ${shift.end_time}` : ''}
-        </td>
-        <td className="px-5 py-3.5 text-sm">
-          <StatusBadge status={shift.status} />
-        </td>
-        <td className="px-5 py-3.5 text-gray-400 text-sm">
-          {shift.workers_needed || shift.slots || '—'}
-        </td>
-        <td className="px-5 py-3.5 text-right text-gray-400">
-          <svg className={`w-4 h-4 inline transition-transform ${expanded ? 'rotate-90' : ''}`}
-            fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </td>
-      </tr>
-      {expanded && (
-        <tr className="bg-gray-50">
-          <td colSpan={7} className="px-6 py-4">
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Raw Shift Data
-              </h4>
-              <pre className="text-xs text-gray-700 overflow-auto max-h-48 bg-gray-50 rounded p-3 font-mono">
-                {JSON.stringify(shift, null, 2)}
-              </pre>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
+      {status || '—'}
+    </span>
+  )
+}
+
+function SyncBanner({ sync, onDismiss }) {
+  if (!sync) return null
+  return (
+    <div className="mb-5 px-4 py-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between text-sm">
+      <div className="flex items-center gap-3">
+        <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+        <span className="text-green-800 font-medium">Synced to database:</span>
+        <span className="text-green-700">
+          <span className="font-semibold">{sync.fetched}</span> fetched —&nbsp;
+          <span className="font-semibold text-green-600">{sync.inserted}</span> new,&nbsp;
+          <span className="font-semibold text-blue-600">{sync.updated}</span> updated,&nbsp;
+          <span className="font-semibold text-gray-500">{sync.skipped}</span> skipped
+        </span>
+      </div>
+      <button onClick={onDismiss} className="text-green-400 hover:text-green-600 ml-4">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
   )
 }
 
 function ShiftPagination({ page, perPage, total }) {
   const totalPages = Math.ceil(total / perPage)
   if (totalPages <= 1) return null
-
   const pages = []
   for (let i = Math.max(1, page - 2); i <= Math.min(totalPages, page + 2); i++) pages.push(i)
 
@@ -82,8 +62,7 @@ function ShiftPagination({ page, perPage, total }) {
       <div className="flex items-center gap-1">
         <button onClick={() => shiftsService.setPage(page - 1)} disabled={page === 1}
                 className="px-2 py-1 rounded text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-40">‹</button>
-        {pages[0] > 1 && <button onClick={() => shiftsService.setPage(1)} className="px-3 py-1 rounded text-sm text-gray-600 hover:bg-gray-100">1</button>}
-        {pages[0] > 2 && <span className="text-gray-400 px-1">…</span>}
+        {pages[0] > 1 && <><button onClick={() => shiftsService.setPage(1)} className="px-3 py-1 rounded text-sm text-gray-600 hover:bg-gray-100">1</button>{pages[0] > 2 && <span className="text-gray-400 px-1">…</span>}</>}
         {pages.map((p) => (
           <button key={p} onClick={() => shiftsService.setPage(p)}
                   className={`px-3 py-1 rounded text-sm font-medium ${p === page ? 'text-white' : 'text-gray-600 hover:bg-gray-100'}`}
@@ -103,21 +82,22 @@ function ShiftPagination({ page, perPage, total }) {
 }
 
 export default function ShiftListPage() {
-  const shifts    = useShiftsStore((s) => s.shifts)
-  const total     = useShiftsStore((s) => s.total)
-  const page      = useShiftsStore((s) => s.page)
-  const perPage   = useShiftsStore((s) => s.perPage)
-  const startDate = useShiftsStore((s) => s.startDate)
-  const endDate   = useShiftsStore((s) => s.endDate)
-  const search    = useShiftsStore((s) => s.search)
-  const sortOrder = useShiftsStore((s) => s.sortOrder)
-  const loading   = useShiftsStore((s) => s.loading)
-  const error     = useShiftsStore((s) => s.error)
+  const shifts     = useShiftsStore((s) => s.shifts)
+  const total      = useShiftsStore((s) => s.total)
+  const page       = useShiftsStore((s) => s.page)
+  const perPage    = useShiftsStore((s) => s.perPage)
+  const startDate  = useShiftsStore((s) => s.startDate)
+  const endDate    = useShiftsStore((s) => s.endDate)
+  const search     = useShiftsStore((s) => s.search)
+  const sortOrder  = useShiftsStore((s) => s.sortOrder)
+  const loading    = useShiftsStore((s) => s.loading)
+  const error      = useShiftsStore((s) => s.error)
+  const syncResult = useShiftsStore((s) => s.syncResult)
 
   const [searchInput, setSearchInput] = useState(search)
-  const debounceRef = useRef(null)
+  const [showSync, setShowSync]       = useState(false)
+  const debounceRef                   = useRef(null)
 
-  // Default to current month on first load
   useEffect(() => {
     const now   = new Date()
     const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
@@ -126,6 +106,11 @@ export default function ShiftListPage() {
     useShiftsStore.getState().setDates(start, end)
     shiftsService.fetch({ startDate: start, endDate: end })
   }, [])
+
+  // Show sync banner when new sync result arrives
+  useEffect(() => {
+    if (syncResult) setShowSync(true)
+  }, [syncResult])
 
   const handleSearch = (val) => {
     setSearchInput(val)
@@ -137,13 +122,11 @@ export default function ShiftListPage() {
     if (from && to) shiftsService.setDates(from, to)
   }
 
-  const handleDateClear = () => shiftsService.setDates('', '')
-
   return (
     <div className="p-8">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
+        <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
           <span>XN API Calls</span>
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -152,15 +135,18 @@ export default function ShiftListPage() {
         </div>
         <h1 className="text-2xl font-bold text-gray-900">Shift List</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          {loading ? 'Loading…' : `${total} shift${total !== 1 ? 's' : ''} from XpressHealth Shift API`}
+          {loading ? 'Fetching & syncing…' : `${total} shift${total !== 1 ? 's' : ''} — fetched from Shift API and synced to database`}
         </p>
       </div>
+
+      {/* Sync banner */}
+      {showSync && syncResult && (
+        <SyncBanner sync={syncResult} onDismiss={() => setShowSync(false)} />
+      )}
 
       {/* Filters */}
       <div className="card mb-5 p-4">
         <div className="flex flex-wrap gap-3 items-center">
-
-          {/* Search */}
           <div className="relative flex-1 min-w-48">
             <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
               fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -171,25 +157,22 @@ export default function ShiftListPage() {
               value={searchInput} onChange={(e) => handleSearch(e.target.value)} />
           </div>
 
-          {/* Date range */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 whitespace-nowrap">Date</span>
             <DateRangePicker
               value={[startDate, endDate]}
               onChange={handleDateChange}
-              onClear={handleDateClear}
+              onClear={() => shiftsService.setDates('', '')}
               placeholder="Pick date range…"
             />
           </div>
 
-          {/* Sort order */}
           <select value={sortOrder} onChange={(e) => shiftsService.setSortOrder(e.target.value)}
-                  className="input w-32 py-1.5">
+                  className="input w-36 py-1.5">
             <option value="desc">Newest first</option>
             <option value="asc">Oldest first</option>
           </select>
 
-          {/* Per page */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 whitespace-nowrap">Show</span>
             <select value={perPage} onChange={(e) => shiftsService.setPerPage(Number(e.target.value))}
@@ -198,7 +181,6 @@ export default function ShiftListPage() {
             </select>
           </div>
 
-          {/* Refresh */}
           <button onClick={() => shiftsService.refresh()} disabled={loading}
                   className="btn-secondary flex items-center gap-2 py-2">
             <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
@@ -206,7 +188,7 @@ export default function ShiftListPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Refresh
+            {loading ? 'Syncing…' : 'Refresh & Sync'}
           </button>
         </div>
 
@@ -230,15 +212,9 @@ export default function ShiftListPage() {
               <div>
                 <p className="font-medium mb-1">Shift API Error</p>
                 <p className="text-red-600">{error}</p>
-                <p className="text-xs text-red-400 mt-1">
-                  Check that the Shift API URL and API key are correct in your .env file.
-                </p>
               </div>
             </div>
-            <button onClick={() => shiftsService.refresh()}
-                    className="flex-shrink-0 font-medium underline hover:no-underline">
-              Retry
-            </button>
+            <button onClick={() => shiftsService.refresh()} className="flex-shrink-0 font-medium underline">Retry</button>
           </div>
         </div>
       )}
@@ -249,26 +225,27 @@ export default function ShiftListPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Code</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Location</th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Time</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Timing</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Role</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Assigned</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Slots</th>
-                <th className="px-5 py-3" />
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Rate</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i}>{Array.from({ length: 7 }).map((_, j) => (
+                  <tr key={i}>{Array.from({ length: 8 }).map((_, j) => (
                     <td key={j} className="px-5 py-3.5">
                       <div className="h-4 bg-gray-100 rounded animate-pulse" />
                     </td>
                   ))}</tr>
                 ))
               ) : !error && shifts.length === 0 ? (
-                <tr><td colSpan={7} className="px-5 py-16 text-center">
+                <tr><td colSpan={8} className="px-5 py-16 text-center">
                   <svg className="w-12 h-12 mx-auto mb-3 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                       d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -277,7 +254,36 @@ export default function ShiftListPage() {
                 </td></tr>
               ) : (
                 shifts.map((shift, idx) => (
-                  <ShiftRow key={shift._id || shift.id || idx} shift={shift} />
+                  <tr key={shift.shift_id || idx} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-5 py-3.5">
+                      <span className="font-mono text-xs text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">
+                        {shift.shift_code || '—'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-gray-700 font-medium">{shift.date || '—'}</td>
+                    <td className="px-5 py-3.5 text-gray-600">
+                      <div>{shift.location || '—'}</div>
+                      {shift.client_county && (
+                        <div className="text-xs text-gray-400">{shift.client_county}</div>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5 text-gray-500 text-xs">{shift.shift_timing || '—'}</td>
+                    <td className="px-5 py-3.5 text-gray-500 text-xs">{shift.user_type || '—'}</td>
+                    <td className="px-5 py-3.5">
+                      {shift.assigned_staff ? (
+                        <div>
+                          <div className="text-gray-700 text-sm">{shift.assigned_staff}</div>
+                          {shift.staff_email && <div className="text-xs text-gray-400">{shift.staff_email}</div>}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs italic">Unassigned</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5"><StatusBadge status={shift.status_name} /></td>
+                    <td className="px-5 py-3.5 text-gray-600 text-sm">
+                      {shift.pay_rate ? `€${shift.pay_rate}/hr` : '—'}
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>

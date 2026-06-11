@@ -21,6 +21,7 @@ async function execute(payload) {
     }
 
     useShiftsStore.getState().setData(data)
+    if (data.sync) useShiftsStore.getState().setSyncResult(data.sync)
   } catch (err) {
     if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return
     const msg = err.response?.data?.message

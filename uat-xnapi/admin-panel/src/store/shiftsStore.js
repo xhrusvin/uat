@@ -14,6 +14,7 @@ export const useShiftsStore = create((set) => ({
   loading: false,
   error: null,
   rawResponse: null,
+  syncResult: null,
 
   setPage:     (page)      => set({ page }),
   setPerPage:  (perPage)   => set({ perPage, page: 1 }),
@@ -25,6 +26,7 @@ export const useShiftsStore = create((set) => ({
 
   setLoading:  (v)    => set({ loading: v }),
   setError:    (v)    => set({ error: v }),
+  setSyncResult: (v) => set({ syncResult: v }),
   setData:     (data) => set({
     shifts:      Array.isArray(data.data) ? data.data : [],
     total:       data.total || 0,
