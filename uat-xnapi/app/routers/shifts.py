@@ -27,7 +27,7 @@ async def list_shifts(request: Request, payload: ShiftListRequest):
     Always returns the raw response from the upstream — including any error
     messages — so the frontend can display them directly.
     """
-    url = f"{settings.SHIFT_URL.rstrip('/')}ai/shifts/list"
+    url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/list"
 
     headers = {
         "Api-Key": settings.SHIFT_INTERNAL_API_KEY,
@@ -53,13 +53,14 @@ async def list_shifts(request: Request, payload: ShiftListRequest):
                 return {
                     "success": True,
                     "status_code": 200,
+                    "upstream_url": url,
                     "data":     upstream_data.get("data")    or upstream_data,
                     "message":  upstream_data.get("message") or "OK",
                     "total":    upstream_data.get("total")   or upstream_data.get("count"),
                     "page":     payload.page,
                     "per_page": payload.per_page,
                 }
-            return {"success": True, "status_code": 200, "data": upstream_data}
+            return {"success": True, "status_code": 200, "upstream_url": url, "data": upstream_data}
 
         # Non-200 — return upstream error as-is so frontend shows it
         logger.warning(f"Shift API {response.status_code}: {str(upstream_data)[:300]}")
@@ -79,8 +80,9 @@ async def list_shifts(request: Request, payload: ShiftListRequest):
         return {
             "success":     False,
             "status_code": response.status_code,
+            "upstream_url": url,
             "message":     f"Shift API error ({response.status_code}): {upstream_msg}",
-            "data":        upstream_data,   # send full upstream response to frontend
+            "data":        upstream_data,
         }
 
     except httpx.TimeoutException:
