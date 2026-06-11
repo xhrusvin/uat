@@ -1,59 +1,35 @@
-import { useEffect, useRef } from 'react'
-import flatpickr from 'flatpickr'
-import 'flatpickr/dist/flatpickr.min.css'
+import { useState } from 'react'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
+import { format, parseISO } from 'date-fns'
 
-const fmt = (d) => {
-  const y   = d.getFullYear()
-  const m   = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+const toDate = (str) => {
+  if (!str) return null
+  try { return parseISO(str) } catch { return null }
 }
 
+const toStr = (d) => d ? format(d, 'yyyy-MM-dd') : ''
+
 export default function DateRangePicker({ value, onChange, onClear, placeholder = 'Pick date range…' }) {
-  const inputRef   = useRef(null)
-  const fpRef      = useRef(null)
-  const onChangeRef = useRef(onChange)   // keep latest callback without recreating flatpickr
-  const onClearRef  = useRef(onClear)
+  const [open, setOpen] = useState(false)
 
-  // Always update the refs so flatpickr always calls the latest handlers
-  useEffect(() => { onChangeRef.current = onChange }, [onChange])
-  useEffect(() => { onClearRef.current  = onClear  }, [onClear])
+  const startDate = toDate(value?.[0])
+  const endDate   = toDate(value?.[1])
+  const hasValue  = !!(startDate || endDate)
 
-  // Init flatpickr once on mount only
-  useEffect(() => {
-    fpRef.current = flatpickr(inputRef.current, {
-      mode: 'range',
-      dateFormat: 'Y-m-d',
-      defaultDate: (value || []).filter(Boolean),
-      disableMobile: true,
-      allowInput: false,
-      onChange: (selectedDates) => {
-        if (selectedDates.length === 2) {
-          onChangeRef.current([fmt(selectedDates[0]), fmt(selectedDates[1])])
-        } else if (selectedDates.length === 0) {
-          onChangeRef.current(['', ''])
-        }
-        // length === 1 means user picked first date — wait for second, do nothing
-      },
-    })
-    return () => fpRef.current?.destroy()
-  }, []) // mount only — safe because we use refs for callbacks
+  const handleChange = ([start, end]) => {
+    onChange([toStr(start), toStr(end)])
+    // Close after both dates picked
+    if (start && end) setOpen(false)
+  }
 
-  // Sync external clear (e.g. "Clear all" button)
-  useEffect(() => {
-    if (!fpRef.current) return
-    const dates = (value || []).filter(Boolean)
-    if (dates.length === 0) {
-      fpRef.current.clear()
-    } else if (dates.length === 2) {
-      fpRef.current.setDate(dates, false) // false = don't trigger onChange
-    }
-  }, [value])
-
-  const hasValue = (value || []).some(Boolean)
+  const displayValue = hasValue
+    ? [value?.[0], value?.[1]].filter(Boolean).join(' → ')
+    : ''
 
   return (
     <div className="relative">
+      {/* Custom input trigger */}
       <div className="relative flex items-center">
         <svg className="w-4 h-4 text-gray-400 absolute left-3 pointer-events-none z-10"
           fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -61,20 +37,17 @@ export default function DateRangePicker({ value, onChange, onClear, placeholder 
             d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
         <input
-          ref={inputRef}
           readOnly
+          value={displayValue}
           placeholder={placeholder}
+          onClick={() => setOpen(!open)}
           className="input pl-9 pr-8 cursor-pointer w-64 bg-white"
         />
         {hasValue && (
           <button
             type="button"
-            onClick={() => {
-              fpRef.current?.clear()
-              onClearRef.current?.()
-            }}
-            className="absolute right-2.5 text-gray-400 hover:text-gray-600 transition-colors"
-            title="Clear dates"
+            onClick={(e) => { e.stopPropagation(); onClear?.(); setOpen(false) }}
+            className="absolute right-2.5 text-gray-400 hover:text-gray-600 transition-colors z-10"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -83,31 +56,39 @@ export default function DateRangePicker({ value, onChange, onClear, placeholder 
         )}
       </div>
 
+      {/* DatePicker in portal mode */}
+      {open && (
+        <div className="absolute z-50 mt-1">
+          <DatePicker
+            selected={startDate}
+            onChange={handleChange}
+            startDate={startDate}
+            endDate={endDate}
+            selectsRange
+            inline
+            calendarClassName="xh-calendar"
+            onClickOutside={() => setOpen(false)}
+          />
+        </div>
+      )}
+
       <style>{`
-        .flatpickr-day.selected,.flatpickr-day.startRange,.flatpickr-day.endRange,
-        .flatpickr-day.selected:hover,.flatpickr-day.startRange:hover,.flatpickr-day.endRange:hover {
-          background: #1e7a38 !important; border-color: #1e7a38 !important;
-        }
-        .flatpickr-day.inRange {
-          background: #e8f5ec !important; border-color: #e8f5ec !important;
-          box-shadow: -5px 0 0 #e8f5ec, 5px 0 0 #e8f5ec;
-        }
-        .flatpickr-day:hover { background: #f0f9f2 !important; }
-        .flatpickr-day.today { border-color: #1e7a38 !important; }
-        .flatpickr-months .flatpickr-month,
-        .flatpickr-current-month .flatpickr-monthDropdown-months,
-        .flatpickr-weekdays { background: #0f2d1a !important; color: white !important; }
-        .flatpickr-weekday { color: rgba(255,255,255,0.7) !important; background: #0f2d1a !important; }
-        .flatpickr-prev-month svg,.flatpickr-next-month svg { fill: white !important; }
-        .flatpickr-prev-month:hover svg,.flatpickr-next-month:hover svg { fill: #86efac !important; }
-        .flatpickr-current-month input.cur-year,
-        .flatpickr-current-month .flatpickr-monthDropdown-months { color: white !important; }
-        .flatpickr-calendar {
-          border-radius: 12px !important;
-          box-shadow: 0 10px 40px rgba(0,0,0,0.12) !important;
-          border: 1px solid #e5e7eb !important;
-          font-family: Inter, system-ui, sans-serif !important;
-        }
+        .xh-calendar { font-family: Inter, system-ui, sans-serif; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 10px 40px rgba(0,0,0,0.12); }
+        .xh-calendar .react-datepicker__header { background: #0f2d1a; border-radius: 12px 12px 0 0; border-bottom: none; padding: 12px; }
+        .xh-calendar .react-datepicker__current-month { color: white; font-weight: 600; }
+        .xh-calendar .react-datepicker__day-name { color: rgba(255,255,255,0.6); font-size: 11px; }
+        .xh-calendar .react-datepicker__navigation-icon::before { border-color: white; }
+        .xh-calendar .react-datepicker__navigation:hover .react-datepicker__navigation-icon::before { border-color: #86efac; }
+        .xh-calendar .react-datepicker__day--selected,
+        .xh-calendar .react-datepicker__day--range-start,
+        .xh-calendar .react-datepicker__day--range-end { background: #1e7a38 !important; color: white !important; border-radius: 50% !important; }
+        .xh-calendar .react-datepicker__day--in-range { background: #e8f5ec; color: #1e7a38; border-radius: 0; }
+        .xh-calendar .react-datepicker__day--range-start { border-radius: 50% 0 0 50% !important; }
+        .xh-calendar .react-datepicker__day--range-end { border-radius: 0 50% 50% 0 !important; }
+        .xh-calendar .react-datepicker__day:hover { background: #f0f9f2; border-radius: 50%; }
+        .xh-calendar .react-datepicker__day--today { font-weight: 700; color: #1e7a38; }
+        .xh-calendar .react-datepicker__day--keyboard-selected { background: #e8f5ec; color: #1e7a38; }
+        .xh-calendar .react-datepicker__month { margin: 8px; }
       `}</style>
     </div>
   )

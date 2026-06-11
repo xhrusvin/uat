@@ -13,17 +13,14 @@ function StatusBadge({ status }) {
 }
 
 function Avatar({ user }) {
-  const initials = user.first_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'
+  const i = user.first_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'
   return (
     <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-         style={{ backgroundColor: '#e8f5ec', color: '#1e7a38' }}>
-      {initials}
-    </div>
+         style={{ backgroundColor: '#e8f5ec', color: '#1e7a38' }}>{i}</div>
   )
 }
 
 export default function UsersPage() {
-  // Read-only state subscription — rendering only, no actions
   const users       = useUsersStore((s) => s.users)
   const total       = useUsersStore((s) => s.total)
   const page        = useUsersStore((s) => s.page)
@@ -35,34 +32,27 @@ export default function UsersPage() {
   const error       = useUsersStore((s) => s.error)
 
   const [searchInput, setSearchInput] = useState(search)
-  const [dateValue, setDateValue]     = useState([dateFrom, dateTo])
   const [selectedId, setSelectedId]   = useState(null)
   const debounceRef                   = useRef(null)
 
-  // init() is module-guarded — runs the fetch only the very first time
   useEffect(() => {
     usersService.init()
   }, [])
 
-  const handleSearchChange = (value) => {
-    setSearchInput(value)
+  const handleSearchChange = (val) => {
+    setSearchInput(val)
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => usersService.setSearch(value), 500)
+    debounceRef.current = setTimeout(() => usersService.setSearch(val), 500)
   }
 
   const handleDateChange = ([from, to]) => {
-    setDateValue([from, to])
-    usersService.setDateRange(from, to)
+    if (from && to) usersService.setDateRange(from, to)
   }
 
-  const handleDateClear = () => {
-    setDateValue(['', ''])
-    usersService.setDateRange('', '')
-  }
+  const handleDateClear = () => usersService.setDateRange('', '')
 
   const handleClearAll = () => {
     setSearchInput('')
-    setDateValue(['', ''])
     usersService.clearFilters()
   }
 
@@ -74,7 +64,7 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Users</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {listLoading ? 'Loading…' : `${total} user${total !== 1 ? 's' : ''} — sorted oldest first`}
+            {listLoading ? 'Loading…' : `${total} user${total !== 1 ? 's' : ''} — oldest first`}
           </p>
         </div>
       </div>
@@ -82,28 +72,24 @@ export default function UsersPage() {
       {/* Filters */}
       <div className="card mb-5 p-4">
         <div className="flex flex-wrap gap-3 items-center">
+          {/* Search */}
           <div className="relative flex-1 min-w-48">
             <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
               fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            <input
-              type="text"
-              className="input pl-9"
-              placeholder="Search name, email, phone…"
-              value={searchInput}
-              onChange={(e) => handleSearchChange(e.target.value)}
-            />
+            <input type="text" className="input pl-9" placeholder="Search name, email, phone…"
+              value={searchInput} onChange={(e) => handleSearchChange(e.target.value)} />
           </div>
 
+          {/* Date range */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 whitespace-nowrap">Joined</span>
             <DateRangePicker
-              value={dateValue}
+              value={[dateFrom, dateTo]}
               onChange={handleDateChange}
               onClear={handleDateClear}
-              placeholder="Pick date range…"
             />
           </div>
 
@@ -155,11 +141,9 @@ export default function UsersPage() {
 
       {/* Error */}
       {error && (
-        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg flex items-center
-                        justify-between text-sm text-red-700">
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between text-sm text-red-700">
           <span>{error}</span>
-          <button onClick={() => usersService.refresh()}
-                  className="ml-4 font-medium underline hover:no-underline">Retry</button>
+          <button onClick={() => usersService.refresh()} className="ml-4 font-medium underline">Retry</button>
         </div>
       )}
 
@@ -188,24 +172,19 @@ export default function UsersPage() {
             <tbody className="divide-y divide-gray-100">
               {listLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i}>
-                    {Array.from({ length: 7 }).map((_, j) => (
-                      <td key={j} className="px-5 py-3.5">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse" />
-                      </td>
-                    ))}
-                  </tr>
+                  <tr key={i}>{Array.from({ length: 7 }).map((_, j) => (
+                    <td key={j} className="px-5 py-3.5">
+                      <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                    </td>
+                  ))}</tr>
                 ))
               ) : !error && users.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-16 text-center text-gray-400">
-                    <p className="text-sm">No users found{hasFilters ? ' — try adjusting your filters' : ''}</p>
-                  </td>
-                </tr>
+                <tr><td colSpan={7} className="px-5 py-16 text-center text-sm text-gray-400">
+                  No users found{hasFilters ? ' — try adjusting your filters' : ''}
+                </td></tr>
               ) : (
                 users.map((u) => (
-                  <tr key={u.id} className="hover:bg-gray-50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedId(u.id)}>
+                  <tr key={u.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedId(u.id)}>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <Avatar user={u} />
@@ -222,7 +201,7 @@ export default function UsersPage() {
                       }) : '—'}
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 text-gray-400 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </td>
@@ -235,9 +214,7 @@ export default function UsersPage() {
         <Pagination page={page} perPage={perPage} total={total} onPage={(p) => usersService.setPage(p)} />
       </div>
 
-      {selectedId && (
-        <UserDrawer userId={selectedId} onClose={() => setSelectedId(null)} />
-      )}
+      {selectedId && <UserDrawer userId={selectedId} onClose={() => setSelectedId(null)} />}
     </div>
   )
 }
