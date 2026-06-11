@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { useUsersStore } from '../store/usersStore'
+import { useState, useRef } from 'react'
+import { useUsers } from '../hooks/useUsers'
 import Pagination from '../components/Pagination'
 import UserDrawer from '../components/UserDrawer'
 import DateRangePicker from '../components/DateRangePicker'
@@ -24,24 +24,19 @@ function Avatar({ user }) {
 export default function UsersPage() {
   const {
     users, total, page, perPage, search, dateFrom, dateTo,
-    listLoading, error, fetchUsers, initUsers, setSearch, setPage, setPerPage,
-    setDateRange, clearFilters,
-  } = useUsersStore()
+    listLoading, error,
+    setPage, setPerPage, setSearch, setDateRange, clearFilters, refresh,
+  } = useUsers()
 
   const [searchInput, setSearchInput] = useState(search)
   const [dateValue, setDateValue]     = useState([dateFrom, dateTo])
   const [selectedId, setSelectedId]   = useState(null)
-  const searchDebounce                = useRef(null)
-  // initUsers only fetches if not already loaded — safe to call on every mount
-  useEffect(() => { initUsers() }, [])
+  const debounceRef                   = useRef(null)
 
-  // Debounced search — skip on mount
   const handleSearchChange = (value) => {
     setSearchInput(value)
-    clearTimeout(searchDebounce.current)
-    searchDebounce.current = setTimeout(() => {
-      setSearch(value)
-    }, 500)
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => setSearch(value), 500)
   }
 
   const handleDateChange = ([from, to]) => {
@@ -64,7 +59,6 @@ export default function UsersPage() {
 
   return (
     <div className="p-8">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Users</h1>
@@ -77,8 +71,6 @@ export default function UsersPage() {
       {/* Filters */}
       <div className="card mb-5 p-4">
         <div className="flex flex-wrap gap-3 items-center">
-
-          {/* Search */}
           <div className="relative flex-1 min-w-48">
             <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
               fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -94,7 +86,6 @@ export default function UsersPage() {
             />
           </div>
 
-          {/* Flatpickr date range */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 whitespace-nowrap">Joined</span>
             <DateRangePicker
@@ -105,7 +96,6 @@ export default function UsersPage() {
             />
           </div>
 
-          {/* Clear all */}
           {hasFilters && (
             <button onClick={handleClearAll} className="btn-secondary flex items-center gap-1.5 text-sm">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,7 +107,6 @@ export default function UsersPage() {
 
           <div className="flex-1" />
 
-          {/* Per page */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 whitespace-nowrap">Show</span>
             <select value={perPage} onChange={(e) => setPerPage(Number(e.target.value))} className="input w-20 py-1.5">
@@ -125,8 +114,7 @@ export default function UsersPage() {
             </select>
           </div>
 
-          {/* Refresh */}
-          <button onClick={fetchUsers} disabled={listLoading} className="btn-secondary flex items-center gap-2 py-2">
+          <button onClick={refresh} disabled={listLoading} className="btn-secondary flex items-center gap-2 py-2">
             <svg className={`w-4 h-4 ${listLoading ? 'animate-spin' : ''}`}
               fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -136,7 +124,6 @@ export default function UsersPage() {
           </button>
         </div>
 
-        {/* Active filter pills */}
         {hasFilters && (
           <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
             {search && (
@@ -153,7 +140,7 @@ export default function UsersPage() {
         )}
       </div>
 
-      {/* Error banner */}
+      {/* Error */}
       {error && (
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg flex items-center
                         justify-between text-sm text-red-700">
@@ -163,12 +150,7 @@ export default function UsersPage() {
             </svg>
             {error}
           </div>
-          <button
-            onClick={fetchUsers}
-            className="ml-4 font-medium underline hover:no-underline"
-          >
-            Retry
-          </button>
+          <button onClick={refresh} className="ml-4 font-medium underline hover:no-underline">Retry</button>
         </div>
       )}
 
@@ -200,7 +182,7 @@ export default function UsersPage() {
                   <tr key={i}>
                     {Array.from({ length: 7 }).map((_, j) => (
                       <td key={j} className="px-5 py-3.5">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse" style={{ width: `${60 + Math.random() * 40}%` }} />
+                        <div className="h-4 bg-gray-100 rounded animate-pulse" />
                       </td>
                     ))}
                   </tr>
@@ -217,11 +199,8 @@ export default function UsersPage() {
                 </tr>
               ) : (
                 users.map((u) => (
-                  <tr
-                    key={u.id}
-                    className="hover:bg-gray-50 transition-colors cursor-pointer"
-                    onClick={() => setSelectedId(u.id)}
-                  >
+                  <tr key={u.id} className="hover:bg-gray-50 transition-colors cursor-pointer"
+                      onClick={() => setSelectedId(u.id)}>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <Avatar user={u} />
@@ -238,10 +217,8 @@ export default function UsersPage() {
                       }) : '—'}
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSelectedId(u.id) }}
-                        className="text-gray-400 hover:text-green-600 transition-colors"
-                      >
+                      <button onClick={(e) => { e.stopPropagation(); setSelectedId(u.id) }}
+                              className="text-gray-400 hover:text-green-600 transition-colors">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>

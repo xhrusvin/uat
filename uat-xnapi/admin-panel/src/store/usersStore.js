@@ -1,9 +1,8 @@
 import { create } from 'zustand'
-import { usersApi } from '../services/api'
 
-let currentRequest = null   // holds the active axios cancellation token
-
-export const useUsersStore = create((set, get) => ({
+// Pure state store — NO fetching logic inside
+// All fetching is done by the UsersPage component
+export const useUsersStore = create((set) => ({
   users: [],
   total: 0,
   page: 1,
@@ -16,109 +15,30 @@ export const useUsersStore = create((set, get) => ({
   saving: false,
   error: null,
   selectedUser: null,
-  hasFetched: false,        // true once the first successful load completes
 
-  // ── Internal: single fetch entry-point ─────────────────────────────────────
-  _fetch: async (overrides = {}) => {
-    // Merge overrides into current state so callers don't need to pass everything
-    const state  = { ...get(), ...overrides }
-    const { page, perPage, search, dateFrom, dateTo } = state
+  // ── Simple setters — just update state, no side effects ───────────────────
+  setPage:    (page)    => set({ page }),
+  setPerPage: (perPage) => set({ perPage, page: 1 }),
+  setSearch:  (search)  => set({ search, page: 1 }),
+  setDateRange: (dateFrom, dateTo) => set({ dateFrom, dateTo, page: 1 }),
+  clearFilters: () => set({ search: '', dateFrom: '', dateTo: '', page: 1 }),
 
-    // Cancel any previous in-flight request
-    if (currentRequest) {
-      currentRequest.abort()
-      currentRequest = null
-    }
-    const controller = new AbortController()
-    currentRequest = controller
+  // ── Loading state setters (called by the component) ───────────────────────
+  setListLoading: (v) => set({ listLoading: v }),
+  setError:       (v) => set({ error: v }),
+  setUsers:       (users, total) => set({ users, total, listLoading: false, error: null }),
 
-    set({ listLoading: true, error: null })
+  // ── Drawer ────────────────────────────────────────────────────────────────
+  setSelectedUser:  (user) => set({ selectedUser: user, drawerLoading: false }),
+  setDrawerLoading: (v)    => set({ drawerLoading: v }),
+  clearSelected:    ()     => set({ selectedUser: null }),
 
-    const params = { skip: (page - 1) * perPage, limit: perPage }
-    if (search)   params.search    = search
-    if (dateFrom) params.date_from = dateFrom
-    if (dateTo)   params.date_to   = dateTo
-
-    try {
-      const { data } = await usersApi.list(params, controller.signal)
-      // Only update if this request wasn't cancelled
-      if (currentRequest === controller) {
-        set({ users: data.users, total: data.total, listLoading: false, hasFetched: true })
-        currentRequest = null
-      }
-    } catch (err) {
-      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return
-      set({
-        error: err.response?.data?.detail || 'Failed to load users',
-        listLoading: false,
-      })
-      currentRequest = null
-    }
-  },
-
-  // ── Public actions ──────────────────────────────────────────────────────────
-
-  // Called on page mount — only fetches if not already loaded
-  initUsers: () => {
-    const { hasFetched, listLoading } = get()
-    if (!hasFetched && !listLoading) get()._fetch()
-  },
-
-  // Force a fresh fetch (e.g. Refresh button)
-  fetchUsers: () => get()._fetch(),
-
-  setSearch: (search) => {
-    set({ search, page: 1 })
-    get()._fetch({ search, page: 1 })
-  },
-
-  setPage: (page) => {
-    set({ page })
-    get()._fetch({ page })
-  },
-
-  setPerPage: (perPage) => {
-    set({ perPage, page: 1 })
-    get()._fetch({ perPage, page: 1 })
-  },
-
-  setDateRange: (dateFrom, dateTo) => {
-    set({ dateFrom, dateTo, page: 1 })
-    get()._fetch({ dateFrom, dateTo, page: 1 })
-  },
-
-  clearFilters: () => {
-    set({ search: '', dateFrom: '', dateTo: '', page: 1 })
-    get()._fetch({ search: '', dateFrom: '', dateTo: '', page: 1 })
-  },
-
-  // ── Drawer ──────────────────────────────────────────────────────────────────
-  fetchUser: async (id) => {
-    set({ drawerLoading: true, selectedUser: null })
-    try {
-      const { data } = await usersApi.get(id)
-      set({ selectedUser: data, drawerLoading: false })
-    } catch {
-      set({ drawerLoading: false })
-    }
-  },
-
-  clearSelected: () => set({ selectedUser: null }),
-
-  // ── Update ──────────────────────────────────────────────────────────────────
-  updateUser: async (id, payload) => {
-    set({ saving: true })
-    try {
-      const { data } = await usersApi.update(id, payload)
-      set((s) => ({
-        saving: false,
-        selectedUser: data,
-        users: s.users.map((u) => (u.id === id ? data : u)),
-      }))
-      return { success: true }
-    } catch (err) {
-      set({ saving: false })
-      return { success: false, error: err.response?.data?.detail || 'Failed to save' }
-    }
-  },
+  // ── Update user in list after save ────────────────────────────────────────
+  updateUserInList: (id, data) =>
+    set((s) => ({
+      saving: false,
+      selectedUser: data,
+      users: s.users.map((u) => (u.id === id ? data : u)),
+    })),
+  setSaving: (v) => set({ saving: v }),
 }))

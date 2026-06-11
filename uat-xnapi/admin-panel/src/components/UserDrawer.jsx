@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useUsersStore } from '../store/usersStore'
+import { useUsers } from '../hooks/useUsers'
 import toast from 'react-hot-toast'
 
 function Field({ label, value }) {
@@ -19,7 +19,7 @@ function StatusBadge({ status }) {
 }
 
 export default function UserDrawer({ userId, onClose }) {
-  const { selectedUser: user, drawerLoading: loading, saving, fetchUser, updateUser, clearSelected } = useUsersStore()
+  const { selectedUser: user, drawerLoading: loading, saving, fetchUser, updateUser, clearSelected } = useUsers()
 
   const [editMode, setEditMode] = useState(false)
   const [xnUserId, setXnUserId]     = useState('')
