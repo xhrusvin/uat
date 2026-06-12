@@ -117,7 +117,7 @@ async def recruitment_detail(request: Request, payload: RecruitmentDetailRequest
     upstream: Any = None
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, json=body, headers=_external_api_headers())
+            response = await client.get(url, params=body, headers=_external_api_headers())
 
         # Always try to parse upstream response
         try:
