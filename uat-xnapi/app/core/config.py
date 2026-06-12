@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # ── User API ──────────────────────────────────────────────────────────────
     USER_API_URL: str = "https://uat.user-xpresshealth.webc.in/api/"
     USER_INTERNAL_API_KEY: str = "HGvB67Hju7TGV8KA8Qah678HIkNH7M"
+    USER_EXTERNAL_API_KEY: str = ""
     APP_COUNTRY: str = "ie"
 
     # ── Shift API ─────────────────────────────────────────────────────────────

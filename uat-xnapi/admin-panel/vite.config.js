@@ -19,7 +19,8 @@ export default defineConfig(({ mode }) => {
         '/shifts': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
         '/shifts-db': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
         '/common':   { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
-        '/clients':  { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/clients':       { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/recruitments':  { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
       }
     },
     build: { outDir: 'dist' }

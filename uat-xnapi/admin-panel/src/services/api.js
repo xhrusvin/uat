@@ -28,6 +28,10 @@ export const shiftsDbApi = {
   get:    (id)     => usersClient.get(`/shifts-db/${id}`),
 }
 
+export const recruitmentsApi = {
+  detail: (id) => usersClient.post('/recruitments/detail', { _id: id }),
+}
+
 export const clientsApi = {
   sync:    (payload) => usersClient.post('/clients/sync', payload),
   list:    (params)  => usersClient.get('/clients/', { params }),
