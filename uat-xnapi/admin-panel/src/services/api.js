@@ -28,6 +28,12 @@ export const shiftsDbApi = {
   get:    (id)     => usersClient.get(`/shifts-db/${id}`),
 }
 
+export const clientsApi = {
+  sync:    (payload) => usersClient.post('/clients/sync', payload),
+  list:    (params)  => usersClient.get('/clients/', { params }),
+  get:     (id)      => usersClient.get(`/clients/${id}`),
+}
+
 export const commonApi = {
   clientTypeList:     () => usersClient.get('/common/client-type-list'),
   clientTypesFromDb:  () => usersClient.get('/common/client-types'),
