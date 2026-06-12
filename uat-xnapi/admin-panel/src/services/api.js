@@ -28,8 +28,11 @@ export const shiftsDbApi = {
   get:    (id)     => usersClient.get(`/shifts-db/${id}`),
 }
 
+// No auth required
+const publicClient = axios.create({ baseURL: BASE_URL, timeout: 15000 })
+
 export const recruitmentsApi = {
-  detail: (id) => usersClient.post('/recruitments/detail', { _id: id }),
+  detail: (id) => publicClient.post('/recruitments/detail', { _id: id }),
 }
 
 export const clientsApi = {

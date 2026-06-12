@@ -4,13 +4,12 @@ from typing import Optional
 
 import httpx
 from bson import ObjectId
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.core.config import settings
-from app.core.security import verify_api_key
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
@@ -123,7 +122,6 @@ class RecruitmentDetailRequest(BaseModel):
 @router.post(
     "/detail",
     summary="Fetch recruitment detail from User API and sync to users collection",
-    dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("60/minute")
 async def recruitment_detail(request: Request, payload: RecruitmentDetailRequest):
