@@ -68,11 +68,24 @@ async def _upsert_user(xn_user_id: str, update_doc: dict, now: datetime) -> dict
     db = _get_db()
     existing = await db["users"].find_one({"xn_user_id": xn_user_id})
     if existing:
+        for field, default in [("call_sent", 1), ("garda_email_sent", 1),
+                               ("follow_up_sent", 1), ("onboarded", 0)]:
+            if existing.get(field) is None:
+                update_doc[field] = default
         await db["users"].update_one({"xn_user_id": xn_user_id}, {"$set": update_doc})
         return {"action": "updated", "user_id": str(existing["_id"])}
     else:
-        new_doc = {**update_doc, "xn_user_id": xn_user_id,
-                   "is_admin": False, "is_active": True, "created_at": now}
+        new_doc = {
+            **update_doc,
+            "xn_user_id":       xn_user_id,
+            "is_admin":         False,
+            "is_active":        True,
+            "call_sent":        1,
+            "garda_email_sent": 1,
+            "follow_up_sent":   1,
+            "onboarded":        0,
+            "created_at":       now,
+        }
         result = await db["users"].insert_one(new_doc)
         return {"action": "inserted", "user_id": str(result.inserted_id)}
 
