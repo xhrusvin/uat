@@ -29,7 +29,8 @@ export const shiftsDbApi = {
 }
 
 export const commonApi = {
-  clientTypeList: () => usersClient.get('/common/client-type-list'),
+  clientTypeList:     () => usersClient.get('/common/client-type-list'),
+  clientTypesFromDb:  () => usersClient.get('/common/client-types'),
 }
 
 export const shiftsApi = {
