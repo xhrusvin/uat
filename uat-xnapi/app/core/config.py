@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     API_PORT: int = 8050
     ADMIN_PORT: int = 8051
 
+    # ── User API ──────────────────────────────────────────────────────────────
+    USER_API_URL: str = "https://uat.user-xpresshealth.webc.in/api/"
+    USER_INTERNAL_API_KEY: str = "HGvB67Hju7TGV8KA8Qah678HIkNH7M"
+    APP_COUNTRY: str = "ie"
+
     # ── Shift API ─────────────────────────────────────────────────────────────
     SHIFT_URL: str = "https://uat.shift-xpresshealth.webc.in/api/"
     SHIFT_INTERNAL_API_KEY: str = "ZDGnj76YJDfg56Ij7YNBkm7Yvfh67B"
