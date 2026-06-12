@@ -79,6 +79,7 @@ def _build_doc(item: dict, now: datetime) -> dict:
         "is_premium":         (item.get("type") or "").lower() == "premium",
         "status":             _map_status(item.get("status_name")),
         "rate":               item.get("pay_rate"),
+        "shift_id":           item.get("shift_id", ""),
         "shift_code":         item.get("shift_code"),
         "shift_timing":       item.get("shift_timing"),
         "user_type":          item.get("user_type"),
