@@ -115,8 +115,10 @@ async def list_shifts_db(
             {"shift_xn_id":    {"$regex": search, "$options": "i"}},
             {"shift_code":     {"$regex": search, "$options": "i"}},
             {"location":       {"$regex": search, "$options": "i"}},
+            {"client_county":  {"$regex": search, "$options": "i"}},
             {"user_type":      {"$regex": search, "$options": "i"}},
             {"assigned_staff": {"$regex": search, "$options": "i"}},
+            {"unit":           {"$regex": search, "$options": "i"}},
         ]})
 
     if status:

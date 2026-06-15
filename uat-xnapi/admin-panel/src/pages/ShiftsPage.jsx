@@ -330,7 +330,7 @@ export default function ShiftsPage() {
             type="text"
             className="pl-9 pr-4 py-1.5 text-sm border border-gray-200 rounded-lg w-52
                        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Search this table"
+            placeholder="Search code, location, county, staff…"
             value={searchInput}
             onChange={(e) => handleSearch(e.target.value)}
           />
