@@ -67,7 +67,8 @@ export const shiftsDbService = {
     useShiftsDbStore.getState().setDrawerLoading(true)
     useShiftsDbStore.getState().clearSelected()
     try {
-      const { data } = await shiftsDbApi.get(id)
+      // Use the detail endpoint for richer data
+      const { data } = await shiftsDbApi.detail(id)
       useShiftsDbStore.getState().setSelected(data.data || null)
     } catch {
       useShiftsDbStore.getState().setDrawerLoading(false)

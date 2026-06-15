@@ -221,3 +221,80 @@ async def get_shift_db(request: Request, shift_id: str):
         s["client_name"] = "—"
 
     return {"success": True, "data": s}
+
+
+# ── DETAIL — shift + client + staff pool stub ─────────────────────────────────
+
+@router.get(
+    "/{shift_id}/detail",
+    summary="Get full shift detail with client info and pool metadata",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def get_shift_detail(request: Request, shift_id: str):
+    """
+    Returns a shift document enriched with:
+    - Full client info (from clients collection via xn_client_id)
+    - Slot breakdown
+    - All stored upstream fields
+    Lookups by MongoDB _id, shift_xn_id, or shift_code.
+    """
+    db = _get_db()
+
+    doc = None
+    if ObjectId.is_valid(shift_id):
+        doc = await db["shifts"].find_one({"_id": ObjectId(shift_id)})
+    if not doc:
+        doc = await db["shifts"].find_one({"$or": [
+            {"shift_xn_id": shift_id},
+            {"shift_code":  shift_id},
+            {"shift_id":    shift_id},
+        ]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    s = _serialize(doc)
+
+    # Enrich with full client data
+    cid = s.get("client_id", "")
+    client_detail: dict = {}
+    if cid:
+        client_map = await _build_client_map(db, [cid])
+        cl = client_map.get(cid)
+        if cl:
+            client_detail = {
+                "client_name":    cl.get("name") or cl.get("title") or "—",
+                "client_email":   cl.get("email"),
+                "client_phone":   cl.get("phone"),
+                "client_address": cl.get("address"),
+                "client_county":  cl.get("county"),
+                "client_type":    cl.get("client_type"),
+                "xn_client_id":   cl.get("xn_client_id"),
+            }
+        else:
+            client_detail = {"client_name": "—"}
+
+    # Build summary stats from slots
+    slots = s.get("slots") or []
+    slot_count = len(slots)
+
+    return {
+        "success": True,
+        "data": {
+            **s,
+            **client_detail,
+            "slot_count":   slot_count,
+            # Pool metadata — placeholders (real data from Shift API pool endpoint)
+            "pool": {
+                "total_staff":       0,
+                "from_bulk_pool":    0,
+                "added_by_user":     0,
+                "excluded_by_system":0,
+                "channels": {
+                    "phone":    0,
+                    "whatsapp": 0,
+                    "email":    0,
+                },
+            },
+        },
+    }
