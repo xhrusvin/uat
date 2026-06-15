@@ -231,7 +231,9 @@ export default function ShiftsPage() {
   const page      = useShiftsDbStore((s) => s.page)
   const perPage   = useShiftsDbStore((s) => s.perPage)
   const search    = useShiftsDbStore((s) => s.search)
-  const status    = useShiftsDbStore((s) => s.status)
+  const status          = useShiftsDbStore((s) => s.status)
+  const userType          = useShiftsDbStore((s) => s.userType)
+  const automationStatus  = useShiftsDbStore((s) => s.automationStatus)
   const dateFrom  = useShiftsDbStore((s) => s.dateFrom)
   const dateTo    = useShiftsDbStore((s) => s.dateTo)
   const loading   = useShiftsDbStore((s) => s.loading)
@@ -242,6 +244,8 @@ export default function ShiftsPage() {
   const [checked, setChecked]         = useState(new Set())
   const [allChecked, setAllChecked]   = useState(false)
   const debounceRef                   = useRef(null)
+  const [filterCriteria, setFilterCriteria] = useState('')  // 'User Type' | 'Automation'
+  const [filterValue, setFilterValue]       = useState('')
 
   useEffect(() => {
     shiftsDbService.init()
@@ -251,6 +255,20 @@ export default function ShiftsPage() {
     setSearchInput(val)
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => shiftsDbService.setSearch(val), 500)
+  }
+
+  const handleFilterCriteriaChange = (criteria) => {
+    setFilterCriteria(criteria)
+    setFilterValue('')
+    // Clear previous criteria filters
+    shiftsDbService.setUserType('')
+    shiftsDbService.setAutomationStatus('')
+  }
+
+  const handleFilterValueChange = (val) => {
+    setFilterValue(val)
+    if (filterCriteria === 'User Type') shiftsDbService.setUserType(val)
+    if (filterCriteria === 'Automation') shiftsDbService.setAutomationStatus(val)
   }
 
   const toggleAll = () => {
@@ -265,7 +283,7 @@ export default function ShiftsPage() {
     setAllChecked(next.size === shifts.length)
   }
 
-  const hasFilters = search || status || dateFrom || dateTo
+  const hasFilters = search || status || userType || automationStatus || dateFrom || dateTo
 
   return (
     <div className="flex flex-col h-full bg-gray-50">

@@ -105,7 +105,9 @@ async def list_shifts_db(
     status:    Optional[str] = Query(None),
     date_from:  Optional[str] = Query(None, description="YYYY-MM-DD"),
     date_to:    Optional[str] = Query(None, description="YYYY-MM-DD"),
-    client_id:  Optional[str] = Query(None, description="Filter by client_id"),
+    client_id:       Optional[str] = Query(None, description="Filter by client_id"),
+    user_type:       Optional[str] = Query(None, description="Filter by user_type"),
+    automation_status: Optional[str] = Query(None, description="Filter by automation_status field"),
 ):
     db = _get_db()
     filters: list = []
@@ -128,6 +130,15 @@ async def list_shifts_db(
 
     if client_id:
         filters.append({"client_id": client_id})
+
+    if user_type:
+        filters.append({"user_type": {"$regex": user_type, "$options": "i"}})
+
+    if automation_status:
+        filters.append({"$or": [
+            {"automation_status": {"$regex": automation_status, "$options": "i"}},
+            {"upstream_status":   {"$regex": automation_status, "$options": "i"}},
+        ]})
 
     if date_from or date_to:
         from datetime import datetime, timezone
