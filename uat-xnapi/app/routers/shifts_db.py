@@ -20,14 +20,13 @@ def _get_db():
 
 
 def _serialize(doc: dict) -> dict:
-    """Recursively convert ObjectId and datetime to JSON-safe types."""
     if doc is None:
         return {}
     result = {}
     for k, v in doc.items():
         if isinstance(v, ObjectId):
             result[k] = str(v)
-        elif hasattr(v, "isoformat"):          # datetime
+        elif hasattr(v, "isoformat"):
             result[k] = v.isoformat()
         elif isinstance(v, dict):
             result[k] = _serialize(v)
@@ -44,25 +43,50 @@ def _serialize(doc: dict) -> dict:
     return result
 
 
-async def _enrich_with_client(shift: dict, db) -> dict:
-    """Look up client name from clients collection by client_id."""
-    client_id = shift.get("client_id")
-    if client_id:
-        try:
-            oid = ObjectId(client_id) if ObjectId.is_valid(client_id) else None
-            query = {"$or": [{"_id": oid}, {"_id": client_id}]} if oid else {"_id": client_id}
-            client = await db["clients"].find_one(query, {"name": 1, "email": 1, "phone": 1})
-            if client:
-                shift["client_name"]  = client.get("name") or client.get("title") or "—"
-                shift["client_email"] = client.get("email")
-                shift["client_phone"] = client.get("phone")
-            else:
-                shift["client_name"] = "—"
-        except Exception:
-            shift["client_name"] = "—"
-    else:
-        shift["client_name"] = "—"
-    return shift
+async def _build_client_map(db, client_ids: list) -> dict:
+    """
+    Look up clients by both:
+      - clients._id        (ObjectId)   — legacy local clients
+      - clients.xn_client_id (string)   — clients synced from User API
+
+    shifts.client_id stores the XN client ID string (e.g. "6921c52323d4e88656035a1d"),
+    which maps to clients.xn_client_id, NOT clients._id.
+
+    Returns a dict keyed by the xn_client_id / _id string.
+    """
+    client_map: dict = {}
+    if not client_ids:
+        return client_map
+
+    projection = {"name": 1, "title": 1, "email": 1, "phone": 1, "xn_client_id": 1}
+
+    # 1. Match by xn_client_id (primary join key)
+    async for cl in db["clients"].find(
+        {"xn_client_id": {"$in": client_ids}},
+        projection,
+    ):
+        xn_id = cl.get("xn_client_id")
+        if xn_id:
+            client_map[str(xn_id)] = cl
+
+    # 2. Also try matching by _id for any unresolved IDs (legacy local clients)
+    unresolved = [cid for cid in client_ids if cid not in client_map]
+    if unresolved:
+        valid_oids = [ObjectId(c) for c in unresolved if ObjectId.is_valid(c)]
+        if valid_oids:
+            async for cl in db["clients"].find(
+                {"_id": {"$in": valid_oids}},
+                projection,
+            ):
+                client_map[str(cl["_id"])] = cl
+
+    return client_map
+
+
+def _client_name(cl: dict) -> str:
+    if not cl:
+        return "—"
+    return cl.get("name") or cl.get("title") or "—"
 
 
 # ── LIST ──────────────────────────────────────────────────────────────────────
@@ -75,24 +99,24 @@ async def _enrich_with_client(shift: dict, db) -> dict:
 @limiter.limit("60/minute")
 async def list_shifts_db(
     request: Request,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    search: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
+    skip:      int           = Query(0, ge=0),
+    limit:     int           = Query(20, ge=1, le=100),
+    search:    Optional[str] = Query(None),
+    status:    Optional[str] = Query(None),
     date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to:   Optional[str] = Query(None, description="YYYY-MM-DD"),
 ):
     db = _get_db()
     filters: list = []
 
     if search:
         filters.append({"$or": [
-            {"name":          {"$regex": search, "$options": "i"}},
-            {"shift_xn_id":   {"$regex": search, "$options": "i"}},
-            {"shift_code":    {"$regex": search, "$options": "i"}},
-            {"location":      {"$regex": search, "$options": "i"}},
-            {"user_type":     {"$regex": search, "$options": "i"}},
-            {"assigned_staff":{"$regex": search, "$options": "i"}},
+            {"name":           {"$regex": search, "$options": "i"}},
+            {"shift_xn_id":    {"$regex": search, "$options": "i"}},
+            {"shift_code":     {"$regex": search, "$options": "i"}},
+            {"location":       {"$regex": search, "$options": "i"}},
+            {"user_type":      {"$regex": search, "$options": "i"}},
+            {"assigned_staff": {"$regex": search, "$options": "i"}},
         ]})
 
     if status:
@@ -124,25 +148,18 @@ async def list_shifts_db(
 
     total = await db["shifts"].count_documents(mongo_filter)
     cursor = db["shifts"].find(mongo_filter).sort("date", -1).skip(skip).limit(limit)
-    docs = await cursor.to_list(length=limit)
+    docs   = await cursor.to_list(length=limit)
 
-    # Batch client lookup — collect unique client_ids
+    # Batch client lookup using xn_client_id join
     client_ids = list({d.get("client_id") for d in docs if d.get("client_id")})
-    client_map: dict = {}
-    if client_ids:
-        valid_oids = [ObjectId(c) for c in client_ids if ObjectId.is_valid(c)]
-        async for cl in db["clients"].find(
-            {"_id": {"$in": valid_oids}},
-            {"name": 1, "title": 1, "email": 1, "phone": 1}
-        ):
-            client_map[str(cl["_id"])] = cl
+    client_map = await _build_client_map(db, client_ids)
 
     results = []
     for doc in docs:
-        s = _serialize(doc)
+        s   = _serialize(doc)
         cid = s.get("client_id", "")
-        cl = client_map.get(cid)
-        s["client_name"]  = (cl.get("name") or cl.get("title") or "—") if cl else "—"
+        cl  = client_map.get(cid)
+        s["client_name"]  = _client_name(cl)
         s["client_email"] = cl.get("email") if cl else None
         s["client_phone"] = cl.get("phone") if cl else None
         results.append(s)
@@ -161,7 +178,6 @@ async def list_shifts_db(
 async def get_shift_db(request: Request, shift_id: str):
     db = _get_db()
 
-    # Try by ObjectId first, then by shift_xn_id / shift_code
     doc = None
     if ObjectId.is_valid(shift_id):
         doc = await db["shifts"].find_one({"_id": ObjectId(shift_id)})
@@ -173,20 +189,17 @@ async def get_shift_db(request: Request, shift_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Shift not found")
 
-    s = _serialize(doc)
-
-    # Enrich with client
+    s   = _serialize(doc)
     cid = s.get("client_id", "")
+
     if cid:
-        cl = None
-        if ObjectId.is_valid(cid):
-            cl = await db["clients"].find_one({"_id": ObjectId(cid)}, {"name": 1, "title": 1, "email": 1, "phone": 1, "address": 1})
-        if cl:
-            s["client_name"]    = cl.get("name") or cl.get("title") or "—"
-            s["client_email"]   = cl.get("email")
-            s["client_phone"]   = cl.get("phone")
-            s["client_address"] = cl.get("address")
-        else:
-            s["client_name"] = "—"
+        client_map = await _build_client_map(db, [cid])
+        cl = client_map.get(cid)
+        s["client_name"]    = _client_name(cl)
+        s["client_email"]   = cl.get("email")   if cl else None
+        s["client_phone"]   = cl.get("phone")   if cl else None
+        s["client_address"] = cl.get("address") if cl else None
+    else:
+        s["client_name"] = "—"
 
     return {"success": True, "data": s}
