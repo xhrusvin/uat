@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useShiftsDbStore } from '../store/shiftsDbStore'
 import { shiftsDbService } from '../services/shiftsDbService'
 import { criteriaApi } from '../services/api'
+import ShiftDetailPage from './ShiftDetailPage'
 import ShiftDrawer from '../components/ShiftDrawer'
 import DateRangePicker from '../components/DateRangePicker'
 
@@ -111,7 +112,7 @@ function ActionButton({ shift, onClick }) {
   )
 }
 
-function ShiftRow({ shift, checked, onCheck, onView }) {
+function ShiftRow({ shift, checked, onCheck, onView, onDetail }) {
   const type    = getShiftType(shift)
   const typeInfo = SHIFT_TYPE_ICON[type] || SHIFT_TYPE_ICON['Day']
   const timeStr  = formatTimeRange(shift)
@@ -188,7 +189,14 @@ function ShiftRow({ shift, checked, onCheck, onView }) {
       {/* Actions */}
       <td className="px-4 py-3.5 text-right">
         <div className="flex items-center gap-2 justify-end">
-          <ActionButton shift={shift} onClick={() => onView(shift._id)} />
+          <ActionButton shift={shift} onClick={() => {
+            const status = shift.status
+            if (status === 'To be assigned' || status === 'Completed' || status === 'Cancelled' || status === 'In Progress') {
+              onDetail(shift._id)
+            } else {
+              onView(shift._id)
+            }
+          }} />
           <button onClick={() => onView(shift._id)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600
                              hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
@@ -261,6 +269,7 @@ export default function ShiftsPage() {
   const [filterCriteria, setFilterCriteria] = useState('')
   const [filterValue, setFilterValue]       = useState('')
   const [criteriaList, setCriteriaList]     = useState([])
+  const [detailShiftId, setDetailShiftId]   = useState(null)
 
   useEffect(() => {
     shiftsDbService.init()
@@ -312,6 +321,10 @@ export default function ShiftsPage() {
   }
 
   const hasFilters = search || status || userType || automationStatus || dateFrom || dateTo
+
+  if (detailShiftId) return (
+    <ShiftDetailPage shiftId={detailShiftId} onBack={() => setDetailShiftId(null)} />
+  )
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -516,6 +529,7 @@ export default function ShiftsPage() {
                   checked={checked.has(shift._id)}
                   onCheck={() => toggleOne(shift._id)}
                   onView={setSelectedId}
+                  onDetail={setDetailShiftId}
                 />
               ))
             )}
