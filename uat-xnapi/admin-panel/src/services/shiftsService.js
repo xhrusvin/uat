@@ -39,8 +39,8 @@ function buildPayload(overrides = {}) {
     search:     overrides.search     ?? s.search,
     page:       overrides.page       ?? s.page,
     per_page:   overrides.perPage    ?? s.perPage,
-    sort_by:    overrides.sortBy     ?? s.sortBy,
-    sort_order: overrides.sortOrder  ?? s.sortOrder,
+    sort_by:    overrides.sortBy     ?? s.sortBy    ?? 'date',
+    sort_order: overrides.sortOrder  ?? s.sortOrder ?? 'desc',
   }
   const startDate = overrides.startDate ?? s.startDate
   const endDate   = overrides.endDate   ?? s.endDate
