@@ -73,7 +73,7 @@ def _build_doc(item: dict, now: datetime) -> dict:
         "description":        "",
         "client_id":          item.get("client_id", ""),
         "client_type":        item.get("type_of_client") or "Private",
-        "location":           item.get("client_county") or "",
+        "location":           item.get("location") or item.get("client_county") or "",
         "postal_code":        None,
         "is_active":          True,
         "is_premium":         (item.get("type") or "").lower() == "premium",
