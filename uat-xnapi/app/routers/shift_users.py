@@ -13,7 +13,7 @@ from app.core.security import verify_api_key
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
-router = APIRouter(prefix="/shift-users", tags=["Shift Users"])
+router = APIRouter(prefix="/shifts-users", tags=["Shift Users"])
 
 
 def _get_db():
@@ -82,7 +82,7 @@ async def add_user_to_shift(request: Request, payload: AddUserToShiftRequest):
         raise HTTPException(status_code=404, detail=f"User {payload.user_id} not found")
 
     # Check for duplicate
-    existing = await db["shift_users"].find_one({
+    existing = await db["shifts_users"].find_one({
         "shift_id": shift_oid,
         "user_id":  user_oid,
     })
@@ -109,7 +109,7 @@ async def add_user_to_shift(request: Request, payload: AddUserToShiftRequest):
         "updated_at":        now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
     }
 
-    result = await db["shift_users"].insert_one(doc)
+    result = await db["shifts_users"].insert_one(doc)
     doc["_id"] = result.inserted_id
 
     logger.info(f"shift_users: added user={payload.user_id} shift={payload.shift_id}")
@@ -164,7 +164,7 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
     # Check which are already in shift_users
     already_added = {
         str(su["user_id"])
-        async for su in db["shift_users"].find(
+        async for su in db["shifts_users"].find(
             {"shift_id": shift_oid, "user_id": {"$in": user_oids}},
             {"user_id": 1}
         )
@@ -198,7 +198,7 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
             "started_at":        None,
             "updated_at":        now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
         }
-        result = await db["shift_users"].insert_one(doc)
+        result = await db["shifts_users"].insert_one(doc)
         inserted_ids.append(str(result.inserted_id))
         inserted += 1
 
@@ -230,7 +230,7 @@ async def list_shift_users(request: Request, shift_id: str):
     db = _get_db()
     shift_oid = _resolve_oid(shift_id, "shift_id")
 
-    su_docs = await db["shift_users"].find({"shift_id": shift_oid}).to_list(500)
+    su_docs = await db["shifts_users"].find({"shift_id": shift_oid}).to_list(500)
     if not su_docs:
         return {"success": True, "total": 0, "shift_id": shift_id, "data": []}
 
@@ -274,7 +274,7 @@ async def remove_user_from_shift(request: Request, shift_id: str, user_id: str):
     shift_oid = _resolve_oid(shift_id, "shift_id")
     user_oid  = _resolve_oid(user_id,  "user_id")
 
-    result = await db["shift_users"].delete_one({
+    result = await db["shifts_users"].delete_one({
         "shift_id": shift_oid,
         "user_id":  user_oid,
     })
