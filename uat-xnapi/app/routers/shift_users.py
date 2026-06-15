@@ -318,11 +318,34 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     docs  = await db["shifts_users"].find({"shift_id": shift_oid}) \
                                     .skip(skip).limit(limit).to_list(length=limit)
 
+    # Enrich with user details
+    user_oids = [d["user_id"] for d in docs if ObjectId.is_valid(str(d.get("user_id", "")))]
+    user_map: dict = {}
+    if user_oids:
+        async for u in db["users"].find(
+            {"_id": {"$in": user_oids}},
+            {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+             "xn_user_id": 1, "designation": 1, "rating": 1}
+        ):
+            user_map[str(u["_id"])] = u
+
+    results = []
+    for d in docs:
+        s = _serialize(d)
+        u = user_map.get(str(d.get("user_id", "")), {})
+        s["xn_user_id"]  = u.get("xn_user_id")
+        s["name"]        = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—"
+        s["email"]       = u.get("email")
+        s["phone"]       = u.get("phone")
+        s["designation"] = u.get("designation")
+        s["rating"]      = u.get("rating")
+        results.append(s)
+
     return {
         "success":  True,
         "total":    total,
         "page":     payload.page,
         "per_page": payload.per_page,
         "shift_id": payload.shift_id,
-        "data":     [_serialize(d) for d in docs],
+        "data":     results,
     }
