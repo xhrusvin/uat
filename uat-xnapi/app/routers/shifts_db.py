@@ -99,18 +99,39 @@ def _client_name(cl: dict) -> str:
 @limiter.limit("60/minute")
 async def list_shifts_db(
     request: Request,
-    skip:      int           = Query(0, ge=0),
-    limit:     int           = Query(20, ge=1, le=100),
-    search:    Optional[str] = Query(None),
-    status:    Optional[str] = Query(None),
+    skip:       int           = Query(0, ge=0),
+    limit:      int           = Query(20, ge=1, le=100),
+    page:       Optional[int] = Query(None, ge=1, description="Page number (overrides skip)"),
+    per_page:   Optional[int] = Query(None, ge=1, le=500, description="Items per page (overrides limit)"),
+    search:     Optional[str] = Query(None),
+    status:     Optional[str] = Query(None),
     date_from:  Optional[str] = Query(None, description="YYYY-MM-DD"),
     date_to:    Optional[str] = Query(None, description="YYYY-MM-DD"),
-    client_id:       Optional[str] = Query(None, description="Filter by client_id"),
-    user_type:       Optional[str] = Query(None, description="Filter by user_type"),
-    automation_status: Optional[str] = Query(None, description="Filter by automation_status field"),
-    criteria:          Optional[str] = Query(None, description="DB field name to scope the search (from criteria collection)"),
+    start_date: Optional[str] = Query(None, description="Alias for date_from (YYYY-MM-DD)"),
+    end_date:   Optional[str] = Query(None, description="Alias for date_to (YYYY-MM-DD)"),
+    sort_by:    Optional[str] = Query("date", description="Sort field"),
+    sort_order: Optional[str] = Query("desc", description="asc or desc"),
+    client_id:        Optional[str] = Query(None),
+    user_type:        Optional[str] = Query(None),
+    automation_status: Optional[str] = Query(None),
+    criteria:          Optional[str] = Query(None),
 ):
     db = _get_db()
+
+    # ── Resolve param aliases ─────────────────────────────────────────────────
+    # page/per_page → skip/limit
+    if page is not None and per_page is not None:
+        skip  = (page - 1) * per_page
+        limit = per_page
+    elif page is not None:
+        skip = (page - 1) * limit
+    elif per_page is not None:
+        limit = per_page
+
+    # start_date/end_date → date_from/date_to
+    effective_date_from = date_from or start_date
+    effective_date_to   = date_to   or end_date
+
     filters: list = []
 
     # ── Resolve criteria label → DB field ────────────────────────────────────
@@ -178,32 +199,36 @@ async def list_shifts_db(
             {"upstream_status":   {"$regex": automation_status, "$options": "i"}},
         ]})
 
-    if date_from or date_to:
+    if effective_date_from or effective_date_to:
         from datetime import datetime, timezone
         date_cond: dict = {}
-        if date_from:
+        if effective_date_from:
             try:
-                dt = datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                dt = datetime.strptime(effective_date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 date_cond["$gte"] = dt
             except ValueError:
                 pass
-        if date_to:
+        if effective_date_to:
             try:
-                dt = datetime.strptime(date_to, "%Y-%m-%d").replace(
+                dt = datetime.strptime(effective_date_to, "%Y-%m-%d").replace(
                     hour=23, minute=59, second=59, tzinfo=timezone.utc)
                 date_cond["$lte"] = dt
             except ValueError:
                 pass
         if date_cond:
+            # Match datetime-stored dates AND string-stored dates ("DD-MM-YYYY" or "YYYY-MM-DD")
+            regex_val = effective_date_from or effective_date_to or ""
             filters.append({"$or": [
                 {"date": date_cond},
-                {"date": {"$regex": (date_from or ""), "$options": "i"}}
+                {"date": {"$regex": regex_val.replace("-", "[-/]"), "$options": "i"}}
             ]})
 
     mongo_filter = {"$and": filters} if filters else {}
 
     total = await db["shifts"].count_documents(mongo_filter)
-    cursor = db["shifts"].find(mongo_filter).sort("date", -1).skip(skip).limit(limit)
+    sort_dir = -1 if (sort_order or "desc").lower() == "desc" else 1
+    sort_field = sort_by or "date"
+    cursor = db["shifts"].find(mongo_filter).sort(sort_field, sort_dir).skip(skip).limit(limit)
     docs   = await cursor.to_list(length=limit)
 
     # Batch client lookup using xn_client_id join
