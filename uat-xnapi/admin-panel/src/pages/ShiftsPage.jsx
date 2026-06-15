@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useShiftsDbStore } from '../store/shiftsDbStore'
 import { shiftsDbService } from '../services/shiftsDbService'
+import { clientsApi } from '../services/api'
 import ShiftDrawer from '../components/ShiftDrawer'
 import DateRangePicker from '../components/DateRangePicker'
 
@@ -232,6 +233,7 @@ export default function ShiftsPage() {
   const perPage   = useShiftsDbStore((s) => s.perPage)
   const search    = useShiftsDbStore((s) => s.search)
   const status    = useShiftsDbStore((s) => s.status)
+  const clientId  = useShiftsDbStore((s) => s.clientId)
   const dateFrom  = useShiftsDbStore((s) => s.dateFrom)
   const dateTo    = useShiftsDbStore((s) => s.dateTo)
   const loading   = useShiftsDbStore((s) => s.loading)
@@ -241,9 +243,16 @@ export default function ShiftsPage() {
   const [selectedId, setSelectedId]   = useState(null)
   const [checked, setChecked]         = useState(new Set())
   const [allChecked, setAllChecked]   = useState(false)
+  const [clients, setClients]         = useState([])
   const debounceRef                   = useRef(null)
 
-  useEffect(() => { shiftsDbService.init() }, [])
+  useEffect(() => {
+    shiftsDbService.init()
+    // Load clients for filter dropdown
+    clientsApi.list({ skip: 0, limit: 500 })
+      .then(({ data }) => setClients(data.data || []))
+      .catch(() => {})
+  }, [])
 
   const handleSearch = (val) => {
     setSearchInput(val)
@@ -263,7 +272,7 @@ export default function ShiftsPage() {
     setAllChecked(next.size === shifts.length)
   }
 
-  const hasFilters = search || status || dateFrom || dateTo
+  const hasFilters = search || status || clientId || dateFrom || dateTo
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -362,6 +371,18 @@ export default function ShiftsPage() {
                            focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="">All statuses</option>
           {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        {/* Client filter */}
+        <select value={clientId} onChange={(e) => shiftsDbService.setClientId(e.target.value)}
+                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600
+                           focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-44">
+          <option value="">All clients</option>
+          {clients.map(c => (
+            <option key={c._id} value={c.xn_client_id || c._id}>
+              {c.name || c._id}
+            </option>
+          ))}
         </select>
 
         {hasFilters && (

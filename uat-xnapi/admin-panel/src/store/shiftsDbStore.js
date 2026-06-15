@@ -7,6 +7,7 @@ export const useShiftsDbStore = create((set) => ({
   perPage: 20,
   search: '',
   status: '',
+  clientId: '',
   dateFrom: '',
   dateTo: '',
   loading: false,
@@ -16,10 +17,11 @@ export const useShiftsDbStore = create((set) => ({
 
   setPage:    (page)    => set({ page }),
   setPerPage: (perPage) => set({ perPage, page: 1 }),
-  setSearch:  (search)  => set({ search, page: 1 }),
-  setStatus:  (status)  => set({ status, page: 1 }),
+  setSearch:   (search)   => set({ search, page: 1 }),
+  setStatus:   (status)   => set({ status, page: 1 }),
+  setClientId: (clientId) => set({ clientId, page: 1 }),
   setDates:   (dateFrom, dateTo) => set({ dateFrom, dateTo, page: 1 }),
-  clearFilters: () => set({ search: '', status: '', dateFrom: '', dateTo: '', page: 1 }),
+  clearFilters: () => set({ search: '', status: '', clientId: '', dateFrom: '', dateTo: '', page: 1 }),
 
   setLoading:      (v) => set({ loading: v }),
   setError:        (v) => set({ error: v }),

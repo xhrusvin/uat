@@ -103,8 +103,9 @@ async def list_shifts_db(
     limit:     int           = Query(20, ge=1, le=100),
     search:    Optional[str] = Query(None),
     status:    Optional[str] = Query(None),
-    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    date_to:   Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_from:  Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to:    Optional[str] = Query(None, description="YYYY-MM-DD"),
+    client_id:  Optional[str] = Query(None, description="Filter by client_id"),
 ):
     db = _get_db()
     filters: list = []
@@ -116,6 +117,7 @@ async def list_shifts_db(
             {"shift_code":     {"$regex": search, "$options": "i"}},
             {"location":       {"$regex": search, "$options": "i"}},
             {"client_county":  {"$regex": search, "$options": "i"}},
+            {"client_id":      {"$regex": search, "$options": "i"}},
             {"user_type":      {"$regex": search, "$options": "i"}},
             {"assigned_staff": {"$regex": search, "$options": "i"}},
             {"unit":           {"$regex": search, "$options": "i"}},
@@ -123,6 +125,9 @@ async def list_shifts_db(
 
     if status:
         filters.append({"status": {"$regex": status, "$options": "i"}})
+
+    if client_id:
+        filters.append({"client_id": client_id})
 
     if date_from or date_to:
         from datetime import datetime, timezone

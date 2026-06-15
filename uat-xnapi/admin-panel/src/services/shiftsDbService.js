@@ -11,10 +11,12 @@ function getParams(ov = {}) {
   const p = { skip: (page - 1) * perPage, limit: perPage }
   const search   = ov.search   ?? s.search
   const status   = ov.status   ?? s.status
+  const clientId = ov.clientId ?? s.clientId
   const dateFrom = ov.dateFrom ?? s.dateFrom
   const dateTo   = ov.dateTo   ?? s.dateTo
   if (search)   p.search    = search
   if (status)   p.status    = status
+  if (clientId) p.client_id = clientId
   if (dateFrom) p.date_from = dateFrom
   if (dateTo)   p.date_to   = dateTo
   return p
@@ -43,7 +45,8 @@ export const shiftsDbService = {
   refresh()         { execute(getParams()) },
   setPage(page)     { useShiftsDbStore.getState().setPage(page);    execute(getParams({ page })) },
   setPerPage(pp)    { useShiftsDbStore.getState().setPerPage(pp);   execute(getParams({ perPage: pp, page: 1 })) },
-  setStatus(status) { useShiftsDbStore.getState().setStatus(status); execute(getParams({ status, page: 1 })) },
+  setStatus(status)     { useShiftsDbStore.getState().setStatus(status);   execute(getParams({ status, page: 1 })) },
+  setClientId(clientId) { useShiftsDbStore.getState().setClientId(clientId); execute(getParams({ clientId, page: 1 })) },
   setDates(f, t)    { useShiftsDbStore.getState().setDates(f, t);   execute(getParams({ dateFrom: f, dateTo: t, page: 1 })) },
   setSearch(search) {
     useShiftsDbStore.getState().setSearch(search)
@@ -52,7 +55,7 @@ export const shiftsDbService = {
   },
   clearFilters() {
     useShiftsDbStore.getState().clearFilters()
-    execute(getParams({ search: '', status: '', dateFrom: '', dateTo: '', page: 1 }))
+    execute(getParams({ search: '', status: '', clientId: '', dateFrom: '', dateTo: '', page: 1 }))
   },
   async fetchOne(id) {
     useShiftsDbStore.getState().setDrawerLoading(true)
