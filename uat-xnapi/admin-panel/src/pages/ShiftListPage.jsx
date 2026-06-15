@@ -102,6 +102,7 @@ export default function ShiftListPage() {
   const [localPage,      setLocalPage]      = useState(1)
   const [localPerPage,   setLocalPerPage]   = useState(perPage)
   const [localSortOrder, setLocalSortOrder] = useState(sortOrder)
+  const [localCriteria,  setLocalCriteria]  = useState('')
   const [localDateValue, setLocalDateValue] = useState([startDate, endDate])
   const [showSync,       setShowSync]       = useState(false)
 
@@ -125,6 +126,7 @@ export default function ShiftListPage() {
 
     shiftsService.fetch({
       search:    localSearch,
+      criteria:  localCriteria,
       page:      localPage,
       perPage:   localPerPage,
       sortOrder: localSortOrder,
@@ -167,6 +169,19 @@ export default function ShiftListPage() {
             <label className="block text-xs font-medium text-gray-500 mb-1">Search</label>
             <input type="text" className="input text-sm" placeholder="Search shifts…"
               value={localSearch} onChange={e => setLocalSearch(e.target.value)} />
+          </div>
+
+          {/* Criteria */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Search Criteria</label>
+            <select className="input text-sm" value={localCriteria}
+                    onChange={e => setLocalCriteria(e.target.value)}>
+              <option value="">— All fields —</option>
+              <option value="User Type">User Type</option>
+              <option value="Automation Status">Automation Status</option>
+              <option value="County">County</option>
+              <option value="Client">Client</option>
+            </select>
           </div>
 
           {/* Page */}

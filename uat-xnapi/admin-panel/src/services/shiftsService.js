@@ -35,6 +35,7 @@ async function execute(payload) {
 
 function buildPayload(overrides = {}) {
   const s = useShiftsStore.getState()
+  const criteria = overrides.criteria ?? s.criteria ?? ''
   const payload = {
     search:     overrides.search     ?? s.search,
     page:       overrides.page       ?? s.page,
@@ -42,6 +43,7 @@ function buildPayload(overrides = {}) {
     sort_by:    overrides.sortBy     ?? s.sortBy    ?? 'date',
     sort_order: overrides.sortOrder  ?? s.sortOrder ?? 'desc',
   }
+  if (criteria) payload.criteria = criteria
   const startDate = overrides.startDate ?? s.startDate
   const endDate   = overrides.endDate   ?? s.endDate
   if (startDate) payload.start_date = startDate

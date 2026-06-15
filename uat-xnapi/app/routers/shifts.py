@@ -139,7 +139,14 @@ async def list_shifts(request: Request, payload: ShiftListRequest):
         "Accept": "application/json",
     }
 
-    # Build body — exclude empty strings for dates
+    # Map criteria to the upstream search field name
+    CRITERIA_FIELD = {
+        "User Type":         "user_type",
+        "Automation Status": "automation_status",
+        "County":            "client_county",
+        "Client":            "location",
+    }
+
     body: dict = {
         "search":     payload.search,
         "page":       payload.page,
@@ -151,8 +158,12 @@ async def list_shifts(request: Request, payload: ShiftListRequest):
         body["start_date"] = payload.start_date
     if payload.end_date:
         body["end_date"] = payload.end_date
-    if payload.filters and payload.filters.location:
-        body["filters"] = {"location": payload.filters.location}
+    # Pass criteria to upstream if provided and search is non-empty
+    if payload.criteria and payload.search:
+        field = CRITERIA_FIELD.get(payload.criteria)
+        if field:
+            body["criteria"] = payload.criteria
+            body["search_field"] = field
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
