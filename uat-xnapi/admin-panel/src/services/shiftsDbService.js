@@ -14,6 +14,7 @@ function getParams(ov = {}) {
   const clientId        = ov.clientId        ?? s.clientId
   const userType        = ov.userType        ?? s.userType
   const automationStatus = ov.automationStatus ?? s.automationStatus
+  const criteriaField    = ov.criteriaField    ?? s.criteriaField
   const dateFrom        = ov.dateFrom        ?? s.dateFrom
   const dateTo          = ov.dateTo          ?? s.dateTo
   if (search)           p.search            = search
@@ -21,6 +22,7 @@ function getParams(ov = {}) {
   if (clientId)         p.client_id         = clientId
   if (userType)         p.user_type         = userType
   if (automationStatus) p.automation_status = automationStatus
+  if (criteriaField)    p.criteria           = criteriaField
   if (dateFrom)         p.date_from         = dateFrom
   if (dateTo)           p.date_to           = dateTo
   return p
@@ -53,6 +55,7 @@ export const shiftsDbService = {
   setClientId(clientId)               { useShiftsDbStore.getState().setClientId(clientId);               execute(getParams({ clientId, page: 1 })) },
   setUserType(userType)               { useShiftsDbStore.getState().setUserType(userType);               execute(getParams({ userType, page: 1 })) },
   setAutomationStatus(automationStatus) { useShiftsDbStore.getState().setAutomationStatus(automationStatus); execute(getParams({ automationStatus, page: 1 })) },
+  setCriteriaField(criteriaField)       { useShiftsDbStore.getState().setCriteriaField(criteriaField); },
   setDates(f, t)    { useShiftsDbStore.getState().setDates(f, t);   execute(getParams({ dateFrom: f, dateTo: t, page: 1 })) },
   setSearch(search) {
     useShiftsDbStore.getState().setSearch(search)
@@ -61,7 +64,7 @@ export const shiftsDbService = {
   },
   clearFilters() {
     useShiftsDbStore.getState().clearFilters()
-    execute(getParams({ search: '', status: '', clientId: '', userType: '', automationStatus: '', dateFrom: '', dateTo: '', page: 1 }))
+    execute(getParams({ search: '', status: '', clientId: '', userType: '', automationStatus: '', criteriaField: '', dateFrom: '', dateTo: '', page: 1 }))
   },
   async fetchOne(id) {
     useShiftsDbStore.getState().setDrawerLoading(true)

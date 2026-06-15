@@ -108,22 +108,28 @@ async def list_shifts_db(
     client_id:       Optional[str] = Query(None, description="Filter by client_id"),
     user_type:       Optional[str] = Query(None, description="Filter by user_type"),
     automation_status: Optional[str] = Query(None, description="Filter by automation_status field"),
+    criteria:          Optional[str] = Query(None, description="DB field name to scope the search (from criteria collection)"),
 ):
     db = _get_db()
     filters: list = []
 
     if search:
-        filters.append({"$or": [
-            {"name":           {"$regex": search, "$options": "i"}},
-            {"shift_xn_id":    {"$regex": search, "$options": "i"}},
-            {"shift_code":     {"$regex": search, "$options": "i"}},
-            {"location":       {"$regex": search, "$options": "i"}},
-            {"client_county":  {"$regex": search, "$options": "i"}},
-            {"client_id":      {"$regex": search, "$options": "i"}},
-            {"user_type":      {"$regex": search, "$options": "i"}},
-            {"assigned_staff": {"$regex": search, "$options": "i"}},
-            {"unit":           {"$regex": search, "$options": "i"}},
-        ]})
+        if criteria:
+            # Scope search to the specific field indicated by the criteria
+            filters.append({criteria: {"$regex": search, "$options": "i"}})
+        else:
+            # Broad search across all relevant fields
+            filters.append({"$or": [
+                {"name":           {"$regex": search, "$options": "i"}},
+                {"shift_xn_id":    {"$regex": search, "$options": "i"}},
+                {"shift_code":     {"$regex": search, "$options": "i"}},
+                {"location":       {"$regex": search, "$options": "i"}},
+                {"client_county":  {"$regex": search, "$options": "i"}},
+                {"client_id":      {"$regex": search, "$options": "i"}},
+                {"user_type":      {"$regex": search, "$options": "i"}},
+                {"assigned_staff": {"$regex": search, "$options": "i"}},
+                {"unit":           {"$regex": search, "$options": "i"}},
+            ]})
 
     if status:
         filters.append({"status": {"$regex": status, "$options": "i"}})

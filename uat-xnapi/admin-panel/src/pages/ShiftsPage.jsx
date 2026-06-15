@@ -288,23 +288,24 @@ export default function ShiftsPage() {
   const handleFilterCriteriaChange = (criteria) => {
     setFilterCriteria(criteria)
     setFilterValue('')
+    // Clear all previous filter state
     shiftsDbService.setUserType('')
     shiftsDbService.setAutomationStatus('')
-    // Also clear search so new criteria takes effect cleanly
     setSearchInput('')
     shiftsDbService.setSearch('')
+    // Store the DB field name so search is scoped to it
+    const c = criteriaList.find(c => c.label === criteria)
+    shiftsDbService.setCriteriaField(c?.field || '')
   }
 
   const handleFilterValueChange = (val) => {
     setFilterValue(val)
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      // Find the DB field for the selected criteria
       const c = criteriaList.find(c => c.label === filterCriteria)
       const field = c?.field || ''
-      if (field === 'user_type')         shiftsDbService.setUserType(val)
-      else if (field === 'automation_status') shiftsDbService.setAutomationStatus(val)
-      else                               shiftsDbService.setSearch(val)
+      // Always use search + criteria field — backend scopes it automatically
+      shiftsDbService.setSearch(val)
     }, 400)
   }
 
