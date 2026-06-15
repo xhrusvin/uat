@@ -287,3 +287,42 @@ async def remove_user_from_shift(request: Request, payload: RemoveUserFromShiftR
         raise HTTPException(status_code=404, detail=f"shift_users record {payload.id} not found")
 
     return {"success": True, "message": "User removed from shift", "id": payload.id}
+
+
+# ── LIST shift_users with pagination (POST body) ──────────────────────────────
+
+class ListShiftUsersRequest(BaseModel):
+    shift_id: str
+    page:     int = 1
+    per_page: int = 20
+
+
+@router.post(
+    "/list",
+    summary="List shift_users records for a shift with pagination",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("120/minute")
+async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRequest):
+    """
+    Body: { "shift_id": "<shift_id>", "page": 1, "per_page": 20 }
+    Returns paginated shift_users records (raw — no user enrichment).
+    """
+    db = _get_db()
+    shift_oid = _resolve_oid(payload.shift_id, "shift_id")
+
+    skip  = (payload.page - 1) * payload.per_page
+    limit = payload.per_page
+
+    total = await db["shifts_users"].count_documents({"shift_id": shift_oid})
+    docs  = await db["shifts_users"].find({"shift_id": shift_oid}) \
+                                    .skip(skip).limit(limit).to_list(length=limit)
+
+    return {
+        "success":  True,
+        "total":    total,
+        "page":     payload.page,
+        "per_page": payload.per_page,
+        "shift_id": payload.shift_id,
+        "data":     [_serialize(d) for d in docs],
+    }
