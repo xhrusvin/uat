@@ -113,10 +113,42 @@ async def list_shifts_db(
     db = _get_db()
     filters: list = []
 
+    # ── Resolve criteria label → DB field ────────────────────────────────────
+    # criteria param may be a label ("Client", "User Type") or a raw field name ("location")
+    LABEL_TO_FIELD = {
+        "User Type":         "user_type",
+        "Automation Status": "automation_status",
+        "County":            "client_county",
+        "Client":            "location",
+        "Client Tags":       "client_tags",
+        "Shift Time":        "shift_timing",
+        "Has Available":     "assigned_staff",
+        "Shift Type":        "shift_type",
+        "Distance":          "distance",
+    }
+    criteria_field: Optional[str] = None
+    if criteria:
+        if criteria in LABEL_TO_FIELD:
+            # It's a label — map to field name
+            criteria_field = LABEL_TO_FIELD[criteria]
+        else:
+            # Assume it's already a raw field name
+            criteria_field = criteria
+        # Also try to resolve from DB criteria collection
+        try:
+            cr_doc = await db["criteria"].find_one(
+                {"$or": [{"label": criteria}, {"field": criteria}]},
+                {"field": 1}
+            )
+            if cr_doc and cr_doc.get("field"):
+                criteria_field = cr_doc["field"]
+        except Exception:
+            pass
+
     if search:
-        if criteria:
-            # Scope search to the specific field indicated by the criteria
-            filters.append({criteria: {"$regex": search, "$options": "i"}})
+        if criteria_field:
+            # Scope search to the specific DB field
+            filters.append({criteria_field: {"$regex": search, "$options": "i"}})
         else:
             # Broad search across all relevant fields
             filters.append({"$or": [

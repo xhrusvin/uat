@@ -22,7 +22,8 @@ function getParams(ov = {}) {
   if (clientId)         p.client_id         = clientId
   if (userType)         p.user_type         = userType
   if (automationStatus) p.automation_status = automationStatus
-  if (criteriaField)    p.criteria           = criteriaField
+  const criteriaLabel    = ov.criteriaLabel    ?? s.criteriaLabel    ?? ''
+  if (criteriaField)    p.criteria           = criteriaLabel || criteriaField
   if (dateFrom)         p.date_from         = dateFrom
   if (dateTo)           p.date_to           = dateTo
   return p

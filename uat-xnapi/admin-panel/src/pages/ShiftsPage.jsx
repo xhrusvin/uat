@@ -293,9 +293,9 @@ export default function ShiftsPage() {
     shiftsDbService.setAutomationStatus('')
     setSearchInput('')
     shiftsDbService.setSearch('')
-    // Store the DB field name so search is scoped to it
+    // Store DB field + label so backend receives the label (it resolves it)
     const c = criteriaList.find(c => c.label === criteria)
-    shiftsDbService.setCriteriaField(c?.field || '')
+    shiftsDbService.setCriteriaField(c?.field || '', criteria)
   }
 
   const handleFilterValueChange = (val) => {

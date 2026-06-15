@@ -11,6 +11,7 @@ export const useShiftsDbStore = create((set) => ({
   userType: '',
   automationStatus: '',
   criteriaField: '',   // DB field name from criteria collection
+  criteriaLabel: '',   // Display label e.g. 'Client', 'User Type'
   dateFrom: '',
   dateTo: '',
   loading: false,
@@ -25,9 +26,9 @@ export const useShiftsDbStore = create((set) => ({
   setClientId:        (clientId)        => set({ clientId, page: 1 }),
   setUserType:        (userType)        => set({ userType, page: 1 }),
   setAutomationStatus:(automationStatus) => set({ automationStatus, page: 1 }),
-  setCriteriaField:   (criteriaField)    => set({ criteriaField, page: 1 }),
+  setCriteriaField:   (criteriaField, criteriaLabel) => set({ criteriaField, criteriaLabel: criteriaLabel || criteriaField, page: 1 }),
   setDates:   (dateFrom, dateTo) => set({ dateFrom, dateTo, page: 1 }),
-  clearFilters: () => set({ search: '', status: '', clientId: '', userType: '', automationStatus: '', criteriaField: '', dateFrom: '', dateTo: '', page: 1 }),
+  clearFilters: () => set({ search: '', status: '', clientId: '', userType: '', automationStatus: '', criteriaField: '', criteriaLabel: '', dateFrom: '', dateTo: '', page: 1 }),
 
   setLoading:      (v) => set({ loading: v }),
   setError:        (v) => set({ error: v }),
