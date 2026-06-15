@@ -383,17 +383,31 @@ export default function ShiftsPage() {
           </button>
         </div>
 
-        {/* Status filter */}
-        <select value={status} onChange={(e) => shiftsDbService.setStatus(e.target.value)}
+        {/* Criteria dropdown */}
+        <select value={filterCriteria} onChange={(e) => handleFilterCriteriaChange(e.target.value)}
                 className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600
                            focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">All statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          <option value="">Filter by…</option>
+          <option value="User Type">User Type</option>
+          <option value="Automation Status">Automation Status</option>
+          <option value="County">County</option>
+          <option value="Client">Client</option>
         </select>
 
+        {/* Value input — shown when criteria selected */}
+        {filterCriteria && (
+          <input
+            type="text"
+            value={filterValue}
+            onChange={(e) => handleFilterValueChange(e.target.value)}
+            placeholder={{'User Type':'e.g. Nurse, HCA…','Automation Status':'e.g. Upcoming…','County':'e.g. Dublin…','Client':'e.g. Newcastle Hospital…'}[filterCriteria]}
+            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 w-48
+                       focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        )}
 
         {hasFilters && (
-          <button onClick={() => { setSearchInput(''); shiftsDbService.clearFilters() }}
+          <button onClick={() => { setSearchInput(''); setFilterCriteria(''); setFilterValue(''); shiftsDbService.clearFilters() }}
                   className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
