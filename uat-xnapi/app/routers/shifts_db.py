@@ -291,6 +291,7 @@ async def _get_shift_users(db, shift_oid: ObjectId) -> list:
             u.get("first_name", ""), u.get("last_name", "")
         ])).strip() or "—"
         users.append({
+            "id":         str(su.get("_id", "")),   # shift_users._id
             "user_id":    uid_str,
             "xn_user_id": u.get("xn_user_id"),
             "name":       full_name,

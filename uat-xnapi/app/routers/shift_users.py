@@ -13,7 +13,7 @@ from app.core.security import verify_api_key
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
-router = APIRouter(prefix="/shifts-users", tags=["Shift Users"])
+router = APIRouter(prefix="/shift-users", tags=["Shift Users"])
 
 
 def _get_db():
@@ -44,6 +44,10 @@ def _resolve_oid(val: str, field: str) -> ObjectId:
 class AddUserToShiftRequest(BaseModel):
     user_id:  str   # MongoDB ObjectId of the user
     shift_id: str   # MongoDB ObjectId of the shift
+
+
+class RemoveUserFromShiftRequest(BaseModel):
+    id: str   # shift_users._id
 
 
 class AddUsersToShiftRequest(BaseModel):
@@ -263,23 +267,23 @@ async def list_shift_users(request: Request, shift_id: str):
 
 # ── REMOVE user from shift ────────────────────────────────────────────────────
 
-@router.delete(
-    "/{shift_id}/{user_id}",
-    summary="Remove a user from a shift",
+@router.post(
+    "/remove",
+    summary="Remove a user from a shift using shift_users._id",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("60/minute")
-async def remove_user_from_shift(request: Request, shift_id: str, user_id: str):
-    db = _get_db()
-    shift_oid = _resolve_oid(shift_id, "shift_id")
-    user_oid  = _resolve_oid(user_id,  "user_id")
+async def remove_user_from_shift(request: Request, payload: RemoveUserFromShiftRequest):
+    """
+    Body: { "id": "<shift_users._id>" }
+    Removes the shift_users record by its own _id.
+    """
+    db  = _get_db()
+    oid = _resolve_oid(payload.id, "id")
 
-    result = await db["shifts_users"].delete_one({
-        "shift_id": shift_oid,
-        "user_id":  user_oid,
-    })
+    result = await db["shifts_users"].delete_one({"_id": oid})
 
     if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="User not found in this shift")
+        raise HTTPException(status_code=404, detail=f"shift_users record {payload.id} not found")
 
-    return {"success": True, "message": "User removed from shift"}
+    return {"success": True, "message": "User removed from shift", "id": payload.id}
