@@ -87,7 +87,7 @@ async def list_criteria(
     db = _get_db()
     await _seed_defaults(db)
     query = {"is_active": True} if active_only else {}
-    docs = await db["criteria"].find(query).sort("label", 1).to_list(500)
+    docs = await db["criteria"].find(query, {"_id": 1, "label": 1, "description": 1}).sort("label", 1).to_list(500)
     return {"success": True, "total": len(docs), "data": [_serialize(d) for d in docs]}
 
 
