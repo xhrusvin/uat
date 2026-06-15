@@ -7,7 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.db.database import close_db, connect_db
-from app.routers import auth, users, shifts, shifts_db, common, clients, recruitments, criteria
+from app.routers import auth, users, shifts, shifts_db, common, clients, recruitments, criteria, shift_users
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -59,6 +59,7 @@ app.include_router(common.router)
 app.include_router(clients.router)
 app.include_router(recruitments.router)
 app.include_router(criteria.router)
+app.include_router(shift_users.router)
 
 
 @app.get("/", tags=["Health"])
