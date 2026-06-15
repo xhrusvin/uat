@@ -248,6 +248,61 @@ async def list_shifts_db(
     return {"success": True, "total": total, "skip": skip, "limit": limit, "data": results}
 
 
+
+async def _get_shift_users(db, shift_oid: ObjectId) -> list:
+    """
+    Join shifts_users → users.
+    shifts_users.shift_id == shifts._id
+    shifts_users.user_id  == users._id
+    Returns list of user summaries: id, name, email, phone, rating.
+    """
+    # Fetch all shifts_users rows for this shift
+    su_docs = await db["shifts_users"].find(
+        {"shift_id": shift_oid},
+        {"user_id": 1, "rating": 1, "status": 1}
+    ).to_list(length=500)
+
+    if not su_docs:
+        return []
+
+    # Collect valid user ObjectIds
+    user_oids = []
+    su_map: dict = {}   # user_id str → shifts_users doc
+    for su in su_docs:
+        uid = su.get("user_id")
+        if uid and ObjectId.is_valid(str(uid)):
+            oid = ObjectId(str(uid))
+            user_oids.append(oid)
+            su_map[str(oid)] = su
+
+    if not user_oids:
+        return []
+
+    # Fetch matching users
+    users: list = []
+    async for u in db["users"].find(
+        {"_id": {"$in": user_oids}},
+        {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+         "xn_user_id": 1, "designation": 1, "rating": 1}
+    ):
+        uid_str = str(u["_id"])
+        su      = su_map.get(uid_str, {})
+        full_name = " ".join(filter(None, [
+            u.get("first_name", ""), u.get("last_name", "")
+        ])).strip() or "—"
+        users.append({
+            "user_id":    uid_str,
+            "xn_user_id": u.get("xn_user_id"),
+            "name":       full_name,
+            "email":      u.get("email"),
+            "phone":      u.get("phone"),
+            "designation":u.get("designation"),
+            "rating":     su.get("rating") or u.get("rating"),
+        })
+
+    return users
+
+
 # ── GET single ────────────────────────────────────────────────────────────────
 
 @router.get(
@@ -282,6 +337,10 @@ async def get_shift_db(request: Request, shift_id: str):
         s["client_address"] = cl.get("address") if cl else None
     else:
         s["client_name"] = "—"
+
+    # Attach staff users from shifts_users collection
+    shift_oid = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
+    s["shift_users"] = await _get_shift_users(db, shift_oid)
 
     return {"success": True, "data": s}
 
@@ -347,6 +406,7 @@ async def get_shift_detail(request: Request, shift_id: str):
             **s,
             **client_detail,
             "slot_count":   slot_count,
+            "shift_users":  await _get_shift_users(db, doc["_id"]),
             # Pool metadata — placeholders (real data from Shift API pool endpoint)
             "pool": {
                 "total_staff":       0,
