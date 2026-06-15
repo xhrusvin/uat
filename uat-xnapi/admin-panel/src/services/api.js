@@ -41,6 +41,13 @@ export const clientsApi = {
   get:     (id)      => usersClient.get(`/clients/${id}`),
 }
 
+export const criteriaApi = {
+  list:    (params) => usersClient.get('/criteria/', { params }),
+  create:  (data)   => usersClient.post('/criteria/', data),
+  update:  (id, data) => usersClient.patch(`/criteria/${id}`, data),
+  delete:  (id)     => usersClient.delete(`/criteria/${id}`),
+}
+
 export const commonApi = {
   clientTypeList:     () => usersClient.get('/common/client-type-list'),
   clientTypesFromDb:  () => usersClient.get('/common/client-types'),

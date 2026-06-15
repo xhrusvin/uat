@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useShiftsDbStore } from '../store/shiftsDbStore'
 import { shiftsDbService } from '../services/shiftsDbService'
+import { criteriaApi } from '../services/api'
 import ShiftDrawer from '../components/ShiftDrawer'
 import DateRangePicker from '../components/DateRangePicker'
 
@@ -244,11 +245,16 @@ export default function ShiftsPage() {
   const [checked, setChecked]         = useState(new Set())
   const [allChecked, setAllChecked]   = useState(false)
   const debounceRef                   = useRef(null)
-  const [filterCriteria, setFilterCriteria] = useState('')  // 'User Type' | 'Automation'
+  const [filterCriteria, setFilterCriteria] = useState('')
   const [filterValue, setFilterValue]       = useState('')
+  const [criteriaList, setCriteriaList]     = useState([])
 
   useEffect(() => {
     shiftsDbService.init()
+    // Load filter criteria from DB
+    criteriaApi.list({ active_only: true })
+      .then(({ data }) => setCriteriaList(data.data || []))
+      .catch(() => {})
   }, [])
 
   const handleSearch = (val) => {
@@ -271,10 +277,12 @@ export default function ShiftsPage() {
     setFilterValue(val)
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      if (filterCriteria === 'User Type')         shiftsDbService.setUserType(val)
-      if (filterCriteria === 'Automation Status') shiftsDbService.setAutomationStatus(val)
-      if (filterCriteria === 'County')            shiftsDbService.setSearch(val)
-      if (filterCriteria === 'Client')            shiftsDbService.setSearch(val)
+      // Find the DB field for the selected criteria
+      const c = criteriaList.find(c => c.label === filterCriteria)
+      const field = c?.field || ''
+      if (field === 'user_type')         shiftsDbService.setUserType(val)
+      else if (field === 'automation_status') shiftsDbService.setAutomationStatus(val)
+      else                               shiftsDbService.setSearch(val)
     }, 400)
   }
 
@@ -383,15 +391,14 @@ export default function ShiftsPage() {
           </button>
         </div>
 
-        {/* Criteria dropdown */}
+        {/* Criteria dropdown — loaded from DB */}
         <select value={filterCriteria} onChange={(e) => handleFilterCriteriaChange(e.target.value)}
                 className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600
                            focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="">Filter by…</option>
-          <option value="User Type">User Type</option>
-          <option value="Automation Status">Automation Status</option>
-          <option value="County">County</option>
-          <option value="Client">Client</option>
+          {criteriaList.map(c => (
+            <option key={c._id} value={c.label}>{c.label}</option>
+          ))}
         </select>
 
         {/* Value input — shown when criteria selected */}
