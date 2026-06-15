@@ -35,6 +35,7 @@ export default function ClientListCallPage() {
 
   // Request params
   const [page, setPage]         = useState(1)
+  const [perPage, setPerPage]   = useState(3000)
   const [search, setSearch]     = useState('')
   const [sortBy, setSortBy]     = useState('created_at')
   const [sortOrder, setSortOrder] = useState('desc')
@@ -47,7 +48,7 @@ export default function ClientListCallPage() {
     setShowSync(false)
 
     const payload = {
-      search, page, per_page: 3000,
+      search, page, per_page: perPage,
       sort_by: sortBy, sort_order: sortOrder,
     }
 
@@ -103,7 +104,9 @@ export default function ClientListCallPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Per Page</label>
-            <input type="text" className="input text-sm bg-gray-50 text-gray-500" value="3000" readOnly />
+            <select className="input text-sm" value={perPage} onChange={e => setPerPage(Number(e.target.value))}>
+              {[20, 50, 100, 500, 1000, 3000].map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Sort By</label>
