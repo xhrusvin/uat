@@ -171,7 +171,7 @@ class ClientFilters(BaseModel):
 class ClientListRequest(BaseModel):
     search:     str = ""
     page:       int = 1
-    per_page:   int = 20
+    per_page:   int = 3000
     sort_by:    str = "created_at"
     sort_order: str = "desc"
     filters:    Optional[ClientFilters] = None

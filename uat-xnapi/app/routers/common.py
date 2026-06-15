@@ -45,7 +45,7 @@ async def _fetch_and_store_client_types() -> dict:
     url = f"{settings.USER_API_URL.rstrip('/')}/ai/common/client-type-list"
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(url, headers=_user_api_headers())
+            response = await client.get(url, params={"per_page": 3000}, headers=_user_api_headers())
 
         try:
             upstream = response.json()

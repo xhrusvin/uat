@@ -35,12 +35,9 @@ export default function ClientListCallPage() {
 
   // Request params
   const [page, setPage]         = useState(1)
-  const [perPage, setPerPage]   = useState(20)
   const [search, setSearch]     = useState('')
   const [sortBy, setSortBy]     = useState('created_at')
   const [sortOrder, setSortOrder] = useState('desc')
-  const [clientTypeFilter, setClientTypeFilter] = useState('')
-  const [countyFilter, setCountyFilter] = useState('')
 
   const handleCall = async () => {
     setLoading(true)
@@ -50,13 +47,9 @@ export default function ClientListCallPage() {
     setShowSync(false)
 
     const payload = {
-      search, page, per_page: perPage,
+      search, page, per_page: 3000,
       sort_by: sortBy, sort_order: sortOrder,
     }
-    const filters = {}
-    if (clientTypeFilter.trim()) filters.client_type = clientTypeFilter.split(',').map(s => s.trim()).filter(Boolean)
-    if (countyFilter.trim())     filters.county       = countyFilter.split(',').map(s => s.trim()).filter(Boolean)
-    if (Object.keys(filters).length) payload.filters = filters
 
     try {
       const { data } = await clientsApi.sync(payload)
@@ -110,9 +103,7 @@ export default function ClientListCallPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Per Page</label>
-            <select className="input text-sm" value={perPage} onChange={e => setPerPage(Number(e.target.value))}>
-              {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <input type="text" className="input text-sm bg-gray-50 text-gray-500" value="3000" readOnly />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Sort By</label>
@@ -128,25 +119,6 @@ export default function ClientListCallPage() {
               <option value="desc">Newest first</option>
               <option value="asc">Oldest first</option>
             </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
-              Filter: Client Type IDs <span className="text-gray-400 font-normal">(comma-separated)</span>
-            </label>
-            <input type="text" className="input text-sm font-mono"
-              placeholder="67ee8be0d1ccf7f06109f4e5, …"
-              value={clientTypeFilter} onChange={e => setClientTypeFilter(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
-              Filter: County IDs <span className="text-gray-400 font-normal">(comma-separated)</span>
-            </label>
-            <input type="text" className="input text-sm font-mono"
-              placeholder="67ee8b21ec3e19cb290acd6e, …"
-              value={countyFilter} onChange={e => setCountyFilter(e.target.value)} />
           </div>
         </div>
 
