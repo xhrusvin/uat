@@ -211,3 +211,104 @@ async def start_outreach(request: Request, payload: OutreachDetailRequest):
         "message":      f"Round {round_number} outreach started",
         "data":         _serialize(doc),
     }
+
+
+# ── POST /outreach/create ──────────────────────────────────────────────────────
+
+@router.post(
+    "/create",
+    summary="Create outreach and update shifts_users with outreach_id + call_enabled",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def create_outreach(request: Request, payload: OutreachDetailRequest):
+    """
+    Body: { "sequence_id": "<sequence _id>", "shift_id": "<shift _id>" }
+
+    1. Creates an outreach document in the outreach collection.
+    2. For each shifts_users record where shift_id matches:
+       - If outreach_id is missing → set outreach_id + call_enabled = 1
+       - If outreach_id already exists → leave it unchanged
+    Returns the outreach record + update summary.
+    """
+    db = _get_db()
+
+    if not ObjectId.is_valid(payload.sequence_id):
+        raise HTTPException(status_code=422, detail="Invalid sequence_id")
+    if not ObjectId.is_valid(payload.shift_id):
+        raise HTTPException(status_code=422, detail="Invalid shift_id")
+
+    seq_oid   = ObjectId(payload.sequence_id)
+    shift_oid = ObjectId(payload.shift_id)
+
+    # Validate sequence and shift exist
+    sequence = await db["sequences"].find_one({"_id": seq_oid})
+    if not sequence:
+        raise HTTPException(status_code=404, detail="Sequence not found")
+
+    shift = await db["shifts"].find_one({"_id": shift_oid})
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    # Round number
+    outreach_count = await db["outreach"].count_documents({"shift_id": shift_oid})
+    round_number   = outreach_count + 1
+    now = datetime.now(timezone.utc)
+
+    # Create outreach document
+    doc = {
+        "shift_id":     shift_oid,
+        "sequence_id":  seq_oid,
+        "round_number": round_number,
+        "status":       "active",
+        "pause_on":     "first_available",
+        "started_at":   now,
+        "paused_at":    None,
+        "ended_at":     None,
+        "created_at":   now,
+        "updated_at":   now,
+    }
+    result = await db["outreach"].insert_one(doc)
+    outreach_oid = result.inserted_id
+    doc["_id"]   = outreach_oid
+
+    # Update shifts_users:
+    # - where outreach_id is missing → set outreach_id + call_enabled = 1
+    # - where outreach_id already exists → skip
+    updated = await db["shifts_users"].update_many(
+        {
+            "shift_id":   shift_oid,
+            "$or": [
+                {"outreach_id": {"$exists": False}},
+                {"outreach_id": None},
+            ],
+        },
+        {
+            "$set": {
+                "outreach_id":  outreach_oid,
+                "call_enabled": 1,
+                "updated_at":   now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+            }
+        }
+    )
+
+    skipped = await db["shifts_users"].count_documents({
+        "shift_id":   shift_oid,
+        "outreach_id": {"$exists": True, "$ne": None, "$ne": outreach_oid},
+    })
+
+    logger.info(
+        f"Outreach created: id={outreach_oid} shift={payload.shift_id} "
+        f"round={round_number} updated={updated.modified_count} skipped={skipped}"
+    )
+
+    return {
+        "success":      True,
+        "round_number": round_number,
+        "message":      f"Round {round_number} outreach created",
+        "data":         _serialize(doc),
+        "shifts_users_update": {
+            "updated":  updated.modified_count,
+            "skipped":  skipped,
+        },
+    }
