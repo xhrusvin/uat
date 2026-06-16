@@ -384,6 +384,9 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     results = []
     for d in docs:
         s = _serialize(d)
+        # Rename _id to id
+        if "_id" in s:
+            s["id"] = s.pop("_id")
         u = user_map.get(str(d.get("user_id", "")), {})
         s["xn_user_id"]  = u.get("xn_user_id")
         s["name"]        = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—"
