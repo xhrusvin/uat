@@ -68,6 +68,14 @@ def _parse_dt(val) -> Optional[datetime]:
     return None
 
 
+def _extract_coord(item: dict, key: str):
+    """Extract lat/lng — handles 0 and negative values correctly."""
+    loc = item.get("location")
+    if isinstance(loc, dict) and key in loc and loc[key] is not None:
+        return loc[key]
+    return None
+
+
 def _build_client_doc(item: dict, now: datetime) -> dict:
     """
     Map upstream client fields → existing clients collection schema.
@@ -113,8 +121,8 @@ def _build_client_doc(item: dict, now: datetime) -> dict:
         "city":            item.get("city") or None,
         "location_name":   item.get("location_name") or None,
         "location":        item.get("location") or None,   # full object
-        "longitude":       (item.get("location") or {}).get("longitude") or None,
-        "latitude":        (item.get("location") or {}).get("latitude") or None,
+        "longitude":       _extract_coord(item, "longitude"),
+        "latitude":        _extract_coord(item, "latitude"),
         "website":         item.get("website") or None,
         "contact_person":  item.get("contact_person") or item.get("contact_name") or None,
         "account_manager": item.get("account_manager") or None,
