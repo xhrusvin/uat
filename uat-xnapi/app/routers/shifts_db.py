@@ -545,10 +545,11 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
     If no outreach found, returns outreach_status=0, text='Not Started'.
     """
     STATUS_TEXT = {
-        0: "Not Started",
-        1: "Active",
-        2: "Paused",
-        3: "Completed",
+        0:  "Not Started",
+        1:  "Live",
+        2:  "Paused",
+        3:  "Ended",
+        10: "Completed",
     }
     latest = await db["outreach"].find_one(
         {"shift_id": shift_oid},
