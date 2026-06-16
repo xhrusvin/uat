@@ -265,6 +265,9 @@ async def list_shifts_db(
         s["client_phone"] = cl.get("phone") if cl else None
         shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
         s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l)
+        outreach_info = await _get_outreach_status(db, shift_oid_l)
+        s["outreach_status"]      = outreach_info["outreach_status"]
+        s["outreach_status_text"] = outreach_info["outreach_status_text"]
         results.append(s)
 
     return {"success": True, "total": total, "skip": skip, "limit": limit, "data": results}
@@ -467,6 +470,9 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["client_phone"] = cl.get("phone") if cl else None
         shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
         s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l)
+        outreach_info = await _get_outreach_status(db, shift_oid_l)
+        s["outreach_status"]      = outreach_info["outreach_status"]
+        s["outreach_status_text"] = outreach_info["outreach_status_text"]
         results.append(s)
 
     return {"success": True, "total": total, "page": payload.page,
@@ -532,6 +538,32 @@ async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
     }
 
 
+
+async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
+    """
+    Returns latest outreach_status for a shift.
+    If no outreach found, returns outreach_status=0, text='Not Started'.
+    """
+    STATUS_TEXT = {
+        0: "Not Started",
+        1: "Active",
+        2: "Paused",
+        3: "Completed",
+    }
+    latest = await db["outreach"].find_one(
+        {"shift_id": shift_oid},
+        sort=[("created_at", -1)]
+    )
+    if not latest:
+        return {"outreach_status": 0, "outreach_status_text": "Not Started"}
+    status = latest.get("outreach_status", 0)
+    return {
+        "outreach_status":      status,
+        "outreach_status_text": STATUS_TEXT.get(status, "Not Started"),
+        "outreach_id":          str(latest["_id"]),
+    }
+
+
 # ── GET single ────────────────────────────────────────────────────────────────
 
 @router.post(
@@ -573,8 +605,13 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         s["client_name"] = "—"
 
     shift_oid = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-    s["shift_users"] = await _get_shift_users(db, shift_oid)
+    s["shift_users"]  = await _get_shift_users(db, shift_oid)
     s["staff_counts"] = await _get_staff_counts(db, shift_oid)
+    outreach_info = await _get_outreach_status(db, shift_oid)
+    s["outreach_status"]      = outreach_info["outreach_status"]
+    s["outreach_status_text"] = outreach_info["outreach_status_text"]
+    if "outreach_id" in outreach_info:
+        s["outreach_id"] = outreach_info["outreach_id"]
 
     return {"success": True, "data": s}
 

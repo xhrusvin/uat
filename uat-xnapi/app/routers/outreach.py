@@ -261,16 +261,17 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
 
     # Create outreach document
     doc = {
-        "shift_id":     shift_oid,
-        "sequence_id":  seq_oid,
-        "round_number": round_number,
-        "status":       "active",
-        "pause_on":     "first_available",
-        "started_at":   now,
-        "paused_at":    None,
-        "ended_at":     None,
-        "created_at":   now,
-        "updated_at":   now,
+        "shift_id":       shift_oid,
+        "sequence_id":    seq_oid,
+        "round_number":   round_number,
+        "status":         "active",
+        "outreach_status": 1,
+        "pause_on":       "first_available",
+        "started_at":     now,
+        "paused_at":      None,
+        "ended_at":       None,
+        "created_at":     now,
+        "updated_at":     now,
     }
     result = await db["outreach"].insert_one(doc)
     outreach_oid = result.inserted_id
