@@ -432,7 +432,6 @@ async def sync_client_detail(request: Request, payload: ClientDetailSyncRequest)
 
         now = datetime.now(timezone.utc)
         doc = _build_client_doc(item, now)
-        db  = None
         from app.db.database import _client as _db_client
         db  = _db_client[settings.MONGODB_DB]
 
@@ -457,8 +456,14 @@ async def sync_client_detail(request: Request, payload: ClientDetailSyncRequest)
             action = "inserted"
             client_db_id = str(result.inserted_id)
 
-        sync = {"action": action, "xn_client_id": xn_id, "client_db_id": client_db_id,
-                "fields_updated": list(doc.keys())}
+        sync = {
+            "action":        action,
+            "xn_client_id":  xn_id,
+            "client_db_id":  client_db_id,
+            "fields_updated": list(doc.keys()),
+            "longitude_saved": doc.get("longitude"),
+            "latitude_saved":  doc.get("latitude"),
+        }
 
         return {
             "success":      True,
