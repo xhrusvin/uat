@@ -25,14 +25,15 @@ def _serialize(doc: dict) -> dict:
         return {}
     result = {}
     for k, v in doc.items():
+        key = "id" if k == "_id" else k
         if isinstance(v, ObjectId):
-            result[k] = str(v)
+            result[key] = str(v)
         elif hasattr(v, "isoformat"):
-            result[k] = v.isoformat()
+            result[key] = v.isoformat()
         elif isinstance(v, dict):
-            result[k] = _serialize(v)
+            result[key] = _serialize(v)
         elif isinstance(v, list):
-            result[k] = [
+            result[key] = [
                 _serialize(i) if isinstance(i, dict)
                 else str(i) if isinstance(i, ObjectId)
                 else i.isoformat() if hasattr(i, "isoformat")
@@ -40,7 +41,7 @@ def _serialize(doc: dict) -> dict:
                 for i in v
             ]
         else:
-            result[k] = v
+            result[key] = v
     return result
 
 
