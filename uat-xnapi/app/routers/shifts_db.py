@@ -486,17 +486,30 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
 
 async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
     """
-    Returns staff pool counts for a shift (detail only):
-    - available  : count of shifts_users where availability > 0
-    - requested  : 0 (static)
+    Full staff counts for detail endpoint:
+    - number_of_staff : total shifts_users records
+    - available       : count where availability > 0
+    - requested       : 0 (static)
+    - phone           : count where call_enabled > 0
+    - whatsapp        : 0 (placeholder)
+    - email           : 0 (placeholder)
     """
+    total     = await db["shifts_users"].count_documents({"shift_id": shift_oid})
     available = await db["shifts_users"].count_documents({
-        "shift_id":    shift_oid,
+        "shift_id":     shift_oid,
         "availability": {"$gt": 0},
     })
+    phone = await db["shifts_users"].count_documents({
+        "shift_id":     shift_oid,
+        "call_enabled": {"$gt": 0},
+    })
     return {
-        "available":  available,
-        "requested":  0,
+        "number_of_staff": total,
+        "available":       available,
+        "requested":       0,
+        "phone":           phone,
+        "whatsapp":        0,
+        "email":           0,
     }
 
 
