@@ -262,9 +262,6 @@ async def list_shifts_db(
         s["client_name"]  = _client_name(cl)
         s["client_email"] = cl.get("email") if cl else None
         s["client_phone"] = cl.get("phone") if cl else None
-        # Staff counts per shift
-        shift_oid_list = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-        s["staff_counts"] = await _get_staff_counts(db, shift_oid_list)
         results.append(s)
 
     return {"success": True, "total": total, "skip": skip, "limit": limit, "data": results}
@@ -462,9 +459,6 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["client_name"]  = _client_name(cl)
         s["client_email"] = cl.get("email") if cl else None
         s["client_phone"] = cl.get("phone") if cl else None
-        # Staff counts per shift
-        shift_oid_list = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-        s["staff_counts"] = await _get_staff_counts(db, shift_oid_list)
         results.append(s)
 
     return {"success": True, "total": total, "page": payload.page,
@@ -478,22 +472,17 @@ class ShiftDetailRequest(BaseModel):
 
 async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
     """
-    Returns staff pool counts for a shift:
-    - number_of_staff : total shifts_users records
-    - phone           : count where call_enabled > 0
-    - whatsapp        : 0 (placeholder)
-    - email           : 0 (placeholder)
+    Returns staff pool counts for a shift (detail only):
+    - available  : count of shifts_users where availability > 0
+    - requested  : 0 (static)
     """
-    total = await db["shifts_users"].count_documents({"shift_id": shift_oid})
-    phone  = await db["shifts_users"].count_documents({
+    available = await db["shifts_users"].count_documents({
         "shift_id":    shift_oid,
-        "call_enabled": {"$gt": 0},
+        "availability": {"$gt": 0},
     })
     return {
-        "number_of_staff": total,
-        "phone":           phone,
-        "whatsapp":        0,
-        "email":           0,
+        "available":  available,
+        "requested":  0,
     }
 
 
