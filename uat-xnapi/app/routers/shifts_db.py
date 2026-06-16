@@ -464,16 +464,25 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
     return {"success": True, "total": total, "page": payload.page,
             "per_page": payload.per_page, "data": results}
 
+
+class ShiftDetailRequest(BaseModel):
+    id: str   # shift _id, shift_xn_id, or shift_code
+
+
 # ── GET single ────────────────────────────────────────────────────────────────
 
-@router.get(
-    "/{shift_id}",
+@router.post(
+    "/detail",
     summary="Get a single shift with full details and client name",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("60/minute")
-async def get_shift_db(request: Request, shift_id: str):
+async def get_shift_db(request: Request, payload: ShiftDetailRequest):
+    """
+    Body: { "id": "<shift _id | shift_xn_id | shift_code>" }
+    """
     db = _get_db()
+    shift_id = payload.id.strip()
 
     doc = None
     if ObjectId.is_valid(shift_id):
@@ -482,6 +491,7 @@ async def get_shift_db(request: Request, shift_id: str):
         doc = await db["shifts"].find_one({"$or": [
             {"shift_xn_id": shift_id},
             {"shift_code":  shift_id},
+            {"shift_id":    shift_id},
         ]})
     if not doc:
         raise HTTPException(status_code=404, detail="Shift not found")
@@ -499,7 +509,6 @@ async def get_shift_db(request: Request, shift_id: str):
     else:
         s["client_name"] = "—"
 
-    # Attach staff users from shifts_users collection
     shift_oid = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
     s["shift_users"] = await _get_shift_users(db, shift_oid)
 
