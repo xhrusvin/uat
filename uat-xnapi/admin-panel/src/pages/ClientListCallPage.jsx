@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { clientsApi } from '../services/api'
+import { clientsApi, commonApi } from '../services/api'
 
 function SyncBanner({ sync, onDismiss }) {
   if (!sync) return null
@@ -32,6 +32,7 @@ export default function ClientListCallPage() {
   const [error, setError]       = useState(null)
   const [syncResult, setSyncResult] = useState(null)
   const [showSync, setShowSync] = useState(false)
+  const [detailProgress, setDetailProgress] = useState(null) // {done, total}
 
   // Request params
   const [page, setPage]         = useState(1)
@@ -60,6 +61,24 @@ export default function ClientListCallPage() {
       } else if (data.sync) {
         setSyncResult(data.sync)
         setShowSync(true)
+
+        // Also call detail API for each client to get lat/lng etc.
+        const clientList = data.data || []
+        if (clientList.length > 0) {
+          setDetailProgress({ done: 0, total: clientList.length })
+          let done = 0
+          for (const c of clientList) {
+            const cid = c._id || c.id
+            if (cid) {
+              try {
+                await commonApi.clientDetail(cid)
+              } catch (_) { /* silent — detail sync is best-effort */ }
+            }
+            done++
+            setDetailProgress({ done, total: clientList.length })
+          }
+          setDetailProgress(null)
+        }
       }
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Request failed')
