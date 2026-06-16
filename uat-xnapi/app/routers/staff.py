@@ -211,7 +211,9 @@ async def list_staff(request: Request, payload: StaffListRequest):
             "county_id":   cid_str,
             "county_name": county_map.get(cid_str, "—") if cid_str else "—",
             "rating":      d.get("rating"),
-            "distance_km": distance_km,
+            "distance_km":    distance_km,
+            "user_latitude":  _user_coords(d)[0] if _user_coords(d) else None,
+            "user_longitude": _user_coords(d)[1] if _user_coords(d) else None,
         })
 
     # Sort by distance if available

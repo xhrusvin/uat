@@ -392,8 +392,11 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         s["name"]        = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—"
         s["email"]       = u.get("email")
         s["phone"]       = u.get("phone")
-        s["designation"] = u.get("designation")
-        s["rating"]      = u.get("rating")
+        s["designation"]   = u.get("designation")
+        s["rating"]        = u.get("rating")
+        ucoords_su = _user_location_coords(u)
+        s["user_latitude"]  = ucoords_su[0] if ucoords_su else None
+        s["user_longitude"] = ucoords_su[1] if ucoords_su else None
 
         # Distance calculation
         distance_km = None
