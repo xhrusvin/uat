@@ -156,7 +156,7 @@ async def client_detail(request: Request, payload: ClientDetailRequest):
 
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.post(url, json=body, headers=_user_api_headers())
+            response = await client.get(url, params=body, headers=_user_api_headers())
         try:
             upstream = response.json()
         except Exception:

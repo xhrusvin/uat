@@ -247,7 +247,7 @@ async def sync_clients(request: Request, payload: ClientListRequest):
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, json=body, headers=_user_api_headers())
+            response = await client.get(url, params=body, headers=_user_api_headers())
 
         try:
             upstream = response.json()
@@ -395,7 +395,7 @@ async def sync_client_detail(request: Request, payload: ClientDetailSyncRequest)
 
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.post(url, json=body, headers=headers)
+            response = await client.get(url, params=body, headers=headers)
 
         try:
             upstream = response.json()
