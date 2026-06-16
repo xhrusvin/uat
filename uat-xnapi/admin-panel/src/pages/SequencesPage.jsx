@@ -241,7 +241,7 @@ export default function SequencesPage() {
   const handleUpdate = async (payload) => {
     setSaving(true)
     try {
-      await sequencesApi.update(editItem._id, payload)
+      await sequencesApi.update(editItem.id, payload)
       showToast('Sequence updated')
       setEditItem(null)
       load()
@@ -252,7 +252,7 @@ export default function SequencesPage() {
 
   const handleToggle = async (seq) => {
     try {
-      await sequencesApi.update(seq._id, { is_active: !seq.is_active })
+      await sequencesApi.update(seq.id, { is_active: !seq.is_active })
       load()
     } catch (err) {
       showToast(err.response?.data?.detail || 'Failed', 'error')
@@ -262,7 +262,7 @@ export default function SequencesPage() {
   const handleDelete = async () => {
     setSaving(true)
     try {
-      await sequencesApi.delete(deleteItem._id)
+      await sequencesApi.delete(deleteItem.id)
       showToast('Sequence deleted')
       setDeleteItem(null)
       load()
@@ -331,7 +331,7 @@ export default function SequencesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map(seq => (
-            <SequenceCard key={seq._id} seq={seq}
+            <SequenceCard key={seq.id} seq={seq}
               onEdit={setEditItem}
               onDelete={setDeleteItem}
               onToggle={handleToggle} />

@@ -24,12 +24,13 @@ def _get_db():
 def _serialize(doc: dict) -> dict:
     result = {}
     for k, v in doc.items():
+        key = "id" if k == "_id" else k
         if isinstance(v, ObjectId):
-            result[k] = str(v)
+            result[key] = str(v)
         elif hasattr(v, "isoformat"):
-            result[k] = v.isoformat()
+            result[key] = v.isoformat()
         else:
-            result[k] = v
+            result[key] = v
     return result
 
 
