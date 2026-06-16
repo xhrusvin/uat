@@ -317,3 +317,81 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
             "skipped":  skipped,
         },
     }
+
+
+# ── POST /outreach/pause ──────────────────────────────────────────────────────
+
+class PauseOutreachRequest(BaseModel):
+    shift_id: str
+
+
+@router.post(
+    "/pause",
+    summary="Pause outreach for a shift",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def pause_outreach(request: Request, payload: PauseOutreachRequest):
+    """
+    Body: { "shift_id": "<shift _id>" }
+
+    1. Finds the latest active outreach for the shift.
+    2. Sets outreach.outreach_status = 2 (Paused), paused_at = now.
+    3. For shifts_users where call_processed != 1 → set call_enabled = 0.
+    """
+    db = _get_db()
+
+    if not ObjectId.is_valid(payload.shift_id):
+        raise HTTPException(status_code=422, detail="Invalid shift_id")
+
+    shift_oid = ObjectId(payload.shift_id)
+
+    # Find the latest active outreach for this shift
+    outreach = await db["outreach"].find_one(
+        {"shift_id": shift_oid, "outreach_status": 1},
+        sort=[("created_at", -1)],
+    )
+    if not outreach:
+        raise HTTPException(
+            status_code=404,
+            detail="No active (Live) outreach found for this shift"
+        )
+
+    now = datetime.now(timezone.utc)
+
+    # Update outreach status to Paused (2)
+    await db["outreach"].update_one(
+        {"_id": outreach["_id"]},
+        {"$set": {
+            "outreach_status": 2,
+            "paused_at":       now,
+            "updated_at":      now,
+        }}
+    )
+
+    # Set call_enabled = 0 for shifts_users where call_processed != 1
+    result = await db["shifts_users"].update_many(
+        {
+            "shift_id":      shift_oid,
+            "call_processed": {"$ne": 1},
+        },
+        {"$set": {
+            "call_enabled": 0,
+            "updated_at":   now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        }}
+    )
+
+    logger.info(
+        f"Outreach paused: shift={payload.shift_id} "
+        f"outreach={outreach['_id']} disabled={result.modified_count}"
+    )
+
+    return {
+        "success":       True,
+        "message":       "Outreach paused",
+        "outreach_id":   str(outreach["_id"]),
+        "shift_id":      payload.shift_id,
+        "outreach_status":      2,
+        "outreach_status_text": "Paused",
+        "shifts_users_updated": result.modified_count,
+    }
