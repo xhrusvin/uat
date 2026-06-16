@@ -281,7 +281,7 @@ async def _get_shift_users(db, shift_oid: ObjectId) -> list:
     # Fetch all shifts_users rows for this shift
     su_docs = await db["shifts_users"].find(
         {"shift_id": shift_oid},
-        {"user_id": 1, "rating": 1, "status": 1}
+        {"user_id": 1, "rating": 1, "status": 1, "outreach_id": 1, "call_enabled": 1}
     ).to_list(length=500)
 
     if not su_docs:
@@ -312,15 +312,18 @@ async def _get_shift_users(db, shift_oid: ObjectId) -> list:
         full_name = " ".join(filter(None, [
             u.get("first_name", ""), u.get("last_name", "")
         ])).strip() or "—"
+        raw_oid = su.get("outreach_id")
         users.append({
-            "id":         str(su.get("_id", "")),   # shift_users._id
-            "user_id":    uid_str,
-            "xn_user_id": u.get("xn_user_id"),
-            "name":       full_name,
-            "email":      u.get("email"),
-            "phone":      u.get("phone"),
-            "designation":u.get("designation"),
-            "rating":     su.get("rating") or u.get("rating"),
+            "id":           str(su.get("_id", "")),
+            "user_id":      uid_str,
+            "xn_user_id":   u.get("xn_user_id"),
+            "name":         full_name,
+            "email":        u.get("email"),
+            "phone":        u.get("phone"),
+            "designation":  u.get("designation"),
+            "rating":       su.get("rating") or u.get("rating"),
+            "outreach_id":  str(raw_oid) if raw_oid else None,
+            "call_enabled": su.get("call_enabled", 0),
         })
 
     return users
@@ -482,7 +485,15 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
         "shift_id":     shift_oid,
         "availability": {"$gt": 0},
     })
-    return {"available": available, "requested": 0}
+    with_outreach = await db["shifts_users"].count_documents({
+        "shift_id":   shift_oid,
+        "outreach_id": {"$exists": True, "$ne": None},
+    })
+    return {
+        "available":        available,
+        "requested":        0,
+        "with_outreach":    with_outreach,
+    }
 
 
 async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
@@ -504,13 +515,20 @@ async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
         "shift_id":     shift_oid,
         "call_enabled": {"$gt": 0},
     })
+    with_outreach    = await db["shifts_users"].count_documents({
+        "shift_id":   shift_oid,
+        "outreach_id": {"$exists": True, "$ne": None},
+    })
+    without_outreach = total - with_outreach
     return {
-        "number_of_staff": total,
-        "available":       available,
-        "requested":       0,
-        "phone":           phone,
-        "whatsapp":        0,
-        "email":           0,
+        "number_of_staff":   total,
+        "available":         available,
+        "requested":         0,
+        "phone":             phone,
+        "whatsapp":          0,
+        "email":             0,
+        "with_outreach":     with_outreach,
+        "without_outreach":  without_outreach,
     }
 
 

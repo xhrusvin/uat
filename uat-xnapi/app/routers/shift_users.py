@@ -282,12 +282,22 @@ async def remove_user_from_shift(request: Request, payload: RemoveUserFromShiftR
     db  = _get_db()
     oid = _resolve_oid(payload.id, "id")
 
+    # Fetch before deleting to log outreach state
+    existing = await db["shifts_users"].find_one({"_id": oid}, {"outreach_id": 1, "shift_id": 1})
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"shift_users record {payload.id} not found")
+
     result = await db["shifts_users"].delete_one({"_id": oid})
 
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail=f"shift_users record {payload.id} not found")
 
-    return {"success": True, "message": "User removed from shift", "id": payload.id}
+    return {
+        "success": True,
+        "message": "User removed from shift",
+        "id": payload.id,
+        "had_outreach": existing.get("outreach_id") is not None,
+    }
 
 
 
@@ -394,6 +404,9 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         s["phone"]       = u.get("phone")
         s["designation"]   = u.get("designation")
         s["rating"]        = u.get("rating")
+        # Include outreach_id from shifts_users
+        raw_oid = d.get("outreach_id")
+        s["outreach_id"] = str(raw_oid) if raw_oid else None
         ucoords_su = _user_location_coords(u)
         s["user_latitude"]  = ucoords_su[0] if ucoords_su else None
         s["user_longitude"] = ucoords_su[1] if ucoords_su else None
