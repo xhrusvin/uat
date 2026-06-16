@@ -253,8 +253,8 @@ async def sync_clients(request: Request, payload: ClientListRequest):
             body["filters"] = f
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=body, headers=_user_api_headers())
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(url, json=body, headers=_user_api_headers())
 
         try:
             upstream = response.json()
