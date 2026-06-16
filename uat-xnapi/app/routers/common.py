@@ -168,12 +168,46 @@ async def client_detail(request: Request, payload: ClientDetailRequest):
                     "upstream_url": url, "message": msg, "data": upstream}
 
         raw  = upstream if isinstance(upstream, dict) else {}
+        item = raw.get("data") or {}
+
+        # ── Upsert to clients collection ──────────────────────────────────────
+        sync = None
+        if item:
+            from datetime import datetime, timezone
+            from bson import ObjectId
+            from app.routers.clients import _build_client_doc
+
+            xn_id = str(item.get("id") or item.get("_id") or payload.client_id).strip()
+            now   = datetime.now(timezone.utc)
+            doc   = _build_client_doc({**item, "id": xn_id}, now)
+            doc["xn_client_id"] = xn_id
+
+            db = _get_db()
+            existing = await db["clients"].find_one({"$or": [
+                {"xn_client_id": xn_id},
+                {"xn_client_id": payload.client_id.strip()},
+            ]})
+            if existing:
+                await db["clients"].update_one({"_id": existing["_id"]}, {"$set": doc})
+                sync = {"action": "updated", "xn_client_id": xn_id,
+                        "client_db_id": str(existing["_id"]),
+                        "longitude": doc.get("longitude"),
+                        "latitude":  doc.get("latitude")}
+            else:
+                doc["created_at"] = now
+                result = await db["clients"].insert_one(doc)
+                sync = {"action": "inserted", "xn_client_id": xn_id,
+                        "client_db_id": str(result.inserted_id),
+                        "longitude": doc.get("longitude"),
+                        "latitude":  doc.get("latitude")}
+
         return {
             "success":      True,
             "status_code":  200,
             "upstream_url": url,
             "message":      raw.get("message") or "Client details",
-            "data":         raw.get("data") or raw,
+            "data":         item or raw,
+            "sync":         sync,
         }
 
     except httpx.TimeoutException:
