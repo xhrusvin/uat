@@ -77,12 +77,12 @@ async def add_user_to_shift(request: Request, payload: AddUserToShiftRequest):
     shift_oid = _resolve_oid(payload.shift_id, "shift_id")
 
     # Validate shift exists
-    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1})
+    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1, "shift_code": 1, "name": 1})
     if not shift:
         raise HTTPException(status_code=404, detail=f"Shift {payload.shift_id} not found")
 
     # Validate user exists
-    user = await db["users"].find_one({"_id": user_oid}, {"_id": 1, "first_name": 1, "last_name": 1})
+    user = await db["users"].find_one({"_id": user_oid}, {"_id": 1, "first_name": 1, "last_name": 1, "email": 1})
     if not user:
         raise HTTPException(status_code=404, detail=f"User {payload.user_id} not found")
 
@@ -92,9 +92,13 @@ async def add_user_to_shift(request: Request, payload: AddUserToShiftRequest):
         "user_id":  user_oid,
     })
     if existing:
+        full_name = " ".join(filter(None, [
+            user.get("first_name", ""), user.get("last_name", "")
+        ])).strip() or payload.user_id
+        shift_code = shift.get("shift_code") or shift.get("name") or payload.shift_id
         raise HTTPException(
             status_code=409,
-            detail=f"User {payload.user_id} is already added to shift {payload.shift_id}"
+            detail=f"{full_name} is already added to shift {shift_code}"
         )
 
     doc = {
@@ -144,7 +148,7 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
 
     shift_oid = _resolve_oid(payload.shift_id, "shift_id")
 
-    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1})
+    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1, "shift_code": 1, "name": 1})
     if not shift:
         raise HTTPException(status_code=404, detail=f"Shift {payload.shift_id} not found")
 
