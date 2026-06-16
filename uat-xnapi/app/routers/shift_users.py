@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -289,6 +290,47 @@ async def remove_user_from_shift(request: Request, payload: RemoveUserFromShiftR
     return {"success": True, "message": "User removed from shift", "id": payload.id}
 
 
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return round(R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)), 2)
+
+
+async def _get_shift_client_coords(db, shift_oid: ObjectId):
+    """shifts._id → shifts.client_id → clients.xn_client_id → lat/lng"""
+    shift = await db["shifts"].find_one({"_id": shift_oid}, {"client_id": 1})
+    if not shift or not shift.get("client_id"):
+        return None
+    client = await db["clients"].find_one(
+        {"xn_client_id": shift["client_id"]},
+        {"latitude": 1, "longitude": 1}
+    )
+    if not client:
+        return None
+    lat = client.get("latitude")
+    lng = client.get("longitude")
+    if lat is None or lng is None:
+        return None
+    return (float(lat), float(lng))
+
+
+def _user_location_coords(u: dict):
+    loc = u.get("location")
+    if isinstance(loc, dict):
+        lat = loc.get("latitude") or loc.get("lat")
+        lng = loc.get("longitude") or loc.get("lng") or loc.get("lon")
+        if lat is not None and lng is not None:
+            return (float(lat), float(lng))
+    lat, lng = u.get("latitude"), u.get("longitude")
+    if lat is not None and lng is not None:
+        return (float(lat), float(lng))
+    return None
+
+
 # ── LIST shift_users with pagination (POST body) ──────────────────────────────
 
 class ListShiftUsersRequest(BaseModel):
@@ -318,14 +360,24 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     docs  = await db["shifts_users"].find({"shift_id": shift_oid}) \
                                     .skip(skip).limit(limit).to_list(length=limit)
 
-    # Enrich with user details
+    # Get shift client coords for distance calculation
+    client_coords = await _get_shift_client_coords(db, shift_oid)
+    shift_client_info = None
+    if client_coords:
+        shift_client_info = {
+            "client_latitude":  client_coords[0],
+            "client_longitude": client_coords[1],
+        }
+
+    # Enrich with user details + location for distance
     user_oids = [d["user_id"] for d in docs if ObjectId.is_valid(str(d.get("user_id", "")))]
     user_map: dict = {}
     if user_oids:
         async for u in db["users"].find(
             {"_id": {"$in": user_oids}},
             {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
-             "xn_user_id": 1, "designation": 1, "rating": 1}
+             "xn_user_id": 1, "designation": 1, "rating": 1,
+             "location": 1, "latitude": 1, "longitude": 1}
         ):
             user_map[str(u["_id"])] = u
 
@@ -339,13 +391,25 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         s["phone"]       = u.get("phone")
         s["designation"] = u.get("designation")
         s["rating"]      = u.get("rating")
+
+        # Distance calculation
+        distance_km = None
+        if client_coords:
+            ucoords = _user_location_coords(u)
+            if ucoords:
+                distance_km = _haversine_km(
+                    client_coords[0], client_coords[1],
+                    ucoords[0],       ucoords[1],
+                )
+        s["distance_km"] = distance_km
         results.append(s)
 
     return {
-        "success":  True,
-        "total":    total,
-        "page":     payload.page,
-        "per_page": payload.per_page,
-        "shift_id": payload.shift_id,
-        "data":     results,
+        "success":      True,
+        "total":        total,
+        "page":         payload.page,
+        "per_page":     payload.per_page,
+        "shift_id":     payload.shift_id,
+        "shift_client": shift_client_info,
+        "data":         results,
     }
