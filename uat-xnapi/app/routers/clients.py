@@ -69,7 +69,6 @@ def _parse_dt(val) -> Optional[datetime]:
 
 
 def _extract_coord(item: dict, key: str):
-    """Extract lat/lng — handles 0 and negative values correctly."""
     loc = item.get("location")
     if isinstance(loc, dict) and key in loc and loc[key] is not None:
         return loc[key]
@@ -78,14 +77,12 @@ def _extract_coord(item: dict, key: str):
 
 def _build_client_doc(item: dict, now: datetime) -> dict:
     """
-    Map upstream client fields → existing clients collection schema.
-    Schema:  name, email, phone, address, county, notes,
-             client_type, is_active, created_at, updated_at
-    All extra upstream fields are stored too.
+    Map upstream client fields → clients collection schema.
+    Every field is written explicitly with no 'or' fallback so
+    null/empty values always overwrite stale data.
     """
-    # Resolve is_active from status or is_active field
-    raw_status = item.get("status")
-    raw_status_name = item.get("status_name") or ""
+    raw_status      = item.get("status")
+    raw_status_name = item.get("status_name")
     if isinstance(raw_status, bool):
         is_active = raw_status
     elif isinstance(raw_status, int):
@@ -95,59 +92,59 @@ def _build_client_doc(item: dict, now: datetime) -> dict:
     else:
         is_active = bool(item.get("is_active", True))
 
+    loc = item.get("location") if isinstance(item.get("location"), dict) else None
+
     doc = {
-        # ── Core schema fields ────────────────────────────────────────────────
-        "name":        (item.get("name") or item.get("title") or "").strip(),
-        "email":       item.get("email") or None,
-        "phone":       item.get("phone_number") or item.get("phone") or item.get("mobile") or None,
-        "dial_code":   item.get("dial_code") or None,
-        "address":     item.get("address") or item.get("full_address") or "",
-        "county":      item.get("county") or item.get("county_name") or item.get("city") or "",
-        "notes":       item.get("notes") or item.get("description") or "",
-        "client_type": (item.get("client_type") or item.get("client_type_name") or
-                        item.get("type") or ""),
-        "type_of_client": item.get("type_of_client") or None,
-        "is_active":   is_active,
-        "updated_at":  now,
+        # ── Core ─────────────────────────────────────────────────────────────
+        "name":           (item.get("name") or item.get("title") or "").strip(),
+        "email":          item.get("email"),
+        "phone":          item.get("phone_number") or item.get("phone") or item.get("mobile"),
+        "dial_code":      item.get("dial_code"),
+        "address":        item.get("address") or item.get("full_address") or "",
+        "county":         item.get("county") or item.get("county_name") or item.get("city") or "",
+        "notes":          item.get("notes") or item.get("description") or "",
+        "client_type":    item.get("client_type") or item.get("client_type_name") or item.get("type") or "",
+        "type_of_client": item.get("type_of_client"),
+        "is_active":      is_active,
+        "updated_at":     now,
+        "synced_at":      now,
 
-        # ── Identity ──────────────────────────────────────────────────────────
-        "xn_client_id":    item.get("_id") or item.get("id") or None,
-        "client_type_id":  item.get("client_type_id") or None,
-        "county_id":       item.get("county_id") or None,
+        # ── Identity ─────────────────────────────────────────────────────────
+        "xn_client_id":   item.get("_id") or item.get("id"),
+        "client_type_id": item.get("client_type_id"),
+        "county_id":      item.get("county_id"),
 
-        # ── Contact / location ────────────────────────────────────────────────
-        "eir_code":        item.get("eir_code") or item.get("eircode") or item.get("postal_code") or None,
-        "province":        item.get("province") or None,
-        "city":            item.get("city") or None,
-        "location_name":   item.get("location_name") or None,
-        "location":        item.get("location") or None,   # full object
-        "longitude":       _extract_coord(item, "longitude"),
-        "latitude":        _extract_coord(item, "latitude"),
-        "website":         item.get("website") or None,
-        "contact_person":  item.get("contact_person") or item.get("contact_name") or None,
-        "account_manager": item.get("account_manager") or None,
+        # ── Location ─────────────────────────────────────────────────────────
+        "eir_code":       item.get("eir_code") or item.get("eircode") or item.get("postal_code"),
+        "province":       item.get("province"),
+        "city":           item.get("city"),
+        "location_name":  item.get("location_name"),
+        "location":       loc,
+        "longitude":      loc.get("longitude") if loc else None,
+        "latitude":       loc.get("latitude")  if loc else None,
+        "website":        item.get("website"),
+        "contact_person": item.get("contact_person") or item.get("contact_name"),
+        "account_manager":item.get("account_manager"),
 
-        # ── Region / country ──────────────────────────────────────────────────
-        "region":          item.get("region") or item.get("region_name") or None,
-        "country":         item.get("country") or item.get("country_name") or None,
+        # ── Region / country ─────────────────────────────────────────────────
+        "region":         item.get("region") or item.get("region_name"),
+        "country":        item.get("country") or item.get("country_name"),
 
-        # ── Status ────────────────────────────────────────────────────────────
-        "status":          raw_status,
-        "status_name":     item.get("status_name") or None,
+        # ── Status ───────────────────────────────────────────────────────────
+        "status":         raw_status,
+        "status_name":    raw_status_name,
 
-        # ── Operational ───────────────────────────────────────────────────────
-        "type_of_staff":        item.get("type_of_staff") or [],
-        "units":                item.get("units") or None,
-        "image":                item.get("image") or None,
-        "travel_expense":       item.get("travel_expense") or None,
-        "break_time_invoice":   item.get("break_time_invoice") or None,
-        "break_time_payment":   item.get("break_time_payment") or None,
-        "cancellation_time":    item.get("cancellation_time") or None,
-
-        "synced_at": now,
+        # ── Operational ──────────────────────────────────────────────────────
+        "type_of_staff":       item.get("type_of_staff") or [],
+        "units":               item.get("units"),
+        "image":               item.get("image"),
+        "travel_expense":      item.get("travel_expense"),
+        "break_time_invoice":  item.get("break_time_invoice"),
+        "break_time_payment":  item.get("break_time_payment"),
+        "cancellation_time":   item.get("cancellation_time"),
     }
 
-    # Store any remaining upstream fields not yet captured
+    # Capture any remaining upstream fields not yet mapped
     skip = {
         "_id", "id", "name", "title", "email", "phone", "phone_number", "mobile",
         "dial_code", "address", "full_address", "county", "county_name", "city",
