@@ -75,39 +75,81 @@ def _build_client_doc(item: dict, now: datetime) -> dict:
              client_type, is_active, created_at, updated_at
     All extra upstream fields are stored too.
     """
+    # Resolve is_active from status or is_active field
+    raw_status = item.get("status")
+    raw_status_name = item.get("status_name") or ""
+    if isinstance(raw_status, bool):
+        is_active = raw_status
+    elif isinstance(raw_status, int):
+        is_active = raw_status == 1
+    elif isinstance(raw_status_name, str) and raw_status_name.lower() in ("enabled", "active"):
+        is_active = True
+    else:
+        is_active = bool(item.get("is_active", True))
+
     doc = {
         # ── Core schema fields ────────────────────────────────────────────────
         "name":        (item.get("name") or item.get("title") or "").strip(),
         "email":       item.get("email") or None,
-        "phone":       item.get("phone") or item.get("mobile") or None,
+        "phone":       item.get("phone_number") or item.get("phone") or item.get("mobile") or None,
+        "dial_code":   item.get("dial_code") or None,
         "address":     item.get("address") or item.get("full_address") or "",
-        "county":      item.get("county") or item.get("county_name") or "",
+        "county":      item.get("county") or item.get("county_name") or item.get("city") or "",
         "notes":       item.get("notes") or item.get("description") or "",
         "client_type": (item.get("client_type") or item.get("client_type_name") or
                         item.get("type") or ""),
-        "is_active":   bool(item.get("is_active", True)),
+        "type_of_client": item.get("type_of_client") or None,
+        "is_active":   is_active,
         "updated_at":  now,
 
-        # ── Extra upstream fields stored as-is ────────────────────────────────
+        # ── Identity ──────────────────────────────────────────────────────────
         "xn_client_id":    item.get("_id") or item.get("id") or None,
-        "client_type_id":  item.get("client_type_id") or item.get("client_type") or None,
+        "client_type_id":  item.get("client_type_id") or None,
         "county_id":       item.get("county_id") or None,
-        "eir_code":        item.get("eir_code") or item.get("postal_code") or None,
+
+        # ── Contact / location ────────────────────────────────────────────────
+        "eir_code":        item.get("eir_code") or item.get("eircode") or item.get("postal_code") or None,
+        "province":        item.get("province") or None,
+        "city":            item.get("city") or None,
+        "location_name":   item.get("location_name") or None,
+        "location":        item.get("location") or None,   # {latitude, longitude}
         "website":         item.get("website") or None,
         "contact_person":  item.get("contact_person") or item.get("contact_name") or None,
+        "account_manager": item.get("account_manager") or None,
+
+        # ── Region / country ──────────────────────────────────────────────────
         "region":          item.get("region") or item.get("region_name") or None,
         "country":         item.get("country") or item.get("country_name") or None,
-        "status":          item.get("status") or None,
-        "synced_at":       now,
+
+        # ── Status ────────────────────────────────────────────────────────────
+        "status":          raw_status,
+        "status_name":     item.get("status_name") or None,
+
+        # ── Operational ───────────────────────────────────────────────────────
+        "type_of_staff":        item.get("type_of_staff") or [],
+        "units":                item.get("units") or None,
+        "image":                item.get("image") or None,
+        "travel_expense":       item.get("travel_expense") or None,
+        "break_time_invoice":   item.get("break_time_invoice") or None,
+        "break_time_payment":   item.get("break_time_payment") or None,
+        "cancellation_time":    item.get("cancellation_time") or None,
+
+        "synced_at": now,
     }
 
     # Store any remaining upstream fields not yet captured
-    skip = {"_id", "id", "name", "title", "email", "phone", "mobile", "address",
-            "full_address", "county", "county_name", "notes", "description",
-            "client_type", "client_type_name", "type", "is_active", "client_type_id",
-            "county_id", "eir_code", "postal_code", "website", "contact_person",
-            "contact_name", "region", "region_name", "country", "country_name",
-            "status", "created_at", "updated_at"}
+    skip = {
+        "_id", "id", "name", "title", "email", "phone", "phone_number", "mobile",
+        "dial_code", "address", "full_address", "county", "county_name", "city",
+        "notes", "description", "client_type", "client_type_name", "type",
+        "type_of_client", "is_active", "client_type_id", "county_id",
+        "eir_code", "eircode", "postal_code", "province", "location_name", "location",
+        "website", "contact_person", "contact_name", "account_manager",
+        "region", "region_name", "country", "country_name",
+        "status", "status_name", "type_of_staff", "units", "image",
+        "travel_expense", "break_time_invoice", "break_time_payment",
+        "cancellation_time", "created_at", "updated_at",
+    }
     for k, v in item.items():
         if k not in skip and k not in doc:
             doc[k] = v
@@ -321,3 +363,76 @@ async def get_client(request: Request, client_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Client not found")
     return {"success": True, "data": _serialize(doc)}
+
+
+# ── Sync single client from detail API ───────────────────────────────────────
+
+class ClientDetailSyncRequest(BaseModel):
+    client_id: str
+
+
+@router.post(
+    "/sync-detail",
+    summary="Fetch single client detail from User API and upsert to clients collection",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def sync_client_detail(request: Request, payload: ClientDetailSyncRequest):
+    """
+    Body: { "client_id": "<xn_client_id>" }
+    Fetches from {USER_API_URL}ai/clients/details and upserts to clients collection.
+    """
+    url  = f"{settings.USER_API_URL.rstrip('/')}/ai/clients/details"
+    body = {"client_id": payload.client_id.strip()}
+
+    from app.core.config import settings as s
+    headers = {
+        "Api-Key":       s.USER_INTERNAL_API_KEY,
+        "X-App-Country": s.APP_COUNTRY,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(url, json=body, headers=headers)
+
+        try:
+            upstream = response.json()
+        except Exception:
+            upstream = response.text
+
+        if response.status_code != 200:
+            msg = upstream.get("message") if isinstance(upstream, dict) else str(upstream)
+            return {"success": False, "status_code": response.status_code,
+                    "message": msg, "data": upstream, "sync": None}
+
+        raw  = upstream if isinstance(upstream, dict) else {}
+        item = raw.get("data") or {}
+        if not item:
+            return {"success": False, "status_code": 200,
+                    "message": "No data returned", "data": raw, "sync": None}
+
+        # Use id from response as xn_client_id
+        if not item.get("_id") and not item.get("id"):
+            item["id"] = payload.client_id
+
+        now  = datetime.now(timezone.utc)
+        doc  = _build_client_doc(item, now)
+        sync = await _upsert_clients([item], now)
+
+        return {
+            "success":      True,
+            "status_code":  200,
+            "message":      raw.get("message") or "Client details synced",
+            "data":         item,
+            "sync":         sync,
+        }
+
+    except httpx.TimeoutException:
+        return {"success": False, "status_code": 504, "message": "Request timed out",
+                "data": None, "sync": None}
+    except Exception as e:
+        logger.error(f"sync-client-detail error: {e}", exc_info=True)
+        return {"success": False, "status_code": 500, "message": str(e),
+                "data": None, "sync": None}

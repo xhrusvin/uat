@@ -12,6 +12,7 @@ import ClientTypePage from './pages/ClientTypePage'
 import ClientListCallPage from './pages/ClientListCallPage'
 import CriteriaPage from './pages/CriteriaPage'
 import UserDetailsPage from './pages/UserDetailsPage'
+import ClientDetailsPage from './pages/ClientDetailsPage'
 import ClientsPage from './pages/ClientsPage'
 
 const basename = import.meta.env.PROD ? '/xnadmin' : '/'
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="master/criteria"            element={<CriteriaPage />} />
           <Route path="xn-api/client-list"         element={<ClientListCallPage />} />
           <Route path="xn-api/user-details"         element={<UserDetailsPage />} />
+          <Route path="xn-api/client-details"       element={<ClientDetailsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

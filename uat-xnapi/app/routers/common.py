@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timezone
 
 import httpx
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -131,3 +132,57 @@ async def list_client_types(request: Request):
     docs = await db["client_types"].find().sort("name", 1).to_list(length=500)
     items = [_serialize(d) for d in docs]
     return {"success": True, "total": len(items), "data": items}
+
+
+# ── Client Details ─────────────────────────────────────────────────────────────
+
+class ClientDetailRequest(BaseModel):
+    client_id: str
+
+
+@router.post(
+    "/client-detail",
+    summary="Get client details from User API",
+)
+@limiter.limit("60/minute")
+async def client_detail(request: Request, payload: ClientDetailRequest):
+    """
+    POST body: { "client_id": "<xn_client_id>" }
+    No authentication required.
+    Fetches from {USER_API_URL}ai/clients/details using USER_INTERNAL_API_KEY.
+    """
+    url  = f"{settings.USER_API_URL.rstrip('/')}/ai/clients/details"
+    body = {"client_id": payload.client_id.strip()}
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(url, json=body, headers=_user_api_headers())
+        try:
+            upstream = response.json()
+        except Exception:
+            upstream = response.text
+
+        if response.status_code != 200:
+            msg = upstream.get("message") if isinstance(upstream, dict) else str(upstream)
+            return {"success": False, "status_code": response.status_code,
+                    "upstream_url": url, "message": msg, "data": upstream}
+
+        raw  = upstream if isinstance(upstream, dict) else {}
+        return {
+            "success":      True,
+            "status_code":  200,
+            "upstream_url": url,
+            "message":      raw.get("message") or "Client details",
+            "data":         raw.get("data") or raw,
+        }
+
+    except httpx.TimeoutException:
+        return {"success": False, "status_code": 504, "upstream_url": url,
+                "message": "Request timed out", "data": None}
+    except httpx.RequestError as e:
+        return {"success": False, "status_code": 502, "upstream_url": url,
+                "message": str(e), "data": None}
+    except Exception as e:
+        logger.error(f"client-detail error: {e}", exc_info=True)
+        return {"success": False, "status_code": 500, "upstream_url": url,
+                "message": str(e), "data": None}

@@ -52,6 +52,7 @@ export const criteriaApi = {
 export const commonApi = {
   clientTypeList:     () => usersClient.get('/common/client-type-list'),
   clientTypesFromDb:  () => usersClient.get('/common/client-types'),
+  clientDetail:       (id) => usersClient.post('/common/client-detail', { client_id: id }),
 }
 
 export const shiftsApi = {
