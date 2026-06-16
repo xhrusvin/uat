@@ -262,6 +262,8 @@ async def list_shifts_db(
         s["client_name"]  = _client_name(cl)
         s["client_email"] = cl.get("email") if cl else None
         s["client_phone"] = cl.get("phone") if cl else None
+        shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
+        s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l)
         results.append(s)
 
     return {"success": True, "total": total, "skip": skip, "limit": limit, "data": results}
@@ -459,6 +461,8 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["client_name"]  = _client_name(cl)
         s["client_email"] = cl.get("email") if cl else None
         s["client_phone"] = cl.get("phone") if cl else None
+        shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
+        s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l)
         results.append(s)
 
     return {"success": True, "total": total, "page": payload.page,
@@ -468,6 +472,16 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
 class ShiftDetailRequest(BaseModel):
     id: str   # shift _id, shift_xn_id, or shift_code
 
+
+
+
+async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
+    """Lightweight counts for list endpoint: available + requested only."""
+    available = await db["shifts_users"].count_documents({
+        "shift_id":     shift_oid,
+        "availability": {"$gt": 0},
+    })
+    return {"available": available, "requested": 0}
 
 
 async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
