@@ -415,13 +415,42 @@ async def sync_client_detail(request: Request, payload: ClientDetailSyncRequest)
             return {"success": False, "status_code": 200,
                     "message": "No data returned", "data": raw, "sync": None}
 
-        # Use id from response as xn_client_id
-        if not item.get("_id") and not item.get("id"):
-            item["id"] = payload.client_id
+        # Ensure xn_client_id is set — detail API returns "id" not "_id"
+        xn_id = str(item.get("id") or item.get("_id") or payload.client_id).strip()
+        if not item.get("_id"):
+            item["_id"] = xn_id
+        if not item.get("id"):
+            item["id"]  = xn_id
 
-        now  = datetime.now(timezone.utc)
-        doc  = _build_client_doc(item, now)
-        sync = await _upsert_clients([item], now)
+        now = datetime.now(timezone.utc)
+        doc = _build_client_doc(item, now)
+        db  = None
+        from app.db.database import _client as _db_client
+        db  = _db_client[settings.MONGODB_DB]
+
+        # Match existing client by xn_client_id OR by the id string directly
+        existing = await db["clients"].find_one({"$or": [
+            {"xn_client_id": xn_id},
+            {"xn_client_id": payload.client_id.strip()},
+        ]})
+        if existing:
+            # Update ALL fields including longitude/latitude
+            doc["xn_client_id"] = xn_id  # ensure xn_client_id is set correctly
+            await db["clients"].update_one(
+                {"_id": existing["_id"]},
+                {"$set": doc}
+            )
+            action = "updated"
+            client_db_id = str(existing["_id"])
+        else:
+            doc["xn_client_id"] = xn_id
+            doc["created_at"]   = now
+            result = await db["clients"].insert_one(doc)
+            action = "inserted"
+            client_db_id = str(result.inserted_id)
+
+        sync = {"action": action, "xn_client_id": xn_id, "client_db_id": client_db_id,
+                "fields_updated": list(doc.keys())}
 
         return {
             "success":      True,
