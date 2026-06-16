@@ -67,6 +67,16 @@ async def list_staff(request: Request, payload: StaffListRequest):
             {"phone":       {"$regex": payload.search, "$options": "i"}},
             {"xn_user_id":  {"$regex": payload.search, "$options": "i"}},
             {"designation": {"$regex": payload.search, "$options": "i"}},
+            # Full name match: concatenate first + last with $expr
+            {"$expr": {"$regexMatch": {
+                "input": {"$concat": [
+                    {"$ifNull": ["$first_name", ""]},
+                    " ",
+                    {"$ifNull": ["$last_name", ""]}
+                ]},
+                "regex": payload.search,
+                "options": "i"
+            }}},
         ]})
 
     if payload.designation:
