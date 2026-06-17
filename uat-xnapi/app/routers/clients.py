@@ -477,3 +477,73 @@ async def sync_client_detail(request: Request, payload: ClientDetailSyncRequest)
         logger.error(f"sync-client-detail error: {e}", exc_info=True)
         return {"success": False, "status_code": 500, "message": str(e),
                 "data": None, "sync": None}
+
+
+# ── Client List API ────────────────────────────────────────────────────────────
+
+class ClientListRequest(BaseModel):
+    search:   str = ""
+    county:   Optional[str] = None   # filter by county name
+    page:     int = 1
+    per_page: int = 20
+
+
+@router.post(
+    "/list",
+    summary="List clients with search and pagination",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def list_clients(request: Request, payload: ClientListRequest):
+    """
+    Body: { "search": "", "county": null, "page": 1, "per_page": 20 }
+    Returns id (xn_client_id), name, email, phone, address, county.
+    """
+    db   = _get_db()
+    skip = (payload.page - 1) * payload.per_page
+
+    filters: list = []
+
+    if payload.search:
+        filters.append({"$or": [
+            {"name":         {"$regex": payload.search, "$options": "i"}},
+            {"email":        {"$regex": payload.search, "$options": "i"}},
+            {"phone":        {"$regex": payload.search, "$options": "i"}},
+            {"address":      {"$regex": payload.search, "$options": "i"}},
+            {"xn_client_id": {"$regex": payload.search, "$options": "i"}},
+        ]})
+
+    if payload.county:
+        filters.append({"county": {"$regex": payload.county, "$options": "i"}})
+
+    mongo_filter = {"$and": filters} if filters else {}
+
+    total = await db["clients"].count_documents(mongo_filter)
+    docs  = await db["clients"].find(
+        mongo_filter,
+        {
+            "_id": 1, "xn_client_id": 1,
+            "name": 1, "email": 1, "phone": 1,
+            "address": 1, "county": 1,
+        }
+    ).sort("name", 1).skip(skip).limit(payload.per_page).to_list(payload.per_page)
+
+    data = []
+    for d in docs:
+        data.append({
+            "id":         str(d["_id"]),
+            "xn_id":      d.get("xn_client_id"),
+            "name":       d.get("name") or "—",
+            "email":      d.get("email"),
+            "phone":      d.get("phone"),
+            "address":    d.get("address"),
+            "county":     d.get("county"),
+        })
+
+    return {
+        "success":  True,
+        "total":    total,
+        "page":     payload.page,
+        "per_page": payload.per_page,
+        "data":     data,
+    }
