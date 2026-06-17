@@ -701,3 +701,123 @@ async def end_outreach(request: Request, payload: PauseOutreachRequest):
         "outreach_status_text": "Ended",
         "shifts_users_updated": result.modified_count,
     }
+
+
+# ── POST /outreach/complete ───────────────────────────────────────────────────
+
+@router.post(
+    "/complete",
+    summary="Mark outreach as completed (outreach_status = 10)",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def complete_outreach(request: Request, payload: PauseOutreachRequest):
+    """
+    Body: { "shift_id": "<shift _id>" }
+
+    Rules:
+    - Can only complete from Live (1), Paused (2), or Ended (3).
+    - Already Completed (10) returns 409.
+    - Sets outreach_status = 10 (Completed), ended_at = now.
+    - Sets call_enabled = 0 for shifts_users where call_processed = 0.
+    - Logs round_completed activity.
+    """
+    db = _get_db()
+
+    if not ObjectId.is_valid(payload.shift_id):
+        raise HTTPException(status_code=422, detail="Invalid shift_id")
+
+    shift_oid = ObjectId(payload.shift_id)
+
+    # Find the latest outreach for this shift
+    latest = await db["outreach"].find_one(
+        {"shift_id": shift_oid},
+        sort=[("created_at", -1)],
+    )
+    if not latest:
+        raise HTTPException(status_code=404, detail="No outreach found for this shift")
+
+    current_status = latest.get("outreach_status", 0)
+
+    if current_status == 10:
+        raise HTTPException(status_code=409, detail="Outreach is already Completed")
+
+    if current_status not in (1, 2, 3):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Outreach cannot be completed from status {current_status}"
+        )
+
+    now = datetime.now(timezone.utc)
+
+    # Set outreach to Completed (10)
+    await db["outreach"].update_one(
+        {"_id": latest["_id"]},
+        {"$set": {
+            "outreach_status": 10,
+            "ended_at":        now,
+            "updated_at":      now,
+        }}
+    )
+
+    # Disable unprocessed shifts_users for this shift
+    result = await db["shifts_users"].update_many(
+        {
+            "shift_id":       shift_oid,
+            "call_processed": 0,
+        },
+        {"$set": {
+            "call_enabled": 0,
+            "updated_at":   now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        }}
+    )
+
+    # Get counts for activity log
+    available_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "availability": {"$gt": 0},
+    })
+    declined_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "availability": {"$ne": 1},
+    })
+    no_reply_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "call_processed": 0,
+    })
+
+    # Save activity log
+    seq_oid      = latest.get("sequence_id")
+    round_number = latest.get("round_number", 1)
+    activity_doc = {
+        "activity_type": "round_completed",
+        "shift_id":      shift_oid,
+        "outreach_id":   latest["_id"],
+        "metadata": {
+            "sequence_id":   str(seq_oid) if seq_oid else None,
+            "shift_id":      payload.shift_id,
+            "outreach_id":   str(latest["_id"]),
+            "round_number":  round_number,
+            "available":     available_count,
+            "declined":      declined_count,
+            "no_reply":      no_reply_count,
+            "call_disabled": result.modified_count,
+            "summary":       f"Round {round_number} completed · {available_count} available, {declined_count} declined, {no_reply_count} no-reply",
+        },
+        "created_at": now,
+    }
+    if seq_oid:
+        activity_doc["sequence_id"] = seq_oid
+    await db["activities"].insert_one(activity_doc)
+
+    logger.info(
+        f"Outreach completed: shift={payload.shift_id} "
+        f"outreach={latest['_id']} disabled={result.modified_count}"
+    )
+
+    return {
+        "success":              True,
+        "message":              f"Round {round_number} completed",
+        "outreach_id":          str(latest["_id"]),
+        "shift_id":             payload.shift_id,
+        "outreach_status":      10,
+        "outreach_status_text": "Completed",
+        "shifts_users_updated": result.modified_count,
+    }
