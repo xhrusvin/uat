@@ -381,6 +381,25 @@ async def pause_outreach(request: Request, payload: PauseOutreachRequest):
         }}
     )
 
+    # Save activity log
+    seq_oid = outreach.get("sequence_id")
+    activity_doc = {
+        "activity_type": "round_paused",
+        "shift_id":      shift_oid,
+        "outreach_id":   outreach["_id"],
+        "metadata": {
+            "sequence_id":   str(seq_oid) if seq_oid else None,
+            "shift_id":      payload.shift_id,
+            "outreach_id":   str(outreach["_id"]),
+            "round_number":  outreach.get("round_number"),
+            "shifts_users_disabled": result.modified_count,
+        },
+        "created_at": now,
+    }
+    if seq_oid:
+        activity_doc["sequence_id"] = seq_oid
+    await db["activities"].insert_one(activity_doc)
+
     logger.info(
         f"Outreach paused: shift={payload.shift_id} "
         f"outreach={outreach['_id']} disabled={result.modified_count}"
