@@ -43,7 +43,7 @@ export const clientsApi = {
 }
 
 export const userTypesApi = {
-  list:    (params) => usersClient.get('/user-types/', { params }),
+  list:    (body)   => usersClient.post('/user-types/', body),
   create:  (data)   => usersClient.post('/user-types/', data),
   update:  (id, data) => usersClient.patch(`/user-types/${id}`, data),
   delete:  (id)     => usersClient.delete(`/user-types/${id}`),

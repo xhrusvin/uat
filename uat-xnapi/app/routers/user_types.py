@@ -62,6 +62,13 @@ async def _seed_defaults(db):
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+
+class UserTypeListRequest(BaseModel):
+    search:   str = ""
+    page:     int = 1
+    per_page: int = 20
+
+
 class UserTypeCreate(BaseModel):
     name:        str
     description: Optional[str] = None
@@ -78,19 +85,35 @@ class UserTypeUpdate(BaseModel):
 
 # ── LIST ──────────────────────────────────────────────────────────────────────
 
-@router.get(
+@router.post(
     "/",
-    summary="List all user types",
+    summary="List user types with search and pagination",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("120/minute")
-async def list_user_types(request: Request, active_only: bool = False):
-    """Seeds 10 default user types on first call."""
+async def list_user_types(request: Request, payload: UserTypeListRequest):
+    """
+    Body: { "search": "", "page": 1, "per_page": 20 }
+    Seeds 10 default user types on first call.
+    """
     db = _get_db()
     await _seed_defaults(db)
-    query = {"is_active": True} if active_only else {}
-    docs = await db["user_types"].find(query).sort("sort_order", 1).to_list(500)
-    return {"success": True, "total": len(docs), "data": [_serialize(d) for d in docs]}
+
+    skip = (payload.page - 1) * payload.per_page
+    query = {}
+    if payload.search:
+        query["name"] = {"$regex": payload.search, "$options": "i"}
+
+    total = await db["user_types"].count_documents(query)
+    docs  = await db["user_types"].find(query).sort("sort_order", 1)                                   .skip(skip).limit(payload.per_page).to_list(payload.per_page)
+
+    return {
+        "success":  True,
+        "total":    total,
+        "page":     payload.page,
+        "per_page": payload.per_page,
+        "data":     [_serialize(d) for d in docs],
+    }
 
 
 # ── CREATE ────────────────────────────────────────────────────────────────────

@@ -80,6 +80,10 @@ function UserTypeForm({ initial, onSave, onCancel, saving }) {
 
 export default function UserTypesPage() {
   const [items, setItems]       = useState([])
+  const [total, setTotal]       = useState(0)
+  const [page, setPage]         = useState(1)
+  const [perPage]               = useState(20)
+  const [search, setSearch]     = useState('')
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState(null)
@@ -93,12 +97,13 @@ export default function UserTypesPage() {
     setTimeout(() => setToast(null), 3000)
   }
 
-  const load = async () => {
+  const load = async (pg = page, srch = search) => {
     setLoading(true)
     setError(null)
     try {
-      const { data } = await userTypesApi.list()
+      const { data } = await userTypesApi.list({ search: srch, page: pg, per_page: perPage })
       setItems(data.data || [])
+      setTotal(data.total || 0)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to load user types')
     } finally {
@@ -106,7 +111,13 @@ export default function UserTypesPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(1, '') }, [])
+
+  const handleSearch = (val) => {
+    setSearch(val)
+    setPage(1)
+    load(1, val)
+  }
 
   const handleCreate = async (payload) => {
     setSaving(true)
@@ -167,7 +178,7 @@ export default function UserTypesPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">User Types</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {loading ? 'Loading…' : `${items.length} user types`}
+            {loading ? 'Loading…' : `${total} user types`}
           </p>
         </div>
         <button onClick={() => setShowAdd(true)}
@@ -194,9 +205,20 @@ export default function UserTypesPage() {
       {error && (
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={load} className="underline font-medium">Retry</button>
+          <button onClick={() => load()} className="underline font-medium">Retry</button>
         </div>
       )}
+
+      <div className="card mb-4 p-4">
+        <div className="relative max-w-sm">
+          <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
+               fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input type="text" className="input pl-9" placeholder="Search by name…"
+            value={search} onChange={e => handleSearch(e.target.value)} />
+        </div>
+      </div>
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
