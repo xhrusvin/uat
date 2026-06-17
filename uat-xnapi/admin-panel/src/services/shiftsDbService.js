@@ -8,7 +8,7 @@ function getParams(ov = {}) {
   const s = useShiftsDbStore.getState()
   const page    = ov.page    ?? s.page
   const perPage = ov.perPage ?? s.perPage
-  const p = { skip: (page - 1) * perPage, limit: perPage }
+  const p = { page, per_page: perPage }
   const search   = ov.search   ?? s.search
   const status   = ov.status   ?? s.status
   const clientId        = ov.clientId        ?? s.clientId
@@ -24,8 +24,8 @@ function getParams(ov = {}) {
   if (automationStatus) p.automation_status = automationStatus
   const criteriaLabel    = ov.criteriaLabel    ?? s.criteriaLabel    ?? ''
   if (criteriaField)    p.criteria           = criteriaLabel || criteriaField
-  if (dateFrom)         p.date_from         = dateFrom
-  if (dateTo)           p.date_to           = dateTo
+  if (dateFrom)         p.start_date        = dateFrom
+  if (dateTo)           p.end_date          = dateTo
   return p
 }
 
