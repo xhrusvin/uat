@@ -223,12 +223,59 @@ async def list_activities(request: Request, payload: ActivityListRequest):
                                   .skip(skip).limit(payload.per_page) \
                                   .to_list(payload.per_page)
 
+    results = []
+    for d in docs:
+        s = _serialize(d)
+        meta = d.get("metadata") or {}
+        # Build display summary like image: "Round 1 paused · 0 available, 2 declined, 4 no-reply"
+        rn        = meta.get("round_number", 1)
+        available = meta.get("available", 0)
+        declined  = meta.get("declined", 0)
+        no_reply  = meta.get("no_reply", 0)
+        atype     = d.get("activity_type", "")
+        label_map = {
+            "round_paused":       f"Round {rn} paused",
+            "round_completed":    f"Round {rn} completed",
+            "round_started":      f"Round {rn} started",
+            "round_ended":        f"Round {rn} ended",
+            "available_response": "Available response",
+            "ai_call_placed":     "AI call placed",
+            "ai_whatsapp_sent":   "AI WhatsApp sent",
+        }
+        label = label_map.get(atype, atype.replace("_", " ").title())
+        if available is not None and declined is not None and no_reply is not None:
+            s["display_title"]   = label
+            s["display_summary"] = f"{available} available, {declined} declined, {no_reply} no-reply"
+        else:
+            s["display_title"]   = label
+            s["display_summary"] = meta.get("summary") or ""
+
+        # Icon — from activity_types collection or inline map
+        icon_map = {
+            "round_paused":    "pause",
+            "round_completed": "check",
+            "round_started":   "refresh",
+            "round_ended":     "stop",
+            "available_response": "check-circle",
+            "ai_call_placed":  "phone",
+            "ai_whatsapp_sent":"message",
+        }
+        s["icon"] = icon_map.get(atype, "check")
+
+        # Ensure key fields are always present
+        s["id"]            = str(d["_id"])
+        s["activity_type"] = atype
+        s["shift_id"]      = str(d["shift_id"]) if d.get("shift_id") else None
+        s["created_at"]    = d["created_at"].isoformat() if hasattr(d.get("created_at"), "isoformat") else str(d.get("created_at", ""))
+
+        results.append(s)
+
     return {
         "success":  True,
         "total":    total,
         "page":     payload.page,
         "per_page": payload.per_page,
-        "data":     [_serialize(d) for d in docs],
+        "data":     results,
     }
 
 

@@ -381,8 +381,20 @@ async def pause_outreach(request: Request, payload: PauseOutreachRequest):
         }}
     )
 
+    # Get counts for activity log
+    available_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "availability": {"$gt": 0},
+    })
+    declined_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "availability": {"$ne": 1},
+    })
+    no_reply_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "call_processed": 0, "call_enabled": 0,
+    })
+
     # Save activity log
     seq_oid = outreach.get("sequence_id")
+    round_number = outreach.get("round_number", 1)
     activity_doc = {
         "activity_type": "round_paused",
         "shift_id":      shift_oid,
@@ -391,8 +403,11 @@ async def pause_outreach(request: Request, payload: PauseOutreachRequest):
             "sequence_id":   str(seq_oid) if seq_oid else None,
             "shift_id":      payload.shift_id,
             "outreach_id":   str(outreach["_id"]),
-            "round_number":  outreach.get("round_number"),
-            "shifts_users_disabled": result.modified_count,
+            "round_number":  round_number,
+            "available":     available_count,
+            "declined":      declined_count,
+            "no_reply":      no_reply_count,
+            "summary":       f"Round {round_number} paused · {available_count} available, {declined_count} declined, {no_reply_count} no-reply",
         },
         "created_at": now,
     }
