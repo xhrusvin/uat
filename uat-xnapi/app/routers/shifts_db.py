@@ -306,8 +306,11 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
         s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l)
         outreach_info = await _get_outreach_status(db, shift_oid_l)
-        s["outreach_status"]      = outreach_info["outreach_status"]
-        s["outreach_status_text"] = outreach_info["outreach_status_text"]
+        s["outreach_status"]        = outreach_info["outreach_status"]
+        s["outreach_status_text"]   = outreach_info["outreach_status_text"]
+        s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
+        s["shift_preference"]       = outreach_info["shift_preference"]
+        s["client_preference"]      = outreach_info["client_preference"]
         results.append(s)
 
     return {"success": True, "total": total, "page": payload.page,
@@ -376,7 +379,7 @@ async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
 
 async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
     """
-    Returns latest outreach_status for a shift.
+    Returns latest outreach status + sequence name for a shift.
     If no outreach found, returns outreach_status=0, text='Not Started'.
     """
     STATUS_TEXT = {
@@ -391,12 +394,30 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
         sort=[("created_at", -1)]
     )
     if not latest:
-        return {"outreach_status": 0, "outreach_status_text": "Not Started"}
+        return {
+            "outreach_status":          0,
+            "outreach_status_text":     "Not Started",
+            "outreach_sequence_name":   None,
+            "shift_preference":         None,
+            "client_preference":        None,
+        }
     status = latest.get("outreach_status", 0)
+
+    # Resolve sequence name
+    sequence_name = None
+    seq_oid = latest.get("sequence_id")
+    if seq_oid:
+        seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
+        if seq:
+            sequence_name = seq.get("name")
+
     return {
-        "outreach_status":      status,
-        "outreach_status_text": STATUS_TEXT.get(status, "Not Started"),
-        "outreach_id":          str(latest["_id"]),
+        "outreach_status":          status,
+        "outreach_status_text":     STATUS_TEXT.get(status, "Not Started"),
+        "outreach_id":              str(latest["_id"]),
+        "outreach_sequence_name":   sequence_name,
+        "shift_preference":         None,
+        "client_preference":        None,
     }
 
 
@@ -444,8 +465,11 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     s["shift_users"]  = await _get_shift_users(db, shift_oid)
     s["staff_counts"] = await _get_staff_counts(db, shift_oid)
     outreach_info = await _get_outreach_status(db, shift_oid)
-    s["outreach_status"]      = outreach_info["outreach_status"]
-    s["outreach_status_text"] = outreach_info["outreach_status_text"]
+    s["outreach_status"]        = outreach_info["outreach_status"]
+    s["outreach_status_text"]   = outreach_info["outreach_status_text"]
+    s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
+    s["shift_preference"]       = outreach_info["shift_preference"]
+    s["client_preference"]      = outreach_info["client_preference"]
     if "outreach_id" in outreach_info:
         s["outreach_id"] = outreach_info["outreach_id"]
 
