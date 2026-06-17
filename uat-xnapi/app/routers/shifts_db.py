@@ -133,6 +133,7 @@ class ShiftsDbListRequest(BaseModel):
     user_type_multiple:  Optional[list] = None  # list of user_type _id strings
     county_multiple:           Optional[list] = None  # list of county _id strings → shifts.client_county
     automation_status_multiple:  Optional[list] = None  # list of ints: 0,1,2,3,10
+    is_premium:                  Optional[int]  = None  # 1 = true, 0 = false
     automation_status:   Optional[str] = None
     start_date:          Optional[str] = None   # YYYY-MM-DD
     end_date:            Optional[str] = None   # YYYY-MM-DD
@@ -307,6 +308,9 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
             {"automation_status": {"$regex": automation_status, "$options": "i"}},
             {"upstream_status":   {"$regex": automation_status, "$options": "i"}},
         ]})
+
+    if payload.is_premium is not None:
+        filters.append({"is_premium": payload.is_premium == 1})
 
     # automation_status_multiple filter
     if payload.automation_status_multiple:
@@ -520,6 +524,9 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             {"automation_status": {"$regex": automation_status, "$options": "i"}},
             {"upstream_status":   {"$regex": automation_status, "$options": "i"}},
         ]})
+
+    if payload.is_premium is not None:
+        filters.append({"is_premium": payload.is_premium == 1})
 
     # automation_status_multiple: filter active_shift_oids by outreach status
     if payload.automation_status_multiple:
