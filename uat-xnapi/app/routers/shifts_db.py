@@ -360,12 +360,15 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     filter_outreach_status = payload.outreach_status  # optional specific status filter
 
     # ── Resolve outreach-active shift IDs from outreach collection ─────────────
-    # Build outreach query: outreach_status > 0 AND outreach_status != 10
-    outreach_query: dict = {
-        "outreach_status": {"$gt": 0, "$ne": 10}
-    }
-    if filter_outreach_status is not None:
-        outreach_query["outreach_status"] = filter_outreach_status
+    # input outreach_status mapping:
+    #   1 → outreach_status > 0 AND != 10  (all active: Live/Paused/Ended)
+    #   2 → outreach_status == 10           (Completed)
+    #   None → default: outreach_status > 0 AND != 10
+    if filter_outreach_status == 2:
+        outreach_query: dict = {"outreach_status": 10}
+    else:
+        # 1 or None → all active
+        outreach_query: dict = {"outreach_status": {"$gt": 0, "$ne": 10}}
 
     # Get shift_ids that have matching outreach records
     outreach_docs = await db["outreach"].find(
