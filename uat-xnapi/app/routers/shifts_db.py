@@ -630,19 +630,32 @@ class ShiftDetailRequest(BaseModel):
 
 
 async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
-    """Lightweight counts for list endpoint: available + requested only."""
+    """Lightweight counts for list endpoint."""
     available = await db["shifts_users"].count_documents({
         "shift_id":     shift_oid,
         "availability": {"$gt": 0},
     })
     with_outreach = await db["shifts_users"].count_documents({
-        "shift_id":   shift_oid,
+        "shift_id":    shift_oid,
         "outreach_id": {"$exists": True, "$ne": None},
     })
+    # pending: call_enabled=1 AND call_processed=0
+    pending = await db["shifts_users"].count_documents({
+        "shift_id":      shift_oid,
+        "call_enabled":  1,
+        "call_processed": 0,
+    })
+    # declined: availability != 1
+    declined = await db["shifts_users"].count_documents({
+        "shift_id":     shift_oid,
+        "availability": {"$ne": 1},
+    })
     return {
-        "available":        available,
-        "requested":        0,
-        "with_outreach":    with_outreach,
+        "available":     available,
+        "requested":     0,
+        "with_outreach": with_outreach,
+        "pending":       pending,
+        "declined":      declined,
     }
 
 
