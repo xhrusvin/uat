@@ -211,3 +211,45 @@ async def delete_user_type(request: Request, type_id: str):
 
     await db["user_types"].delete_one({"_id": ObjectId(type_id)})
     return {"success": True, "message": f"User type '{doc['name']}' deleted"}
+
+
+# ── County list ───────────────────────────────────────────────────────────────
+
+class CountyListRequest(BaseModel):
+    search:   str = ""
+    page:     int = 1
+    per_page: int = 20
+
+
+county_router = APIRouter(prefix="/county", tags=["County"])
+
+
+@county_router.post(
+    "/",
+    summary="List counties with search and pagination",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("120/minute")
+async def list_counties(request: Request, payload: CountyListRequest):
+    """
+    Body: { "search": "", "page": 1, "per_page": 20 }
+    Returns counties from the county collection.
+    """
+    db   = _get_db()
+    skip = (payload.page - 1) * payload.per_page
+
+    query = {}
+    if payload.search:
+        query["name"] = {"$regex": payload.search, "$options": "i"}
+
+    total = await db["county"].count_documents(query)
+    docs  = await db["county"].find(query).sort("name", 1) \
+                              .skip(skip).limit(payload.per_page).to_list(payload.per_page)
+
+    return {
+        "success":  True,
+        "total":    total,
+        "page":     payload.page,
+        "per_page": payload.per_page,
+        "data":     [_serialize(d) for d in docs],
+    }
