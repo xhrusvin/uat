@@ -317,6 +317,201 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
             "per_page": payload.per_page, "data": results}
 
 
+
+class ShiftsAutomationRequest(ShiftsDbListRequest):
+    outreach_status: Optional[int] = None   # filter by specific outreach status
+
+
+
+# ── SHIFTS AUTOMATION ─────────────────────────────────────────────────────────
+
+@router.post(
+    "/automation",
+    summary="List shifts where outreach is active (outreach_status > 0 and != 10)",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequest):
+    """
+    Clone of POST /shifts-db/ but only returns shifts that have an outreach record
+    with outreach_status > 0 AND outreach_status != 10.
+
+    Optional additional filter:
+    {
+        ...,
+        "outreach_status": 1   // filter by specific status (1=Live, 2=Paused, 3=Ended)
+    }
+    """
+    db   = _get_db()
+    skip = (payload.page - 1) * payload.per_page
+    limit = payload.per_page
+
+    search            = payload.search or None
+    status            = payload.status
+    client_id         = payload.client_id
+    user_type         = payload.user_type
+    automation_status = payload.automation_status
+    criteria          = payload.criteria
+    effective_date_from = payload.start_date
+    effective_date_to   = payload.end_date
+    sort_by           = payload.sort_by or "date"
+    sort_order        = payload.sort_order or "desc"
+    filter_outreach_status = payload.outreach_status  # optional specific status filter
+
+    # ── Resolve outreach-active shift IDs from outreach collection ─────────────
+    # Build outreach query: outreach_status > 0 AND outreach_status != 10
+    outreach_query: dict = {
+        "outreach_status": {"$gt": 0, "$ne": 10}
+    }
+    if filter_outreach_status is not None:
+        outreach_query["outreach_status"] = filter_outreach_status
+
+    # Get shift_ids that have matching outreach records
+    outreach_docs = await db["outreach"].find(
+        outreach_query,
+        {"shift_id": 1, "outreach_status": 1, "sequence_id": 1}
+    ).to_list(length=10000)
+
+    if not outreach_docs:
+        return {"success": True, "total": 0, "page": payload.page,
+                "per_page": payload.per_page, "data": []}
+
+    # Latest outreach per shift (keep most recent)
+    shift_outreach_map: dict = {}
+    for o in outreach_docs:
+        sid = str(o["shift_id"])
+        if sid not in shift_outreach_map:
+            shift_outreach_map[sid] = o
+
+    active_shift_oids = [ObjectId(sid) for sid in shift_outreach_map]
+
+    # ── Build shift filters ────────────────────────────────────────────────────
+    LABEL_TO_FIELD = {
+        "User Type":         "user_type",
+        "Automation Status": "automation_status",
+        "County":            "client_county",
+        "Client":            "location",
+        "Client Tags":       "client_tags",
+        "Shift Time":        "shift_timing",
+        "Has Available":     "assigned_staff",
+        "Shift Type":        "shift_type",
+        "Distance":          "distance",
+    }
+    criteria_field: Optional[str] = None
+    if criteria:
+        criteria_field = LABEL_TO_FIELD.get(criteria, criteria)
+        try:
+            cr_doc = await db["criteria"].find_one(
+                {"$or": [{"label": criteria}, {"field": criteria}]}, {"field": 1}
+            )
+            if cr_doc and cr_doc.get("field"):
+                criteria_field = cr_doc["field"]
+        except Exception:
+            pass
+
+    filters: list = [{"_id": {"$in": active_shift_oids}}]
+
+    if search:
+        if criteria_field:
+            filters.append({criteria_field: {"$regex": search, "$options": "i"}})
+        else:
+            filters.append({"$or": [
+                {"name":           {"$regex": search, "$options": "i"}},
+                {"shift_xn_id":    {"$regex": search, "$options": "i"}},
+                {"shift_code":     {"$regex": search, "$options": "i"}},
+                {"location":       {"$regex": search, "$options": "i"}},
+                {"client_county":  {"$regex": search, "$options": "i"}},
+                {"user_type":      {"$regex": search, "$options": "i"}},
+            ]})
+
+    if status:
+        filters.append({"status": {"$regex": status, "$options": "i"}})
+    if client_id:
+        filters.append({"client_id": client_id})
+    if user_type:
+        filters.append({"user_type": {"$regex": user_type, "$options": "i"}})
+    if automation_status:
+        filters.append({"$or": [
+            {"automation_status": {"$regex": automation_status, "$options": "i"}},
+            {"upstream_status":   {"$regex": automation_status, "$options": "i"}},
+        ]})
+
+    if effective_date_from or effective_date_to:
+        from datetime import datetime, timezone
+        date_cond: dict = {}
+        if effective_date_from:
+            try:
+                dt = datetime.strptime(effective_date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                date_cond["$gte"] = dt
+            except ValueError:
+                pass
+        if effective_date_to:
+            try:
+                dt = datetime.strptime(effective_date_to, "%Y-%m-%d").replace(
+                    hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                date_cond["$lte"] = dt
+            except ValueError:
+                pass
+        if date_cond:
+            regex_val = effective_date_from or effective_date_to or ""
+            filters.append({"$or": [
+                {"date": date_cond},
+                {"date": {"$regex": regex_val.replace("-", "[-/]"), "$options": "i"}}
+            ]})
+
+    mongo_filter = {"$and": filters}
+    total    = await db["shifts"].count_documents(mongo_filter)
+    sort_dir = -1 if sort_order.lower() == "desc" else 1
+    cursor   = db["shifts"].find(mongo_filter).sort(sort_by, sort_dir).skip(skip).limit(limit)
+    docs     = await cursor.to_list(length=limit)
+
+    client_ids = list({d.get("client_id") for d in docs if d.get("client_id")})
+    client_map = await _build_client_map(db, client_ids)
+
+    STATUS_TEXT = {0: "Not Started", 1: "Live", 2: "Paused", 3: "Ended", 10: "Completed"}
+
+    results = []
+    for doc in docs:
+        s   = _serialize(doc)
+        cid = s.get("client_id", "")
+        cl  = client_map.get(cid)
+        s["client_name"]  = _client_name(cl)
+        s["client_email"] = cl.get("email") if cl else None
+        s["client_phone"] = cl.get("phone") if cl else None
+
+        # Staff counts
+        shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
+        s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l)
+
+        # Outreach info from map
+        o_doc = shift_outreach_map.get(str(shift_oid_l), {})
+        o_status = o_doc.get("outreach_status", 0)
+
+        # Sequence name
+        seq_name = None
+        seq_oid = o_doc.get("sequence_id")
+        if seq_oid:
+            seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
+            if seq:
+                seq_name = seq.get("name")
+
+        s["outreach_id"]            = str(o_doc["_id"]) if o_doc.get("_id") else None
+        s["outreach_status"]        = o_status
+        s["outreach_status_text"]   = STATUS_TEXT.get(o_status, "Not Started")
+        s["outreach_sequence_name"] = seq_name
+        s["shift_preference"]       = None
+        s["client_preference"]      = None
+        s["ghost_booking"]          = 0
+        results.append(s)
+
+    return {
+        "success":  True,
+        "total":    total,
+        "page":     payload.page,
+        "per_page": payload.per_page,
+        "data":     results,
+    }
+
 class ShiftDetailRequest(BaseModel):
     id: str   # shift _id, shift_xn_id, or shift_code
 
