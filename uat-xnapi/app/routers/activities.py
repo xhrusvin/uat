@@ -38,16 +38,9 @@ def _serialize(doc: dict) -> dict:
 
 ACTIVITY_TYPES = [
     {
-        "key":         "sequence_started",
-        "label":       "Sequence Started",
-        "description": "An outreach sequence was started for a shift",
-        "icon":        "play",
-        "color":       "#10b981",
-    },
-    {
-        "key":         "sequence_paused",
-        "label":       "Sequence Paused",
-        "description": "An outreach sequence was paused",
+        "key":         "round_paused",
+        "label":       "Round Paused",
+        "description": "A calling round was paused",
         "icon":        "pause",
         "color":       "#f59e0b",
     },
@@ -87,9 +80,9 @@ ACTIVITY_TYPES = [
         "color":       "#8b5cf6",
     },
     {
-        "key":         "sequence_ended",
-        "label":       "Sequence Ended",
-        "description": "An outreach sequence ended (staff filled or exhausted)",
+        "key":         "round_ended",
+        "label":       "Round Ended",
+        "description": "A calling round ended",
         "icon":        "stop",
         "color":       "#ef4444",
     },
