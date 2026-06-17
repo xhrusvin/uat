@@ -24,7 +24,8 @@ export default defineConfig(({ mode }) => {
         '/criteria':    { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
         '/staff':       { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
         '/shift-users': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
-        '/sequences':   { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/sequences':    { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/user-types':  { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
       }
     },
     build: { outDir: 'dist' }

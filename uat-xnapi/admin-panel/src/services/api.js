@@ -42,6 +42,13 @@ export const clientsApi = {
   get:     (id)      => usersClient.get(`/clients/${id}`),
 }
 
+export const userTypesApi = {
+  list:    (params) => usersClient.get('/user-types/', { params }),
+  create:  (data)   => usersClient.post('/user-types/', data),
+  update:  (id, data) => usersClient.patch(`/user-types/${id}`, data),
+  delete:  (id)     => usersClient.delete(`/user-types/${id}`),
+}
+
 export const sequencesApi = {
   list:    (params) => usersClient.get('/sequences/', { params }),
   create:  (data)   => usersClient.post('/sequences/', data),
