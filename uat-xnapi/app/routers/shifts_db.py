@@ -131,7 +131,8 @@ class ShiftsDbListRequest(BaseModel):
     client_id:           Optional[str] = None
     user_type:           Optional[str] = None
     user_type_multiple:  Optional[list] = None  # list of user_type _id strings
-    county_multiple:     Optional[list] = None  # list of county _id strings → shifts.client_county
+    county_multiple:           Optional[list] = None  # list of county _id strings → shifts.client_county
+    outreach_status_multiple:  Optional[list] = None  # list of ints: 0,1,2,3,10
     automation_status:   Optional[str] = None
     start_date:          Optional[str] = None   # YYYY-MM-DD
     end_date:            Optional[str] = None   # YYYY-MM-DD
