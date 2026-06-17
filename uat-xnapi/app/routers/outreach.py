@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 from datetime import datetime, timezone
 
 from bson import ObjectId
