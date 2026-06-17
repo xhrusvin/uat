@@ -132,7 +132,7 @@ class ShiftsDbListRequest(BaseModel):
     user_type:           Optional[str] = None
     user_type_multiple:  Optional[list] = None  # list of user_type _id strings
     county_multiple:           Optional[list] = None  # list of county _id strings → shifts.client_county
-    outreach_status_multiple:  Optional[list] = None  # list of ints: 0,1,2,3,10
+    automation_status_multiple:  Optional[list] = None  # list of ints: 0,1,2,3,10
     automation_status:   Optional[str] = None
     start_date:          Optional[str] = None   # YYYY-MM-DD
     end_date:            Optional[str] = None   # YYYY-MM-DD
@@ -307,6 +307,30 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
             {"automation_status": {"$regex": automation_status, "$options": "i"}},
             {"upstream_status":   {"$regex": automation_status, "$options": "i"}},
         ]})
+
+    # automation_status_multiple filter
+    if payload.automation_status_multiple:
+        asm = [int(s) for s in payload.automation_status_multiple if str(s).lstrip('-').isdigit()]
+        if asm:
+            include_not_started = 0 in asm
+            active_sts = [s for s in asm if s != 0]
+            if include_not_started and active_sts:
+                o_sids, all_sids = [], []
+                async for o in db["outreach"].find({"outreach_status": {"$in": active_sts}}, {"shift_id": 1}):
+                    o_sids.append(o["shift_id"])
+                async for o in db["outreach"].find({}, {"shift_id": 1}):
+                    all_sids.append(o["shift_id"])
+                filters.append({"$or": [{"_id": {"$nin": all_sids}}, {"_id": {"$in": o_sids}}]})
+            elif include_not_started:
+                all_sids = []
+                async for o in db["outreach"].find({}, {"shift_id": 1}):
+                    all_sids.append(o["shift_id"])
+                filters.append({"_id": {"$nin": all_sids}})
+            else:
+                o_sids = []
+                async for o in db["outreach"].find({"outreach_status": {"$in": active_sts}}, {"shift_id": 1}):
+                    o_sids.append(o["shift_id"])
+                filters.append({"_id": {"$in": o_sids}})
 
     if effective_date_from or effective_date_to:
         from datetime import datetime, timezone
@@ -496,6 +520,17 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             {"automation_status": {"$regex": automation_status, "$options": "i"}},
             {"upstream_status":   {"$regex": automation_status, "$options": "i"}},
         ]})
+
+    # automation_status_multiple: filter active_shift_oids by outreach status
+    if payload.automation_status_multiple:
+        asm = [int(s) for s in payload.automation_status_multiple if str(s).lstrip('-').isdigit()]
+        active_sts = [s for s in asm if s != 0]
+        if active_sts:
+            active_shift_oids = [
+                oid for oid in active_shift_oids
+                if shift_outreach_map.get(str(oid), {}).get("outreach_status") in active_sts
+            ]
+            filters[0] = {"_id": {"$in": active_shift_oids}}
 
     if effective_date_from or effective_date_to:
         from datetime import datetime, timezone
