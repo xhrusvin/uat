@@ -531,8 +531,8 @@ async def list_clients(request: Request, payload: ClientListRequest):
     data = []
     for d in docs:
         data.append({
-            "id":         str(d["_id"]),
-            "xn_id":      d.get("xn_client_id"),
+            "id":         d.get("xn_client_id"),
+            "db_id":      str(d["_id"]),
             "name":       d.get("name") or "—",
             "email":      d.get("email"),
             "phone":      d.get("phone"),
