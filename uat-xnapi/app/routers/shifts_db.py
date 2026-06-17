@@ -20,6 +20,27 @@ def _get_db():
     return _client[settings.MONGODB_DB]
 
 
+
+async def _resolve_user_type_names(db, ids: list) -> list:
+    """
+    Given a list of user_type _id strings, return their name values.
+    Used to match against shifts.user_type (text field like 'Pharmacist').
+    """
+    if not ids:
+        return []
+    oids = [ObjectId(i) for i in ids if ObjectId.is_valid(str(i))]
+    names = []
+    if oids:
+        async for doc in db["user_types"].find({"_id": {"$in": oids}}, {"name": 1}):
+            if doc.get("name"):
+                names.append(doc["name"])
+    # Also accept raw name strings passed directly (not IDs)
+    for i in ids:
+        if not ObjectId.is_valid(str(i)) and i not in names:
+            names.append(i)
+    return names
+
+
 def _serialize(doc: dict) -> dict:
     if doc is None:
         return {}
@@ -95,18 +116,19 @@ def _client_name(cl: dict) -> str:
 # ── Request schema ────────────────────────────────────────────────────────────
 
 class ShiftsDbListRequest(BaseModel):
-    search:           str = ""
-    criteria:         Optional[str] = None
-    status:           Optional[str] = None
-    client_id:        Optional[str] = None
-    user_type:        Optional[str] = None
-    automation_status: Optional[str] = None
-    start_date:       Optional[str] = None   # YYYY-MM-DD
-    end_date:         Optional[str] = None   # YYYY-MM-DD
-    sort_by:          str = "date"
-    sort_order:       str = "desc"
-    page:             int = 1
-    per_page:         int = 20
+    search:              str = ""
+    criteria:            Optional[str] = None
+    status:              Optional[str] = None
+    client_id:           Optional[str] = None
+    user_type:           Optional[str] = None
+    user_type_multiple:  Optional[list] = None  # list of user_type _id strings
+    automation_status:   Optional[str] = None
+    start_date:          Optional[str] = None   # YYYY-MM-DD
+    end_date:            Optional[str] = None   # YYYY-MM-DD
+    sort_by:             str = "date"
+    sort_order:          str = "desc"
+    page:                int = 1
+    per_page:            int = 20
 
 
 async def _get_shift_users(db, shift_oid: ObjectId) -> list:
@@ -257,6 +279,12 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         filters.append({"client_id": client_id})
     if user_type:
         filters.append({"user_type": {"$regex": user_type, "$options": "i"}})
+
+    user_type_multiple = payload.user_type_multiple
+    if user_type_multiple:
+        type_names = await _resolve_user_type_names(db, user_type_multiple)
+        if type_names:
+            filters.append({"user_type": {"$in": type_names}})
     if automation_status:
         filters.append({"$or": [
             {"automation_status": {"$regex": automation_status, "$options": "i"}},
@@ -434,6 +462,12 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         filters.append({"client_id": client_id})
     if user_type:
         filters.append({"user_type": {"$regex": user_type, "$options": "i"}})
+
+    user_type_multiple = payload.user_type_multiple
+    if user_type_multiple:
+        type_names = await _resolve_user_type_names(db, user_type_multiple)
+        if type_names:
+            filters.append({"user_type": {"$in": type_names}})
     if automation_status:
         filters.append({"$or": [
             {"automation_status": {"$regex": automation_status, "$options": "i"}},
