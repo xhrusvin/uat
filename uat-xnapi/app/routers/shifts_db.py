@@ -400,6 +400,7 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
             "outreach_sequence_name":   None,
             "shift_preference":         None,
             "client_preference":        None,
+            "ghost_booking":            0,
         }
     status = latest.get("outreach_status", 0)
 
@@ -418,6 +419,7 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
         "outreach_sequence_name":   sequence_name,
         "shift_preference":         None,
         "client_preference":        None,
+        "ghost_booking":            0,
     }
 
 
