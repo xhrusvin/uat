@@ -302,6 +302,38 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
         "outreach_id": {"$exists": True, "$ne": None, "$ne": outreach_oid},
     })
 
+    # Get counts for activity log
+    available_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "availability": {"$gt": 0},
+    })
+    declined_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "availability": {"$ne": 1},
+    })
+    no_reply_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "call_processed": 0, "call_enabled": 1,
+    })
+
+    # Save activity log
+    activity_doc = {
+        "activity_type": "round_started",
+        "shift_id":      shift_oid,
+        "outreach_id":   outreach_oid,
+        "sequence_id":   seq_oid,
+        "metadata": {
+            "sequence_id":   str(seq_oid),
+            "shift_id":      payload.shift_id,
+            "outreach_id":   str(outreach_oid),
+            "round_number":  round_number,
+            "available":     available_count,
+            "declined":      declined_count,
+            "no_reply":      no_reply_count,
+            "call_enabled_set": updated.modified_count,
+            "summary":       f"Round {round_number} started · {available_count} available, {declined_count} declined, {no_reply_count} no-reply",
+        },
+        "created_at": now,
+    }
+    await db["activities"].insert_one(activity_doc)
+
     logger.info(
         f"Outreach created: id={outreach_oid} shift={payload.shift_id} "
         f"round={round_number} updated={updated.modified_count} skipped={skipped}"
