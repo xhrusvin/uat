@@ -43,6 +43,11 @@ const NAV = [
         description: 'Manage sequence strategies',
       },
       {
+        id: 'end-reasons', to: '/master/end-reasons', label: 'End Reasons',
+        icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
+        description: 'End sequence reasons',
+      },
+      {
         id: 'activities', to: '/master/activities', label: 'Activity Types',
         icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>,
         description: 'Manage outreach activity types',

@@ -14,6 +14,7 @@ import CriteriaPage from './pages/CriteriaPage'
 import SequencesPage from './pages/SequencesPage'
 import UserTypesPage from './pages/UserTypesPage'
 import ActivitiesPage from './pages/ActivitiesPage'
+import EndReasonsPage from './pages/EndReasonsPage'
 import UserDetailsPage from './pages/UserDetailsPage'
 import ClientDetailsPage from './pages/ClientDetailsPage'
 import ClientsPage from './pages/ClientsPage'
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="master/sequences"           element={<SequencesPage />} />
           <Route path="master/user-types"          element={<UserTypesPage />} />
           <Route path="master/activities"           element={<ActivitiesPage />} />
+          <Route path="master/end-reasons"           element={<EndReasonsPage />} />
           <Route path="xn-api/client-list"         element={<ClientListCallPage />} />
           <Route path="xn-api/user-details"         element={<UserDetailsPage />} />
           <Route path="xn-api/client-details"       element={<ClientDetailsPage />} />

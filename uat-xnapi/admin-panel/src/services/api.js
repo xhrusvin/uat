@@ -42,6 +42,13 @@ export const clientsApi = {
   get:     (id)      => usersClient.get(`/clients/${id}`),
 }
 
+export const endReasonsApi = {
+  list:    ()         => usersClient.get('/outreach-end-reasons/'),
+  create:  (data)     => usersClient.post('/outreach-end-reasons/', data),
+  update:  (id, data) => usersClient.patch(`/outreach-end-reasons/${id}`, data),
+  delete:  (id)       => usersClient.delete(`/outreach-end-reasons/${id}`),
+}
+
 export const activitiesApi = {
   listTypes:  ()       => usersClient.get('/activities/types'),
   createType: (data)   => usersClient.post('/activities/types', data),

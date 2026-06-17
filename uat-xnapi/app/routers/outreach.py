@@ -570,6 +570,12 @@ async def restart_outreach(request: Request, payload: PauseOutreachRequest):
     }
 
 
+class EndOutreachRequest(BaseModel):
+    shift_id:       str
+    end_reason_id:  Optional[str] = None   # outreach_end_reasons._id (optional)
+    end_reason_text: Optional[str] = None  # free text override
+
+
 # ── POST /outreach/end ────────────────────────────────────────────────────────
 
 @router.post(
@@ -578,9 +584,9 @@ async def restart_outreach(request: Request, payload: PauseOutreachRequest):
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("30/minute")
-async def end_outreach(request: Request, payload: PauseOutreachRequest):
+async def end_outreach(request: Request, payload: EndOutreachRequest):
     """
-    Body: { "shift_id": "<shift _id>" }
+    Body: { "shift_id": "<shift _id>", "end_reason_id": "<optional>", "end_reason_text": "<optional>" }
 
     Rules:
     - Can only end an outreach that is Live (1) or Paused (2).
@@ -663,6 +669,22 @@ async def end_outreach(request: Request, payload: PauseOutreachRequest):
         "shift_id": shift_oid, "call_processed": 0,
     })
 
+    # Resolve end reason
+    end_reason_label = payload.end_reason_text or None
+    if payload.end_reason_id and ObjectId.is_valid(payload.end_reason_id):
+        reason_doc = await db["outreach_end_reasons"].find_one(
+            {"_id": ObjectId(payload.end_reason_id)}, {"reason": 1}
+        )
+        if reason_doc:
+            end_reason_label = reason_doc.get("reason")
+
+    # Also store reason on outreach doc
+    if end_reason_label:
+        await db["outreach"].update_one(
+            {"_id": latest["_id"]},
+            {"$set": {"end_reason": end_reason_label, "end_reason_id": payload.end_reason_id}}
+        )
+
     # Save activity log
     seq_oid      = latest.get("sequence_id")
     round_number = latest.get("round_number", 1)
@@ -679,6 +701,7 @@ async def end_outreach(request: Request, payload: PauseOutreachRequest):
             "declined":       declined_count,
             "no_reply":       no_reply_count,
             "call_disabled":  result.modified_count,
+            "end_reason":     end_reason_label,
             "summary":        f"Round {round_number} ended · {available_count} available, {declined_count} declined, {no_reply_count} no-reply",
         },
         "created_at": now,
@@ -699,6 +722,7 @@ async def end_outreach(request: Request, payload: PauseOutreachRequest):
         "shift_id":             payload.shift_id,
         "outreach_status":      3,
         "outreach_status_text": "Ended",
+        "end_reason":           end_reason_label,
         "shifts_users_updated": result.modified_count,
     }
 
