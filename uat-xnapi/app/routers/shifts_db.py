@@ -446,7 +446,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     # Get shift_ids that have matching outreach records
     outreach_docs = await db["outreach"].find(
         outreach_query,
-        {"shift_id": 1, "outreach_status": 1, "sequence_id": 1}
+        {"shift_id": 1, "outreach_status": 1, "sequence_id": 1, "created_at": 1}
     ).to_list(length=10000)
 
     if not outreach_docs:
@@ -598,10 +598,18 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             if seq:
                 seq_name = seq.get("name")
 
+        # start_time from latest outreach.created_at
+        created_at = o_doc.get("created_at")
+        if created_at and hasattr(created_at, "isoformat"):
+            start_time = created_at.isoformat()
+        else:
+            start_time = str(created_at) if created_at else None
+
         s["outreach_id"]            = str(o_doc["_id"]) if o_doc.get("_id") else None
         s["outreach_status"]        = o_status
         s["outreach_status_text"]   = STATUS_TEXT.get(o_status, "Not Started")
         s["outreach_sequence_name"] = seq_name
+        s["start_time"]             = start_time
         s["shift_preference"]       = None
         s["client_preference"]      = None
         s["ghost_booking"]          = 0
