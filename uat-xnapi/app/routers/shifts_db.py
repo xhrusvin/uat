@@ -21,17 +21,18 @@ def _get_db():
 
 
 
-async def _resolve_user_type_names(db, ids: list) -> list:
+async def _resolve_names_from_collection(db, collection: str, ids: list) -> list:
     """
-    Given a list of user_type _id strings, return their name values.
-    Used to match against shifts.user_type (text field like 'Pharmacist').
+    Resolve a list of ObjectId strings to their 'name' field values.
+    Falls through non-ObjectId values as raw strings.
+    Works for both user_types and county collections.
     """
     if not ids:
         return []
     oids = [ObjectId(i) for i in ids if ObjectId.is_valid(str(i))]
     names = []
     if oids:
-        async for doc in db["user_types"].find({"_id": {"$in": oids}}, {"name": 1}):
+        async for doc in db[collection].find({"_id": {"$in": oids}}, {"name": 1}):
             if doc.get("name"):
                 names.append(doc["name"])
     # Also accept raw name strings passed directly (not IDs)
@@ -39,6 +40,14 @@ async def _resolve_user_type_names(db, ids: list) -> list:
         if not ObjectId.is_valid(str(i)) and i not in names:
             names.append(i)
     return names
+
+
+async def _resolve_user_type_names(db, ids: list) -> list:
+    return await _resolve_names_from_collection(db, "user_types", ids)
+
+
+async def _resolve_county_names(db, ids: list) -> list:
+    return await _resolve_names_from_collection(db, "county", ids)
 
 
 def _serialize(doc: dict) -> dict:
@@ -122,6 +131,7 @@ class ShiftsDbListRequest(BaseModel):
     client_id:           Optional[str] = None
     user_type:           Optional[str] = None
     user_type_multiple:  Optional[list] = None  # list of user_type _id strings
+    county_multiple:     Optional[list] = None  # list of county _id strings → shifts.client_county
     automation_status:   Optional[str] = None
     start_date:          Optional[str] = None   # YYYY-MM-DD
     end_date:            Optional[str] = None   # YYYY-MM-DD
@@ -285,6 +295,12 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         type_names = await _resolve_user_type_names(db, user_type_multiple)
         if type_names:
             filters.append({"user_type": {"$in": type_names}})
+
+    county_multiple = payload.county_multiple
+    if county_multiple:
+        county_names = await _resolve_county_names(db, county_multiple)
+        if county_names:
+            filters.append({"client_county": {"$in": county_names}})
     if automation_status:
         filters.append({"$or": [
             {"automation_status": {"$regex": automation_status, "$options": "i"}},
@@ -468,6 +484,12 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         type_names = await _resolve_user_type_names(db, user_type_multiple)
         if type_names:
             filters.append({"user_type": {"$in": type_names}})
+
+    county_multiple = payload.county_multiple
+    if county_multiple:
+        county_names = await _resolve_county_names(db, county_multiple)
+        if county_names:
+            filters.append({"client_county": {"$in": county_names}})
     if automation_status:
         filters.append({"$or": [
             {"automation_status": {"$regex": automation_status, "$options": "i"}},
