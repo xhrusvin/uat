@@ -429,3 +429,110 @@ async def pause_outreach(request: Request, payload: PauseOutreachRequest):
         "outreach_status_text": "Paused",
         "shifts_users_updated": result.modified_count,
     }
+
+
+# ── POST /outreach/restart ────────────────────────────────────────────────────
+
+@router.post(
+    "/restart",
+    summary="Restart a paused outreach — re-enables call_enabled and logs activity",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def restart_outreach(request: Request, payload: PauseOutreachRequest):
+    """
+    Body: { "shift_id": "<shift _id>" }
+
+    1. Finds the latest paused (status=2) outreach for the shift.
+    2. Sets outreach_status = 1 (Live), paused_at = null.
+    3. Sets call_enabled = 1 for shifts_users where outreach_id matches.
+    4. Saves a round_started activity log.
+    """
+    db = _get_db()
+
+    if not ObjectId.is_valid(payload.shift_id):
+        raise HTTPException(status_code=422, detail="Invalid shift_id")
+
+    shift_oid = ObjectId(payload.shift_id)
+
+    # Find the latest paused outreach for this shift
+    outreach = await db["outreach"].find_one(
+        {"shift_id": shift_oid, "outreach_status": 2},
+        sort=[("created_at", -1)],
+    )
+    if not outreach:
+        raise HTTPException(
+            status_code=404,
+            detail="No paused outreach found for this shift"
+        )
+
+    now = datetime.now(timezone.utc)
+
+    # Set outreach back to Live (1)
+    await db["outreach"].update_one(
+        {"_id": outreach["_id"]},
+        {"$set": {
+            "outreach_status": 1,
+            "paused_at":       None,
+            "updated_at":      now,
+        }}
+    )
+
+    # Re-enable call_enabled = 1 for shifts_users with this outreach_id
+    result = await db["shifts_users"].update_many(
+        {"outreach_id": outreach["_id"]},
+        {"$set": {
+            "call_enabled": 1,
+            "updated_at":   now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        }}
+    )
+
+    # Get counts for activity log
+    available_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "availability": {"$gt": 0},
+    })
+    declined_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "availability": {"$ne": 1},
+    })
+    no_reply_count = await db["shifts_users"].count_documents({
+        "shift_id": shift_oid, "call_processed": 0, "call_enabled": 1,
+    })
+
+    # Save activity log
+    seq_oid      = outreach.get("sequence_id")
+    round_number = outreach.get("round_number", 1)
+    activity_doc = {
+        "activity_type": "round_started",
+        "shift_id":      shift_oid,
+        "outreach_id":   outreach["_id"],
+        "metadata": {
+            "sequence_id":      str(seq_oid) if seq_oid else None,
+            "shift_id":         payload.shift_id,
+            "outreach_id":      str(outreach["_id"]),
+            "round_number":     round_number,
+            "available":        available_count,
+            "declined":         declined_count,
+            "no_reply":         no_reply_count,
+            "call_enabled_set": result.modified_count,
+            "summary":          f"Round {round_number} restarted · {available_count} available, {declined_count} declined, {no_reply_count} no-reply",
+        },
+        "created_at": now,
+    }
+    if seq_oid:
+        activity_doc["sequence_id"] = seq_oid
+    await db["activities"].insert_one(activity_doc)
+
+    logger.info(
+        f"Outreach restarted: shift={payload.shift_id} "
+        f"outreach={outreach['_id']} re-enabled={result.modified_count}"
+    )
+
+    return {
+        "success":              True,
+        "message":              "Outreach restarted",
+        "outreach_id":          str(outreach["_id"]),
+        "shift_id":             payload.shift_id,
+        "outreach_status":      1,
+        "outreach_status_text": "Live",
+        "shifts_users_updated": result.modified_count,
+    }
