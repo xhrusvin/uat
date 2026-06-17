@@ -42,6 +42,17 @@ export const clientsApi = {
   get:     (id)      => usersClient.get(`/clients/${id}`),
 }
 
+export const activitiesApi = {
+  listTypes:  ()       => usersClient.get('/activities/types'),
+  createType: (data)   => usersClient.post('/activities/types', data),
+  updateType: (id, d)  => usersClient.patch(`/activities/types/${id}`, d),
+  deleteType: (id)     => usersClient.delete(`/activities/types/${id}`),
+  list:       (body)   => usersClient.post('/activities/list', body),
+  create:     (data)   => usersClient.post('/activities/', data),
+  get:        (id)     => usersClient.get(`/activities/${id}`),
+  delete:     (id)     => usersClient.delete(`/activities/${id}`),
+}
+
 export const userTypesApi = {
   list:    (body)   => usersClient.post('/user-types/', body),
   create:  (data)   => usersClient.post('/user-types/', data),
