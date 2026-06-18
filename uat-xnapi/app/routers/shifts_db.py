@@ -795,6 +795,38 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     if "outreach_id" in outreach_info:
         s["outreach_id"] = outreach_info["outreach_id"]
 
+    # Resolve user_type_id — use cached value or join and save
+    user_type_id = None
+    if doc.get("user_type_id"):
+        user_type_id = str(doc["user_type_id"])
+    elif s.get("user_type"):
+        ut = await db["user_types"].find_one(
+            {"name": {"$regex": f"^{s['user_type']}$", "$options": "i"}},
+            {"_id": 1}
+        )
+        if ut:
+            user_type_id = str(ut["_id"])
+            await db["shifts"].update_one(
+                {"_id": doc["_id"]}, {"$set": {"user_type_id": ut["_id"]}}
+            )
+    s["user_type_id"] = user_type_id
+
+    # Resolve county_id — use cached value or join and save
+    county_id = None
+    if doc.get("county_id"):
+        county_id = str(doc["county_id"])
+    elif s.get("client_county"):
+        co = await db["county"].find_one(
+            {"name": {"$regex": f"^{s['client_county']}$", "$options": "i"}},
+            {"_id": 1}
+        )
+        if co:
+            county_id = str(co["_id"])
+            await db["shifts"].update_one(
+                {"_id": doc["_id"]}, {"$set": {"county_id": co["_id"]}}
+            )
+    s["county_id"] = county_id
+
     return {"success": True, "data": s}
 
 
