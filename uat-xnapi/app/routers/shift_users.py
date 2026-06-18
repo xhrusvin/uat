@@ -369,6 +369,169 @@ def _format_time_ago(dt) -> str:
     return f"{d} day{'s' if d != 1 else ''} ago"
 
 
+
+def _parse_time(t: str):
+    """Parse 'HH:MM' to total minutes from midnight."""
+    if not t:
+        return None
+    try:
+        h, m = t.split(":")
+        return int(h) * 60 + int(m)
+    except Exception:
+        return None
+
+
+def _times_overlap(s1: str, e1: str, s2: str, e2: str) -> bool:
+    """Check if two time ranges overlap (handles overnight shifts)."""
+    a = _parse_time(s1)
+    b = _parse_time(e1)
+    c = _parse_time(s2)
+    d = _parse_time(e2)
+    if None in (a, b, c, d):
+        return False
+    # Handle overnight: if end < start, add 24h
+    if b <= a:
+        b += 1440
+    if d <= c:
+        d += 1440
+    return a < d and c < b
+
+
+def _gap_minutes(e1: str, s2: str) -> int:
+    """Gap in minutes between end of shift 1 and start of shift 2."""
+    e = _parse_time(e1)
+    s = _parse_time(s2)
+    if None in (e, s):
+        return 9999
+    gap = s - e
+    if gap < 0:
+        gap += 1440
+    return gap
+
+
+def _shift_type(timing: str) -> str:
+    """Extract shift type from shift_timing or shift_type field."""
+    if not timing:
+        return ""
+    t = timing.lower()
+    if "night" in t:
+        return "night"
+    if "day" in t or "morning" in t or "afternoon" in t:
+        return "day"
+    return ""
+
+
+async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict) -> list:
+    """
+    Returns list of exclusion tag strings for a user against a target shift.
+    Checks:
+      1. Same-day overlapping shift
+      2. No overlapping shifts (time)
+      3. Consecutive day/night shift conflict
+      4. Duplicate shift type same day
+      5. Exceeds 16 consecutive hours
+      6. Minimum 6h gap violation (under_6)
+    """
+    if not user_email:
+        return []
+
+    target_date   = target_shift.get("date")
+    target_start  = target_shift.get("start_time", "")
+    target_end    = target_shift.get("end_time", "")
+    target_type   = _shift_type(target_shift.get("shift_timing") or target_shift.get("shift_type") or "")
+
+    # Find all shifts where staff_email matches
+    existing_shifts = await db["shifts"].find(
+        {"staff_email": user_email},
+        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
+         "shift_type": 1, "slots": 1}
+    ).to_list(length=500)
+
+    tags = []
+
+    for es in existing_shifts:
+        es_date   = es.get("date")
+        es_slots  = es.get("slots") or []
+
+        # Use slots if present, else top-level fields
+        time_ranges = []
+        if es_slots:
+            for sl in es_slots:
+                sl_date = sl.get("date")
+                time_ranges.append({
+                    "date":   sl_date,
+                    "start":  sl.get("start_time", ""),
+                    "end":    sl.get("end_time", ""),
+                    "type":   _shift_type(sl.get("shift_type") or ""),
+                })
+        else:
+            time_ranges.append({
+                "date":  es_date,
+                "start": es.get("start_time", ""),
+                "end":   es.get("end_time", ""),
+                "type":  _shift_type(es.get("shift_timing") or es.get("shift_type") or ""),
+            })
+
+        for tr in time_ranges:
+            tr_date  = tr["date"]
+            tr_start = tr["start"]
+            tr_end   = tr["end"]
+            tr_type  = tr["type"]
+
+            # Normalize dates for comparison
+            same_day = False
+            if tr_date and target_date:
+                try:
+                    td = tr_date.date() if hasattr(tr_date, "date") else None
+                    tgt = target_date.date() if hasattr(target_date, "date") else None
+                    same_day = td and tgt and td == tgt
+                except Exception:
+                    pass
+
+            if same_day:
+                # Rule 1 & 2: Time overlap
+                if _times_overlap(target_start, target_end, tr_start, tr_end):
+                    if "overlap" not in tags:
+                        tags.append("overlap")
+
+                # Rule 4: Duplicate shift type same day
+                if target_type and tr_type and target_type == tr_type:
+                    tag = f"duplicate_{target_type}"
+                    if tag not in tags:
+                        tags.append(tag)
+
+                # Rule 3: Consecutive day/night on same day
+                if target_type and tr_type and target_type != tr_type:
+                    if "consecutive_day_night" not in tags:
+                        tags.append("consecutive_day_night")
+
+                # Rule 5: Exceeds 16 consecutive hours
+                if tr_start and tr_end and target_start and target_end:
+                    t1s = _parse_time(target_start)
+                    t1e = _parse_time(target_end)
+                    t2s = _parse_time(tr_start)
+                    t2e = _parse_time(tr_end)
+                    if None not in (t1s, t1e, t2s, t2e):
+                        combined = abs(max(t1e, t2e) - min(t1s, t2s))
+                        if combined > 16 * 60:
+                            if "exceeds_16h" not in tags:
+                                tags.append("exceeds_16h")
+
+            # Rule 6: Minimum 6h gap (same or adjacent day)
+            if tr_end and target_start:
+                gap = _gap_minutes(tr_end, target_start)
+                if 0 < gap < 360:
+                    if "under_6h_gap" not in tags:
+                        tags.append("under_6h_gap")
+            if target_end and tr_start:
+                gap = _gap_minutes(target_end, tr_start)
+                if 0 < gap < 360:
+                    if "under_6h_gap" not in tags:
+                        tags.append("under_6h_gap")
+
+    return tags
+
+
 # ── LIST shift_users with pagination (POST body) ──────────────────────────────
 
 class ListShiftUsersRequest(BaseModel):
@@ -512,6 +675,12 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "longitude": client_coords[1],
         }
 
+    # Fetch target shift for exclusion checks
+    target_shift = await db["shifts"].find_one(
+        {"_id": shift_oid},
+        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1}
+    ) or {}
+
     results = []
     for u in users:
         uid_str  = str(u["_id"])
@@ -565,6 +734,11 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                 {"_id": u["_id"]}, {"$set": {"user_type_id": ObjectId(user_type_id)}}
             )
 
+        # Exclusion tags — check user's existing shifts against target shift
+        user_email = u.get("email")
+        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift) if user_email and target_shift else []
+        excluded = 1 if exclusion_tags else 0
+
         results.append({
             "id":             uid_str,
             "xn_user_id":     u.get("xn_user_id"),
@@ -584,6 +758,8 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "user_latitude":  ucoords[0] if ucoords else None,
             "user_longitude": ucoords[1] if ucoords else None,
             "distance_km":    distance_km,
+            "excluded":       excluded,
+            "exclusion_tags": exclusion_tags,
         })
 
     # Apply radius filter
