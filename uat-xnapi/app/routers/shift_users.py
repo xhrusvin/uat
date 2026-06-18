@@ -390,6 +390,14 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "client_longitude": client_coords[1],
         }
 
+    # Full client location object
+    client_location = None
+    if client_coords:
+        client_location = {
+            "latitude":  client_coords[0],
+            "longitude": client_coords[1],
+        }
+
     results = []
     for u in users:
         uid_str  = str(u["_id"])
@@ -417,11 +425,12 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         })
 
     return {
-        "success":      True,
-        "total":        total,
-        "page":         payload.page,
-        "per_page":     payload.per_page,
-        "shift_id":     payload.shift_id,
-        "shift_client": shift_client_info,
-        "data":         results,
+        "success":        True,
+        "total":          total,
+        "page":           payload.page,
+        "per_page":       payload.per_page,
+        "shift_id":       payload.shift_id,
+        "shift_client":   shift_client_info,
+        "client_location": client_location,
+        "data":           results,
     }
