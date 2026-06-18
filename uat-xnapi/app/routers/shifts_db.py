@@ -827,6 +827,37 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             )
     s["county_id"] = county_id
 
+    # Fetch all outreach records for this shift (latest first)
+    outreach_docs = await db["outreach"].find(
+        {"shift_id": shift_oid},
+        sort=[("created_at", -1)]
+    ).to_list(length=100)
+
+    STATUS_TEXT = {0: "Not Started", 1: "Live", 2: "Paused", 3: "Ended", 10: "Completed"}
+    outreach_list = []
+    for o in outreach_docs:
+        o_status = o.get("outreach_status", 0)
+        seq_name = None
+        seq_oid  = o.get("sequence_id")
+        if seq_oid:
+            seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
+            if seq:
+                seq_name = seq.get("name")
+        outreach_list.append({
+            "id":                   str(o["_id"]),
+            "sequence_id":          str(seq_oid) if seq_oid else None,
+            "sequence_name":        seq_name,
+            "round_number":         o.get("round_number"),
+            "outreach_status":      o_status,
+            "outreach_status_text": STATUS_TEXT.get(o_status, "Not Started"),
+            "end_reason":           o.get("end_reason"),
+            "started_at":           o["started_at"].isoformat() if o.get("started_at") and hasattr(o["started_at"], "isoformat") else str(o.get("started_at", "")),
+            "paused_at":            o["paused_at"].isoformat() if o.get("paused_at") and hasattr(o["paused_at"], "isoformat") else o.get("paused_at"),
+            "ended_at":             o["ended_at"].isoformat() if o.get("ended_at") and hasattr(o["ended_at"], "isoformat") else o.get("ended_at"),
+            "created_at":           o["created_at"].isoformat() if o.get("created_at") and hasattr(o["created_at"], "isoformat") else str(o.get("created_at", "")),
+        })
+    s["outreach_list"] = outreach_list
+
     return {"success": True, "data": s}
 
 
