@@ -406,7 +406,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
          "xn_user_id": 1, "designation": 1, "rating": 1,
          "location": 1, "latitude": 1, "longitude": 1, "status": 1,
-         "tags": 1}
+         "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1}
     ).sort("first_name", 1).skip(skip).limit(limit).to_list(length=limit)
 
     # Fetch latest shifts_users.call_processed_at per user for last_contacted
@@ -420,6 +420,53 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             uid = str(su.get("user_id", ""))
             if uid not in last_contacted_map:
                 last_contacted_map[uid] = su.get("call_processed_at")
+
+    # Build batch lookup maps for county_id and user_type_id
+    # Collect users missing county_id or user_type_id for batch resolution
+    county_name_to_id: dict = {}
+    county_oid_to_name: dict = {}
+    designation_to_type_id: dict = {}
+    designation_to_type_name: dict = {}
+    users_needing_county   = [u for u in users if not u.get("county_id") and u.get("country_id")]
+    users_needing_type     = [u for u in users if not u.get("user_type_id") and u.get("designation")]
+
+    # Batch resolve county: users.country_id == county._id
+    if users_needing_county:
+        raw_cids = list({str(u["country_id"]) for u in users_needing_county if u.get("country_id")})
+        valid_oids = [ObjectId(c) for c in raw_cids if ObjectId.is_valid(c)]
+        if valid_oids:
+            async for co in db["county"].find({"_id": {"$in": valid_oids}}, {"_id": 1, "name": 1}):
+                county_name_to_id[str(co["_id"])]   = str(co["_id"])
+                county_oid_to_name[str(co["_id"])]  = co.get("name", "")
+
+    # Also batch resolve county names for users that already have county_id
+    existing_county_oids = list({
+        ObjectId(str(u["county_id"])) for u in users
+        if u.get("county_id") and ObjectId.is_valid(str(u["county_id"]))
+    })
+    if existing_county_oids:
+        async for co in db["county"].find({"_id": {"$in": existing_county_oids}}, {"_id": 1, "name": 1}):
+            county_oid_to_name[str(co["_id"])] = co.get("name", "")
+
+    # Batch resolve user_type: users.designation == user_types.name
+    if users_needing_type:
+        designations = list({u["designation"] for u in users_needing_type if u.get("designation")})
+        async for ut in db["user_types"].find(
+            {"name": {"$in": designations}},
+            {"_id": 1, "name": 1}
+        ):
+            designation_to_type_id[ut["name"]]   = str(ut["_id"])
+            designation_to_type_name[ut["name"]] = ut["name"]
+
+    # Also batch resolve user_type names for users that already have user_type_id
+    existing_type_oids = list({
+        ObjectId(str(u["user_type_id"])) for u in users
+        if u.get("user_type_id") and ObjectId.is_valid(str(u["user_type_id"]))
+    })
+    type_id_to_name: dict = {}
+    if existing_type_oids:
+        async for ut in db["user_types"].find({"_id": {"$in": existing_type_oids}}, {"_id": 1, "name": 1}):
+            type_id_to_name[str(ut["_id"])] = ut["name"]
 
     # Get shift client coords for distance calculation
     client_coords = await _get_shift_client_coords(db, shift_oid)
@@ -463,6 +510,34 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         lc_dt = last_contacted_map.get(uid_str)
         last_contacted = _format_time_ago(lc_dt)
 
+        # Resolve county_id — use cached or join via country_id
+        county_id   = None
+        county_name = None
+        if u.get("county_id"):
+            county_id   = str(u["county_id"])
+            county_name = county_oid_to_name.get(county_id)
+        elif u.get("country_id"):
+            cid_str = str(u["country_id"])
+            if cid_str in county_name_to_id:
+                county_id   = county_name_to_id[cid_str]
+                county_name = county_oid_to_name.get(county_id)
+                await db["users"].update_one(
+                    {"_id": u["_id"]}, {"$set": {"county_id": ObjectId(county_id)}}
+                )
+
+        # Resolve user_type_id — use cached or join via designation
+        user_type_id   = None
+        user_type_name = None
+        if u.get("user_type_id"):
+            user_type_id   = str(u["user_type_id"])
+            user_type_name = type_id_to_name.get(user_type_id)
+        elif u.get("designation") and u["designation"] in designation_to_type_id:
+            user_type_id   = designation_to_type_id[u["designation"]]
+            user_type_name = designation_to_type_name.get(u["designation"])
+            await db["users"].update_one(
+                {"_id": u["_id"]}, {"$set": {"user_type_id": ObjectId(user_type_id)}}
+            )
+
         results.append({
             "id":             uid_str,
             "xn_user_id":     u.get("xn_user_id"),
@@ -475,6 +550,10 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "staff_tags":     staff_tags,
             "last_contacted": last_contacted,
             "status":         u.get("status"),
+            "county_id":      county_id,
+            "county":         county_name,
+            "user_type_id":   user_type_id,
+            "user_type":      user_type_name,
             "user_latitude":  ucoords[0] if ucoords else None,
             "user_longitude": ucoords[1] if ucoords else None,
             "distance_km":    distance_km,
