@@ -534,7 +534,62 @@ async def restart_outreach(request: Request, payload: PauseOutreachRequest):
 
     now = datetime.now(timezone.utc)
 
-    # Set outreach back to Live (1)
+    # ── Sync shifts_pool → shifts_users for this outreach ─────────────────────
+    outreach_oid = outreach["_id"]
+
+    # Current pool user_ids
+    pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid}, {"user_id": 1}).to_list(5000)
+    pool_user_ids = {str(pd["user_id"]) for pd in pool_docs if pd.get("user_id")}
+
+    # Current shifts_users user_ids for this outreach
+    su_docs = await db["shifts_users"].find(
+        {"shift_id": shift_oid, "outreach_id": outreach_oid},
+        {"user_id": 1}
+    ).to_list(5000)
+    su_user_ids = {str(su["user_id"]) for su in su_docs if su.get("user_id")}
+
+    # Add new users (in pool but not in shifts_users)
+    added = 0
+    for pd in pool_docs:
+        uid_str = str(pd.get("user_id", ""))
+        if uid_str and uid_str not in su_user_ids:
+            # Skip if availability == 1 in any existing shifts_users record
+            exists_avail = await db["shifts_users"].find_one({
+                "shift_id":    shift_oid,
+                "user_id":     pd["user_id"],
+                "availability": 1,
+            })
+            if exists_avail:
+                continue
+            await db["shifts_users"].insert_one({
+                "user_id":            pd["user_id"],
+                "shift_id":           shift_oid,
+                "outreach_id":        outreach_oid,
+                "assigned_at":        now,
+                "availability":       6,
+                "call_enabled":       1,
+                "call_processed":     0,
+                "call_processed_at":  now,
+                "conversation_id":    None,
+                "agent_id":           None,
+                "call_status":        0,
+                "call_summary_title": None,
+                "ended_at":           None,
+                "started_at":         None,
+                "updated_at":         now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+            })
+            added += 1
+
+    # Remove users no longer in pool (in shifts_users but not in pool) where availability != 1
+    removed = 0
+    for su in su_docs:
+        uid_str = str(su.get("user_id", ""))
+        if uid_str and uid_str not in pool_user_ids:
+            # Only remove if not already available (availability != 1)
+            full_su = await db["shifts_users"].find_one({"_id": su["_id"]})
+            if full_su and full_su.get("availability") != 1:
+                await db["shifts_users"].delete_one({"_id": su["_id"]})
+                removed += 1
     await db["outreach"].update_one(
         {"_id": outreach["_id"]},
         {"$set": {
@@ -601,6 +656,10 @@ async def restart_outreach(request: Request, payload: PauseOutreachRequest):
         "outreach_status":      1,
         "outreach_status_text": "Live",
         "shifts_users_updated": result.modified_count,
+        "pool_sync": {
+            "added":   added,
+            "removed": removed,
+        },
     }
 
 
