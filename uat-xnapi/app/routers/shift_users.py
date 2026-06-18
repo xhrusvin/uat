@@ -345,6 +345,30 @@ def _user_location_coords(u: dict):
     return None
 
 
+
+def _format_time_ago(dt) -> str:
+    """Format a datetime as 'just now', 'X minutes ago', 'X hours ago', 'X days ago'."""
+    if not dt:
+        return None
+    if not hasattr(dt, 'tzinfo'):
+        return str(dt)
+    now = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    diff = now - dt
+    seconds = int(diff.total_seconds())
+    if seconds < 60:
+        return "just now"
+    if seconds < 3600:
+        m = seconds // 60
+        return f"{m} minute{'s' if m != 1 else ''} ago"
+    if seconds < 86400:
+        h = seconds // 3600
+        return f"{h} hour{'s' if h != 1 else ''} ago"
+    d = seconds // 86400
+    return f"{d} day{'s' if d != 1 else ''} ago"
+
+
 # ── LIST shift_users with pagination (POST body) ──────────────────────────────
 
 class ListShiftUsersRequest(BaseModel):
@@ -378,8 +402,21 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         user_filter,
         {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
          "xn_user_id": 1, "designation": 1, "rating": 1,
-         "location": 1, "latitude": 1, "longitude": 1, "status": 1}
+         "location": 1, "latitude": 1, "longitude": 1, "status": 1,
+         "tags": 1}
     ).sort("first_name", 1).skip(skip).limit(limit).to_list(length=limit)
+
+    # Fetch latest shifts_users.call_processed_at per user for last_contacted
+    user_ids_page = [u["_id"] for u in users]
+    last_contacted_map: dict = {}
+    if user_ids_page:
+        async for su in db["shifts_users"].find(
+            {"user_id": {"$in": user_ids_page}, "call_processed_at": {"$ne": None}},
+            {"user_id": 1, "call_processed_at": 1}
+        ).sort("call_processed_at", -1):
+            uid = str(su.get("user_id", ""))
+            if uid not in last_contacted_map:
+                last_contacted_map[uid] = su.get("call_processed_at")
 
     # Get shift client coords for distance calculation
     client_coords = await _get_shift_client_coords(db, shift_oid)
@@ -410,18 +447,34 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                 ucoords[0],       ucoords[1],
             )
 
+        # staff_tags from user.tags array
+        raw_tags = u.get("tags") or []
+        staff_tags = []
+        for t in raw_tags:
+            if isinstance(t, dict):
+                staff_tags.append({"id": str(t.get("id", "")), "name": t.get("name", "")})
+            else:
+                staff_tags.append({"id": "", "name": str(t)})
+
+        # last_contacted from shifts_users.call_processed_at (latest)
+        lc_dt = last_contacted_map.get(uid_str)
+        last_contacted = _format_time_ago(lc_dt)
+
         results.append({
-            "id":            uid_str,
-            "xn_user_id":    u.get("xn_user_id"),
-            "name":          " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
-            "email":         u.get("email"),
-            "phone":         u.get("phone"),
-            "designation":   u.get("designation"),
-            "rating":        u.get("rating"),
-            "status":        u.get("status"),
+            "id":             uid_str,
+            "xn_user_id":     u.get("xn_user_id"),
+            "name":           " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+            "email":          u.get("email"),
+            "phone":          u.get("phone"),
+            "designation":    u.get("designation"),
+            "rating":         u.get("rating"),
+            "channel":        "Phone",
+            "staff_tags":     staff_tags,
+            "last_contacted": last_contacted,
+            "status":         u.get("status"),
             "user_latitude":  ucoords[0] if ucoords else None,
             "user_longitude": ucoords[1] if ucoords else None,
-            "distance_km":   distance_km,
+            "distance_km":    distance_km,
         })
 
     return {
