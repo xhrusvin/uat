@@ -858,6 +858,43 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         })
     s["outreach_list"] = outreach_list
 
+    # Fetch available staff: shifts_users where shift_id AND availability == 1
+    available_su = await db["shifts_users"].find(
+        {"shift_id": shift_oid, "availability": 1},
+        {"user_id": 1, "availability": 1, "call_processed_at": 1}
+    ).to_list(length=500)
+
+    available_staff = []
+    if available_su:
+        avail_user_oids = [
+            ObjectId(str(su["user_id"])) for su in available_su
+            if su.get("user_id") and ObjectId.is_valid(str(su.get("user_id", "")))
+        ]
+        avail_user_map: dict = {}
+        if avail_user_oids:
+            async for u in db["users"].find(
+                {"_id": {"$in": avail_user_oids}},
+                {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+                 "xn_user_id": 1, "designation": 1, "rating": 1}
+            ):
+                avail_user_map[str(u["_id"])] = u
+
+        for su in available_su:
+            uid_str = str(su.get("user_id", ""))
+            u = avail_user_map.get(uid_str, {})
+            available_staff.append({
+                "id":          uid_str,
+                "xn_user_id":  u.get("xn_user_id"),
+                "name":        " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+                "email":       u.get("email"),
+                "phone":       u.get("phone"),
+                "designation": u.get("designation"),
+                "rating":      u.get("rating"),
+                "availability": su.get("availability"),
+            })
+
+    s["available_staff"] = available_staff
+
     return {"success": True, "data": s}
 
 
