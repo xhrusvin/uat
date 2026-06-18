@@ -402,11 +402,16 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     # Query only Enabled users — no shifts_users join
     user_filter: dict = {"status": "Enabled"}
 
-    # county_multiple filter — resolve IDs to ObjectIds for users.county_id
+    # county_multiple filter — match both string and ObjectId stored county_id
     if payload.county_multiple:
-        valid_county_oids = [ObjectId(c) for c in payload.county_multiple if ObjectId.is_valid(str(c))]
-        if valid_county_oids:
-            user_filter["county_id"] = {"$in": valid_county_oids}
+        county_values = []
+        for c in payload.county_multiple:
+            c_str = str(c)
+            county_values.append(c_str)           # string stored value
+            if ObjectId.is_valid(c_str):
+                county_values.append(ObjectId(c_str))  # ObjectId stored value
+        if county_values:
+            user_filter["county_id"] = {"$in": county_values}
 
     # user_type_multiple filter — resolve IDs to ObjectIds for users.user_type_id
     # Also match via designation name in case user_type_id not yet set
