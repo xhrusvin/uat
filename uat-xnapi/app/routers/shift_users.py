@@ -60,15 +60,15 @@ class AddUsersToShiftRequest(BaseModel):
 
 @router.post(
     "/",
-    summary="Add a user to a shift (creates shift_users record)",
+    summary="Add a user to the shift pool (shifts_pool collection)",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("60/minute")
 async def add_user_to_shift(request: Request, payload: AddUserToShiftRequest):
     """
-    Creates a shift_users document linking a user to a shift.
-    All fields default to 0/null as per schema.
-    Returns 409 if user is already added to this shift.
+    Adds user to shifts_pool (not shifts_users).
+    shifts_users is populated when outreach/create is called.
+    Returns 409 if user is already in the pool for this shift.
     """
     db = _get_db()
     now = datetime.now(timezone.utc)
@@ -76,58 +76,35 @@ async def add_user_to_shift(request: Request, payload: AddUserToShiftRequest):
     user_oid  = _resolve_oid(payload.user_id,  "user_id")
     shift_oid = _resolve_oid(payload.shift_id, "shift_id")
 
-    # Validate shift exists
     shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1, "shift_code": 1, "name": 1})
     if not shift:
         raise HTTPException(status_code=404, detail=f"Shift {payload.shift_id} not found")
 
-    # Validate user exists
     user = await db["users"].find_one({"_id": user_oid}, {"_id": 1, "first_name": 1, "last_name": 1, "email": 1})
     if not user:
         raise HTTPException(status_code=404, detail=f"User {payload.user_id} not found")
 
-    # Check for duplicate
-    existing = await db["shifts_users"].find_one({
-        "shift_id": shift_oid,
-        "user_id":  user_oid,
-    })
+    existing = await db["shifts_pool"].find_one({"shift_id": shift_oid, "user_id": user_oid})
     if existing:
         full_name = " ".join(filter(None, [
             user.get("first_name", ""), user.get("last_name", "")
         ])).strip() or payload.user_id
         shift_code = shift.get("shift_code") or shift.get("name") or payload.shift_id
-        raise HTTPException(
-            status_code=409,
-            detail=f"{full_name} is already added to shift {shift_code}"
-        )
+        raise HTTPException(status_code=409,
+            detail=f"{full_name} is already in the pool for shift {shift_code}")
 
     doc = {
-        "user_id":           user_oid,
-        "shift_id":          shift_oid,
-        "assigned_at":       now,
-        "availability":      6,
-        "call_enabled":      0,
-        "call_processed":    0,
-        "call_processed_at": now,
-        "conversation_id":   None,
-        "agent_id":          None,
-        "call_status":       0,
-        "call_summary_title":None,
-        "ended_at":          None,
-        "started_at":        None,
-        "updated_at":        now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        "user_id":  user_oid,
+        "shift_id": shift_oid,
+        "added_at": now,
+        "added_by": "manual",
+        "updated_at": now,
     }
-
-    result = await db["shifts_users"].insert_one(doc)
+    result = await db["shifts_pool"].insert_one(doc)
     doc["_id"] = result.inserted_id
 
-    logger.info(f"shift_users: added user={payload.user_id} shift={payload.shift_id}")
-
-    return {
-        "success": True,
-        "message": "User added to shift",
-        "data":    _serialize(doc),
-    }
+    logger.info(f"shifts_pool: added user={payload.user_id} shift={payload.shift_id}")
+    return {"success": True, "message": "User added to shift pool", "data": _serialize(doc)}
 
 
 # ── ADD multiple users to shift ───────────────────────────────────────────────
@@ -170,10 +147,10 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
         async for u in db["users"].find({"_id": {"$in": user_oids}}, {"_id": 1})
     }
 
-    # Check which are already in shift_users
+    # Check which are already in shifts_pool
     already_added = {
         str(su["user_id"])
-        async for su in db["shifts_users"].find(
+        async for su in db["shifts_pool"].find(
             {"shift_id": shift_oid, "user_id": {"$in": user_oids}},
             {"user_id": 1}
         )
@@ -192,36 +169,27 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
             continue
 
         doc = {
-            "user_id":           user_oid,
-            "shift_id":          shift_oid,
-            "assigned_at":       now,
-            "availability":      6,
-            "call_enabled":      0,
-            "call_processed":    0,
-            "call_processed_at": now,
-            "conversation_id":   None,
-            "agent_id":          None,
-            "call_status":       0,
-            "call_summary_title":None,
-            "ended_at":          None,
-            "started_at":        None,
-            "updated_at":        now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+            "user_id":    user_oid,
+            "shift_id":   shift_oid,
+            "added_at":   now,
+            "added_by":   "bulk",
+            "updated_at": now,
         }
-        result = await db["shifts_users"].insert_one(doc)
+        result = await db["shifts_pool"].insert_one(doc)
         inserted_ids.append(str(result.inserted_id))
         inserted += 1
 
-    logger.info(f"shift_users bulk: shift={payload.shift_id} inserted={inserted} dup={skipped_dup} missing={skipped_missing}")
+    logger.info(f"shifts_pool bulk: shift={payload.shift_id} inserted={inserted} dup={skipped_dup} missing={skipped_missing}")
 
     return {
         "success": True,
-        "message": f"{inserted} user(s) added to shift",
+        "message": f"{inserted} user(s) added to shift pool",
         "data": {
-            "shift_id":       payload.shift_id,
-            "inserted":       inserted,
-            "skipped_duplicate": skipped_dup,
+            "shift_id":             payload.shift_id,
+            "inserted":             inserted,
+            "skipped_duplicate":    skipped_dup,
             "skipped_missing_user": skipped_missing,
-            "inserted_ids":   inserted_ids,
+            "inserted_ids":         inserted_ids,
         },
     }
 
