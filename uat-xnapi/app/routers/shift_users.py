@@ -362,44 +362,26 @@ class ListShiftUsersRequest(BaseModel):
 async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRequest):
     """
     Body: { "shift_id": "<shift_id>", "page": 1, "per_page": 20 }
-    Base table is users (status=Enabled), joined with shifts_users for this shift.
-    Only users that are both Enabled AND in shifts_users are returned.
+    Returns Enabled users from users table — no join with shifts_users.
+    Distance calculated from shift client coords vs user location.
     """
     db = _get_db()
     shift_oid = _resolve_oid(payload.shift_id, "shift_id")
     skip  = (payload.page - 1) * payload.per_page
     limit = payload.per_page
 
-    # Step 1: get all shifts_users for this shift → build map keyed by user_id
-    all_su = await db["shifts_users"].find({"shift_id": shift_oid}).to_list(length=5000)
-    if not all_su:
-        return {"success": True, "total": 0, "page": payload.page,
-                "per_page": payload.per_page, "shift_id": payload.shift_id,
-                "shift_client": None, "data": []}
+    # Query only Enabled users — no shifts_users join
+    user_filter = {"status": "Enabled"}
 
-    # Map user_id ObjectId → shifts_users doc
-    su_map: dict = {}
-    for su in all_su:
-        uid = su.get("user_id")
-        if uid:
-            su_map[str(uid)] = su
-
-    enabled_user_oids = [ObjectId(uid) for uid in su_map if ObjectId.is_valid(uid)]
-
-    # Step 2: query users where _id in list AND status = Enabled
-    total = await db["users"].count_documents({
-        "_id":    {"$in": enabled_user_oids},
-        "status": "Enabled",
-    })
-
+    total = await db["users"].count_documents(user_filter)
     users = await db["users"].find(
-        {"_id": {"$in": enabled_user_oids}, "status": "Enabled"},
+        user_filter,
         {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
          "xn_user_id": 1, "designation": 1, "rating": 1,
          "location": 1, "latitude": 1, "longitude": 1, "status": 1}
     ).sort("first_name", 1).skip(skip).limit(limit).to_list(length=limit)
 
-    # Step 3: get shift client coords for distance calculation
+    # Get shift client coords for distance calculation
     client_coords = await _get_shift_client_coords(db, shift_oid)
     shift_client_info = None
     if client_coords:
@@ -410,30 +392,8 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     results = []
     for u in users:
-        uid_str = str(u["_id"])
-        su      = su_map.get(uid_str, {})
-        s       = _serialize(su)
-
-        # id = shifts_users._id
-        if "_id" in s:
-            s["id"] = s.pop("_id")
-
-        # Overwrite with enriched user fields
-        s["user_id"]      = uid_str
-        s["xn_user_id"]   = u.get("xn_user_id")
-        s["name"]         = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—"
-        s["email"]        = u.get("email")
-        s["phone"]        = u.get("phone")
-        s["designation"]  = u.get("designation")
-        s["rating"]       = u.get("rating")
-        s["status"]       = u.get("status")
-
-        raw_oid = su.get("outreach_id")
-        s["outreach_id"]  = str(raw_oid) if raw_oid else None
-
-        ucoords = _user_location_coords(u)
-        s["user_latitude"]  = ucoords[0] if ucoords else None
-        s["user_longitude"] = ucoords[1] if ucoords else None
+        uid_str  = str(u["_id"])
+        ucoords  = _user_location_coords(u)
 
         distance_km = None
         if client_coords and ucoords:
@@ -441,8 +401,20 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                 client_coords[0], client_coords[1],
                 ucoords[0],       ucoords[1],
             )
-        s["distance_km"] = distance_km
-        results.append(s)
+
+        results.append({
+            "id":            uid_str,
+            "xn_user_id":    u.get("xn_user_id"),
+            "name":          " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+            "email":         u.get("email"),
+            "phone":         u.get("phone"),
+            "designation":   u.get("designation"),
+            "rating":        u.get("rating"),
+            "status":        u.get("status"),
+            "user_latitude":  ucoords[0] if ucoords else None,
+            "user_longitude": ucoords[1] if ucoords else None,
+            "distance_km":   distance_km,
+        })
 
     return {
         "success":      True,
