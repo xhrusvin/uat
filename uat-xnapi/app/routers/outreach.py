@@ -938,3 +938,139 @@ async def complete_outreach(request: Request, payload: PauseOutreachRequest):
         "outreach_status_text": "Completed",
         "shifts_users_updated": result.modified_count,
     }
+
+
+# ── POST /outreach/detail ─────────────────────────────────────────────────────
+
+class OutreachDetailIdRequest(BaseModel):
+    outreach_id: str
+
+
+@router.post(
+    "/detail",
+    summary="Get full outreach details including shifts_users",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def get_outreach_detail(request: Request, payload: OutreachDetailIdRequest):
+    """
+    Body: { "outreach_id": "<outreach._id>" }
+    Returns outreach document enriched with:
+    - sequence name
+    - shift details
+    - all shifts_users records with user info
+    - counts
+    """
+    db = _get_db()
+
+    if not ObjectId.is_valid(payload.outreach_id):
+        raise HTTPException(status_code=422, detail="Invalid outreach_id")
+
+    outreach_oid = ObjectId(payload.outreach_id)
+    outreach = await db["outreach"].find_one({"_id": outreach_oid})
+    if not outreach:
+        raise HTTPException(status_code=404, detail="Outreach not found")
+
+    STATUS_TEXT = {0: "Not Started", 1: "Live", 2: "Paused", 3: "Ended", 10: "Completed"}
+
+    # Resolve sequence name
+    seq_name = None
+    seq_oid  = outreach.get("sequence_id")
+    if seq_oid:
+        seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
+        if seq:
+            seq_name = seq.get("name")
+
+    # Resolve shift name
+    shift_oid  = outreach.get("shift_id")
+    shift_info = None
+    if shift_oid:
+        sh = await db["shifts"].find_one(
+            {"_id": shift_oid},
+            {"name": 1, "shift_code": 1, "location": 1, "date": 1,
+             "start_time": 1, "end_time": 1, "user_type": 1, "shift_timing": 1}
+        )
+        if sh:
+            shift_info = {
+                "shift_id":    str(shift_oid),
+                "name":        sh.get("name") or sh.get("shift_code"),
+                "location":    sh.get("location"),
+                "date":        sh["date"].isoformat() if sh.get("date") and hasattr(sh["date"], "isoformat") else str(sh.get("date", "")),
+                "start_time":  sh.get("start_time"),
+                "end_time":    sh.get("end_time"),
+                "shift_timing": sh.get("shift_timing"),
+                "user_type":   sh.get("user_type"),
+            }
+
+    # Fetch all shifts_users for this outreach
+    su_docs = await db["shifts_users"].find(
+        {"outreach_id": outreach_oid},
+        {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
+         "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "updated_at": 1}
+    ).to_list(length=1000)
+
+    # Batch user lookup
+    user_oids = [su["user_id"] for su in su_docs if su.get("user_id") and ObjectId.is_valid(str(su.get("user_id", "")))]
+    user_map: dict = {}
+    if user_oids:
+        async for u in db["users"].find(
+            {"_id": {"$in": user_oids}},
+            {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+             "xn_user_id": 1, "designation": 1, "rating": 1}
+        ):
+            user_map[str(u["_id"])] = u
+
+    shifts_users_list = []
+    for su in su_docs:
+        uid_str = str(su.get("user_id", ""))
+        u = user_map.get(uid_str, {})
+        shifts_users_list.append({
+            "id":              str(su["_id"]),
+            "user_id":         uid_str,
+            "xn_user_id":      u.get("xn_user_id"),
+            "name":            " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+            "email":           u.get("email"),
+            "phone":           u.get("phone"),
+            "designation":     u.get("designation"),
+            "rating":          u.get("rating"),
+            "availability":    su.get("availability"),
+            "call_enabled":    su.get("call_enabled"),
+            "call_processed":  su.get("call_processed"),
+            "call_status":     su.get("call_status"),
+            "call_processed_at": su["call_processed_at"].isoformat() if su.get("call_processed_at") and hasattr(su["call_processed_at"], "isoformat") else None,
+            "assigned_at":     su["assigned_at"].isoformat() if su.get("assigned_at") and hasattr(su["assigned_at"], "isoformat") else None,
+        })
+
+    # Counts
+    total     = len(shifts_users_list)
+    available = sum(1 for s in shifts_users_list if s["availability"] == 1)
+    pending   = sum(1 for s in shifts_users_list if s["call_enabled"] == 1 and s["call_processed"] == 0)
+    processed = sum(1 for s in shifts_users_list if s["call_processed"] == 1)
+
+    o_status = outreach.get("outreach_status", 0)
+
+    return {
+        "success": True,
+        "data": {
+            "id":                   str(outreach["_id"]),
+            "shift_id":             str(shift_oid) if shift_oid else None,
+            "sequence_id":          str(seq_oid) if seq_oid else None,
+            "sequence_name":        seq_name,
+            "round_number":         outreach.get("round_number"),
+            "outreach_status":      o_status,
+            "outreach_status_text": STATUS_TEXT.get(o_status, "Not Started"),
+            "end_reason":           outreach.get("end_reason"),
+            "started_at":           outreach["started_at"].isoformat() if outreach.get("started_at") and hasattr(outreach["started_at"], "isoformat") else None,
+            "paused_at":            outreach["paused_at"].isoformat() if outreach.get("paused_at") and hasattr(outreach["paused_at"], "isoformat") else None,
+            "ended_at":             outreach["ended_at"].isoformat() if outreach.get("ended_at") and hasattr(outreach["ended_at"], "isoformat") else None,
+            "created_at":           outreach["created_at"].isoformat() if outreach.get("created_at") and hasattr(outreach["created_at"], "isoformat") else None,
+            "shift":                shift_info,
+            "counts": {
+                "total":     total,
+                "available": available,
+                "pending":   pending,
+                "processed": processed,
+            },
+            "shifts_users": shifts_users_list,
+        },
+    }
