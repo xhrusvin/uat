@@ -351,18 +351,33 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
         },
         "created_at": now,
     }
-    await db["activities"].insert_one(activity_doc)
+    try:
+        await db["activities"].insert_one(activity_doc)
+    except Exception as e:
+        logger.error(f"Activity log error: {e}")
 
     logger.info(
         f"Outreach created: id={outreach_oid} shift={payload.shift_id} "
         f"round={round_number} updated={updated.modified_count} skipped={skipped}"
     )
 
+    # Re-serialize safely
+    safe_doc = {
+        "id":             str(doc["_id"]),
+        "shift_id":       str(doc["shift_id"]),
+        "sequence_id":    str(doc["sequence_id"]),
+        "round_number":   doc["round_number"],
+        "outreach_status": doc["outreach_status"],
+        "status":         doc["status"],
+        "started_at":     doc["started_at"].isoformat() if doc.get("started_at") else None,
+        "created_at":     doc["created_at"].isoformat() if doc.get("created_at") else None,
+    }
+
     return {
         "success":      True,
         "round_number": round_number,
         "message":      f"Round {round_number} outreach created",
-        "data":         _serialize(doc),
+        "data":         safe_doc,
         "shifts_users_update": {
             "updated":  updated.modified_count,
             "skipped":  skipped,
