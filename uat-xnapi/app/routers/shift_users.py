@@ -372,9 +372,12 @@ def _format_time_ago(dt) -> str:
 # ── LIST shift_users with pagination (POST body) ──────────────────────────────
 
 class ListShiftUsersRequest(BaseModel):
-    shift_id: str
-    page:     int = 1
-    per_page: int = 20
+    shift_id:  str
+    page:      int = 1
+    per_page:  int = 20
+    radius:    Optional[float] = None   # km — only return users within this radius
+    order_by:  Optional[str]  = None   # e.g. "distance_km", "name", "rating"
+    sort:      Optional[str]  = "asc"  # "asc" or "desc"
 
 
 @router.post(
@@ -477,13 +480,34 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "distance_km":    distance_km,
         })
 
+    # Apply radius filter
+    if payload.radius is not None and client_coords:
+        results = [r for r in results if r["distance_km"] is not None and r["distance_km"] <= payload.radius]
+
+    # Sort results
+    order_by = payload.order_by or "name"
+    reverse  = (payload.sort or "asc").lower() == "desc"
+    if order_by == "distance_km":
+        results.sort(key=lambda r: r["distance_km"] if r["distance_km"] is not None else float("inf"), reverse=reverse)
+    elif order_by == "rating":
+        results.sort(key=lambda r: r["rating"] if r["rating"] is not None else 0, reverse=reverse)
+    elif order_by == "name":
+        results.sort(key=lambda r: r["name"].lower(), reverse=reverse)
+    elif order_by == "last_contacted":
+        results.sort(key=lambda r: r["last_contacted"] or "", reverse=reverse)
+
+    filtered_total = len(results)
+
     return {
-        "success":        True,
-        "total":          total,
-        "page":           payload.page,
-        "per_page":       payload.per_page,
-        "shift_id":       payload.shift_id,
-        "shift_client":   shift_client_info,
+        "success":         True,
+        "total":           filtered_total,
+        "page":            payload.page,
+        "per_page":        payload.per_page,
+        "shift_id":        payload.shift_id,
+        "shift_client":    shift_client_info,
         "client_location": client_location,
-        "data":           results,
+        "radius":          payload.radius,
+        "order_by":        order_by,
+        "sort":            payload.sort or "asc",
+        "data":            results,
     }
