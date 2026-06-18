@@ -362,19 +362,44 @@ class ListShiftUsersRequest(BaseModel):
 async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRequest):
     """
     Body: { "shift_id": "<shift_id>", "page": 1, "per_page": 20 }
-    Returns paginated shift_users records (raw — no user enrichment).
+    Base table is users (status=Enabled), joined with shifts_users for this shift.
+    Only users that are both Enabled AND in shifts_users are returned.
     """
     db = _get_db()
     shift_oid = _resolve_oid(payload.shift_id, "shift_id")
-
     skip  = (payload.page - 1) * payload.per_page
     limit = payload.per_page
 
-    total = await db["shifts_users"].count_documents({"shift_id": shift_oid})
-    docs  = await db["shifts_users"].find({"shift_id": shift_oid}) \
-                                    .skip(skip).limit(limit).to_list(length=limit)
+    # Step 1: get all shifts_users for this shift → build map keyed by user_id
+    all_su = await db["shifts_users"].find({"shift_id": shift_oid}).to_list(length=5000)
+    if not all_su:
+        return {"success": True, "total": 0, "page": payload.page,
+                "per_page": payload.per_page, "shift_id": payload.shift_id,
+                "shift_client": None, "data": []}
 
-    # Get shift client coords for distance calculation
+    # Map user_id ObjectId → shifts_users doc
+    su_map: dict = {}
+    for su in all_su:
+        uid = su.get("user_id")
+        if uid:
+            su_map[str(uid)] = su
+
+    enabled_user_oids = [ObjectId(uid) for uid in su_map if ObjectId.is_valid(uid)]
+
+    # Step 2: query users where _id in list AND status = Enabled
+    total = await db["users"].count_documents({
+        "_id":    {"$in": enabled_user_oids},
+        "status": "Enabled",
+    })
+
+    users = await db["users"].find(
+        {"_id": {"$in": enabled_user_oids}, "status": "Enabled"},
+        {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+         "xn_user_id": 1, "designation": 1, "rating": 1,
+         "location": 1, "latitude": 1, "longitude": 1, "status": 1}
+    ).sort("first_name", 1).skip(skip).limit(limit).to_list(length=limit)
+
+    # Step 3: get shift client coords for distance calculation
     client_coords = await _get_shift_client_coords(db, shift_oid)
     shift_client_info = None
     if client_coords:
@@ -383,47 +408,39 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "client_longitude": client_coords[1],
         }
 
-    # Enrich with user details + location for distance
-    user_oids = [d["user_id"] for d in docs if ObjectId.is_valid(str(d.get("user_id", "")))]
-    user_map: dict = {}
-    if user_oids:
-        async for u in db["users"].find(
-            {"_id": {"$in": user_oids}},
-            {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
-             "xn_user_id": 1, "designation": 1, "rating": 1,
-             "location": 1, "latitude": 1, "longitude": 1}
-        ):
-            user_map[str(u["_id"])] = u
-
     results = []
-    for d in docs:
-        s = _serialize(d)
-        # Rename _id to id
+    for u in users:
+        uid_str = str(u["_id"])
+        su      = su_map.get(uid_str, {})
+        s       = _serialize(su)
+
+        # id = shifts_users._id
         if "_id" in s:
             s["id"] = s.pop("_id")
-        u = user_map.get(str(d.get("user_id", "")), {})
-        s["xn_user_id"]  = u.get("xn_user_id")
-        s["name"]        = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—"
-        s["email"]       = u.get("email")
-        s["phone"]       = u.get("phone")
-        s["designation"]   = u.get("designation")
-        s["rating"]        = u.get("rating")
-        # Include outreach_id from shifts_users
-        raw_oid = d.get("outreach_id")
-        s["outreach_id"] = str(raw_oid) if raw_oid else None
-        ucoords_su = _user_location_coords(u)
-        s["user_latitude"]  = ucoords_su[0] if ucoords_su else None
-        s["user_longitude"] = ucoords_su[1] if ucoords_su else None
 
-        # Distance calculation
+        # Overwrite with enriched user fields
+        s["user_id"]      = uid_str
+        s["xn_user_id"]   = u.get("xn_user_id")
+        s["name"]         = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—"
+        s["email"]        = u.get("email")
+        s["phone"]        = u.get("phone")
+        s["designation"]  = u.get("designation")
+        s["rating"]       = u.get("rating")
+        s["status"]       = u.get("status")
+
+        raw_oid = su.get("outreach_id")
+        s["outreach_id"]  = str(raw_oid) if raw_oid else None
+
+        ucoords = _user_location_coords(u)
+        s["user_latitude"]  = ucoords[0] if ucoords else None
+        s["user_longitude"] = ucoords[1] if ucoords else None
+
         distance_km = None
-        if client_coords:
-            ucoords = _user_location_coords(u)
-            if ucoords:
-                distance_km = _haversine_km(
-                    client_coords[0], client_coords[1],
-                    ucoords[0],       ucoords[1],
-                )
+        if client_coords and ucoords:
+            distance_km = _haversine_km(
+                client_coords[0], client_coords[1],
+                ucoords[0],       ucoords[1],
+            )
         s["distance_km"] = distance_km
         results.append(s)
 

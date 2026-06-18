@@ -22,7 +22,7 @@ def _auth_headers():
 def jobs_mcp_list():
     upstream_params = {}
     for key in ("keyword", "location", "designation", "sector",
-                "date", "page", "limit", "status", "job_type", "region"):
+                "date", "page", "limit", "status", "job_type", "region_id"):
         value = request.args.get(key, "").strip()
         if value:
             upstream_params[key] = value
@@ -74,7 +74,7 @@ def jobs_mcp_detail(job_id):
 @bp.route('/courses-mcp/list', methods=['GET'])
 def courses_mcp_list():
     upstream_params = {}
-    for key in ("keyword", "category", "page", "limit", "status", "region"):
+    for key in ("keyword", "category", "page", "limit", "status", "region_id"):
         value = request.args.get(key, "").strip()
         if value:
             upstream_params[key] = value
