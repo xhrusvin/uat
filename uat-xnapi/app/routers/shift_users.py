@@ -254,21 +254,19 @@ async def remove_user_from_shift(request: Request, payload: RemoveUserFromShiftR
     db  = _get_db()
     oid = _resolve_oid(payload.id, "id")
 
-    # Fetch before deleting to log outreach state
-    existing = await db["shifts_users"].find_one({"_id": oid}, {"outreach_id": 1, "shift_id": 1})
+    # Fetch the shifts_pool record
+    existing = await db["shifts_pool"].find_one({"_id": oid})
     if not existing:
-        raise HTTPException(status_code=404, detail=f"shift_users record {payload.id} not found")
+        raise HTTPException(status_code=404, detail=f"shifts_pool record {payload.id} not found")
 
-    result = await db["shifts_users"].delete_one({"_id": oid})
-
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail=f"shift_users record {payload.id} not found")
+    await db["shifts_pool"].delete_one({"_id": oid})
 
     return {
-        "success": True,
-        "message": "User removed from shift",
-        "id": payload.id,
-        "had_outreach": existing.get("outreach_id") is not None,
+        "success":  True,
+        "message":  "User removed from pool",
+        "id":       payload.id,
+        "shift_id": str(existing.get("shift_id", "")),
+        "user_id":  str(existing.get("user_id", "")),
     }
 
 

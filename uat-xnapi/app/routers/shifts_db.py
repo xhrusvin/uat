@@ -783,7 +783,6 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         s["client_name"] = "—"
 
     shift_oid = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-    s["shift_users"]  = await _get_shift_users(db, shift_oid)
     s["staff_counts"] = await _get_staff_counts(db, shift_oid)
     outreach_info = await _get_outreach_status(db, shift_oid)
     s["outreach_status"]        = outreach_info["outreach_status"]
@@ -794,6 +793,35 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     s["ghost_booking"]          = 0
     if "outreach_id" in outreach_info:
         s["outreach_id"] = outreach_info["outreach_id"]
+
+    # Fetch pool users from shifts_pool collection
+    pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid}).to_list(length=500)
+    pool_user_oids = [p["user_id"] for p in pool_docs if p.get("user_id") and ObjectId.is_valid(str(p.get("user_id", "")))]
+    pool_user_map: dict = {}
+    if pool_user_oids:
+        async for u in db["users"].find(
+            {"_id": {"$in": pool_user_oids}},
+            {"first_name": 1, "last_name": 1, "email": 1, "phone": 1, "xn_user_id": 1, "designation": 1, "rating": 1}
+        ):
+            pool_user_map[str(u["_id"])] = u
+
+    pool_users = []
+    for p in pool_docs:
+        uid_str = str(p.get("user_id", ""))
+        u = pool_user_map.get(uid_str, {})
+        pool_users.append({
+            "id":          str(p["_id"]),
+            "user_id":     uid_str,
+            "xn_user_id":  u.get("xn_user_id"),
+            "name":        " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+            "email":       u.get("email"),
+            "phone":       u.get("phone"),
+            "designation": u.get("designation"),
+            "rating":      u.get("rating"),
+            "added_at":    p["added_at"].isoformat() if p.get("added_at") and hasattr(p["added_at"], "isoformat") else str(p.get("added_at", "")),
+            "added_by":    p.get("added_by"),
+        })
+    s["pool_users"] = pool_users
 
     # Resolve user_type_id — use cached value or join and save
     user_type_id = None
