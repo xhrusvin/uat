@@ -278,30 +278,48 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
     outreach_oid = result.inserted_id
     doc["_id"]   = outreach_oid
 
-    # Update shifts_users:
-    # - where outreach_id is missing → set outreach_id + call_enabled = 1
-    # - where outreach_id already exists → skip
-    updated = await db["shifts_users"].update_many(
-        {
-            "shift_id":   shift_oid,
-            "$or": [
-                {"outreach_id": {"$exists": False}},
-                {"outreach_id": None},
-            ],
-        },
-        {
-            "$set": {
-                "outreach_id":  outreach_oid,
-                "call_enabled": 1,
-                "updated_at":   now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
-            }
-        }
-    )
+    # Copy from shifts_pool to shifts_users
+    # Skip only if user already in shifts_users with availability == 1
+    pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid}).to_list(length=5000)
 
-    skipped = await db["shifts_users"].count_documents({
-        "shift_id":   shift_oid,
-        "outreach_id": {"$exists": True, "$ne": None, "$ne": outreach_oid},
-    })
+    inserted_count = 0
+    skipped        = 0
+    for pd in pool_docs:
+        user_oid_pool = pd.get("user_id")
+        if not user_oid_pool:
+            continue
+        # Skip only if already exists with availability == 1
+        exists = await db["shifts_users"].find_one({
+            "shift_id":    shift_oid,
+            "user_id":     user_oid_pool,
+            "availability": 1,
+        })
+        if exists:
+            skipped += 1
+            continue
+        su_doc = {
+            "user_id":            user_oid_pool,
+            "shift_id":           shift_oid,
+            "outreach_id":        outreach_oid,
+            "assigned_at":        now,
+            "availability":       6,
+            "call_enabled":       1,
+            "call_processed":     0,
+            "call_processed_at":  now,
+            "conversation_id":    None,
+            "agent_id":           None,
+            "call_status":        0,
+            "call_summary_title": None,
+            "ended_at":           None,
+            "started_at":         None,
+            "updated_at":         now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        }
+        await db["shifts_users"].insert_one(su_doc)
+        inserted_count += 1
+
+    class _Result:
+        modified_count = inserted_count
+    updated = _Result()
 
     # Get counts for activity log
     available_count = await db["shifts_users"].count_documents({
