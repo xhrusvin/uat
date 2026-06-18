@@ -318,8 +318,8 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
         inserted_count += 1
 
     class _Result:
-        modified_count = inserted_count
-    updated = _Result()
+        def __init__(self, n): self.modified_count = n
+    updated = _Result(inserted_count)
 
     # Get counts for activity log
     available_count = await db["shifts_users"].count_documents({
