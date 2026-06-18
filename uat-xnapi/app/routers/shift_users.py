@@ -372,12 +372,14 @@ def _format_time_ago(dt) -> str:
 # ── LIST shift_users with pagination (POST body) ──────────────────────────────
 
 class ListShiftUsersRequest(BaseModel):
-    shift_id:  str
-    page:      int = 1
-    per_page:  int = 20
-    radius:    Optional[float] = None   # km — only return users within this radius
-    order_by:  Optional[str]  = None   # e.g. "distance_km", "name", "rating"
-    sort:      Optional[str]  = "asc"  # "asc" or "desc"
+    shift_id:           str
+    page:               int = 1
+    per_page:           int = 20
+    radius:             Optional[float] = None
+    order_by:           Optional[str]   = None
+    sort:               Optional[str]   = "asc"
+    county_multiple:    Optional[list]  = None  # list of county _id strings
+    user_type_multiple: Optional[list]  = None  # list of user_type _id strings
 
 
 @router.post(
@@ -398,7 +400,27 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     limit = payload.per_page
 
     # Query only Enabled users — no shifts_users join
-    user_filter = {"status": "Enabled"}
+    user_filter: dict = {"status": "Enabled"}
+
+    # county_multiple filter — resolve IDs to ObjectIds for users.county_id
+    if payload.county_multiple:
+        valid_county_oids = [ObjectId(c) for c in payload.county_multiple if ObjectId.is_valid(str(c))]
+        if valid_county_oids:
+            user_filter["county_id"] = {"$in": valid_county_oids}
+
+    # user_type_multiple filter — resolve IDs to ObjectIds for users.user_type_id
+    # Also match via designation name in case user_type_id not yet set
+    if payload.user_type_multiple:
+        valid_type_oids = [ObjectId(t) for t in payload.user_type_multiple if ObjectId.is_valid(str(t))]
+        if valid_type_oids:
+            # Look up names for fallback designation match
+            type_names_filter = []
+            async for ut in db["user_types"].find({"_id": {"$in": valid_type_oids}}, {"name": 1}):
+                type_names_filter.append(ut["name"])
+            user_filter["$or"] = [
+                {"user_type_id": {"$in": valid_type_oids}},
+                {"designation":  {"$in": type_names_filter}},
+            ]
 
     total = await db["users"].count_documents(user_filter)
     users = await db["users"].find(
