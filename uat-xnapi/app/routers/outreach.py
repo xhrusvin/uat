@@ -1244,40 +1244,50 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
 # ── POST /outreach/flag ───────────────────────────────────────────────────────
 
 class FlagStaffRequest(BaseModel):
+    outreach_id:     str
     shifts_users_id: str
-    flag: int = 1   # 1 = flagged, 0 = unflag
+    flag:            int = 1   # 1 = flagged, 0 = unflag
 
 
 @router.post(
     "/flag",
-    summary="Flag or unflag a staff member in shifts_users",
+    summary="Flag or unflag a staff member in shifts_users for a specific outreach",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("60/minute")
 async def flag_staff(request: Request, payload: FlagStaffRequest):
     """
-    Body: { "shifts_users_id": "<shifts_users._id>", "flag": 1 }
-    Sets shifts_users.flag = 1 (flagged) or 0 (unflagged).
+    Body: { "outreach_id": "...", "shifts_users_id": "...", "flag": 1 }
+    Sets shifts_users.flag = 1 (flagged) or 0 (unflagged)
+    for the record matching both _id and outreach_id.
     """
     db = _get_db()
 
+    if not ObjectId.is_valid(payload.outreach_id):
+        raise HTTPException(status_code=422, detail="Invalid outreach_id")
     if not ObjectId.is_valid(payload.shifts_users_id):
         raise HTTPException(status_code=422, detail="Invalid shifts_users_id")
 
-    oid = ObjectId(payload.shifts_users_id)
-    doc = await db["shifts_users"].find_one({"_id": oid}, {"_id": 1, "flag": 1})
+    outreach_oid = ObjectId(payload.outreach_id)
+    su_oid       = ObjectId(payload.shifts_users_id)
+
+    doc = await db["shifts_users"].find_one({
+        "_id":        su_oid,
+        "outreach_id": outreach_oid,
+    }, {"_id": 1})
     if not doc:
-        raise HTTPException(status_code=404, detail="shifts_users record not found")
+        raise HTTPException(status_code=404, detail="shifts_users record not found for this outreach")
 
     now = datetime.now(timezone.utc)
     await db["shifts_users"].update_one(
-        {"_id": oid},
+        {"_id": su_oid},
         {"$set": {"flag": payload.flag, "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S+00:00")}}
     )
 
     return {
         "success":         True,
         "message":         "Flagged" if payload.flag else "Unflagged",
+        "outreach_id":     payload.outreach_id,
         "shifts_users_id": payload.shifts_users_id,
         "flag":            payload.flag,
     }
