@@ -1430,7 +1430,7 @@ async def get_transcription_audio(request: Request, payload: TranscriptionReques
     if not el_conv_id:
         raise HTTPException(status_code=404, detail="No audio available for this conversation")
 
-    api_key = os.getenv("ELEVENLABS_API_KEY")
+    api_key = settings.ELEVENLABS_API_KEY
     if not api_key:
         raise HTTPException(status_code=500, detail="ElevenLabs API key not configured")
 

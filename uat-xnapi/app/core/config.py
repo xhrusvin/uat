@@ -28,5 +28,8 @@ class Settings(BaseSettings):
     SHIFT_URL: str = "https://uat.shift-xpresshealth.webc.in/api/"
     SHIFT_INTERNAL_API_KEY: str = "ZDGnj76YJDfg56Ij7YNBkm7Yvfh67B"
 
+    # ── ElevenLabs ────────────────────────────────────────────────────────────
+    ELEVENLABS_API_KEY: str = ""
+
 
 settings = Settings()
