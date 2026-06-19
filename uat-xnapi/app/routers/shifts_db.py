@@ -633,65 +633,86 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
     """Lightweight counts for list endpoint."""
     available = await db["shifts_users"].count_documents({
         "shift_id":     shift_oid,
-        "availability": {"$gt": 0},
+        "availability": 1,
     })
     with_outreach = await db["shifts_users"].count_documents({
         "shift_id":    shift_oid,
         "outreach_id": {"$exists": True, "$ne": None},
     })
-    # pending: call_enabled=1 AND call_processed=0
+    # declined = availability 0, 3, 4
+    declined = await db["shifts_users"].count_documents({
+        "shift_id":     shift_oid,
+        "availability": {"$in": [0, 3, 4]},
+    })
+    # no_reply = availability 6 (call not triggered)
+    no_reply = await db["shifts_users"].count_documents({
+        "shift_id":     shift_oid,
+        "availability": 6,
+    })
     pending = await db["shifts_users"].count_documents({
         "shift_id":      shift_oid,
         "call_enabled":  1,
         "call_processed": 0,
     })
-    # declined: availability != 1
-    declined = await db["shifts_users"].count_documents({
-        "shift_id":     shift_oid,
-        "availability": {"$ne": 1},
-    })
     return {
         "available":     available,
         "requested":     0,
         "with_outreach": with_outreach,
-        "pending":       pending,
         "declined":      declined,
+        "no_reply":      no_reply,
+        "pending":       pending,
+        "display":       f"{available} Available · {declined} Declined · {no_reply} No reply",
     }
 
 
 async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
     """
-    Full staff counts for detail endpoint:
-    - number_of_staff : total shifts_users records
-    - available       : count where availability > 0
-    - requested       : 0 (static)
-    - phone           : count where call_enabled > 0
-    - whatsapp        : 0 (placeholder)
-    - email           : 0 (placeholder)
+    Full staff counts for detail endpoint.
+    availability values:
+      1 = Available, 0 = Not Available, 3 = Voicemail,
+      4 = Call Not Attended, 6 = Call Not Triggered
     """
-    total     = await db["shifts_users"].count_documents({"shift_id": shift_oid})
-    available = await db["shifts_users"].count_documents({
-        "shift_id":     shift_oid,
-        "availability": {"$gt": 0},
-    })
+    total = await db["shifts_users"].count_documents({"shift_id": shift_oid})
+
+    # Availability breakdown
+    available          = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 1})
+    not_available      = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 0})
+    voicemail          = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 3})
+    call_not_attended  = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 4})
+    call_not_triggered = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 6})
+
+    # declined = not_available + voicemail + call_not_attended
+    declined = not_available + voicemail + call_not_attended
+    # no_reply = call_not_triggered
+    no_reply = call_not_triggered
+
     phone = await db["shifts_users"].count_documents({
         "shift_id":     shift_oid,
         "call_enabled": {"$gt": 0},
     })
-    with_outreach    = await db["shifts_users"].count_documents({
-        "shift_id":   shift_oid,
+    with_outreach = await db["shifts_users"].count_documents({
+        "shift_id":    shift_oid,
         "outreach_id": {"$exists": True, "$ne": None},
     })
-    without_outreach = total - with_outreach
     return {
-        "number_of_staff":   total,
-        "available":         available,
-        "requested":         0,
-        "phone":             phone,
-        "whatsapp":          0,
-        "email":             0,
-        "with_outreach":     with_outreach,
-        "without_outreach":  without_outreach,
+        "number_of_staff":    total,
+        "available":          available,
+        "requested":          0,
+        "declined":           declined,
+        "no_reply":           no_reply,
+        "phone":              phone,
+        "whatsapp":           0,
+        "email":              0,
+        "with_outreach":      with_outreach,
+        "without_outreach":   total - with_outreach,
+        "display":            f"{available} Available · {declined} Declined · {no_reply} No reply",
+        "availability_breakdown": {
+            "available":          available,
+            "not_available":      not_available,
+            "voicemail":          voicemail,
+            "call_not_attended":  call_not_attended,
+            "call_not_triggered": call_not_triggered,
+        },
     }
 
 
@@ -896,6 +917,16 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             except Exception:
                 pass
 
+        # Availability counts from shifts_users for this outreach
+        ou_oid = o["_id"]
+        avail_1 = await db["shifts_users"].count_documents({"outreach_id": ou_oid, "availability": 1})
+        avail_0 = await db["shifts_users"].count_documents({"outreach_id": ou_oid, "availability": 0})
+        avail_3 = await db["shifts_users"].count_documents({"outreach_id": ou_oid, "availability": 3})
+        avail_4 = await db["shifts_users"].count_documents({"outreach_id": ou_oid, "availability": 4})
+        avail_6 = await db["shifts_users"].count_documents({"outreach_id": ou_oid, "availability": 6})
+        declined_count = avail_0 + avail_3 + avail_4
+        no_reply_count = avail_6
+
         outreach_list.append({
             "id":                   str(o["_id"]),
             "sequence_id":          str(seq_oid) if seq_oid else None,
@@ -909,6 +940,19 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "ended_at":             o["ended_at"].isoformat() if o.get("ended_at") and hasattr(o["ended_at"], "isoformat") else o.get("ended_at"),
             "created_at":           o["created_at"].isoformat() if o.get("created_at") and hasattr(o["created_at"], "isoformat") else str(o.get("created_at", "")),
             "start_time":           start_time_ago,
+            "staff_counts": {
+                "available":     avail_1,
+                "declined":      declined_count,
+                "no_reply":      no_reply_count,
+                "display":       f"{avail_1} Available · {declined_count} Declined · {no_reply_count} No reply",
+                "breakdown": {
+                    "available":         avail_1,
+                    "not_available":     avail_0,
+                    "voicemail":         avail_3,
+                    "call_not_attended": avail_4,
+                    "call_not_triggered": avail_6,
+                },
+            },
         })
     s["outreach_list"] = outreach_list
 
