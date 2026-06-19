@@ -1155,6 +1155,14 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         ):
             user_map[str(u["_id"])] = u
 
+    AVAILABILITY_TEXT = {
+        1: "Available",
+        0: "Not Available",
+        3: "Voicemail",
+        4: "Call Not Attended",
+        6: "Call Not Triggered",
+    }
+
     shifts_users_list = []
     for su in su_docs:
         uid_str = str(su.get("user_id", ""))
@@ -1168,12 +1176,13 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             "phone":           u.get("phone"),
             "designation":     u.get("designation"),
             "rating":          u.get("rating"),
-            "availability":    su.get("availability"),
-            "call_enabled":    su.get("call_enabled"),
-            "call_processed":  su.get("call_processed"),
-            "call_status":     su.get("call_status"),
+            "availability":      su.get("availability"),
+            "availability_text": AVAILABILITY_TEXT.get(su.get("availability"), "Unknown"),
+            "call_enabled":      su.get("call_enabled"),
+            "call_processed":    su.get("call_processed"),
+            "call_status":       su.get("call_status"),
             "call_processed_at": su["call_processed_at"].isoformat() if su.get("call_processed_at") and hasattr(su["call_processed_at"], "isoformat") else None,
-            "assigned_at":     su["assigned_at"].isoformat() if su.get("assigned_at") and hasattr(su["assigned_at"], "isoformat") else None,
+            "assigned_at":       su["assigned_at"].isoformat() if su.get("assigned_at") and hasattr(su["assigned_at"], "isoformat") else None,
         })
 
     total     = len(shifts_users_list)
