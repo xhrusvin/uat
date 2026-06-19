@@ -1441,7 +1441,7 @@ async def get_transcription_audio(request: Request, payload: TranscriptionReques
     if resp.status_code != 200:
         raise HTTPException(
             status_code=resp.status_code,
-            detail=f"Failed to fetch audio from ElevenLabs: {resp.text[:200]}"
+            detail=f"Failed to fetch audio from ElevenLabs: {resp.text[:200]} | api_key_used: {api_key[:8]}..."
         )
 
     return StreamingResponse(
