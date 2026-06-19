@@ -1076,6 +1076,24 @@ async def get_outreach_detail(request: Request, payload: OutreachDetailIdRequest
     }
 
 
+def _format_call_time(dt) -> str:
+    """Format call_processed_at as Today HH:MM, Yesterday HH:MM, or D Mon HH:MM."""
+    if not dt:
+        return None
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    if hasattr(dt, "tzinfo") and dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    time_str = dt.strftime("%H:%M")
+    diff_days = (now.date() - dt.date()).days
+    if diff_days == 0:
+        return f"Today {time_str}"
+    elif diff_days == 1:
+        return f"Yesterday {time_str}"
+    else:
+        return dt.strftime("%-d %b %H:%M")
+
+
 # ── POST /outreach/staff_list ─────────────────────────────────────────────────
 
 class OutreachStaffListRequest(BaseModel):
