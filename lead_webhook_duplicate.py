@@ -6,6 +6,9 @@ from flask import request, jsonify
 from datetime import datetime
 from bson.objectid import ObjectId
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -17,27 +20,27 @@ import os
 
 PAGE_ACCESS_TOKEN = os.getenv("FB_PAGE_ACCESS_TOKEN")
 GRAPH_API_VERSION = "v22.0"
-TARGET_CAMPAIGN_ID = "120228734485040662"  # Only this campaign (Nurse)
+# TARGET_CAMPAIGN_ID = "120228734485040662"  # Only this campaign (Nurse)
 
-ALLOWED_CAMPAIGN_IDS = {
-   # "120228734485040662",   # Scotland Carers
-    "120228353185220662",   # Health Care Assistance
-    "120228337783440662",   # Nurse (new one)
-    "120234057545540662",    # Xpress GP (new one)
-    "120235084538050662",    # Dundalk Specialist General Practitinar Lead Gen,
-    "120235638775730662",    # Theatre Nurse,
-    "120236811961000662",    # Admin Assistant,
-}
+# ALLOWED_CAMPAIGN_IDS = {
+#    # "120228734485040662",   # Scotland Carers
+#     "120228353185220662",   # Health Care Assistance
+#     "120228337783440662",   # Nurse (new one)
+#     "120234057545540662",    # Xpress GP (new one)
+#     "120235084538050662",    # Dundalk Specialist General Practitinar Lead Gen,
+#     "120235638775730662",    # Theatre Nurse,
+#     "120236811961000662",    # Admin Assistant,
+# }
 
-CAMPAIGN_TO_USER_TYPE = {
-    #"120228734485040662": "Scotland Carers",
-    "120228337783440662": "Nurse",
-    "120234057545540662": "Xpress GP",
-    "120228353185220662": "Health Care Assistance",
-    "120235084538050662": "Dundalk Specialist General Practitinar Lead Gen",
-    "120235638775730662": "Theatre Nurse",
-    "120236811961000662": "Admin Assistant",
-}
+# CAMPAIGN_TO_USER_TYPE = {
+#     #"120228734485040662": "Scotland Carers",
+#     "120228337783440662": "Nurse",
+#     "120234057545540662": "Xpress GP",
+#     "120228353185220662": "Health Care Assistance",
+#     "120235084538050662": "Dundalk Specialist General Practitinar Lead Gen",
+#     "120235638775730662": "Theatre Nurse",
+#     "120236811961000662": "Admin Assistant",
+# }
 
 # Helper functions (copied from fb_lead_fetcher for consistency)
 def get_field(values_list):
@@ -83,6 +86,7 @@ def register_lead_webhook_duplicate_routes(app):
 
     leads_collection = app.db.leads          # Main leads collection
     webhook_collection = app.db.lead_webhooks  # For raw debugging
+    campaign_collection = app.db.campaign_configs
 
     # --------------------------------------------------------------
     # 1. VERIFY WEBHOOK
@@ -94,6 +98,14 @@ def register_lead_webhook_duplicate_routes(app):
         challenge = request.args.get("hub.challenge")
 
         VERIFY_TOKEN = os.getenv("FB_WEBHOOK_VERIFY_TOKEN", "1234")
+        
+        
+        # print("========== WEBHOOK VERIFY ==========")
+        # print("mode:", mode)
+        # print("received token:", repr(token))
+        # print("env token:", repr(VERIFY_TOKEN))
+        # print("challenge:", challenge)
+        # print("====================================")
 
         if mode == "subscribe" and token == VERIFY_TOKEN:
             log.info("[WEBHOOK DUB] Verification successful ✔")
@@ -101,6 +113,7 @@ def register_lead_webhook_duplicate_routes(app):
 
         log.warning("[WEBHOOK DUB] Verification failed ❌")
         return jsonify({"error": "Invalid verification token"}), 403
+    
 
     # --------------------------------------------------------------
     # 2. RECEIVE WEBHOOK & PROCESS LEADS
@@ -156,23 +169,41 @@ def register_lead_webhook_duplicate_routes(app):
                 #     })
                 #     continue  # Skip saving
 
-                campaign_id = lead_data.get("campaign_id")
+                # campaign_id = str(lead_data.get("campaign_id"))
+                campaign_id = str(
+                    lead_data.get("campaign_id") or "unknown_campaign"
+                )
 
-               # Make sure we compare strings
-                if str(campaign_id) not in ALLOWED_CAMPAIGN_IDS:
-                   wrong_campaign_count += 1
-                   processed_leads.append({
-                       "leadgen_id": leadgen_id,
-                       "reason": "wrong_campaign",
-                       "campaign_id": campaign_id
-                   })
-                   continue
+                campaign_config = campaign_collection.find_one({
+                    "campaign_id": campaign_id
+                })
+
+                is_unlisted_campaign = False
+
+                if not campaign_config:
+                    wrong_campaign_count += 1
+                    is_unlisted_campaign = True
+
+                    processed_leads.append({
+                        "leadgen_id": leadgen_id,
+                        "reason": "unlisted_campaign",
+                        "campaign_id": campaign_id
+                    })
+
+                    campaign_name = "Unlisted Campaign"
+                    user_type = "Unlisted Campaign"
+
+                else:
+                    campaign_name = campaign_config.get("name", "Unknown Campaign")
+                    user_type = campaign_name
+
+                
 
                 # Parse field data
                 field_data = {item["name"].lower(): item["values"] for item in lead_data.get("field_data", [])}
 
-                campaign_str = str(campaign_id)   # make sure it's string
-                user_type = CAMPAIGN_TO_USER_TYPE.get(campaign_str, "Unknown")
+                # campaign_str = str(campaign_id)   # make sure it's string
+                # user_type = CAMPAIGN_TO_USER_TYPE.get(campaign_str, "Unknown")
 
                 full_name = get_field(field_data.get("full_name")) or get_field(field_data.get("name"))
                 email = get_field(field_data.get("email"))
@@ -195,14 +226,19 @@ def register_lead_webhook_duplicate_routes(app):
                     "name": full_name,
                     "email_id": email.lower() if email else None,
                     "phone_number": phone,
+
+                    "campaign_id": campaign_id,
+                    "campaign_name": campaign_name,
+                    "is_unlisted_campaign": is_unlisted_campaign,
+
                     "user_type": user_type,
+
                     "location": province.title(),
                     "country": country_id,
                     "call_initiated": 0,
                     "uploaded_at": datetime.utcnow(),
                     "source_file": "fb_leads_webhook",
-                    "call_initiated_at": None,
-                    "campaign_id": campaign_id
+                    "call_initiated_at": None
                 }
 
                 try:
@@ -213,7 +249,13 @@ def register_lead_webhook_duplicate_routes(app):
                     )
                     if result.upserted_id:
                         saved_count += 1
-                        log.info(f"[WEBHOOK DUB] SAVED NURSE → {full_name} | {email or '-'} | {phone or '-'} | Country: {country_id}")
+                        # log.info(f"[WEBHOOK DUB] SAVED NURSE → {full_name} | {email or '-'} | {phone or '-'} | Country: {country_id}")
+                        log.info(
+                            f"[WEBHOOK DUB] SAVED → "
+                            f"{full_name} | "
+                            f"{campaign_name} | "
+                            f"{campaign_id}"
+                        )
                     else:
                         skipped_count += 1
                 except Exception as e:
@@ -223,7 +265,10 @@ def register_lead_webhook_duplicate_routes(app):
                 processed_leads.append({
                     "leadgen_id": leadgen_id,
                     "saved": result.upserted_id is not None,
-                    "name": full_name
+                    "name": full_name,
+                    "campaign_id": campaign_id,
+                    "campaign_name": campaign_name,
+                    "is_unlisted_campaign": is_unlisted_campaign
                 })
 
         # Save raw webhook payload for debugging (as before)
