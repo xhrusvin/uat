@@ -1291,3 +1291,58 @@ async def flag_staff(request: Request, payload: FlagStaffRequest):
         "shifts_users_id": payload.shifts_users_id,
         "flag":            payload.flag,
     }
+
+
+# ── POST /outreach/remove_staff ───────────────────────────────────────────────
+
+class RemoveStaffRequest(BaseModel):
+    outreach_id:     str
+    shifts_users_id: str
+
+
+@router.post(
+    "/remove_staff",
+    summary="Remove a staff member from an outreach (deletes shifts_users record)",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def remove_staff_from_outreach(request: Request, payload: RemoveStaffRequest):
+    """
+    Body: { "outreach_id": "...", "shifts_users_id": "..." }
+    Deletes the shifts_users record that matches both _id and outreach_id.
+    Guards: cannot remove from a Completed (10) outreach.
+    """
+    db = _get_db()
+
+    if not ObjectId.is_valid(payload.outreach_id):
+        raise HTTPException(status_code=422, detail="Invalid outreach_id")
+    if not ObjectId.is_valid(payload.shifts_users_id):
+        raise HTTPException(status_code=422, detail="Invalid shifts_users_id")
+
+    outreach_oid = ObjectId(payload.outreach_id)
+    su_oid       = ObjectId(payload.shifts_users_id)
+
+    # Validate outreach exists and is not completed
+    outreach = await db["outreach"].find_one({"_id": outreach_oid}, {"outreach_status": 1})
+    if not outreach:
+        raise HTTPException(status_code=404, detail="Outreach not found")
+    if outreach.get("outreach_status") == 10:
+        raise HTTPException(status_code=409, detail="Cannot remove staff from a Completed outreach")
+
+    # Find the shifts_users record
+    su_doc = await db["shifts_users"].find_one({
+        "_id":        su_oid,
+        "outreach_id": outreach_oid,
+    }, {"_id": 1, "user_id": 1})
+    if not su_doc:
+        raise HTTPException(status_code=404, detail="Staff record not found for this outreach")
+
+    await db["shifts_users"].delete_one({"_id": su_oid})
+
+    return {
+        "success":         True,
+        "message":         "Staff removed from outreach",
+        "outreach_id":     payload.outreach_id,
+        "shifts_users_id": payload.shifts_users_id,
+        "user_id":         str(su_doc.get("user_id", "")),
+    }
