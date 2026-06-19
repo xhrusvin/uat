@@ -1346,3 +1346,107 @@ async def remove_staff_from_outreach(request: Request, payload: RemoveStaffReque
         "shifts_users_id": payload.shifts_users_id,
         "user_id":         str(su_doc.get("user_id", "")),
     }
+
+
+# ── POST /outreach/transcription ──────────────────────────────────────────────
+
+class TranscriptionRequest(BaseModel):
+    shift_id: str
+    user_id:  str
+
+
+@router.post(
+    "/transcription",
+    summary="Get AI call transcription for a staff member on a shift",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def get_transcription(request: Request, payload: TranscriptionRequest):
+    """
+    Body: { "shift_id": "...", "user_id": "..." }
+    Fetches conversation turns from shift_booking_conv collection.
+    """
+    db = _get_db()
+
+    conv = await db["shift_booking_conv"].find_one(
+        {"shift_id": payload.shift_id, "user_id": payload.user_id},
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="No conversation found for this shift/user")
+
+    # Serialize
+    def _fmt(dt):
+        return dt.isoformat() if dt and hasattr(dt, "isoformat") else None
+
+    turns = []
+    for turn in conv.get("turns", []):
+        turns.append({
+            "role":    turn.get("role"),
+            "message": turn.get("message") or turn.get("text"),
+            "ts":      _fmt(turn.get("ts")),
+        })
+
+    return {
+        "success": True,
+        "data": {
+            "id":                          str(conv["_id"]),
+            "shift_id":                    payload.shift_id,
+            "user_id":                     payload.user_id,
+            "elevenlabs_conversation_id":  conv.get("elevenlabs_conversation_id"),
+            "started_at":                  _fmt(conv.get("started_at")),
+            "ended_at":                    _fmt(conv.get("ended_at")),
+            "turns":                       turns,
+            "has_audio":                   bool(conv.get("elevenlabs_conversation_id")),
+        },
+    }
+
+
+# ── POST /outreach/transcription/audio ───────────────────────────────────────
+
+@router.post(
+    "/transcription/audio",
+    summary="Get audio URL for an AI call transcription",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def get_transcription_audio(request: Request, payload: TranscriptionRequest):
+    """
+    Body: { "shift_id": "...", "user_id": "..." }
+    Returns a proxied audio stream from ElevenLabs using the stored conversation ID.
+    """
+    import os
+    from fastapi.responses import StreamingResponse
+
+    db = _get_db()
+
+    conv = await db["shift_booking_conv"].find_one(
+        {"shift_id": payload.shift_id, "user_id": payload.user_id},
+        {"elevenlabs_conversation_id": 1}
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="No conversation found")
+
+    el_conv_id = conv.get("elevenlabs_conversation_id")
+    if not el_conv_id:
+        raise HTTPException(status_code=404, detail="No audio available for this conversation")
+
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ElevenLabs API key not configured")
+
+    url = f"https://api.elevenlabs.io/v1/convai/conversations/{el_conv_id}/audio"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, headers={"xi-api-key": api_key})
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Failed to fetch audio from ElevenLabs: {resp.text[:200]}"
+        )
+
+    return StreamingResponse(
+        iter([resp.content]),
+        media_type="audio/mpeg",
+        headers={"Content-Disposition": "inline; filename=call_audio.mp3"},
+    )
