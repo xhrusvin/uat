@@ -871,6 +871,31 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
             if seq:
                 seq_name = seq.get("name")
+        # start_time as time-ago from created_at
+        created_at_raw = o.get("created_at")
+        start_time_ago = None
+        if created_at_raw:
+            try:
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
+                dt  = created_at_raw if hasattr(created_at_raw, "tzinfo") else created_at_raw
+                if hasattr(dt, "tzinfo") and dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                diff = int((now - dt).total_seconds())
+                if diff < 60:
+                    start_time_ago = "just now"
+                elif diff < 3600:
+                    m = diff // 60
+                    start_time_ago = f"{m} minute{'s' if m != 1 else ''} ago"
+                elif diff < 86400:
+                    h = diff // 3600
+                    start_time_ago = f"{h} hour{'s' if h != 1 else ''} ago"
+                else:
+                    d = diff // 86400
+                    start_time_ago = f"{d} day{'s' if d != 1 else ''} ago"
+            except Exception:
+                pass
+
         outreach_list.append({
             "id":                   str(o["_id"]),
             "sequence_id":          str(seq_oid) if seq_oid else None,
@@ -883,6 +908,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "paused_at":            o["paused_at"].isoformat() if o.get("paused_at") and hasattr(o["paused_at"], "isoformat") else o.get("paused_at"),
             "ended_at":             o["ended_at"].isoformat() if o.get("ended_at") and hasattr(o["ended_at"], "isoformat") else o.get("ended_at"),
             "created_at":           o["created_at"].isoformat() if o.get("created_at") and hasattr(o["created_at"], "isoformat") else str(o.get("created_at", "")),
+            "start_time":           start_time_ago,
         })
     s["outreach_list"] = outreach_list
 
