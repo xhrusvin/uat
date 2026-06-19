@@ -1352,8 +1352,9 @@ async def remove_staff_from_outreach(request: Request, payload: RemoveStaffReque
 # ── POST /outreach/transcription ──────────────────────────────────────────────
 
 class TranscriptionRequest(BaseModel):
-    shift_id: str
-    user_id:  str
+    shift_id:    str
+    user_id:     str
+    outreach_id: Optional[str] = None
 
 
 @router.post(
@@ -1369,9 +1370,11 @@ async def get_transcription(request: Request, payload: TranscriptionRequest):
     """
     db = _get_db()
 
-    conv = await db["shift_booking_conv"].find_one(
-        {"shift_id": payload.shift_id, "user_id": payload.user_id},
-    )
+    query: dict = {"shift_id": payload.shift_id, "user_id": payload.user_id}
+    if payload.outreach_id:
+        query["outreach_id"] = payload.outreach_id
+
+    conv = await db["shift_booking_conv"].find_one(query)
     if not conv:
         raise HTTPException(status_code=404, detail="No conversation found for this shift/user")
 
@@ -1393,6 +1396,7 @@ async def get_transcription(request: Request, payload: TranscriptionRequest):
             "id":                          str(conv["_id"]),
             "shift_id":                    payload.shift_id,
             "user_id":                     payload.user_id,
+            "outreach_id":                 str(conv["outreach_id"]) if conv.get("outreach_id") else None,
             "elevenlabs_conversation_id":  conv.get("elevenlabs_conversation_id"),
             "started_at":                  _fmt(conv.get("started_at")),
             "ended_at":                    _fmt(conv.get("ended_at")),
@@ -1420,8 +1424,12 @@ async def get_transcription_audio(request: Request, payload: TranscriptionReques
 
     db = _get_db()
 
+    audio_query: dict = {"shift_id": payload.shift_id, "user_id": payload.user_id}
+    if payload.outreach_id:
+        audio_query["outreach_id"] = payload.outreach_id
+
     conv = await db["shift_booking_conv"].find_one(
-        {"shift_id": payload.shift_id, "user_id": payload.user_id},
+        audio_query,
         {"elevenlabs_conversation_id": 1}
     )
     if not conv:
