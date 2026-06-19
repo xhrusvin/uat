@@ -1156,7 +1156,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
     su_docs = await db["shifts_users"].find(
         {"outreach_id": outreach_oid},
         {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
-         "call_processed_at": 1, "call_status": 1, "assigned_at": 1}
+         "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1}
     ).to_list(length=2000)
 
     # Batch user lookup
@@ -1201,6 +1201,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             "call_processed":     su.get("call_processed"),
             "call_processed_text": "Sent" if su.get("call_processed") == 1 else "Queued",
             "start_time":         _format_call_time(su.get("call_processed_at")) if su.get("call_processed_at") and hasattr(su.get("call_processed_at"), "date") else None,
+            "flag":               su.get("flag", 0),
             "call_status":       su.get("call_status"),
             "call_processed_at": su["call_processed_at"].isoformat() if su.get("call_processed_at") and hasattr(su["call_processed_at"], "isoformat") else None,
             "assigned_at":       su["assigned_at"].isoformat() if su.get("assigned_at") and hasattr(su["assigned_at"], "isoformat") else None,
@@ -1237,4 +1238,46 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             },
             "shifts_users": shifts_users_list,
         },
+    }
+
+
+# ── POST /outreach/flag ───────────────────────────────────────────────────────
+
+class FlagStaffRequest(BaseModel):
+    shifts_users_id: str
+    flag: int = 1   # 1 = flagged, 0 = unflag
+
+
+@router.post(
+    "/flag",
+    summary="Flag or unflag a staff member in shifts_users",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def flag_staff(request: Request, payload: FlagStaffRequest):
+    """
+    Body: { "shifts_users_id": "<shifts_users._id>", "flag": 1 }
+    Sets shifts_users.flag = 1 (flagged) or 0 (unflagged).
+    """
+    db = _get_db()
+
+    if not ObjectId.is_valid(payload.shifts_users_id):
+        raise HTTPException(status_code=422, detail="Invalid shifts_users_id")
+
+    oid = ObjectId(payload.shifts_users_id)
+    doc = await db["shifts_users"].find_one({"_id": oid}, {"_id": 1, "flag": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="shifts_users record not found")
+
+    now = datetime.now(timezone.utc)
+    await db["shifts_users"].update_one(
+        {"_id": oid},
+        {"$set": {"flag": payload.flag, "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S+00:00")}}
+    )
+
+    return {
+        "success":         True,
+        "message":         "Flagged" if payload.flag else "Unflagged",
+        "shifts_users_id": payload.shifts_users_id,
+        "flag":            payload.flag,
     }
