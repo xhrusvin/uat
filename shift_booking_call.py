@@ -71,7 +71,7 @@ def register_shift_booking_call_routes(app):
             "shift_id": {
                 "$in": db.shifts.find(
                     {
-                        "is_active": True,
+                        #"is_active": True,
                         "date": {"$gte": today_start}
                     },
                     {"_id": 1}
