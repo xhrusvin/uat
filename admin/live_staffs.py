@@ -306,7 +306,7 @@ Section rules:
   Write 5–6 realistic duties appropriate to the job title. Do not invent employer-specific details not in the data.
 - TRAINING & CERTIFICATIONS: Bullet list using only the certifications listed in the data. Do not add any others.
 - KEY SKILLS: 8–10 bullet points drawn only from their role, qualifications, and certifications in the data.
-- ADDITIONAL INFORMATION: Driving Licence: No | Own Transport: No | References: Available on request
+- ADDITIONAL INFORMATION: Driving Licence: No | Own Transport: No | Date: [pick any date between January 2024 and December 2026, formatted as DD Month YYYY]
 
 ---
 CANDIDATE DATA (use ONLY this — do not add anything else):
@@ -735,6 +735,9 @@ def _build_ai_cv_pdf(doc, cv_text):
             for line in lines:
                 s = line.strip()
                 if not s:
+                    continue
+                # Skip any References line Gemini may still include
+                if s.lower().startswith('reference'):
                     continue
                 if ':' in s:
                     parts = s.split(':', 1)
@@ -1352,11 +1355,16 @@ def _build_cv_pdf(doc):
     # 7. ADDITIONAL INFORMATION
     # ════════════════════════════════════════════════════════════════
     story += [sec('ADDITIONAL INFORMATION'), sp(3)]
+    # Generate a random date between 01 Jan 2024 and 31 Dec 2026
+    import random as _rand
+    from datetime import date as _date, timedelta as _td
+    _d_start = _date(2024, 1, 1); _d_end = _date(2026, 12, 31)
+    _rand_date = _d_start + _td(days=_rand.randint(0, (_d_end - _d_start).days))
+    _cv_date   = _rand_date.strftime('%d %B %Y')
     for label, value in [
         ('Driving Licence:', 'No'),
         ('Own Transport:',   'No'),
-        ('References:',      'Available on request'),
-        ('Date:',            _v(s12.get('date')) or '_____________________'),
+        ('Date:',            _cv_date),
     ]:
         story += [lv(label, value), sp(1)]
     story.append(sp(4))
