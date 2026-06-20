@@ -311,7 +311,7 @@ Output the CV text only. No preamble, no explanation, no markdown formatting sym
         from google import genai as google_genai
         client   = google_genai.Client(api_key=gemini_key)
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-2.5-flash',
             contents=prompt
         )
         cv_text = response.text.strip()
