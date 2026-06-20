@@ -426,167 +426,178 @@ def live_staff_ai_cv_saved(staff_id):
 
 # ── Build AI CV PDF from Gemini text — ATS-friendly, varied design ────
 
+
 def _build_ai_cv_pdf(doc, cv_text):
     """
-    Parse Gemini plain-text CV and render as an ATS-friendly PDF.
-    Design theme is picked deterministically from the staff _id so each
-    staff member always gets the same distinct layout.
+    4 visually distinct ATS-friendly CV designs, all black text.
+    Theme chosen by md5(staff_id) % 4 — same staff always gets same design.
 
-    ATS rules followed:
-      - Single-column layout, no tables for content
-      - Standard fonts only (Helvetica / Times)
-      - No background images, coloured boxes for body text
-      - Clean section headings with simple underline rule
-      - Machine-readable text order
+    Design differences (all black text, no colour):
+      0 — Minimal ruled lines: thin top rule, section names LEFT-ALIGNED CAPS with underline
+      1 — Centred header, section names with double-rule above and below
+      2 — Left sidebar divider: thick left border for each section, Times Serif body
+      3 — Boxed section headers: section name inside a simple drawn rectangle outline
     """
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.lib.units import mm
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import (
-        SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Image as RLImage
+        SimpleDocTemplate, Paragraph, Spacer, HRFlowable,
+        Image as RLImage, Table, TableStyle
     )
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY, TA_RIGHT
     import io as _io, hashlib
 
-    W, H   = A4
-    LM = RM = 20 * mm
-    PAGE_W = W - LM - RM
+    BLACK     = colors.HexColor('#000000')
+    NEAR_BLK  = colors.HexColor('#111111')
+    DARK_GRAY = colors.HexColor('#333333')
+    MID_GRAY  = colors.HexColor('#888888')
+    LT_GRAY   = colors.HexColor('#CCCCCC')
+    WHITE     = colors.white
 
-    # ── Pick theme from staff _id hash (0-3) ─────────────────────────
+    W, H = A4
+
+    # ── Theme selection ───────────────────────────────────────────────
     id_str  = str(doc.get('_id', ''))
     theme_n = int(hashlib.md5(id_str.encode()).hexdigest(), 16) % 4
 
-    THEMES = [
-        # 0 — Classic navy/slate
-        {
-            'accent':   colors.HexColor('#1B3A6B'),
-            'name_col': colors.HexColor('#1B3A6B'),
-            'sec_col':  colors.HexColor('#1B3A6B'),
-            'body_col': colors.HexColor('#2D2D2D'),
-            'sub_col':  colors.HexColor('#4A6FA5'),
-            'rule_col': colors.HexColor('#1B3A6B'),
-            'name_font': 'Helvetica-Bold',
-            'body_font': 'Helvetica',
-            'name_size': 22,
-        },
-        # 1 — Forest green/charcoal
-        {
-            'accent':   colors.HexColor('#2E7D32'),
-            'name_col': colors.HexColor('#1A3D1F'),
-            'sec_col':  colors.HexColor('#2E7D32'),
-            'body_col': colors.HexColor('#2D2D2D'),
-            'sub_col':  colors.HexColor('#2E7D32'),
-            'rule_col': colors.HexColor('#2E7D32'),
-            'name_font': 'Helvetica-Bold',
-            'body_font': 'Helvetica',
-            'name_size': 22,
-        },
-        # 2 — Deep teal/serif
-        {
-            'accent':   colors.HexColor('#00695C'),
-            'name_col': colors.HexColor('#00695C'),
-            'sec_col':  colors.HexColor('#004D40'),
-            'body_col': colors.HexColor('#1C1C1C'),
-            'sub_col':  colors.HexColor('#00695C'),
-            'rule_col': colors.HexColor('#00695C'),
-            'name_font': 'Times-Bold',
-            'body_font': 'Times-Roman',
-            'name_size': 23,
-        },
-        # 3 — Corporate burgundy
-        {
-            'accent':   colors.HexColor('#6A1429'),
-            'name_col': colors.HexColor('#6A1429'),
-            'sec_col':  colors.HexColor('#6A1429'),
-            'body_col': colors.HexColor('#1C1C1C'),
-            'sub_col':  colors.HexColor('#8B1A2F'),
-            'rule_col': colors.HexColor('#6A1429'),
-            'name_font': 'Helvetica-Bold',
-            'body_font': 'Helvetica',
-            'name_size': 22,
-        },
+    # Per-theme layout parameters (all black text, structural differences only)
+    LAYOUTS = [
+        # 0 — Minimal: narrow margins, Helvetica, thin rules, left-aligned header
+        {'lm': 22*mm, 'rm': 22*mm, 'tm': 18*mm, 'bm': 15*mm,
+         'bf': 'Helvetica', 'bfb': 'Helvetica-Bold', 'bfi': 'Helvetica-Oblique',
+         'name_size': 22, 'name_align': TA_LEFT, 'sec_size': 10,
+         'body_size': 10, 'contact_align': TA_LEFT},
+        # 1 — Centered classic: wide margins, Times Serif, centred header
+        {'lm': 25*mm, 'rm': 25*mm, 'tm': 20*mm, 'bm': 15*mm,
+         'bf': 'Times-Roman', 'bfb': 'Times-Bold', 'bfi': 'Times-Italic',
+         'name_size': 24, 'name_align': TA_CENTER, 'sec_size': 11,
+         'body_size': 10, 'contact_align': TA_CENTER},
+        # 2 — Modern compact: narrow margins, Helvetica, smaller body text
+        {'lm': 18*mm, 'rm': 18*mm, 'tm': 15*mm, 'bm': 12*mm,
+         'bf': 'Helvetica', 'bfb': 'Helvetica-Bold', 'bfi': 'Helvetica-Oblique',
+         'name_size': 20, 'name_align': TA_LEFT, 'sec_size': 9,
+         'body_size': 9.5, 'contact_align': TA_LEFT},
+        # 3 — Executive serif: generous margins, Times, larger name
+        {'lm': 28*mm, 'rm': 28*mm, 'tm': 22*mm, 'bm': 18*mm,
+         'bf': 'Times-Roman', 'bfb': 'Times-Bold', 'bfi': 'Times-Italic',
+         'name_size': 26, 'name_align': TA_CENTER, 'sec_size': 11,
+         'body_size': 10.5, 'contact_align': TA_CENTER},
     ]
-    T = THEMES[theme_n]
-
-    BF  = T['body_font']
-    BFB = BF.split('-')[0] + '-Bold' if 'Helvetica' in BF else 'Times-Bold'
-    BFI = BF.split('-')[0] + '-Oblique' if 'Helvetica' in BF else 'Times-Italic'
+    L      = LAYOUTS[theme_n]
+    PAGE_W = W - L['lm'] - L['rm']
+    BF     = L['bf']
+    BFB    = L['bfb']
+    BFI    = L['bfi']
 
     def ps(name, **kw):
-        d = dict(fontName=BF, fontSize=10, textColor=T['body_col'],
-                 spaceAfter=2, leading=15)
+        d = dict(fontName=BF, fontSize=L['body_size'], textColor=NEAR_BLK,
+                 spaceAfter=2, leading=L['body_size'] * 1.5)
         d.update(kw)
         return ParagraphStyle(name, **d)
 
     S = {
-        'name'    : ps('name',    fontName=T['name_font'], fontSize=T['name_size'],
-                       textColor=T['name_col'], alignment=TA_CENTER,
-                       spaceAfter=2, leading=28),
-        'contact' : ps('contact', fontSize=9, textColor=T['sub_col'],
-                       alignment=TA_CENTER, spaceAfter=0, leading=13),
-        'sec'     : ps('sec',     fontName=BFB, fontSize=11,
-                       textColor=T['sec_col'], spaceAfter=2, leading=14),
-        'lbl'     : ps('lbl',     fontName=BFB, fontSize=10,
-                       textColor=T['body_col'], spaceAfter=0, leading=14),
-        'val'     : ps('val',     fontSize=10, textColor=T['body_col'],
+        'name'    : ps('name', fontName=BFB, fontSize=L['name_size'],
+                       textColor=BLACK, alignment=L['name_align'],
+                       spaceAfter=3, leading=L['name_size'] * 1.3),
+        'contact' : ps('contact', fontSize=L['body_size'] - 1,
+                       textColor=DARK_GRAY, alignment=L['contact_align'],
                        spaceAfter=0, leading=14),
-        'body'    : ps('body',    fontSize=10, alignment=TA_JUSTIFY,
-                       spaceAfter=4, leading=16),
-        'role'    : ps('role',    fontName=BFB, fontSize=11,
-                       textColor=T['sec_col'], spaceAfter=1, leading=14),
-        'employer': ps('employer',fontName=BFI, fontSize=10,
-                       textColor=T['sub_col'], spaceAfter=1, leading=13),
-        'dates'   : ps('dates',   fontSize=9, textColor=T['sub_col'],
-                       spaceAfter=2, leading=13),
-        'bullet'  : ps('bullet',  fontSize=10, leftIndent=10,
-                       spaceAfter=3, leading=15),
-        'qual_q'  : ps('qual_q',  fontName=BFB, fontSize=10,
-                       textColor=T['body_col'], spaceAfter=1, leading=14),
-        'qual_i'  : ps('qual_i',  fontName=BFI, fontSize=9,
-                       textColor=T['sub_col'], spaceAfter=0, leading=13),
+        'sec'     : ps('sec', fontName=BFB, fontSize=L['sec_size'],
+                       textColor=BLACK, spaceAfter=0,
+                       leading=L['sec_size'] * 1.4, tracking=30),
+        'body'    : ps('body', alignment=TA_JUSTIFY, spaceAfter=4,
+                       leading=L['body_size'] * 1.55),
+        'val'     : ps('val', spaceAfter=1),
+        'role'    : ps('role', fontName=BFB, fontSize=L['body_size'] + 1,
+                       textColor=BLACK, spaceAfter=1,
+                       leading=(L['body_size'] + 1) * 1.4),
+        'employer': ps('employer', fontName=BFI, fontSize=L['body_size'],
+                       textColor=DARK_GRAY, spaceAfter=1, leading=14),
+        'dates'   : ps('dates', fontSize=L['body_size'] - 1,
+                       textColor=DARK_GRAY, spaceAfter=2, leading=13),
+        'bullet'  : ps('bullet', leftIndent=10, spaceAfter=3,
+                       leading=L['body_size'] * 1.5),
+        'qual_q'  : ps('qual_q', fontName=BFB, fontSize=L['body_size'],
+                       textColor=BLACK, spaceAfter=1),
+        'qual_i'  : ps('qual_i', fontName=BFI, fontSize=L['body_size'] - 1,
+                       textColor=DARK_GRAY, spaceAfter=0, leading=13),
     }
 
     sp   = lambda n=3: Spacer(1, n * mm)
-    rule = lambda w=0.8: HRFlowable(width=PAGE_W, color=T['rule_col'],
-                                    thickness=w, spaceAfter=3)
-    thin = lambda: HRFlowable(width=PAGE_W, color=colors.HexColor('#CCCCCC'),
-                              thickness=0.4, spaceAfter=2)
+    thin = lambda: HRFlowable(width=PAGE_W, color=LT_GRAY, thickness=0.5, spaceAfter=2)
 
+    # ── Theme-specific section heading renderer ───────────────────────
     def sec_heading(title):
-        return [Paragraph(title.upper(), S['sec']), rule()]
+        """Returns a list of flowables for the section heading."""
+        if theme_n == 0:
+            # Minimal: bold caps + thin rule below
+            return [
+                Paragraph(title, S['sec']),
+                HRFlowable(width=PAGE_W, color=BLACK, thickness=0.8, spaceAfter=3),
+            ]
+        elif theme_n == 1:
+            # Classic: thin rule above + bold caps + thin rule below (double-ruled)
+            return [
+                HRFlowable(width=PAGE_W, color=BLACK, thickness=0.4, spaceAfter=2),
+                Paragraph(title, S['sec']),
+                HRFlowable(width=PAGE_W, color=BLACK, thickness=1.2, spaceAfter=4),
+            ]
+        elif theme_n == 2:
+            # Modern: section name with a thick short left accent rule as table
+            # Achieved via a single-row table: thick left border cell + text
+            cell_p = Paragraph(f'  {title}', S['sec'])
+            t = Table([[cell_p]], colWidths=[PAGE_W])
+            t.setStyle(TableStyle([
+                ('LINEBEFORE',    (0,0), (0,-1), 3.5, BLACK),
+                ('LINEBELOW',     (0,0), (-1,-1), 0.4, LT_GRAY),
+                ('TOPPADDING',    (0,0), (-1,-1), 3),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('LEFTPADDING',   (0,0), (-1,-1), 6),
+            ]))
+            return [t]
+        else:
+            # Executive: section name inside a rectangle outline box
+            cell_p = Paragraph(f'  {title}  ', S['sec'])
+            t = Table([[cell_p]], colWidths=[PAGE_W])
+            t.setStyle(TableStyle([
+                ('BOX',           (0,0), (-1,-1), 0.8, BLACK),
+                ('TOPPADDING',    (0,0), (-1,-1), 4),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('LEFTPADDING',   (0,0), (-1,-1), 8),
+            ]))
+            return [t]
 
     def bullet_p(text):
-        clean = text.lstrip('- •\t').strip()
+        clean = text.lstrip('- •	').strip()
         if not clean:
             return None
-        return Paragraph(f'\u2022\u2003{clean}', S['bullet'])
+        return Paragraph(f'• {clean}', S['bullet'])
 
-    # ── Parse sections ────────────────────────────────────────────────
+    # ── Parse sections from Gemini text ──────────────────────────────
     HEADINGS = [
         'PERSONAL DETAILS', 'PROFESSIONAL PROFILE',
         'EDUCATION & QUALIFICATIONS', 'PROFESSIONAL EXPERIENCE',
         'TRAINING & CERTIFICATIONS', 'KEY SKILLS', 'ADDITIONAL INFORMATION',
     ]
-
     sections = {}
     current  = '__pre__'
     sections[current] = []
     for line in cv_text.splitlines():
-        matched = next((h for h in HEADINGS
-                        if line.strip().upper() == h), None)
+        matched = next((h for h in HEADINGS if line.strip().upper() == h), None)
         if matched:
             current = matched
             sections[current] = []
         else:
             sections.setdefault(current, []).append(line)
 
-    # ── Candidate info from db (for header — guaranteed correct) ──────
-    s1_d     = doc.get('section_1_personal_details') or {}
-    full_name= _v(s1_d.get('full_name')) or 'Candidate'
-    mobile   = _v(s1_d.get('mobile_number'))
-    email    = _v(doc.get('email'))
-    address  = _v(s1_d.get('address'))
+    # ── Candidate info from DB (header always uses real data) ─────────
+    s1_d      = doc.get('section_1_personal_details') or {}
+    full_name = _v(s1_d.get('full_name')) or 'Candidate'
+    mobile    = _v(s1_d.get('mobile_number'))
+    email     = _v(doc.get('email'))
+    address   = _v(s1_d.get('address'))
 
     # ── Logo ──────────────────────────────────────────────────────────
     logo_path = None
@@ -604,17 +615,48 @@ def _build_ai_cv_pdf(doc, cv_text):
     buf   = _io.BytesIO()
     story = []
 
-    # Header — name + contact (ATS: plain text, no table)
+    # Header
     if logo_path:
-        logo_img = RLImage(logo_path, width=32*mm, height=32*mm*94/316)
-        story.append(logo_img)
-        story.append(sp(2))
+        logo_w   = 30*mm
+        logo_img = RLImage(logo_path, width=logo_w, height=logo_w * 94/316)
+        if L['name_align'] == TA_CENTER:
+            # Centred themes: logo centred above name
+            story.append(logo_img)
+            story.append(sp(2))
+        else:
+            # Left-aligned themes: logo right-aligned via table
+            spacer_cell = Paragraph('', S['body'])
+            logo_cell   = logo_img
+            hdr_t = Table([[spacer_cell, logo_cell]],
+                          colWidths=[PAGE_W - logo_w - 2*mm, logo_w + 2*mm])
+            hdr_t.setStyle(TableStyle([
+                ('VALIGN',        (0,0), (-1,-1), 'TOP'),
+                ('TOPPADDING',    (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+                ('LEFTPADDING',   (0,0), (-1,-1), 0),
+                ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ]))
+            story.append(hdr_t)
 
     story.append(Paragraph(full_name, S['name']))
     contact_parts = [p for p in [mobile, email, address] if p]
     if contact_parts:
-        story.append(Paragraph('  |  '.join(contact_parts), S['contact']))
-    story += [sp(3), rule(1.2), sp(4)]
+        sep = '   |   ' if L['contact_align'] == TA_CENTER else '  •  '
+        story.append(Paragraph(sep.join(contact_parts), S['contact']))
+
+    # Theme-specific header rule
+    story.append(sp(3))
+    if theme_n == 0:
+        story.append(HRFlowable(width=PAGE_W, color=BLACK, thickness=1.5, spaceAfter=0))
+        story.append(HRFlowable(width=PAGE_W, color=BLACK, thickness=0.4, spaceAfter=4))
+    elif theme_n == 1:
+        story.append(HRFlowable(width=PAGE_W, color=BLACK, thickness=1.2, spaceAfter=4))
+    elif theme_n == 2:
+        story.append(HRFlowable(width=PAGE_W, color=LT_GRAY, thickness=0.5, spaceAfter=4))
+    else:
+        story.append(HRFlowable(width=PAGE_W, color=BLACK, thickness=0.6, spaceAfter=2))
+        story.append(HRFlowable(width=PAGE_W, color=BLACK, thickness=0.6, spaceAfter=4))
+    story.append(sp(2))
 
     # ── Render sections ───────────────────────────────────────────────
     for heading in HEADINGS:
@@ -632,24 +674,22 @@ def _build_ai_cv_pdf(doc, cv_text):
                     lbl_t = parts[0].strip() + ':'
                     val_t = parts[1].strip()
                     if val_t:
-                        story.append(
-                            Paragraph(f'<b>{lbl_t}</b> {val_t}', S['val'])
-                        )
+                        story.append(Paragraph(f'<b>{lbl_t}</b> {val_t}', S['val']))
                         story.append(sp(1))
             story.append(sp(3))
 
         elif heading == 'PROFESSIONAL PROFILE':
-            para_buf = []
+            pb = []
             for line in lines:
                 if line.strip() == '':
-                    if para_buf:
-                        story.append(Paragraph(' '.join(para_buf), S['body']))
+                    if pb:
+                        story.append(Paragraph(' '.join(pb), S['body']))
                         story.append(sp(2))
-                        para_buf = []
+                        pb = []
                 else:
-                    para_buf.append(line.strip())
-            if para_buf:
-                story.append(Paragraph(' '.join(para_buf), S['body']))
+                    pb.append(line.strip())
+            if pb:
+                story.append(Paragraph(' '.join(pb), S['body']))
             story.append(sp(4))
 
         elif heading == 'EDUCATION & QUALIFICATIONS':
@@ -665,17 +705,14 @@ def _build_ai_cv_pdf(doc, cv_text):
                 story.append(Paragraph(f'<b>{qual}</b>{yr_txt}', S['qual_q']))
                 if inst:
                     story.append(Paragraph(inst, S['qual_i']))
-                story += [sp(2), thin()]
-                story.append(sp(2))
+                story += [sp(2), thin(), sp(2)]
             story.append(sp(3))
 
         elif heading == 'PROFESSIONAL EXPERIENCE':
-            # Group into role blocks
             roles = []
             cur   = []
             for line in lines:
-                s = line.strip()
-                if s.lower().startswith('job title:') and cur:
+                if line.strip().lower().startswith('job title:') and cur:
                     roles.append(cur)
                     cur = [line]
                 else:
@@ -686,13 +723,12 @@ def _build_ai_cv_pdf(doc, cv_text):
             for ri, role_lines in enumerate(roles):
                 job_title = emp_name = dates_str = ''
                 duties    = []
-                in_duties = False
 
                 for rl in role_lines:
-                    sl = rl.strip()
+                    sl    = rl.strip()
+                    sl_lo = sl.lower()
                     if not sl:
                         continue
-                    sl_lo = sl.lower()
                     if sl_lo.startswith('job title:'):
                         job_title = sl.split(':', 1)[1].strip()
                     elif sl_lo.startswith('employer:'):
@@ -700,18 +736,35 @@ def _build_ai_cv_pdf(doc, cv_text):
                     elif sl_lo.startswith('dates:') or sl_lo.startswith('period:'):
                         dates_str = sl.split(':', 1)[1].strip()
                     elif sl_lo.startswith('duties') or sl_lo.startswith('responsibilities'):
-                        in_duties = True
-                    elif sl.startswith('-') or sl.startswith('\u2022'):
-                        duties.append(sl.lstrip('- \u2022').strip())
+                        pass  # label line, skip
+                    elif sl.startswith('-') or sl.startswith('•'):
+                        duties.append(sl.lstrip('- •').strip())
 
                 if not job_title and not emp_name:
                     continue
 
-                story.append(Paragraph(job_title or 'Role', S['role']))
+                # Theme 1 & 3: role title + dates on same line via table
+                if theme_n in (1, 3) and dates_str:
+                    role_p  = Paragraph(f'<b>{job_title}</b>', S['role'])
+                    dates_p = Paragraph(dates_str, S['dates'])
+                    rt = Table([[role_p, dates_p]],
+                               colWidths=[PAGE_W * 0.65, PAGE_W * 0.35])
+                    rt.setStyle(TableStyle([
+                        ('VALIGN',        (0,0), (-1,-1), 'BOTTOM'),
+                        ('TOPPADDING',    (0,0), (-1,-1), 0),
+                        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+                        ('LEFTPADDING',   (0,0), (-1,-1), 0),
+                        ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+                        ('ALIGN',         (1,0), (1,-1), 'RIGHT'),
+                    ]))
+                    story.append(rt)
+                else:
+                    story.append(Paragraph(job_title or 'Role', S['role']))
+                    if dates_str:
+                        story.append(Paragraph(dates_str, S['dates']))
+
                 if emp_name:
                     story.append(Paragraph(emp_name, S['employer']))
-                if dates_str:
-                    story.append(Paragraph(dates_str, S['dates']))
                 story.append(sp(2))
                 for d in duties:
                     if d:
@@ -725,10 +778,35 @@ def _build_ai_cv_pdf(doc, cv_text):
             story.append(sp(2))
 
         elif heading in ('TRAINING & CERTIFICATIONS', 'KEY SKILLS'):
-            for line in lines:
-                bp = bullet_p(line.strip())
-                if bp:
-                    story.append(bp)
+            # Theme 2 & 0: 2-column bullets for skills
+            if theme_n in (0, 2):
+                bullet_items = []
+                for line in lines:
+                    bp = bullet_p(line.strip())
+                    if bp:
+                        bullet_items.append(bp)
+                # Pair into 2 columns
+                pairs = []
+                for i in range(0, len(bullet_items), 2):
+                    left  = bullet_items[i]
+                    right = bullet_items[i+1] if i+1 < len(bullet_items) else Paragraph('', S['body'])
+                    pairs.append([left, right])
+                if pairs:
+                    col_w = PAGE_W / 2 - 3*mm
+                    bt = Table(pairs, colWidths=[col_w, col_w])
+                    bt.setStyle(TableStyle([
+                        ('VALIGN',        (0,0), (-1,-1), 'TOP'),
+                        ('TOPPADDING',    (0,0), (-1,-1), 1),
+                        ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+                        ('LEFTPADDING',   (0,0), (-1,-1), 0),
+                        ('RIGHTPADDING',  (0,0), (-1,-1), 4),
+                    ]))
+                    story.append(bt)
+            else:
+                for line in lines:
+                    bp = bullet_p(line.strip())
+                    if bp:
+                        story.append(bp)
             story.append(sp(4))
 
         elif heading == 'ADDITIONAL INFORMATION':
@@ -736,7 +814,6 @@ def _build_ai_cv_pdf(doc, cv_text):
                 s = line.strip()
                 if not s:
                     continue
-                # Skip any References line Gemini may still include
                 if s.lower().startswith('reference'):
                     continue
                 if ':' in s:
@@ -749,14 +826,14 @@ def _build_ai_cv_pdf(doc, cv_text):
                     story.append(Paragraph(s, S['body']))
             story.append(sp(4))
 
-    # Render
     pdf_doc = SimpleDocTemplate(
         buf, pagesize=A4,
-        leftMargin=LM, rightMargin=RM,
-        topMargin=15*mm, bottomMargin=15*mm,
+        leftMargin=L['lm'], rightMargin=L['rm'],
+        topMargin=L['tm'],  bottomMargin=L['bm'],
     )
     pdf_doc.build(story)
     return buf.getvalue()
+
 
 
 
