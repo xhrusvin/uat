@@ -1,0 +1,220 @@
+
+from datetime import datetime
+from bson import ObjectId
+import pandas as pd
+
+from flask import request, jsonify, render_template
+from database import db
+from . import admin_bp
+from admin.views import admin_required
+from .whatsapp_wati import (
+    _normalise_phone,
+    _send_session_message
+)
+import os
+import traceback
+
+
+WATI_API_ENDPOINT  = os.environ.get("WATI_API_ENDPOINT", "").rstrip("/")
+WATI_ACCESS_TOKEN  = os.environ.get("WATI_ACCESS_TOKEN", "")
+
+
+def _bulk_campaigns_col():
+    return db.whatsapp_bulk_campaigns
+
+
+def _bulk_messages_col():
+    return db.whatsapp_bulk_messages
+
+
+@admin_bp.route("/whatsapp_wati/bulk")
+@admin_required
+def whatsapp_bulk():
+    return render_template("admin/whatsapp_bulk.html")
+
+
+@admin_bp.route("/whatsapp_wati/bulk/preview", methods=["POST"])
+@admin_required
+def whatsapp_bulk_preview():
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+
+    df = pd.read_excel(request.files["file"])
+
+    phone_column = None
+
+    for col in df.columns:
+        if col.lower().strip() in [
+            "phone",
+            "mobile",
+            "mobile number",
+            "phone number",
+            "whatsapp"
+        ]:
+            phone_column = col
+            break
+
+    if not phone_column:
+        return jsonify({
+            "success": False,
+            "error": "Phone column not found"
+        }), 400
+
+    rows = []
+    errors = []
+
+    for idx, row in df.iterrows():
+        phone = str(row.get(phone_column, "")).strip()
+
+        if not phone:
+            errors.append({"row": idx + 2, "reason": "Missing phone"})
+            continue
+
+        rows.append({"phone": _normalise_phone(phone)})
+
+    return jsonify({
+        "success": True,
+        "total": len(df),
+        "valid": len(rows),
+        "invalid": len(errors),
+        "rows": rows[:100],
+        "errors": errors
+    })
+
+
+@admin_bp.route("/whatsapp_wati/bulk/send", methods=["POST"])
+@admin_required
+def whatsapp_bulk_send():
+    template_name = request.form.get("template_name")
+    
+    
+
+    print(os.getenv("WATI_API_ENDPOINT"))
+    print(os.getenv("WATI_ACCESS_TOKEN"))
+
+    if not template_name:
+        return jsonify({"success": False, "error": "template_name required"}), 400
+
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "file required"}), 400
+
+    df = pd.read_excel(request.files["file"])
+
+    campaign_id = _bulk_campaigns_col().insert_one({
+        "template_name": template_name,
+        "status": "queued",
+        "total": len(df),
+        "sent": 0,
+        "failed": 0,
+        "created_at": datetime.utcnow()
+    }).inserted_id
+
+    phone_column = None
+    name_column = None
+
+    for col in df.columns:
+
+        if col.lower().strip() == "phone":
+            phone_column = col
+
+        if col.lower().strip() == "name":
+            name_column = col
+
+    if not phone_column:
+        return jsonify({
+            "success": False,
+            "error": "Phone column not found"
+        }), 400
+
+    docs = []
+
+    for _, row in df.iterrows():
+
+        phone = str(row.get(phone_column, "")).strip()
+
+        if not phone:
+            continue
+
+        name = ""
+
+        if name_column:
+            name = str(row.get(name_column, "")).strip()
+
+        docs.append({
+            "campaign_id": campaign_id,
+            "phone": _normalise_phone(phone),
+            "name": name,
+            "status": "pending",
+            "created_at": datetime.utcnow()
+        })
+
+    if docs:
+        _bulk_messages_col().insert_many(docs)
+
+    return jsonify({
+        "success": True,
+        "campaign_id": str(campaign_id),
+        "queued": len(docs)
+    })
+
+@admin_bp.route("/whatsapp_wati/bulk/status/<campaign_id>")
+@admin_required
+def whatsapp_bulk_status(campaign_id):
+    campaign = _bulk_campaigns_col().find_one(
+        {"_id": ObjectId(campaign_id)}
+    )
+
+    if not campaign:
+        return jsonify({"success": False, "error": "Campaign not found"}), 404
+
+    campaign["_id"] = str(campaign["_id"])
+
+    return jsonify({
+        "success": True,
+        "campaign": campaign
+    })
+
+
+@admin_bp.route("/whatsapp_wati/bulk/process/<campaign_id>")
+@admin_required
+def whatsapp_bulk_process(campaign_id):
+
+    from bson import ObjectId
+    from .whatsapp_bulk_worker import (
+        process_bulk_messages
+    )
+
+    process_bulk_messages(
+        ObjectId(campaign_id),
+        batch_size=100
+    )
+
+    return jsonify({
+        "success": True
+    })
+    
+    
+
+@admin_bp.route("/whatsapp_wati/bulk/messages/<campaign_id>")
+@admin_required
+def whatsapp_bulk_messages(campaign_id):
+
+    rows = list(
+        _bulk_messages_col().find(
+            {"campaign_id": ObjectId(campaign_id)},
+            {
+                "phone": 1,
+                "name": 1,
+                "status": 1,
+                "error": 1
+            }
+        )
+    )
+
+    for row in rows:
+        row["_id"] = str(row["_id"])
+
+    return jsonify({
+        "success": True,
+        "messages": rows
+    })

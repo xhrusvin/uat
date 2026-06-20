@@ -28,5 +28,6 @@ from . import location_lookup_autoaddress
 from . import get_doc_users
 from . import whatsapp_wati
 from . import campaigns
+from . import whatsapp_bulk_routes
 
 
