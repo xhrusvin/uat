@@ -648,28 +648,16 @@ def _build_cv_pdf(doc):
         story += [para_box('No training certifications recorded.'), sp(4)]
 
     # ═══════════════════════════════════════════════════════════════════
-    # 6. KEY SKILLS  (occupational health + identity as supporting detail)
+    # 6. KEY SKILLS  (occupational health)
     # ═══════════════════════════════════════════════════════════════════
     story += [sec('KEY SKILLS'), sp(3)]
-    # Vaccination / health status as a quick skills grid
-    vacc_rows = [
-        ['COVID-19 Vaccine',   _v(s9.get('covid_19_vaccine'))],
-        ['Tuberculosis (BCG)', _v(s9.get('tuberculosis_vaccine'))],
-        ['Hepatitis Antibody', _v(s9.get('hepatitis_antibody'))],
-        ['MMR Vaccine',        _v(s9.get('mmr_vaccine'))],
-    ]
     for lbl, val in [
         ('Health Screening Completed:',    'Yes' if s9.get('occupational_health_screening')  else 'No'),
         ('Immunisation Records Provided:', 'Yes' if s9.get('immunisation_records_provided')  else 'No'),
         ('Fit for Nursing Duties:',        'Yes' if s9.get('fit_for_nursing_duties')          else 'No'),
     ]:
         story += [lv(lbl, val, lw=72*mm), sp(1)]
-    story.append(sp(2))
-    story += [
-        grid_tbl(['Vaccination', 'Status'], vacc_rows,
-                 [PAGE_W * 0.60, PAGE_W * 0.40]),
-        sp(4),
-    ]
+    story.append(sp(4))
 
     # ═══════════════════════════════════════════════════════════════════
     # 7. ADDITIONAL INFORMATION
@@ -685,8 +673,8 @@ def _build_cv_pdf(doc):
     if docs_sub.get('proof_of_address'):  docs_list.append('Proof of Address')
 
     for lbl, val in [
-        ('Driving Licence:',            driving if driving else '—'),
-        ('Own Transport:',              '—'),
+        ('Driving Licence:',            'No'),
+        ('Own Transport:',              'No'),
         ('Documents Submitted:',        ', '.join(docs_list) if docs_list else '—'),
         ('Passport Expiry:',            _v(s2.get('expiry_date'))),
         ('Verification Date:',          _v(s2.get('verification_date'))),
