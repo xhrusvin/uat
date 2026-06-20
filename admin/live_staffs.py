@@ -319,15 +319,25 @@ Output the CV text only. No preamble, no explanation, no markdown formatting sym
         # ── Build PDF from the AI text ────────────────────────────────
         pdf_bytes = _build_ai_cv_pdf(doc, cv_text)
 
-        # ── Store in MongoDB ──────────────────────────────────────────
+        # ── Save PDF to static/cv/ folder ─────────────────────────────
+        safe_name = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        cv_filename  = f"AI_CV_{safe_name}_{staff_id}.pdf"
+        cv_folder    = os.path.join('static', 'cv')
+        os.makedirs(cv_folder, exist_ok=True)
+        cv_filepath  = os.path.join(cv_folder, cv_filename)
+        with open(cv_filepath, 'wb') as pdf_file:
+            pdf_file.write(pdf_bytes)
+
+        # ── Store metadata in MongoDB (no binary) ─────────────────────
         col = _ai_cvs_col()
         existing = col.find_one({"staff_id": str(doc['_id'])})
         ai_doc = {
-            "staff_id":    str(doc['_id']),
-            "staff_name":  full_name,
+            "staff_id":     str(doc['_id']),
+            "staff_name":   full_name,
             "employee_code": emp_code,
-            "cv_text":     cv_text,
-            "pdf_bytes":   pdf_bytes,
+            "cv_text":      cv_text,
+            "cv_filename":  cv_filename,
+            "cv_filepath":  cv_filepath,
             "generated_at": datetime.utcnow(),
         }
         if existing:
@@ -338,10 +348,11 @@ Output the CV text only. No preamble, no explanation, no markdown formatting sym
             ai_id  = str(result.inserted_id)
 
         return jsonify({
-            "success":    True,
-            "ai_cv_id":   ai_id,
-            "staff_name": full_name,
-            "message":    f"AI CV generated for {full_name}"
+            "success":      True,
+            "ai_cv_id":     ai_id,
+            "cv_filename":  cv_filename,
+            "staff_name":   full_name,
+            "message":      f"AI CV generated for {full_name}"
         })
 
     except Exception as e:
@@ -351,16 +362,26 @@ Output the CV text only. No preamble, no explanation, no markdown formatting sym
 @admin_bp.route('/live-staffs/ai-cv/download/<ai_cv_id>')
 @admin_required
 def live_staff_ai_cv_download(ai_cv_id):
-    """Download a previously generated AI CV PDF."""
+    """Serve the saved AI CV PDF from static/cv/."""
     try:
         rec = _ai_cvs_col().find_one({"_id": ObjectId(ai_cv_id)})
         if not rec:
             return "AI CV not found", 404
-        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+
+        cv_filepath = rec.get('cv_filepath', '')
+        if not cv_filepath or not os.path.exists(cv_filepath):
+            return "CV file not found on disk — please regenerate", 404
+
+        name     = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        filename = f"AI_CV_{name}.pdf"
+
+        with open(cv_filepath, 'rb') as f:
+            pdf_bytes = f.read()
+
         return Response(
-            rec['pdf_bytes'],
+            pdf_bytes,
             mimetype='application/pdf',
-            headers={"Content-Disposition": f'attachment; filename="AI_CV_{name}.pdf"'}
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
     except Exception as e:
         return str(e), 500
@@ -381,6 +402,7 @@ def live_staff_ai_cv_saved(staff_id):
             "success":      True,
             "found":        True,
             "ai_cv_id":     str(rec["_id"]),
+            "cv_filename":  rec.get("cv_filename", ""),
             "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M"),
         })
     except Exception as e:

@@ -920,9 +920,12 @@ $('importFile').addEventListener('change', async function () {
 });
 
 // ── AI CV buttons ─────────────────────────────────────────────────────
-const AI_GEN_URL    = "{{ url_for('admin.live_staff_ai_cv_generate') }}";
-const AI_SAVED_URL  = "{{ url_for('admin.live_staff_ai_cv_saved', staff_id='PLACEHOLDER') }}".replace('PLACEHOLDER', '');
-const AI_DL_URL     = "{{ url_for('admin.live_staff_ai_cv_download', ai_cv_id='PLACEHOLDER') }}".replace('PLACEHOLDER', '');
+const AI_GEN_URL   = "{{ url_for('admin.live_staff_ai_cv_generate') }}";
+const AI_SAVED_BASE = "{{ url_for('admin.live_staff_ai_cv_saved', staff_id='__ID__') }}";
+const AI_DL_BASE    = "{{ url_for('admin.live_staff_ai_cv_download', ai_cv_id='__ID__') }}";
+
+function aiSavedUrl(staffId)  { return AI_SAVED_BASE.replace('__ID__', staffId); }
+function aiDownloadUrl(cvId)  { return AI_DL_BASE.replace('__ID__', cvId); }
 
 let currentAiStaffId = null;
 
@@ -948,14 +951,14 @@ document.querySelectorAll('.btn-ai-cv').forEach(btn => {
 
         // Check for existing saved CV
         try {
-            const res  = await fetch(AI_SAVED_URL + currentAiStaffId);
+            const res  = await fetch(aiSavedUrl(currentAiStaffId));
             const data = await res.json();
             if (data.success && data.found) {
                 document.getElementById('aiCvSavedInfo').classList.remove('d-none');
                 document.getElementById('aiCvSavedDate').textContent = data.generated_at;
                 document.getElementById('aiCvDownloadSavedBtn').classList.remove('d-none');
                 document.getElementById('aiCvDownloadSavedBtn').onclick = () => {
-                    window.open(AI_DL_URL.replace('PLACEHOLDER', data.ai_cv_id), '_blank');
+                    window.open(aiDownloadUrl(data.ai_cv_id), '_blank');
                 };
             }
         } catch(e) { /* ignore */ }
@@ -975,8 +978,7 @@ document.getElementById('aiCvGenerateBtn').addEventListener('click', async () =>
         const data = await res.json();
 
         if (data.success) {
-            const dlUrl = AI_DL_URL.replace('PLACEHOLDER', data.ai_cv_id);
-            document.getElementById('aiCvDownloadNewBtn').href = dlUrl;
+            document.getElementById('aiCvDownloadNewBtn').href = aiDownloadUrl(data.ai_cv_id);
             setAiState('Done');
         } else {
             document.getElementById('aiCvErrorMsg').textContent = data.error || 'Generation failed';
