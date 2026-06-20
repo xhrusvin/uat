@@ -3,23 +3,71 @@ import json
 import sys
 import os
 from datetime import datetime
-from bson import ObjectId
 
-# ── Bootstrap Flask app context ───────────────────────────────────────
 from app import app
 from database import db
+
+
+def load_records(filepath):
+    """Try multiple JSON formats until one works."""
+    with open(filepath, 'r', encoding='utf-8') as f:
+        content = f.read().strip()
+
+    # 1. Standard JSON (object or array)
+    try:
+        raw = json.loads(content)
+        return raw if isinstance(raw, list) else raw.get('records', [raw])
+    except json.JSONDecodeError:
+        pass
+
+    # 2. JSONL — one JSON object per line
+    try:
+        records = [json.loads(line) for line in content.splitlines() if line.strip()]
+        if records:
+            print("ℹ️  Detected JSONL format (one record per line)")
+            return records
+    except json.JSONDecodeError:
+        pass
+
+    # 3. Concatenated JSON objects  {...}{...}{...}
+    try:
+        records = []
+        decoder = json.JSONDecoder()
+        idx = 0
+        while idx < len(content):
+            while idx < len(content) and content[idx] in ' \t\r\n,':
+                idx += 1
+            if idx >= len(content):
+                break
+            obj, end = decoder.raw_decode(content, idx)
+            records.append(obj)
+            idx = end
+        if records:
+            print(f"ℹ️  Detected concatenated JSON objects ({len(records)} found)")
+            return records
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Could not parse JSON. Error near char {e.pos}: {e.msg}")
+
+    raise ValueError("Unrecognised file format — not JSON, JSONL, or concatenated JSON.")
+
 
 def import_staffs(filepath, dry_run=False):
     if not os.path.exists(filepath):
         print(f"❌ File not found: {filepath}")
         sys.exit(1)
 
-    with open(filepath, 'r', encoding='utf-8') as f:
-        raw = json.load(f)
+    try:
+        records = load_records(filepath)
+    except ValueError as e:
+        print(f"❌ {e}")
+        # Show first 200 chars so you can see what the file actually looks like
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            preview = f.read(200)
+        print(f"\n📄 File preview:\n{preview}\n")
+        sys.exit(1)
 
-    records = raw if isinstance(raw, list) else raw.get('records', [raw])
-    print(f"📂 File: {filepath}")
-    print(f"📋 Records found: {len(records)}")
+    print(f"📂 File   : {filepath}")
+    print(f"📋 Records: {len(records)}")
     if dry_run:
         print("🔍 DRY RUN — no changes will be saved\n")
 
@@ -32,7 +80,7 @@ def import_staffs(filepath, dry_run=False):
         name  = rec.get('section_1_personal_details', {}).get('full_name', '?')
 
         if not email:
-            print(f"  [{idx:>4}] ⚠️  Skipped — no email")
+            print(f"  [{idx:>4}] ⚠️  Skipped — no email  ({name})")
             skipped += 1
             continue
 
