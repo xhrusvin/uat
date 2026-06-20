@@ -130,6 +130,22 @@ def live_staffs():
     )
 
 
+@admin_bp.route('/live-staffs/get')
+@admin_required
+def live_staff_get():
+    """Return a single staff record as JSON — used by view/edit modals."""
+    staff_id = (request.args.get('id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing id"}), 400
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Record not found"}), 404
+        return jsonify({"success": True, "record": _serialize(doc)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @admin_bp.route('/live-staffs/add', methods=['POST'])
 @admin_required
 def live_staff_add():

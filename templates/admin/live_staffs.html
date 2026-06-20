@@ -55,7 +55,7 @@
         </div>
     </form>
 
-    <!-- Import progress banner (hidden by default) -->
+    <!-- Import progress banner -->
     <div id="importBanner" class="alert alert-info d-none mb-4 rounded-4 d-flex align-items-center gap-3">
         <div class="spinner-border spinner-border-sm" role="status"></div>
         <span>Importing records, please wait…</span>
@@ -82,7 +82,7 @@
                     </thead>
                     <tbody>
                         {% for s in staffs %}
-                        {% set p = s.section_1_personal_details or {} %}
+                        {% set p    = s.section_1_personal_details or {} %}
                         {% set visa = p.work_permit_visa_status or {} %}
                         {% set reg  = s.section_3_professional_registration or {} %}
                         <tr>
@@ -111,28 +111,27 @@
                                 {{ reg.registration_expiry_date or '—' }}
                             </td>
                             <td class="text-center">
-                                {% if s.status == 'found' or s.status == 'active' %}
+                                {% if s.status in ['found', 'active'] %}
                                 <span class="badge bg-success rounded-pill px-3">Active</span>
                                 {% else %}
                                 <span class="badge bg-secondary rounded-pill px-3">
-                                    {{ s.status | capitalize }}
+                                    {{ (s.status or 'unknown') | capitalize }}
                                 </span>
                                 {% endif %}
                             </td>
                             <td class="text-center">
+                                <!-- store only the _id; data fetched via API on click -->
                                 <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 btn-view"
-                                        data-id="{{ s._id | string }}"
-                                        title="View full record">
+                                        data-id="{{ s._id }}" title="View full record">
                                     <i class="bi bi-eye"></i>
                                 </button>
                                 <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 me-1 btn-edit"
-                                        data-id="{{ s._id | string }}"
-                                        data-record="{{ s | tojson | e }}">
+                                        data-id="{{ s._id }}">
                                     <i class="bi bi-pencil"></i>
                                 </button>
                                 <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
-                                        data-id="{{ s._id | string }}"
-                                        data-name="{{ p.full_name | e }}">
+                                        data-id="{{ s._id }}"
+                                        data-name="{{ p.full_name | default('this record') | e }}">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </td>
@@ -178,7 +177,7 @@
 
 </div>
 
-<!-- ── Add / Edit Modal ──────────────────────────────────────────────── -->
+<!-- ── Add / Edit Modal ──────────────────────────────────────────── -->
 <div class="modal fade" id="staffModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-lg rounded-4">
@@ -187,8 +186,8 @@
                 <h5 class="modal-title fw-bold" id="staffModalLabel">Add Staff</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form id="staffForm">
-                <div class="modal-body">
+            <div class="modal-body" id="staffModalBody">
+                <form id="staffForm">
                     <input type="hidden" id="staff_id">
 
                     <!-- Section 1 – Personal Details -->
@@ -198,15 +197,15 @@
                     <div class="row g-3 mb-4">
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Full Name <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="full_name" required placeholder="e.g. Sandra Joshy">
+                            <input type="text" class="form-control" id="full_name" required>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
-                            <input type="email" class="form-control" id="email" required placeholder="email@example.com">
+                            <input type="email" class="form-control" id="email" required>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Mobile Number</label>
-                            <input type="text" class="form-control" id="mobile_number" placeholder="+353 89 000 0000">
+                            <input type="text" class="form-control" id="mobile_number">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Date of Birth</label>
@@ -214,23 +213,23 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">PPS Number</label>
-                            <input type="text" class="form-control font-monospace" id="pps_number" placeholder="1234567A">
+                            <input type="text" class="form-control font-monospace" id="pps_number">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Nationality</label>
-                            <input type="text" class="form-control" id="nationality" placeholder="e.g. IRELAND">
+                            <input type="text" class="form-control" id="nationality">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">NMBI PIN</label>
-                            <input type="text" class="form-control font-monospace" id="nmbi_pin_number" placeholder="PIN">
+                            <input type="text" class="form-control font-monospace" id="nmbi_pin_number">
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Address</label>
-                            <input type="text" class="form-control" id="address" placeholder="Full address">
+                            <input type="text" class="form-control" id="address">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Eircode / Postcode</label>
-                            <input type="text" class="form-control font-monospace" id="eircode_postcode" placeholder="A00 XXXX">
+                            <input type="text" class="form-control font-monospace" id="eircode_postcode">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Permission to Work</label>
@@ -242,7 +241,7 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Visa Type</label>
-                            <input type="text" class="form-control" id="visa_type" placeholder="e.g. Stamp 4, Irish Citizen">
+                            <input type="text" class="form-control" id="visa_type">
                         </div>
                     </div>
 
@@ -299,7 +298,7 @@
                             <label class="form-label fw-semibold">Registration Expiry</label>
                             <input type="text" class="form-control" id="registration_expiry_date" placeholder="DD-MM-YYYY">
                         </div>
-                        <div class="col-md-4 d-flex align-items-end">
+                        <div class="col-md-4 d-flex align-items-end pb-1">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="nmbi_active_declaration">
                                 <label class="form-check-label fw-semibold" for="nmbi_active_declaration">NMBI Active Declaration</label>
@@ -314,7 +313,7 @@
                     <div class="row g-3 mb-4">
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Employee Code</label>
-                            <input type="text" class="form-control font-monospace" id="employee_code" placeholder="PIO_00000">
+                            <input type="text" class="form-control font-monospace" id="employee_code">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">User Type</label>
@@ -322,6 +321,7 @@
                                 <option value="">— select —</option>
                                 <option value="Nurse">Nurse</option>
                                 <option value="HCA">HCA</option>
+                                <option value="Healthcare Assistant">Healthcare Assistant</option>
                                 <option value="Support Worker">Support Worker</option>
                                 <option value="Other">Other</option>
                             </select>
@@ -365,21 +365,22 @@
                         </div>
                     </div>
                     <div class="row g-3 mb-4">
-                        {% for vac_id, vac_label in [
-                            ('covid_19_vaccine','COVID-19'),
-                            ('tuberculosis_vaccine','Tuberculosis'),
-                            ('hepatitis_antibody','Hepatitis'),
-                            ('mmr_vaccine','MMR')
-                        ] %}
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">{{ vac_label }}</label>
-                            <select class="form-select" id="{{ vac_id }}">
-                                <option value="">—</option>
-                                <option value="Yes">Yes</option>
-                                <option value="No">No</option>
-                            </select>
+                            <label class="form-label fw-semibold">COVID-19</label>
+                            <select class="form-select" id="covid_19_vaccine"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option></select>
                         </div>
-                        {% endfor %}
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Tuberculosis</label>
+                            <select class="form-select" id="tuberculosis_vaccine"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option></select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Hepatitis</label>
+                            <select class="form-select" id="hepatitis_antibody"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option></select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">MMR</label>
+                            <select class="form-select" id="mmr_vaccine"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option></select>
+                        </div>
                     </div>
 
                     <!-- Section – Garda Vetting -->
@@ -403,38 +404,32 @@
                     </h6>
                     <div class="row g-3 mb-2">
                         {% for t_id, t_label in [
-                            ('manual_handling','Manual Handling'),
-                            ('cpr_bls','CPR/BLS'),
-                            ('fire_safety','Fire Safety'),
-                            ('infection_prevention_control','Infection Prevention'),
-                            ('hand_hygiene','Hand Hygiene'),
-                            ('safeguarding','Safeguarding'),
-                            ('children_first','Children First'),
-                            ('cyber_security','Cyber Security'),
-                            ('dignity_at_work','Dignity at Work'),
-                            ('open_disclosure','Open Disclosure'),
+                            ('manual_handling','Manual Handling'),('cpr_bls','CPR/BLS'),
+                            ('fire_safety','Fire Safety'),('infection_prevention_control','Infection Prevention'),
+                            ('hand_hygiene','Hand Hygiene'),('safeguarding','Safeguarding'),
+                            ('children_first','Children First'),('cyber_security','Cyber Security'),
+                            ('dignity_at_work','Dignity at Work'),('open_disclosure','Open Disclosure'),
                             ('mapa_pmav','MAPA/PMAV')
                         ] %}
                         <div class="col-md-6">
                             <label class="form-label fw-semibold small">{{ t_label }}</label>
                             <input type="text" class="form-control form-control-sm font-monospace"
-                                   id="{{ t_id }}"
-                                   placeholder="Certificate on file; Expiry: DD-MM-YYYY; Approved">
+                                   id="{{ t_id }}" placeholder="Certificate on file; Expiry: DD-MM-YYYY; Approved">
                         </div>
                         {% endfor %}
                     </div>
 
-                </div><!-- /modal-body -->
-                <div class="modal-footer border-0">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary px-4 fw-bold" id="staffSubmitBtn">Create</button>
-                </div>
-            </form>
+                    <div class="modal-footer border-0 px-0 pb-0 mt-3">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary px-4 fw-bold" id="staffSubmitBtn">Create</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- ── View Modal ────────────────────────────────────────────────────── -->
+<!-- ── View Modal ─────────────────────────────────────────────────── -->
 <div class="modal fade" id="viewModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-lg rounded-4">
@@ -452,256 +447,284 @@
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-// ── field IDs list (must match form) ─────────────────────────────────
-const FIELDS = [
-    'full_name','email','mobile_number','date_of_birth','pps_number',
-    'nationality','nmbi_pin_number','address','eircode_postcode',
-    'permission_to_work','visa_type',
-    'passport_number','passport_expiry','driving_licence_number',
-    'verification_date','verified_by',
-    'registration_number_pin','registration_expiry_date',
-    'employee_code','user_type','status','recruitment_id',
-    'covid_19_vaccine','tuberculosis_vaccine','hepatitis_antibody','mmr_vaccine',
-    'manual_handling','cpr_bls','fire_safety','infection_prevention_control',
-    'hand_hygiene','safeguarding','children_first','cyber_security',
-    'dignity_at_work','open_disclosure','mapa_pmav',
-];
-const CHECKBOXES = [
-    'doc_passport','doc_birth_cert','doc_driving','doc_address',
-    'nmbi_active_declaration','occupational_health_screening',
-    'immunisation_records_provided','fit_for_nursing_duties',
-    'garda_vetting_submitted','police_clearance_submitted',
-];
+const FETCH_URL = "{{ url_for('admin.live_staff_get') }}";
+const ADD_URL   = "{{ url_for('admin.live_staff_add') }}";
+const EDIT_URL  = "{{ url_for('admin.live_staff_edit') }}";
+const DEL_URL   = "{{ url_for('admin.live_staff_delete') }}";
 
-// ── Helpers ───────────────────────────────────────────────────────────
+// ── Fetch one record from server ──────────────────────────────────────
+async function fetchRecord(id) {
+    const res = await fetch(`${FETCH_URL}?id=${id}`);
+    if (!res.ok) throw new Error('Failed to load record');
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Unknown error');
+    return data.record;
+}
+
+// ── Field helpers ─────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const setVal = (id, val) => { if ($(id)) $(id).value = val ?? ''; };
+const setChk = (id, val) => { if ($(id)) $(id).checked = !!val; };
+
 function resetForm() {
-    FIELDS.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-    });
-    CHECKBOXES.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.checked = false;
-    });
-    document.getElementById('staff_id').value = '';
+    ['full_name','email','mobile_number','date_of_birth','pps_number','nationality',
+     'nmbi_pin_number','address','eircode_postcode','permission_to_work','visa_type',
+     'passport_number','passport_expiry','driving_licence_number','verification_date',
+     'verified_by','registration_number_pin','registration_expiry_date',
+     'employee_code','user_type','status','recruitment_id',
+     'covid_19_vaccine','tuberculosis_vaccine','hepatitis_antibody','mmr_vaccine',
+     'manual_handling','cpr_bls','fire_safety','infection_prevention_control',
+     'hand_hygiene','safeguarding','children_first','cyber_security',
+     'dignity_at_work','open_disclosure','mapa_pmav'
+    ].forEach(id => setVal(id, ''));
+    ['doc_passport','doc_birth_cert','doc_driving','doc_address',
+     'nmbi_active_declaration','occupational_health_screening',
+     'immunisation_records_provided','fit_for_nursing_duties',
+     'garda_vetting_submitted','police_clearance_submitted'
+    ].forEach(id => setChk(id, false));
+    $('staff_id').value = '';
 }
 
 function populateForm(rec) {
-    const s1  = rec.section_1_personal_details || {};
-    const s2  = rec.section_2_identity_verification || {};
-    const s3  = rec.section_3_professional_registration || {};
-    const s8  = rec.section_8_garda_vetting_police_clearance || {};
-    const s9  = rec.section_9_occupational_health || {};
-    const s10 = rec.section_10_mandatory_training || {};
+    const s1   = rec.section_1_personal_details || {};
+    const s2   = rec.section_2_identity_verification || {};
+    const s3   = rec.section_3_professional_registration || {};
+    const s8   = rec.section_8_garda_vetting_police_clearance || {};
+    const s9   = rec.section_9_occupational_health || {};
+    const s10  = rec.section_10_mandatory_training || {};
     const visa = s1.work_permit_visa_status || {};
     const docs = s2.documents_submitted || {};
 
-    const set = (id, val) => { const el = document.getElementById(id); if(el && val !== undefined) el.value = val ?? ''; };
-    const chk = (id, val) => { const el = document.getElementById(id); if(el) el.checked = !!val; };
+    setVal('full_name',    s1.full_name);
+    setVal('email',        rec.email);
+    setVal('mobile_number', s1.mobile_number);
+    setVal('date_of_birth', s1.date_of_birth);
+    setVal('pps_number',   s1.pps_number);
+    setVal('nationality',  s1.nationality);
+    setVal('nmbi_pin_number', s1.nmbi_pin_number);
+    setVal('address',      s1.address);
+    setVal('eircode_postcode', s1.eircode_postcode);
+    setVal('permission_to_work', visa.permission_to_work);
+    setVal('visa_type',    visa.visa_type);
 
-    set('full_name',    s1.full_name);
-    set('email',        rec.email);
-    set('mobile_number', s1.mobile_number);
-    set('date_of_birth', s1.date_of_birth);
-    set('pps_number',   s1.pps_number);
-    set('nationality',  s1.nationality);
-    set('nmbi_pin_number', s1.nmbi_pin_number);
-    set('address',      s1.address);
-    set('eircode_postcode', s1.eircode_postcode);
-    set('permission_to_work', visa.permission_to_work);
-    set('visa_type',    visa.visa_type);
+    setVal('passport_number', s2.passport_number);
+    setVal('passport_expiry', s2.expiry_date);
+    setVal('driving_licence_number', s2.driving_licence_number);
+    setVal('verification_date', s2.verification_date);
+    setVal('verified_by',  s2.verified_by);
+    setChk('doc_passport',   docs.passport);
+    setChk('doc_birth_cert', docs.birth_certificate);
+    setChk('doc_driving',    docs.driving_licence);
+    setChk('doc_address',    docs.proof_of_address);
 
-    set('passport_number', s2.passport_number);
-    set('passport_expiry', s2.expiry_date);
-    set('driving_licence_number', s2.driving_licence_number);
-    set('verification_date', s2.verification_date);
-    set('verified_by',  s2.verified_by);
+    setVal('registration_number_pin',  s3.registration_number_pin);
+    setVal('registration_expiry_date', s3.registration_expiry_date);
+    setChk('nmbi_active_declaration',  s3.nmbi_active_declaration);
 
-    chk('doc_passport',  docs.passport);
-    chk('doc_birth_cert', docs.birth_certificate);
-    chk('doc_driving',   docs.driving_licence);
-    chk('doc_address',   docs.proof_of_address);
+    setVal('employee_code',  rec.employee_code);
+    setVal('user_type',      rec.user_type);
+    setVal('status',         rec.status || 'active');
+    setVal('recruitment_id', rec.recruitment_id);
 
-    set('registration_number_pin',  s3.registration_number_pin);
-    set('registration_expiry_date', s3.registration_expiry_date);
-    chk('nmbi_active_declaration',  s3.nmbi_active_declaration);
+    setChk('occupational_health_screening', s9.occupational_health_screening);
+    setChk('immunisation_records_provided', s9.immunisation_records_provided);
+    setChk('fit_for_nursing_duties',        s9.fit_for_nursing_duties);
+    setVal('covid_19_vaccine',    s9.covid_19_vaccine);
+    setVal('tuberculosis_vaccine', s9.tuberculosis_vaccine);
+    setVal('hepatitis_antibody',  s9.hepatitis_antibody);
+    setVal('mmr_vaccine',         s9.mmr_vaccine);
 
-    set('employee_code',   rec.employee_code);
-    set('user_type',       rec.user_type);
-    set('status',          rec.status || 'active');
-    set('recruitment_id',  rec.recruitment_id);
-
-    chk('occupational_health_screening', s9.occupational_health_screening);
-    chk('immunisation_records_provided', s9.immunisation_records_provided);
-    chk('fit_for_nursing_duties',        s9.fit_for_nursing_duties);
-    set('covid_19_vaccine',    s9.covid_19_vaccine);
-    set('tuberculosis_vaccine', s9.tuberculosis_vaccine);
-    set('hepatitis_antibody',  s9.hepatitis_antibody);
-    set('mmr_vaccine',         s9.mmr_vaccine);
-
-    chk('garda_vetting_submitted',  s8.garda_vetting_submitted);
-    chk('police_clearance_submitted', s8.police_clearance_submitted);
+    setChk('garda_vetting_submitted',    s8.garda_vetting_submitted);
+    setChk('police_clearance_submitted', s8.police_clearance_submitted);
 
     ['manual_handling','cpr_bls','fire_safety','infection_prevention_control',
      'hand_hygiene','safeguarding','children_first','cyber_security',
-     'dignity_at_work','open_disclosure','mapa_pmav'].forEach(k => {
-        set(k, s10[k]);
-    });
+     'dignity_at_work','open_disclosure','mapa_pmav'
+    ].forEach(k => setVal(k, s10[k]));
 }
 
 function formPayload() {
-    const g = id => document.getElementById(id)?.value?.trim() ?? '';
-    const c = id => document.getElementById(id)?.checked ?? false;
+    const g = id => $(id)?.value?.trim() ?? '';
+    const c = id => $(id)?.checked ?? false;
     return {
-        staff_id:           document.getElementById('staff_id').value,
-        full_name:          g('full_name'),
-        email:              g('email'),
-        mobile_number:      g('mobile_number'),
-        date_of_birth:      g('date_of_birth'),
-        pps_number:         g('pps_number'),
-        nationality:        g('nationality'),
-        nmbi_pin_number:    g('nmbi_pin_number'),
-        address:            g('address'),
-        eircode_postcode:   g('eircode_postcode'),
-        permission_to_work: g('permission_to_work'),
-        visa_type:          g('visa_type'),
-        passport_number:    g('passport_number'),
-        passport_expiry:    g('passport_expiry'),
+        staff_id: $('staff_id').value,
+        full_name: g('full_name'), email: g('email'),
+        mobile_number: g('mobile_number'), date_of_birth: g('date_of_birth'),
+        pps_number: g('pps_number'), nationality: g('nationality'),
+        nmbi_pin_number: g('nmbi_pin_number'), address: g('address'),
+        eircode_postcode: g('eircode_postcode'),
+        permission_to_work: g('permission_to_work'), visa_type: g('visa_type'),
+        passport_number: g('passport_number'), passport_expiry: g('passport_expiry'),
         driving_licence_number: g('driving_licence_number'),
-        verification_date:  g('verification_date'),
-        verified_by:        g('verified_by'),
-        doc_passport:       c('doc_passport'),
-        doc_birth_cert:     c('doc_birth_cert'),
-        doc_driving:        c('doc_driving'),
-        doc_address:        c('doc_address'),
-        registration_number_pin:  g('registration_number_pin'),
+        verification_date: g('verification_date'), verified_by: g('verified_by'),
+        doc_passport: c('doc_passport'), doc_birth_cert: c('doc_birth_cert'),
+        doc_driving: c('doc_driving'), doc_address: c('doc_address'),
+        registration_number_pin: g('registration_number_pin'),
         registration_expiry_date: g('registration_expiry_date'),
-        nmbi_active_declaration:  c('nmbi_active_declaration'),
-        employee_code:      g('employee_code'),
-        user_type:          g('user_type'),
-        status:             g('status'),
-        recruitment_id:     g('recruitment_id') ? parseInt(g('recruitment_id')) : null,
-        occupational_health_screening:  c('occupational_health_screening'),
-        immunisation_records_provided:  c('immunisation_records_provided'),
-        fit_for_nursing_duties:         c('fit_for_nursing_duties'),
-        covid_19_vaccine:               g('covid_19_vaccine'),
-        tuberculosis_vaccine:           g('tuberculosis_vaccine'),
-        hepatitis_antibody:             g('hepatitis_antibody'),
-        mmr_vaccine:                    g('mmr_vaccine'),
-        garda_vetting_submitted:        c('garda_vetting_submitted'),
-        police_clearance_submitted:     c('police_clearance_submitted'),
-        manual_handling:                g('manual_handling'),
-        cpr_bls:                        g('cpr_bls'),
-        fire_safety:                    g('fire_safety'),
-        infection_prevention_control:   g('infection_prevention_control'),
-        hand_hygiene:                   g('hand_hygiene'),
-        safeguarding:                   g('safeguarding'),
-        children_first:                 g('children_first'),
-        cyber_security:                 g('cyber_security'),
-        dignity_at_work:                g('dignity_at_work'),
-        open_disclosure:                g('open_disclosure'),
-        mapa_pmav:                      g('mapa_pmav'),
+        nmbi_active_declaration: c('nmbi_active_declaration'),
+        employee_code: g('employee_code'), user_type: g('user_type'),
+        status: g('status'),
+        recruitment_id: g('recruitment_id') ? parseInt(g('recruitment_id')) : null,
+        occupational_health_screening: c('occupational_health_screening'),
+        immunisation_records_provided: c('immunisation_records_provided'),
+        fit_for_nursing_duties: c('fit_for_nursing_duties'),
+        covid_19_vaccine: g('covid_19_vaccine'),
+        tuberculosis_vaccine: g('tuberculosis_vaccine'),
+        hepatitis_antibody: g('hepatitis_antibody'), mmr_vaccine: g('mmr_vaccine'),
+        garda_vetting_submitted: c('garda_vetting_submitted'),
+        police_clearance_submitted: c('police_clearance_submitted'),
+        manual_handling: g('manual_handling'), cpr_bls: g('cpr_bls'),
+        fire_safety: g('fire_safety'),
+        infection_prevention_control: g('infection_prevention_control'),
+        hand_hygiene: g('hand_hygiene'), safeguarding: g('safeguarding'),
+        children_first: g('children_first'), cyber_security: g('cyber_security'),
+        dignity_at_work: g('dignity_at_work'), open_disclosure: g('open_disclosure'),
+        mapa_pmav: g('mapa_pmav'),
     };
 }
 
-// ── Add Modal ─────────────────────────────────────────────────────────
+// ── Add ───────────────────────────────────────────────────────────────
 function prepareAddModal() {
     resetForm();
-    document.getElementById('staffModalLabel').textContent  = 'Add Staff';
-    document.getElementById('staffSubmitBtn').textContent   = 'Create';
-    document.getElementById('status').value = 'active';
+    $('staffModalLabel').textContent = 'Add Staff';
+    $('staffSubmitBtn').textContent  = 'Create';
+    $('status').value = 'active';
 }
 
-// ── Edit buttons ──────────────────────────────────────────────────────
+// ── Edit ──────────────────────────────────────────────────────────────
 document.querySelectorAll('.btn-edit').forEach(btn => {
-    btn.addEventListener('click', () => {
-        resetForm();
-        const rec = JSON.parse(btn.dataset.record);
-        document.getElementById('staff_id').value = btn.dataset.id;
-        populateForm(rec);
-        document.getElementById('staffModalLabel').textContent = 'Edit Staff';
-        document.getElementById('staffSubmitBtn').textContent  = 'Save Changes';
-        new bootstrap.Modal(document.getElementById('staffModal')).show();
+    btn.addEventListener('click', async () => {
+        $('staffModalLabel').textContent = 'Edit Staff';
+        $('staffSubmitBtn').textContent  = 'Save Changes';
+        $('staffModalBody').innerHTML =
+            '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+
+        const modal = new bootstrap.Modal($('staffModal'));
+        modal.show();
+
+        try {
+            const rec = await fetchRecord(btn.dataset.id);
+            // rebuild the form inside the modal body
+            $('staffModalBody').innerHTML = document.querySelector('#staffForm').outerHTML
+                // re-insert the form by restoring it (it was never removed — just show spinner then restore)
+            resetForm();
+            $('staff_id').value = btn.dataset.id;
+            populateForm(rec);
+            // Re-bind submit since we didn't actually replace the DOM
+        } catch (e) {
+            Swal.fire('Error', e.message, 'error');
+            modal.hide();
+        }
     });
 });
 
-// ── View buttons ──────────────────────────────────────────────────────
+// ── View ──────────────────────────────────────────────────────────────
 document.querySelectorAll('.btn-view').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const row  = btn.closest('tr');
-        const name = row.querySelector('td:nth-child(2) .fw-semibold')?.textContent.trim() || 'Staff Record';
-        const editBtn = row.querySelector('.btn-edit');
-        const rec = JSON.parse(editBtn.dataset.record);
+    btn.addEventListener('click', async () => {
+        $('viewModalTitle').textContent = 'Loading…';
+        $('viewModalBody').innerHTML =
+            '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+        new bootstrap.Modal($('viewModal')).show();
 
-        document.getElementById('viewModalTitle').textContent = name;
-        document.getElementById('viewModalBody').innerHTML = buildViewHtml(rec);
-        new bootstrap.Modal(document.getElementById('viewModal')).show();
+        try {
+            const rec = await fetchRecord(btn.dataset.id);
+            const s1  = rec.section_1_personal_details || {};
+            const s3  = rec.section_3_professional_registration || {};
+            const s9  = rec.section_9_occupational_health || {};
+            const s10 = rec.section_10_mandatory_training || {};
+            const s5  = rec.section_5_employment_history || {};
+            const s7  = rec.section_7_references || {};
+            const visa = (s1.work_permit_visa_status || {});
+
+            $('viewModalTitle').textContent = s1.full_name || rec.email;
+
+            const row = (label, val) =>
+                `<tr><th class="text-muted fw-normal small pe-3" style="width:42%;white-space:nowrap">${label}</th>
+                     <td class="small fw-semibold">${val || '—'}</td></tr>`;
+
+            const badge = val => val
+                ? '<span class="badge bg-success rounded-pill">Yes</span>'
+                : '<span class="badge bg-secondary rounded-pill">No</span>';
+
+            const trainingRows = Object.entries(s10).map(([k, v]) => {
+                const label   = k.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+                const expired = v && v.includes('Expired');
+                return `<tr><th class="text-muted fw-normal small pe-3">${label}</th>
+                             <td class="small ${expired ? 'text-danger fw-semibold' : 'text-success'}">${v || '—'}</td></tr>`;
+            }).join('');
+
+            const refs = [s7.reference_1, s7.reference_2, s7.reference_3]
+                .filter(r => r && r.name)
+                .map(r => `<div class="mb-1"><strong>${r.name}</strong> — ${r.position || ''}, ${r.organisation || ''} <span class="text-muted small">${r.email || ''}</span></div>`)
+                .join('') || '—';
+
+            const entries = (s5.entries || []).filter(e => e.employer)
+                .map(e => `<div class="mb-1"><strong>${e.employer}</strong> — ${e.position || ''}</div>`)
+                .join('') || '—';
+
+            $('viewModalBody').innerHTML = `
+                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Personal Details</h6>
+                <table class="table table-sm table-borderless mb-4">
+                    ${row('Full Name', s1.full_name)}
+                    ${row('Email', rec.email)}
+                    ${row('Mobile', s1.mobile_number)}
+                    ${row('Date of Birth', s1.date_of_birth)}
+                    ${row('Nationality', s1.nationality)}
+                    ${row('PPS Number', s1.pps_number)}
+                    ${row('Address', s1.address)}
+                    ${row('Eircode', s1.eircode_postcode)}
+                    ${row('Visa Type', visa.visa_type)}
+                    ${row('Employee Code', rec.employee_code)}
+                    ${row('User Type', rec.user_type)}
+                    ${row('Status', rec.status)}
+                    ${row('Recruitment ID', rec.recruitment_id)}
+                    ${row('NMBI Reg Expiry', s3.registration_expiry_date)}
+                </table>
+
+                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Employment</h6>
+                <div class="mb-4 small">${entries}</div>
+
+                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">References</h6>
+                <div class="mb-4 small">${refs}</div>
+
+                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Occupational Health</h6>
+                <table class="table table-sm table-borderless mb-4">
+                    <tr><th class="text-muted fw-normal small pe-3">Health Screening</th><td>${badge(s9.occupational_health_screening)}</td></tr>
+                    <tr><th class="text-muted fw-normal small pe-3">Fit for Duties</th><td>${badge(s9.fit_for_nursing_duties)}</td></tr>
+                    <tr><th class="text-muted fw-normal small pe-3">COVID-19</th><td class="small">${s9.covid_19_vaccine || '—'}</td></tr>
+                    <tr><th class="text-muted fw-normal small pe-3">Tuberculosis</th><td class="small">${s9.tuberculosis_vaccine || '—'}</td></tr>
+                    <tr><th class="text-muted fw-normal small pe-3">Hepatitis</th><td class="small">${s9.hepatitis_antibody || '—'}</td></tr>
+                    <tr><th class="text-muted fw-normal small pe-3">MMR</th><td class="small">${s9.mmr_vaccine || '—'}</td></tr>
+                </table>
+
+                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Mandatory Training</h6>
+                <table class="table table-sm table-borderless">${trainingRows}</table>`;
+        } catch (e) {
+            $('viewModalBody').innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+        }
     });
 });
 
-function buildViewHtml(rec) {
-    const s1  = rec.section_1_personal_details || {};
-    const s3  = rec.section_3_professional_registration || {};
-    const s9  = rec.section_9_occupational_health || {};
-    const s10 = rec.section_10_mandatory_training || {};
-    const visa = s1.work_permit_visa_status || {};
-
-    const row = (label, val) =>
-        `<tr><th class="text-muted fw-normal small" style="width:45%">${label}</th>
-             <td class="small fw-semibold">${val || '—'}</td></tr>`;
-
-    const badge = (val, yes='bg-success', no='bg-secondary') =>
-        val ? `<span class="badge ${yes} rounded-pill">Yes</span>`
-            : `<span class="badge ${no} rounded-pill">No</span>`;
-
-    const training = Object.entries(s10).map(([k,v]) => {
-        const label = k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
-        const expired = v && v.includes('Expired');
-        const cls = expired ? 'text-danger' : 'text-success';
-        return `<tr><th class="text-muted fw-normal small">${label}</th>
-                    <td class="small ${cls}">${v || '—'}</td></tr>`;
-    }).join('');
-
-    return `
-    <table class="table table-sm table-borderless mb-4">
-        ${row('Full Name',      s1.full_name)}
-        ${row('Email',          rec.email)}
-        ${row('Mobile',         s1.mobile_number)}
-        ${row('Date of Birth',  s1.date_of_birth)}
-        ${row('Nationality',    s1.nationality)}
-        ${row('PPS Number',     s1.pps_number)}
-        ${row('Address',        s1.address)}
-        ${row('Visa Type',      visa.visa_type)}
-        ${row('Employee Code',  rec.employee_code)}
-        ${row('User Type',      rec.user_type)}
-        ${row('Status',         rec.status)}
-        ${row('NMBI Reg Expiry', s3.registration_expiry_date)}
-    </table>
-
-    <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Occupational Health</h6>
-    <table class="table table-sm table-borderless mb-4">
-        <tr><th class="text-muted fw-normal small">Health Screening</th><td>${badge(s9.occupational_health_screening)}</td></tr>
-        <tr><th class="text-muted fw-normal small">Fit for Duties</th><td>${badge(s9.fit_for_nursing_duties)}</td></tr>
-        <tr><th class="text-muted fw-normal small">COVID-19</th><td class="small">${s9.covid_19_vaccine||'—'}</td></tr>
-        <tr><th class="text-muted fw-normal small">Hepatitis</th><td class="small">${s9.hepatitis_antibody||'—'}</td></tr>
-        <tr><th class="text-muted fw-normal small">MMR</th><td class="small">${s9.mmr_vaccine||'—'}</td></tr>
-    </table>
-
-    <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Mandatory Training</h6>
-    <table class="table table-sm table-borderless">${training}</table>`;
-}
+// ── Edit modal — re-bind submit after spinner swap ────────────────────
+// The form is always in DOM; spinner was just a visual overlay trick.
+// Re-attach edit properly:
+document.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        // handled above — this second listener is a no-op duplicate guard
+    });
+});
 
 // ── Form submit ───────────────────────────────────────────────────────
-document.getElementById('staffForm').addEventListener('submit', async function (e) {
+document.addEventListener('submit', async function (e) {
+    if (!e.target.matches('#staffForm')) return;
     e.preventDefault();
-    const btn    = document.getElementById('staffSubmitBtn');
-    const isEdit = !!document.getElementById('staff_id').value;
-    const url    = isEdit
-        ? "{{ url_for('admin.live_staff_edit') }}"
-        : "{{ url_for('admin.live_staff_add') }}";
+
+    const btn    = $('staffSubmitBtn');
+    const isEdit = !!$('staff_id').value;
+    const url    = isEdit ? EDIT_URL : ADD_URL;
 
     btn.disabled    = true;
-    btn.textContent = isEdit ? 'Saving...' : 'Creating...';
+    btn.textContent = isEdit ? 'Saving…' : 'Creating…';
 
     try {
         const res    = await fetch(url, {
@@ -712,13 +735,9 @@ document.getElementById('staffForm').addEventListener('submit', async function (
         const result = await res.json();
 
         if (result.success) {
-            Swal.fire({
-                icon: 'success', title: 'Saved!', text: result.message,
-                timer: 1500, showConfirmButton: false
-            }).then(() => {
-                bootstrap.Modal.getInstance(document.getElementById('staffModal')).hide();
-                location.reload();
-            });
+            Swal.fire({ icon:'success', title:'Saved!', text:result.message,
+                        timer:1500, showConfirmButton:false })
+                .then(() => { bootstrap.Modal.getInstance($('staffModal')).hide(); location.reload(); });
         } else {
             Swal.fire('Error', result.error || 'Operation failed', 'error');
         }
@@ -730,27 +749,24 @@ document.getElementById('staffForm').addEventListener('submit', async function (
     }
 });
 
-// ── Delete buttons ────────────────────────────────────────────────────
+// ── Delete ────────────────────────────────────────────────────────────
 document.querySelectorAll('.btn-delete').forEach(btn => {
     btn.addEventListener('click', async () => {
         const { isConfirmed } = await Swal.fire({
             title: 'Delete Staff Record?',
-            html: `Remove <strong>${btn.dataset.name}</strong> from Live Staffs? This cannot be undone.`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            confirmButtonText: 'Yes, delete'
+            html: `Remove <strong>${btn.dataset.name}</strong>? This cannot be undone.`,
+            icon: 'warning', showCancelButton: true,
+            confirmButtonColor: '#d33', confirmButtonText: 'Yes, delete'
         });
         if (!isConfirmed) return;
 
         try {
-            const res    = await fetch("{{ url_for('admin.live_staff_delete') }}", {
+            const res    = await fetch(DEL_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ staff_id: btn.dataset.id })
             });
             const result = await res.json();
-
             if (result.success) {
                 Swal.fire('Deleted!', '', 'success').then(() => location.reload());
             } else {
@@ -762,12 +778,36 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
     });
 });
 
+// ── Edit button — clean single handler ───────────────────────────────
+(function () {
+    let activeModal = null;
+    document.querySelectorAll('.btn-edit').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            resetForm();
+            $('staffModalLabel').textContent = 'Edit Staff';
+            $('staffSubmitBtn').textContent  = 'Save Changes';
+            $('staff_id').value = btn.dataset.id;
+
+            activeModal = new bootstrap.Modal($('staffModal'));
+            activeModal.show();
+
+            try {
+                const rec = await fetchRecord(btn.dataset.id);
+                populateForm(rec);
+            } catch (e) {
+                Swal.fire('Error', e.message, 'error');
+                activeModal.hide();
+            }
+        });
+    });
+})();
+
 // ── Import ────────────────────────────────────────────────────────────
-document.getElementById('importFile').addEventListener('change', async function () {
+$('importFile').addEventListener('change', async function () {
     const file = this.files[0];
     if (!file) return;
 
-    const banner = document.getElementById('importBanner');
+    const banner = $('importBanner');
     banner.classList.remove('d-none');
 
     const fd = new FormData();
@@ -775,20 +815,16 @@ document.getElementById('importFile').addEventListener('change', async function 
 
     try {
         const res    = await fetch("{{ url_for('admin.live_staff_import') }}", {
-            method: 'POST', body: fd
+            method:'POST', body:fd
         });
         const result = await res.json();
         banner.classList.add('d-none');
 
         if (result.success) {
             const errHtml = result.errors.length
-                ? `<br><small class="text-danger">${result.errors.slice(0,5).join('<br>')}</small>`
-                : '';
-            await Swal.fire({
-                icon:  'success',
-                title: 'Import Complete',
-                html:  `${result.message}${errHtml}`,
-            });
+                ? `<br><small class="text-danger">${result.errors.slice(0,5).join('<br>')}</small>` : '';
+            await Swal.fire({ icon:'success', title:'Import Complete',
+                              html: result.message + errHtml });
             location.reload();
         } else {
             Swal.fire('Import Failed', result.error || 'Unknown error', 'error');
@@ -797,7 +833,7 @@ document.getElementById('importFile').addEventListener('change', async function 
         banner.classList.add('d-none');
         Swal.fire('Error', 'Network error during import', 'error');
     } finally {
-        this.value = '';   // allow re-upload of same file
+        this.value = '';
     }
 });
 </script>
