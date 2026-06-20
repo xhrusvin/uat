@@ -375,10 +375,6 @@ def _build_cv_pdf(doc):
     # ── HEADER BANNER ─────────────────────────────────────────────────
     title_rows = [
         [Paragraph('CURRICULUM VITAE', S['cv_title'])],
-        [Paragraph(
-            f'{user_type}  •  {emp_code}' if emp_code else (user_type or 'Xpress Health'),
-            S['cv_sub']
-        )],
     ]
     title_w = PAGE_W - (55*mm if logo_path else 0)
     title_tbl = Table(title_rows, colWidths=[title_w])
