@@ -673,14 +673,8 @@ def _build_cv_pdf(doc):
     if docs_sub.get('proof_of_address'):  docs_list.append('Proof of Address')
 
     for lbl, val in [
-        ('Driving Licence:',            'No'),
-        ('Own Transport:',              'No'),
-        ('Documents Submitted:',        ', '.join(docs_list) if docs_list else '—'),
-        ('Passport Expiry:',            _v(s2.get('expiry_date'))),
-        ('Verification Date:',          _v(s2.get('verification_date'))),
-        ('Garda Vetting Submitted:',    'Yes' if s8.get('garda_vetting_submitted')    else 'No'),
-        ('Police Clearance Submitted:', 'Yes' if s8.get('police_clearance_submitted') else 'No'),
-        ('PPS Number:',                 _v(s1.get('pps_number'))),
+        ('Driving Licence:', 'No'),
+        ('Own Transport:',   'No'),
     ]:
         story += [lv(lbl, val, lw=70*mm), sp(1)]
     story.append(sp(4))
