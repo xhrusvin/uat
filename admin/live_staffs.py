@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import csv
 import io
+import re
 
 from database import db
 from . import admin_bp
@@ -16,10 +17,22 @@ def _staffs_col():
     return db.live_staffs
 
 
+def _serialize(doc):
+    """Recursively convert ObjectId / datetime to JSON-safe types."""
+    if isinstance(doc, list):
+        return [_serialize(i) for i in doc]
+    if isinstance(doc, dict):
+        return {k: _serialize(v) for k, v in doc.items()}
+    if isinstance(doc, ObjectId):
+        return str(doc)
+    if isinstance(doc, datetime):
+        return doc.isoformat()
+    return doc
+
+
 def _get_all(search, page, per_page):
     query = {}
     if search:
-        import re
         pattern = re.compile(re.escape(search), re.IGNORECASE)
         query = {"$or": [
             {"section_1_personal_details.full_name": pattern},
@@ -36,20 +49,64 @@ def _get_all(search, page, per_page):
            .skip((page - 1) * per_page)
            .limit(per_page)
     )
-    return items, total
+    # Serialize BEFORE passing to template so tojson never sees ObjectId
+    return [_serialize(doc) for doc in items], total
 
 
-def _serialize(doc):
-    """Recursively convert ObjectId / datetime to JSON-safe types."""
-    if isinstance(doc, list):
-        return [_serialize(i) for i in doc]
-    if isinstance(doc, dict):
-        return {k: _serialize(v) for k, v in doc.items()}
-    if isinstance(doc, ObjectId):
-        return str(doc)
-    if isinstance(doc, datetime):
-        return doc.isoformat()
-    return doc
+def _parse_json_content(content):
+    """
+    Handle all JSON variants that can come from the export pipeline:
+      1. Standard JSON array  [ {...}, ... ]
+      2. Standard JSON object { "records": [ ... ] }
+      3. Bare fragment        "records": [ ... ]   ← missing outer braces
+      4. JSONL                {...}\n{...}\n
+      5. Concatenated objects {...}{...}
+    """
+    content = content.strip()
+
+    # 1 & 2 — standard JSON
+    try:
+        raw = json.loads(content)
+        return raw if isinstance(raw, list) else raw.get('records', [raw])
+    except json.JSONDecodeError:
+        pass
+
+    # 3 — bare fragment (missing outer braces)
+    try:
+        raw = json.loads('{' + content + '}')
+        if 'records' in raw:
+            return raw['records']
+    except json.JSONDecodeError:
+        pass
+
+    # 4 — JSONL
+    try:
+        lines = [l for l in content.splitlines() if l.strip()]
+        records = [json.loads(l) for l in lines]
+        if records:
+            return records
+    except json.JSONDecodeError:
+        pass
+
+    # 5 — concatenated objects
+    try:
+        records = []
+        decoder = json.JSONDecoder()
+        idx = 0
+        while idx < len(content):
+            while idx < len(content) and content[idx] in ' \t\r\n,':
+                idx += 1
+            if idx >= len(content):
+                break
+            obj, end = decoder.raw_decode(content, idx)
+            records.append(obj)
+            idx = end
+        if records:
+            return records
+    except json.JSONDecodeError:
+        pass
+
+    raise ValueError("Could not parse JSON — unrecognised format.")
 
 
 # ── Routes ───────────────────────────────────────────────────────────
@@ -98,8 +155,8 @@ def live_staff_add():
 @admin_bp.route('/live-staffs/edit', methods=['POST'])
 @admin_required
 def live_staff_edit():
-    data      = request.get_json()
-    staff_id  = (data.get('staff_id') or '').strip()
+    data     = request.get_json()
+    staff_id = (data.get('staff_id') or '').strip()
 
     if not staff_id:
         return jsonify({"success": False, "error": "Missing staff_id"}), 400
@@ -108,7 +165,6 @@ def live_staff_edit():
     if not email:
         return jsonify({"success": False, "error": "Email is required"}), 400
 
-    # uniqueness check excluding self
     if _staffs_col().count_documents({"email": email, "_id": {"$ne": ObjectId(staff_id)}}) > 0:
         return jsonify({"success": False, "error": f'Email "{email}" already exists'}), 400
 
@@ -145,7 +201,7 @@ def live_staff_delete():
 @admin_bp.route('/live-staffs/import', methods=['POST'])
 @admin_required
 def live_staff_import():
-    """Accept a JSON file upload; upsert on email."""
+    """Accept a JSON file upload; upsert on email. Handles all JSON variants."""
     if 'file' not in request.files:
         return jsonify({"success": False, "error": "No file provided"}), 400
 
@@ -154,10 +210,10 @@ def live_staff_import():
         return jsonify({"success": False, "error": "Only .json files are accepted"}), 400
 
     try:
-        raw     = json.loads(file.read().decode('utf-8'))
-        records = raw if isinstance(raw, list) else raw.get('records', [raw])
+        content = file.read().decode('utf-8')
+        records = _parse_json_content(content)
     except Exception as e:
-        return jsonify({"success": False, "error": f"Invalid JSON: {e}"}), 400
+        return jsonify({"success": False, "error": f"Could not parse file: {e}"}), 400
 
     inserted = updated = skipped = 0
     errors   = []
@@ -196,7 +252,7 @@ def live_staff_import():
 @admin_bp.route('/live-staffs/export')
 @admin_required
 def live_staff_export():
-    fmt = request.args.get('format', 'json').lower()
+    fmt   = request.args.get('format', 'json').lower()
     items = list(_staffs_col().find({}))
 
     if fmt == 'csv':
@@ -215,10 +271,10 @@ def _export_json(items):
 
 
 def _export_csv(items):
-    flat_rows  = [_flatten(doc) for doc in items]
-    all_keys   = _ordered_keys(flat_rows)
+    flat_rows = [_flatten(_serialize(doc)) for doc in items]
+    all_keys  = _ordered_keys(flat_rows)
 
-    buf = io.StringIO()
+    buf    = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=all_keys, extrasaction='ignore')
     writer.writeheader()
     for row in flat_rows:
@@ -236,22 +292,22 @@ def _export_csv(items):
 def _build_doc(data):
     """Build a MongoDB document from flat form POST data."""
     return {
-        "recruitment_id":   data.get('recruitment_id'),
-        "email":            (data.get('email') or '').strip().lower(),
-        "employee_code":    (data.get('employee_code') or '').strip(),
-        "user_type":        (data.get('user_type') or '').strip(),
-        "status":           (data.get('status') or 'active').strip(),
+        "recruitment_id": data.get('recruitment_id'),
+        "email":          (data.get('email') or '').strip().lower(),
+        "employee_code":  (data.get('employee_code') or '').strip(),
+        "user_type":      (data.get('user_type') or '').strip(),
+        "status":         (data.get('status') or 'active').strip(),
 
         "section_1_personal_details": {
-            "full_name":       data.get('full_name', ''),
-            "previous_names":  data.get('previous_names', ''),
-            "date_of_birth":   data.get('date_of_birth', ''),
-            "address":         data.get('address', ''),
+            "full_name":      data.get('full_name', ''),
+            "previous_names": data.get('previous_names', ''),
+            "date_of_birth":  data.get('date_of_birth', ''),
+            "address":        data.get('address', ''),
             "eircode_postcode": data.get('eircode_postcode', ''),
-            "mobile_number":   data.get('mobile_number', ''),
-            "email_address":   (data.get('email') or '').strip().lower(),
-            "pps_number":      data.get('pps_number', ''),
-            "nationality":     data.get('nationality', ''),
+            "mobile_number":  data.get('mobile_number', ''),
+            "email_address":  (data.get('email') or '').strip().lower(),
+            "pps_number":     data.get('pps_number', ''),
+            "nationality":    data.get('nationality', ''),
             "work_permit_visa_status": {
                 "permission_to_work": data.get('permission_to_work', ''),
                 "visa_type":          data.get('visa_type', ''),
@@ -264,10 +320,10 @@ def _build_doc(data):
             "expiry_date":            data.get('passport_expiry', ''),
             "driving_licence_number": data.get('driving_licence_number', ''),
             "documents_submitted": {
-                "passport":         bool(data.get('doc_passport')),
+                "passport":          bool(data.get('doc_passport')),
                 "birth_certificate": bool(data.get('doc_birth_cert')),
-                "driving_licence":  bool(data.get('doc_driving')),
-                "proof_of_address": bool(data.get('doc_address')),
+                "driving_licence":   bool(data.get('doc_driving')),
+                "proof_of_address":  bool(data.get('doc_address')),
             },
             "verified_by":       data.get('verified_by', ''),
             "verification_date": data.get('verification_date', ''),
@@ -281,18 +337,18 @@ def _build_doc(data):
         },
 
         "section_8_garda_vetting_police_clearance": {
-            "garda_vetting_submitted":  bool(data.get('garda_vetting_submitted')),
+            "garda_vetting_submitted":    bool(data.get('garda_vetting_submitted')),
             "police_clearance_submitted": bool(data.get('police_clearance_submitted')),
         },
 
         "section_9_occupational_health": {
-            "occupational_health_screening":  bool(data.get('occupational_health_screening')),
-            "immunisation_records_provided":  bool(data.get('immunisation_records_provided')),
-            "fit_for_nursing_duties":         bool(data.get('fit_for_nursing_duties')),
-            "covid_19_vaccine":               data.get('covid_19_vaccine', ''),
-            "tuberculosis_vaccine":           data.get('tuberculosis_vaccine', ''),
-            "hepatitis_antibody":             data.get('hepatitis_antibody', ''),
-            "mmr_vaccine":                    data.get('mmr_vaccine', ''),
+            "occupational_health_screening": bool(data.get('occupational_health_screening')),
+            "immunisation_records_provided": bool(data.get('immunisation_records_provided')),
+            "fit_for_nursing_duties":        bool(data.get('fit_for_nursing_duties')),
+            "covid_19_vaccine":              data.get('covid_19_vaccine', ''),
+            "tuberculosis_vaccine":          data.get('tuberculosis_vaccine', ''),
+            "hepatitis_antibody":            data.get('hepatitis_antibody', ''),
+            "mmr_vaccine":                   data.get('mmr_vaccine', ''),
         },
 
         "section_10_mandatory_training": {
@@ -312,26 +368,26 @@ def _build_doc(data):
 
 
 def _map_import_record(rec):
-    """Map a full JSON record (same schema as the sample) into a clean doc."""
+    """Map a full JSON record into a clean MongoDB doc."""
     s1  = rec.get('section_1_personal_details', {})
     s2  = rec.get('section_2_identity_verification', {})
     s3  = rec.get('section_3_professional_registration', {})
+    s4  = rec.get('section_4_qualifications', {})
+    s5  = rec.get('section_5_employment_history', {})
+    s6  = rec.get('section_6_employment_gaps', [])
+    s7  = rec.get('section_7_references', {})
     s8  = rec.get('section_8_garda_vetting_police_clearance', {})
     s9  = rec.get('section_9_occupational_health', {})
     s10 = rec.get('section_10_mandatory_training', {})
     s11 = rec.get('section_11_criminal_convictions_declaration', {})
     s12 = rec.get('section_12_declaration', {})
-    s4  = rec.get('section_4_qualifications', {})
-    s5  = rec.get('section_5_employment_history', {})
-    s6  = rec.get('section_6_employment_gaps', [])
-    s7  = rec.get('section_7_references', {})
 
     return {
-        "recruitment_id":  rec.get('recruitment_id'),
-        "email":           (rec.get('email') or '').strip().lower(),
-        "employee_code":   rec.get('employee_code', ''),
-        "user_type":       rec.get('user_type', ''),
-        "status":          rec.get('status', 'found'),
+        "recruitment_id": rec.get('recruitment_id'),
+        "email":          (rec.get('email') or '').strip().lower(),
+        "employee_code":  rec.get('employee_code', ''),
+        "user_type":      rec.get('user_type', ''),
+        "status":         rec.get('status', 'found'),
 
         "section_1_personal_details":                  s1,
         "section_2_identity_verification":             s2,
@@ -355,17 +411,13 @@ def _flatten(doc, prefix='', result=None):
         result = {}
     for k, v in doc.items():
         key = f"{prefix}{k}" if prefix else k
-        if key == '_id':
-            result['_id'] = str(v)
-        elif isinstance(v, dict):
+        if isinstance(v, dict):
             _flatten(v, key + '.', result)
         elif isinstance(v, list):
             result[key] = '; '.join(
-                json.dumps(_serialize(i)) if isinstance(i, dict) else str(i)
+                json.dumps(i) if isinstance(i, dict) else str(i)
                 for i in v
             )
-        elif isinstance(v, (ObjectId, datetime)):
-            result[key] = str(v)
         else:
             result[key] = v if v is not None else ''
     return result
