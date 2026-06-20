@@ -679,89 +679,14 @@ def _build_cv_pdf(doc):
         story += [lv(lbl, val, lw=70*mm), sp(1)]
     story.append(sp(4))
 
-    # Professional References
-    story += [sec('PROFESSIONAL REFERENCES'), sp(3)]
-    ref_items = []
-    for rk in ['reference_1', 'reference_2', 'reference_3']:
-        r = s7.get(rk) or {}
-        if r.get('name'):
-            ref_items.append(r)
 
-    if ref_items:
-        for idx, r in enumerate(ref_items):
-            name  = _v(r.get('name'))
-            pos   = _v(r.get('position'))
-            org   = _v(r.get('organisation'))
-            tel   = _v(r.get('telephone'))
-            email = _v(r.get('email'))
-            dates = _v(r.get('dates_worked_together'))
-
-            # Build a natural paragraph sentence
-            ref_parts = []
-            if name:   ref_parts.append(f"<b>{name}</b>")
-            if pos:    ref_parts.append(pos)
-            if org:    ref_parts.append(f"at {org}")
-            ref_sentence = ', '.join(ref_parts[:1]) + (f", {ref_parts[1]}" if len(ref_parts) > 1 else '') + (f", {ref_parts[2]}" if len(ref_parts) > 2 else '') + '.'
-
-            contact_parts = []
-            if tel:   contact_parts.append(f"Tel: {tel}")
-            if email: contact_parts.append(f"Email: {email}")
-            if dates: contact_parts.append(f"Dates worked together: {dates}")
-            contact_line = '   |   '.join(contact_parts)
-
-            ref_box_rows = [[Paragraph(ref_sentence, S['val'])]]
-            if contact_line:
-                ref_box_rows.append([Paragraph(contact_line, S['italic'])])
-
-            ref_tbl = Table(ref_box_rows, colWidths=[PAGE_W])
-            ref_tbl.setStyle(TableStyle([
-                ('BACKGROUND',    (0,0), (-1,-1), LIGHT_BG),
-                ('BOX',           (0,0), (-1,-1), 0.4, MID_GRAY),
-                ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
-                ('TOPPADDING',    (0,0), (-1,-1), 7),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 7),
-                ('LEFTPADDING',   (0,0), (-1,-1), 10),
-                ('RIGHTPADDING',  (0,0), (-1,-1), 8),
-            ]))
-            story += [ref_tbl, sp(2)]
-    else:
-        story.append(duties_box('No references provided.'))
-
-    story.append(sp(4))
-
-    # Signature / Date
-    sig_t = Table(
-        [[Paragraph('Signature: _______________________________', S['val']),
+    # Date only
+    date_t = Table(
+        [[Paragraph('', S['val']),
           Paragraph(f'Date: {_v(s12.get("date")) or "_____________________"}', S['val'])]],
         colWidths=[PAGE_W * 0.55, PAGE_W * 0.45]
     )
-    story += [sig_t, sp(6)]
-
-    # ── Footer ─────────────────────────────────────────────────────────
-    story.append(HRFlowable(width=PAGE_W, color=XH_GREEN, thickness=1.2))
-    story.append(sp(2))
-    if logo_path:
-        logo_sm = RLImage(logo_path, width=28*mm, height=28*mm * 94/316)
-        ft = Table(
-            [[logo_sm,
-              Paragraph(
-                  f'Xpress Health  •  {full_name}  •  {emp_code}',
-                  S['footer']
-              )]],
-            colWidths=[32*mm, PAGE_W - 32*mm]
-        )
-        ft.setStyle(TableStyle([
-            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
-            ('LEFTPADDING',   (0,0), (-1,-1), 0),
-            ('TOPPADDING',    (0,0), (-1,-1), 2),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-        ]))
-        story.append(ft)
-    else:
-        story.append(Paragraph(
-            f'Xpress Health  •  {full_name}  •  {emp_code}',
-            S['footer']
-        ))
+    story += [date_t, sp(6)]
 
     # ── Render ─────────────────────────────────────────────────────────
     pdf_doc = SimpleDocTemplate(
