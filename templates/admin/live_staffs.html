@@ -131,9 +131,15 @@
                                 </button>
                                 <a class="btn btn-outline-success btn-sm rounded-pill px-3 me-1"
                                    href="{{ url_for('admin.live_staff_cv', staff_id=s._id) }}"
-                                   title="Download CV as PDF" target="_blank">
+                                   title="Download Standard CV as PDF" target="_blank">
                                     <i class="bi bi-file-earmark-person"></i>
                                 </a>
+                                <button class="btn btn-warning btn-sm rounded-pill px-3 me-1 btn-ai-cv"
+                                        data-id="{{ s._id }}"
+                                        data-name="{{ p.full_name | default('Staff') | e }}"
+                                        title="Generate AI-Personalised CV">
+                                    <i class="bi bi-stars"></i>
+                                </button>
                                 <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('this record') | e }}">
@@ -445,6 +451,77 @@
             </div>
             <div class="modal-body p-4" id="viewModalBody">
                 <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- ── AI CV Modal ────────────────────────────────────────────────── -->
+<div class="modal fade" id="aiCvModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header text-white rounded-top-4"
+                 style="background: linear-gradient(135deg,#1B3A6B 0%,#2E9E44 100%);">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-stars me-2"></i>AI CV Generator
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4" id="aiCvModalBody">
+                <!-- state: idle -->
+                <div id="aiCvIdle">
+                    <p class="text-muted mb-1">
+                        Generate a fully personalised, AI-written CV for
+                        <strong id="aiCvStaffName"></strong> using Gemini AI.
+                    </p>
+                    <p class="text-muted small mb-4">
+                        The CV will be tailored to their experience, qualifications, and role.
+                        Once created it is saved and can be re-downloaded any time.
+                    </p>
+                    <div id="aiCvSavedInfo" class="alert alert-success d-none mb-3 py-2 small">
+                        <i class="bi bi-check-circle me-1"></i>
+                        A saved AI CV exists from <strong id="aiCvSavedDate"></strong>.
+                        You can regenerate or download the saved version.
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button class="btn btn-warning fw-bold px-4" id="aiCvGenerateBtn">
+                            <i class="bi bi-stars me-1"></i> Generate with AI
+                        </button>
+                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiCvDownloadSavedBtn">
+                            <i class="bi bi-download me-1"></i> Download Saved CV
+                        </button>
+                    </div>
+                </div>
+
+                <!-- state: generating -->
+                <div id="aiCvGenerating" class="text-center py-4 d-none">
+                    <div class="spinner-border text-warning mb-3" style="width:3rem;height:3rem;"></div>
+                    <p class="fw-semibold text-muted mb-1">Gemini AI is writing the CV…</p>
+                    <p class="text-muted small">This takes about 15–30 seconds.</p>
+                </div>
+
+                <!-- state: done -->
+                <div id="aiCvDone" class="d-none">
+                    <div class="alert alert-success rounded-3 mb-3">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        AI CV generated and saved successfully!
+                    </div>
+                    <p class="text-muted small mb-3">
+                        The CV has been saved. You can download it now or re-access it any time
+                        using the <i class="bi bi-stars text-warning"></i> button.
+                    </p>
+                    <a href="#" class="btn btn-success fw-bold px-4" id="aiCvDownloadNewBtn" target="_blank">
+                        <i class="bi bi-download me-1"></i> Download AI CV
+                    </a>
+                </div>
+
+                <!-- state: error -->
+                <div id="aiCvError" class="d-none">
+                    <div class="alert alert-danger rounded-3 mb-3" id="aiCvErrorMsg"></div>
+                    <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
             </div>
         </div>
     </div>
@@ -841,5 +918,75 @@ $('importFile').addEventListener('change', async function () {
         this.value = '';
     }
 });
+
+// ── AI CV buttons ─────────────────────────────────────────────────────
+const AI_GEN_URL    = "{{ url_for('admin.live_staff_ai_cv_generate') }}";
+const AI_SAVED_URL  = "{{ url_for('admin.live_staff_ai_cv_saved', staff_id='PLACEHOLDER') }}".replace('PLACEHOLDER', '');
+const AI_DL_URL     = "{{ url_for('admin.live_staff_ai_cv_download', ai_cv_id='PLACEHOLDER') }}".replace('PLACEHOLDER', '');
+
+let currentAiStaffId = null;
+
+function setAiState(state) {
+    ['Idle','Generating','Done','Error'].forEach(s =>
+        document.getElementById('aiCv' + s).classList.add('d-none')
+    );
+    document.getElementById('aiCv' + state).classList.remove('d-none');
+}
+
+document.querySelectorAll('.btn-ai-cv').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentAiStaffId = btn.dataset.id;
+        const name = btn.dataset.name;
+
+        document.getElementById('aiCvStaffName').textContent = name;
+        document.getElementById('aiCvSavedInfo').classList.add('d-none');
+        document.getElementById('aiCvDownloadSavedBtn').classList.add('d-none');
+        document.getElementById('aiCvDownloadNewBtn').href = '#';
+        setAiState('Idle');
+
+        new bootstrap.Modal(document.getElementById('aiCvModal')).show();
+
+        // Check for existing saved CV
+        try {
+            const res  = await fetch(AI_SAVED_URL + currentAiStaffId);
+            const data = await res.json();
+            if (data.success && data.found) {
+                document.getElementById('aiCvSavedInfo').classList.remove('d-none');
+                document.getElementById('aiCvSavedDate').textContent = data.generated_at;
+                document.getElementById('aiCvDownloadSavedBtn').classList.remove('d-none');
+                document.getElementById('aiCvDownloadSavedBtn').onclick = () => {
+                    window.open(AI_DL_URL.replace('PLACEHOLDER', data.ai_cv_id), '_blank');
+                };
+            }
+        } catch(e) { /* ignore */ }
+    });
+});
+
+document.getElementById('aiCvGenerateBtn').addEventListener('click', async () => {
+    if (!currentAiStaffId) return;
+    setAiState('Generating');
+
+    try {
+        const res  = await fetch(AI_GEN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ staff_id: currentAiStaffId })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            const dlUrl = AI_DL_URL.replace('PLACEHOLDER', data.ai_cv_id);
+            document.getElementById('aiCvDownloadNewBtn').href = dlUrl;
+            setAiState('Done');
+        } else {
+            document.getElementById('aiCvErrorMsg').textContent = data.error || 'Generation failed';
+            setAiState('Error');
+        }
+    } catch(e) {
+        document.getElementById('aiCvErrorMsg').textContent = 'Network error: ' + e.message;
+        setAiState('Error');
+    }
+});
+
 </script>
 {% endblock %}
