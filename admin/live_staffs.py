@@ -316,6 +316,28 @@ def _build_cv_pdf(doc):
         ]))
         return t
 
+    def para_box(text):
+        """Plain flowing paragraph in a light box — no fixed height."""
+        t = Table([[Paragraph(text or '', S['val'])]], colWidths=[PAGE_W])
+        t.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), LIGHT_BG),
+            ('BOX',           (0,0), (-1,-1), 0.4, MID_GRAY),
+            ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
+            ('TOPPADDING',    (0,0), (-1,-1), 9),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 9),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+        ]))
+        return t
+
+    # Add experience-card styles to S
+    S['exp_title'] = ps('exp_title', fontName='Helvetica-Bold', fontSize=10,
+                        textColor=NAVY, spaceAfter=0, leading=14)
+    S['exp_sub']   = ps('exp_sub',   fontName='Helvetica-Oblique', fontSize=9,
+                        textColor=XH_GREEN, spaceAfter=0, leading=13)
+    S['exp_date']  = ps('exp_date',  fontName='Helvetica', fontSize=8,
+                        textColor=TEXT_GRAY, alignment=1, spaceAfter=0)  # TA_RIGHT=1
+
     # ── Data extraction ────────────────────────────────────────────────
     s1   = doc.get('section_1_personal_details') or {}
     s2   = doc.get('section_2_identity_verification') or {}
@@ -409,115 +431,183 @@ def _build_cv_pdf(doc):
     story.append(sp(4))
 
     # ═══════════════════════════════════════════════════════════════════
-    # 2. PROFESSIONAL PROFILE
+    # 2. PROFESSIONAL PROFILE — rich self-description paragraph
     # ═══════════════════════════════════════════════════════════════════
     story += [sec('PROFESSIONAL PROFILE'), sp(3)]
-    story.append(Paragraph(
-        'Provide a brief summary of your professional experience, '
-        'qualifications, and career objectives.',
-        S['italic']
-    ))
-    story.append(sp(2))
-    # Show registration info as profile context
-    reg_pin  = _v(s3.get('registration_number_pin'))
-    reg_exp  = _v(s3.get('registration_expiry_date'))
-    divisions = ', '.join(s3.get('divisions_registered_in') or [])
-    nmbi_active = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
-    profile_rows = []
-    if reg_pin:
-        profile_rows.append(('Registration PIN:', reg_pin))
-    if divisions:
-        profile_rows.append(('Divisions:', divisions))
-    if reg_exp:
-        profile_rows.append(('Registration Expiry:', reg_exp))
-    profile_rows.append(('NMBI Active Declaration:', nmbi_active))
-    profile_rows.append(('Permission to Work:', _v(visa.get('permission_to_work'))))
-    profile_rows.append(('Visa / Stamp Type:',  _v(visa.get('visa_type'))))
-    for lbl, val in profile_rows:
-        story += [lv(lbl, val, lw=65*mm), sp(1)]
+
+    reg_pin     = _v(s3.get('registration_number_pin'))
+    reg_exp     = _v(s3.get('registration_expiry_date'))
+    divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+    nmbi_active = s3.get('nmbi_active_declaration')
+    perm_work   = _v(visa.get('permission_to_work'))
+    visa_type_v = _v(visa.get('visa_type'))
+    total_exp_p = _v(s5.get('total_experience'))
+    entries_p   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+    latest_emp  = entries_p[0] if entries_p else {}
+
+    # Build a flowing self-description CV paragraph
+    sentences = []
+
+    # Opening sentence — who they are
+    if full_name and user_type:
+        opener = f"{full_name} is a dedicated and experienced {user_type}"
+        if divisions:
+            opener += f" specialising in {divisions}"
+        if total_exp_p:
+            opener += f", with {total_exp_p} of professional experience"
+        sentences.append(opener)
+
+    # Current/recent role
+    if latest_emp:
+        pos_p = _v(latest_emp.get('position'))
+        emp_p = _v(latest_emp.get('employer'))
+        if pos_p and emp_p:
+            sentences.append(
+                f"Most recently working as {pos_p} at {emp_p}"
+            )
+
+    # Registration
+    if reg_pin or reg_exp:
+        reg_str = "Professionally registered"
+        if reg_pin:
+            reg_str += f" (PIN: {reg_pin})"
+        if reg_exp:
+            reg_str += f" with registration valid until {reg_exp}"
+        if nmbi_active:
+            reg_str += " and holds an active NMBI declaration"
+        sentences.append(reg_str)
+
+    # Work authorisation
+    if perm_work == 'Yes' and visa_type_v:
+        sentences.append(
+            f"Fully authorised to work in Ireland ({visa_type_v})"
+        )
+    elif perm_work == 'Yes':
+        sentences.append("Fully authorised to work in Ireland")
+
+    profile_text = '. '.join(sentences) + '.' if sentences else         'Experienced healthcare professional committed to delivering high-quality patient care. ' \
+        'Holds current professional registration and mandatory training certifications.'
+
+    story.append(para_box(profile_text))
     story.append(sp(4))
 
     # ═══════════════════════════════════════════════════════════════════
-    # 3. EDUCATION & QUALIFICATIONS
+    # 3. EDUCATION & QUALIFICATIONS — description mode
     # ═══════════════════════════════════════════════════════════════════
     story += [sec('EDUCATION & QUALIFICATIONS'), sp(3)]
-    qual_rows = []
+
+    qual_entries = []
     for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
         q = s4.get(qk) or {}
         if q.get('qualification') or q.get('institution'):
-            qual_rows.append([
-                _v(q.get('qualification')),
-                _v(q.get('institution')),
-                _v(q.get('year_completed')),
-            ])
-    story += [
-        grid_tbl(
-            ['Qualification', 'Institution / College', 'Year Completed'],
-            qual_rows,
-            [PAGE_W * 0.42, PAGE_W * 0.40, PAGE_W * 0.18]
-        ),
-        sp(4),
-    ]
+            qual_entries.append(q)
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 4. PROFESSIONAL EXPERIENCE
-    #    Job Title / Employer / Location / Dates / Duties & Responsibility
-    # ═══════════════════════════════════════════════════════════════════
-    story += [sec('PROFESSIONAL EXPERIENCE'), sp(3)]
-    entries = s5.get('entries') or []
-    total_exp = _v(s5.get('total_experience'))
-    has_exp = False
-    for i, e in enumerate(entries):
-        emp = _v(e.get('employer'))
-        pos = _v(e.get('position'))
-        if not (emp or pos):
-            continue
-        has_exp = True
-        d_from  = _v(e.get('from'))
-        d_to    = _v(e.get('to'))
-        dates   = f"{d_from} – {d_to}" if (d_from or d_to) else '—'
-        leaving = _v(e.get('reason_for_leaving'))
+    if qual_entries:
+        for q in qual_entries:
+            qname = _v(q.get('qualification'))
+            qinst = _v(q.get('institution'))
+            qyear = _v(q.get('year_completed'))
 
-        # Job header block: Title / Employer / Location / Dates
-        job_rows = [
-            [Paragraph('Job Title:', S['lbl']),  Paragraph(pos or '—', S['val'])],
-            [Paragraph('Employer:',  S['lbl']),  Paragraph(emp or '—', S['val'])],
-            [Paragraph('Location:',  S['lbl']),  Paragraph('—',         S['val'])],
-            [Paragraph('Dates:',     S['lbl']),  Paragraph(dates,       S['val'])],
-        ]
-        if leaving:
-            job_rows.append([
-                Paragraph('Reason for Leaving:', S['lbl']),
-                Paragraph(leaving, S['val'])
-            ])
-        jt = Table(job_rows, colWidths=[42*mm, PAGE_W - 42*mm])
-        jt.setStyle(TableStyle([
-            ('BACKGROUND',    (0,0), (0,-1), LIGHT_BG),
-            ('TOPPADDING',    (0,0), (-1,-1), 3),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-            ('LEFTPADDING',   (0,0), (0,-1),  8),
-            ('LEFTPADDING',   (1,0), (1,-1),  4),
-            ('LINEBELOW',     (0,0), (-1,-1), 0.3, MID_GRAY),
-            ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
-        ]))
-        story += [jt, sp(2)]
-        story.append(Paragraph('Duties & Responsibilities', S['duties_lbl']))
-        story.append(sp(1))
-        story.append(duties_box())
+            # Heading line: bold qualification name + year right-aligned
+            heading_left  = Paragraph(f"<b>{qname}</b>" if qname else "<b>Qualification</b>", S['exp_title'])
+            heading_right = Paragraph(qyear, S['exp_date'])
+            heading_row   = Table([[heading_left, heading_right]],
+                                   colWidths=[PAGE_W * 0.75, PAGE_W * 0.25])
+            heading_row.setStyle(TableStyle([
+                ('TOPPADDING',    (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+                ('LEFTPADDING',   (0,0), (-1,-1), 0),
+                ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+                ('VALIGN',        (0,0), (-1,-1), 'BOTTOM'),
+            ]))
+            story.append(heading_row)
+            if qinst:
+                story.append(Paragraph(qinst, S['exp_sub']))
+            story.append(sp(2))
+            story.append(HRFlowable(width=PAGE_W, color=MID_GRAY, thickness=0.3))
+            story.append(sp(3))
+    else:
+        story.append(para_box('No qualifications recorded.'))
         story.append(sp(3))
 
-        if i < len(entries) - 1:
-            story += [HRFlowable(width=PAGE_W, color=MID_GRAY, thickness=0.4), sp(2)]
+    story.append(sp(1))
 
-    if not has_exp:
-        story += [duties_box(), sp(3)]
+    # ═══════════════════════════════════════════════════════════════════
+    # 4. PROFESSIONAL EXPERIENCE — one card per role, description mode
+    # ═══════════════════════════════════════════════════════════════════
+    story += [sec('PROFESSIONAL EXPERIENCE'), sp(3)]
+    entries   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+    total_exp = _v(s5.get('total_experience'))
+
+    if entries:
+        for i, e in enumerate(entries):
+            emp     = _v(e.get('employer'))
+            pos     = _v(e.get('position'))
+            d_from  = _v(e.get('from'))
+            d_to    = _v(e.get('to'))
+            leaving = _v(e.get('reason_for_leaving'))
+
+            # Date range label
+            if d_from and d_to:
+                date_label = f"{d_from} – {d_to}"
+            elif d_from:
+                date_label = f"{d_from} – Present"
+            elif d_to:
+                date_label = f"Until {d_to}"
+            else:
+                date_label = ''
+
+            # ── Role heading row: job title left, dates right ─────────
+            title_p = Paragraph(f"<b>{pos}</b>" if pos else "<b>Role</b>", S['exp_title'])
+            date_p  = Paragraph(date_label, S['exp_date'])
+            head_t  = Table([[title_p, date_p]],
+                            colWidths=[PAGE_W * 0.70, PAGE_W * 0.30])
+            head_t.setStyle(TableStyle([
+                ('TOPPADDING',    (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+                ('LEFTPADDING',   (0,0), (-1,-1), 0),
+                ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+                ('VALIGN',        (0,0), (-1,-1), 'BOTTOM'),
+            ]))
+
+            # ── Employer sub-line ─────────────────────────────────────
+            emp_p = Paragraph(emp, S['exp_sub']) if emp else None
+
+            # ── Description paragraph ─────────────────────────────────
+            desc_parts = []
+            if pos and emp:
+                desc_parts.append(
+                    f"Worked as <b>{pos}</b> at {emp}"
+                    + (f" from {d_from} to {d_to}" if (d_from and d_to) else
+                       f" from {d_from}" if d_from else "")
+                )
+            if leaving:
+                desc_parts.append(f"Reason for leaving: {leaving}")
+
+            desc_text = '. '.join(desc_parts) + '.' if desc_parts else ''
+
+            # ── Assemble the experience card ──────────────────────────
+            story.append(head_t)
+            if emp_p:
+                story.append(emp_p)
+            story.append(sp(2))
+            if desc_text:
+                story.append(para_box(desc_text))
+            story.append(sp(3))
+
+            if i < len(entries) - 1:
+                story.append(HRFlowable(width=PAGE_W, color=MID_GRAY, thickness=0.3))
+                story.append(sp(3))
+    else:
+        story.append(para_box('No employment history recorded.'))
+        story.append(sp(3))
 
     if total_exp:
         story += [lv('Total Experience:', total_exp, lw=55*mm), sp(1)]
     story.append(sp(3))
 
     # ═══════════════════════════════════════════════════════════════════
-    # 5. TRAINING & CERTIFICATIONS
+    # 5. TRAINING & CERTIFICATIONS — bullet list, max 6 items
     # ═══════════════════════════════════════════════════════════════════
     story += [sec('TRAINING & CERTIFICATIONS'), sp(3)]
     TLABELS = {
@@ -533,24 +623,29 @@ def _build_cv_pdf(doc):
         'open_disclosure':              'Open Disclosure',
         'mapa_pmav':                    'MAPA / PMAV',
     }
-    trows = []
+    # Collect only certs that exist in the record, cap at 6
+    cert_labels = []
     for key, label in TLABELS.items():
-        raw    = _v(s10.get(key))
-        parts  = [p.strip() for p in raw.split(';')] if raw else []
-        status = next((p for p in parts if p in ('Approved', 'Expired')),
-                      parts[0] if parts else '—')
-        expiry = next((p.replace('Expiry:', '').strip()
-                       for p in parts if 'Expiry' in p), '—')
-        trows.append([label, status, expiry])
-    story += [
-        grid_tbl(
-            ['Training / Certification', 'Status', 'Expiry Date'],
-            trows,
-            [PAGE_W * 0.52, PAGE_W * 0.22, PAGE_W * 0.26],
-            status_col=1
-        ),
-        sp(4),
-    ]
+        if s10.get(key):
+            cert_labels.append(label)
+        if len(cert_labels) == 6:
+            break
+
+    if cert_labels:
+        bullet_rows = [[Paragraph(f'•  {label}', S['val'])] for label in cert_labels]
+        cert_tbl = Table(bullet_rows, colWidths=[PAGE_W])
+        cert_tbl.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), LIGHT_BG),
+            ('BOX',           (0,0), (-1,-1), 0.4, MID_GRAY),
+            ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
+            ('TOPPADDING',    (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('LEFTPADDING',   (0,0), (-1,-1), 14),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+        ]))
+        story += [cert_tbl, sp(4)]
+    else:
+        story += [para_box('No training certifications recorded.'), sp(4)]
 
     # ═══════════════════════════════════════════════════════════════════
     # 6. KEY SKILLS  (occupational health + identity as supporting detail)
@@ -602,22 +697,55 @@ def _build_cv_pdf(doc):
         story += [lv(lbl, val, lw=70*mm), sp(1)]
     story.append(sp(4))
 
-    # References
-    story += [sec('REFERENCES'), sp(3)]
-    rrows = []
+    # Professional References
+    story += [sec('PROFESSIONAL REFERENCES'), sp(3)]
+    ref_items = []
     for rk in ['reference_1', 'reference_2', 'reference_3']:
         r = s7.get(rk) or {}
         if r.get('name'):
-            rrows.append([_v(r.get('name')), _v(r.get('position')),
-                          _v(r.get('organisation')), _v(r.get('email'))])
-    story += [
-        grid_tbl(
-            ['Name', 'Position', 'Organisation', 'Email'],
-            rrows,
-            [PAGE_W*0.22, PAGE_W*0.18, PAGE_W*0.28, PAGE_W*0.32]
-        ),
-        sp(6),
-    ]
+            ref_items.append(r)
+
+    if ref_items:
+        for idx, r in enumerate(ref_items):
+            name  = _v(r.get('name'))
+            pos   = _v(r.get('position'))
+            org   = _v(r.get('organisation'))
+            tel   = _v(r.get('telephone'))
+            email = _v(r.get('email'))
+            dates = _v(r.get('dates_worked_together'))
+
+            # Build a natural paragraph sentence
+            ref_parts = []
+            if name:   ref_parts.append(f"<b>{name}</b>")
+            if pos:    ref_parts.append(pos)
+            if org:    ref_parts.append(f"at {org}")
+            ref_sentence = ', '.join(ref_parts[:1]) + (f", {ref_parts[1]}" if len(ref_parts) > 1 else '') + (f", {ref_parts[2]}" if len(ref_parts) > 2 else '') + '.'
+
+            contact_parts = []
+            if tel:   contact_parts.append(f"Tel: {tel}")
+            if email: contact_parts.append(f"Email: {email}")
+            if dates: contact_parts.append(f"Dates worked together: {dates}")
+            contact_line = '   |   '.join(contact_parts)
+
+            ref_box_rows = [[Paragraph(ref_sentence, S['val'])]]
+            if contact_line:
+                ref_box_rows.append([Paragraph(contact_line, S['italic'])])
+
+            ref_tbl = Table(ref_box_rows, colWidths=[PAGE_W])
+            ref_tbl.setStyle(TableStyle([
+                ('BACKGROUND',    (0,0), (-1,-1), LIGHT_BG),
+                ('BOX',           (0,0), (-1,-1), 0.4, MID_GRAY),
+                ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
+                ('TOPPADDING',    (0,0), (-1,-1), 7),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 7),
+                ('LEFTPADDING',   (0,0), (-1,-1), 10),
+                ('RIGHTPADDING',  (0,0), (-1,-1), 8),
+            ]))
+            story += [ref_tbl, sp(2)]
+    else:
+        story.append(duties_box('No references provided.'))
+
+    story.append(sp(4))
 
     # Signature / Date
     sig_t = Table(
@@ -635,8 +763,7 @@ def _build_cv_pdf(doc):
         ft = Table(
             [[logo_sm,
               Paragraph(
-                  f'Xpress Health  •  {full_name}  •  {emp_code}<br/>'
-                  '<font size="6">This document is confidential and for authorised use only.</font>',
+                  f'Xpress Health  •  {full_name}  •  {emp_code}',
                   S['footer']
               )]],
             colWidths=[32*mm, PAGE_W - 32*mm]
@@ -650,8 +777,7 @@ def _build_cv_pdf(doc):
         story.append(ft)
     else:
         story.append(Paragraph(
-            f'Xpress Health  •  {full_name}  •  {emp_code}  •  '
-            'This document is confidential and for authorised use only.',
+            f'Xpress Health  •  {full_name}  •  {emp_code}',
             S['footer']
         ))
 
