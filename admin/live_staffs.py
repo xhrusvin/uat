@@ -175,8 +175,9 @@ def _v(val):
 
 
 
+
 def _build_cv_pdf(doc):
-    """Build a branded Xpress Health CV PDF from a live_staffs MongoDB document."""
+    """Build a branded Xpress Health CV PDF — section order matches HSE_CV.docx."""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.lib.units import mm
@@ -189,11 +190,11 @@ def _build_cv_pdf(doc):
     import io as _io
     import os
 
-    # ── Brand palette ──────────────────────────────────────────────────
-    NAVY      = colors.HexColor('#1B3A6B')
-    XH_GREEN  = colors.HexColor('#2E9E44')
-    LIGHT_BG  = colors.HexColor('#EFF6FF')
-    STRIPE    = colors.HexColor('#F0FDF4')
+    # ── Brand palette (Xpress Health logo colours) ─────────────────────
+    NAVY      = colors.HexColor('#1B3A6B')   # XPRESS dark blue
+    XH_GREEN  = colors.HexColor('#2E9E44')   # HEALTH green
+    LIGHT_BG  = colors.HexColor('#EFF6FF')   # light blue row stripe
+    STRIPE    = colors.HexColor('#F0FDF4')   # light green highlight
     MID_GRAY  = colors.HexColor('#CBD5E1')
     TEXT_DARK = colors.HexColor('#1E293B')
     TEXT_GRAY = colors.HexColor('#475569')
@@ -202,7 +203,7 @@ def _build_cv_pdf(doc):
     W, H   = A4
     PAGE_W = W - 30 * mm
 
-    # ── Styles ─────────────────────────────────────────────────────────
+    # ── Paragraph styles ───────────────────────────────────────────────
     def ps(name, **kw):
         d = dict(fontName='Helvetica', fontSize=9,
                  textColor=TEXT_GRAY, spaceAfter=2, leading=13)
@@ -220,6 +221,8 @@ def _build_cv_pdf(doc):
         'lbl':      ps('lbl',      fontName='Helvetica-Bold', fontSize=9,
                        textColor=NAVY, spaceAfter=0),
         'val':      ps('val',      fontSize=9, textColor=TEXT_GRAY, spaceAfter=0),
+        'italic':   ps('italic',   fontName='Helvetica-Oblique', fontSize=8,
+                       textColor=TEXT_GRAY, spaceAfter=0),
         'th':       ps('th',       fontName='Helvetica-Bold', fontSize=8,
                        textColor=WHITE, alignment=TA_CENTER, spaceAfter=0),
         'td':       ps('td',       fontSize=8, textColor=TEXT_DARK, spaceAfter=0),
@@ -229,11 +232,15 @@ def _build_cv_pdf(doc):
                        textColor=colors.HexColor('#DC2626'), spaceAfter=0),
         'footer':   ps('footer',   fontSize=7, textColor=MID_GRAY,
                        alignment=TA_CENTER, spaceAfter=0),
+        'duties_lbl': ps('duties_lbl', fontName='Helvetica-Bold', fontSize=8,
+                         textColor=NAVY, spaceAfter=0),
     }
 
     sp = lambda n=3: Spacer(1, n * mm)
 
+    # ── Helpers ────────────────────────────────────────────────────────
     def sec(title):
+        """Navy section header bar with green left accent."""
         t = Table([[Paragraph(title, S['sec_head'])]], colWidths=[PAGE_W])
         t.setStyle(TableStyle([
             ('BACKGROUND',    (0,0), (-1,-1), NAVY),
@@ -241,10 +248,12 @@ def _build_cv_pdf(doc):
             ('BOTTOMPADDING', (0,0), (-1,-1), 5),
             ('LEFTPADDING',   (0,0), (-1,-1), 10),
             ('RIGHTPADDING',  (0,0), (-1,-1), 6),
+            ('LINEBELOW',     (0,0), (-1,-1), 1.5, XH_GREEN),
         ]))
         return t
 
     def lv(label, value, lw=58*mm, highlight=False):
+        """Label : Value row."""
         bg = STRIPE if (highlight and value) else WHITE
         val_text = value if value else '—'
         t = Table(
@@ -263,6 +272,7 @@ def _build_cv_pdf(doc):
         return t
 
     def grid_tbl(headers, rows, col_widths, status_col=None):
+        """Table with navy header and alternating rows."""
         data = [[Paragraph(h, S['th']) for h in headers]]
         for row in rows:
             cells = []
@@ -291,6 +301,21 @@ def _build_cv_pdf(doc):
         ]))
         return t
 
+    def duties_box(text=''):
+        """Grey box for duties/profile text."""
+        val = text if text else ''
+        t = Table([[Paragraph(val, S['val'])]], colWidths=[PAGE_W])
+        t.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), LIGHT_BG),
+            ('BOX',           (0,0), (-1,-1), 0.4, MID_GRAY),
+            ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
+            ('TOPPADDING',    (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('LEFTPADDING',   (0,0), (-1,-1), 8),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 8),
+        ]))
+        return t
+
     # ── Data extraction ────────────────────────────────────────────────
     s1   = doc.get('section_1_personal_details') or {}
     s2   = doc.get('section_2_identity_verification') or {}
@@ -309,25 +334,13 @@ def _build_cv_pdf(doc):
     emp_code  = _v(doc.get('employee_code'))
     user_type = _v(doc.get('user_type'))
 
-    doc_list = [
-        k for k, label in [
-            ('passport',          'Passport'),
-            ('birth_certificate', 'Birth Certificate'),
-            ('driving_licence',   'Driving Licence'),
-            ('proof_of_address',  'Proof of Address'),
-        ] if docs_sub.get(k)
-    ]
-
-    # ── Logo path ──────────────────────────────────────────────────────
-    # Try several common locations
+    # ── Logo path (searches common static locations) ───────────────────
     logo_path = None
     for candidate in [
         os.path.join(os.path.dirname(__file__), '..', 'static', 'images', 'logo.png'),
         os.path.join(os.path.dirname(__file__), '..', 'static', 'img', 'logo.png'),
         os.path.join(os.path.dirname(__file__), '..', 'static', 'logo.png'),
-        'static/images/logo.png',
-        'static/img/logo.png',
-        'static/logo.png',
+        'static/images/logo.png', 'static/img/logo.png', 'static/logo.png',
     ]:
         if os.path.exists(candidate):
             logo_path = candidate
@@ -337,7 +350,7 @@ def _build_cv_pdf(doc):
     buf   = _io.BytesIO()
     story = []
 
-    # Header banner
+    # ── HEADER BANNER ─────────────────────────────────────────────────
     title_rows = [
         [Paragraph('CURRICULUM VITAE', S['cv_title'])],
         [Paragraph(
@@ -345,17 +358,18 @@ def _build_cv_pdf(doc):
             S['cv_sub']
         )],
     ]
-    title_tbl = Table(title_rows, colWidths=[PAGE_W - (55*mm if logo_path else 0)])
+    title_w = PAGE_W - (55*mm if logo_path else 0)
+    title_tbl = Table(title_rows, colWidths=[title_w])
     title_tbl.setStyle(TableStyle([
         ('BACKGROUND',    (0,0), (-1,-1), NAVY),
-        ('TOPPADDING',    (0,0), (-1,-1), 10),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+        ('TOPPADDING',    (0,0), (-1,-1), 12),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 12),
         ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
     ]))
 
     if logo_path:
-        logo_img   = RLImage(logo_path, width=45*mm, height=45*mm * 94/316)
-        logo_cell  = Table([[logo_img]], colWidths=[55*mm])
+        logo_img  = RLImage(logo_path, width=45*mm, height=45*mm * 94/316)
+        logo_cell = Table([[logo_img]], colWidths=[55*mm])
         logo_cell.setStyle(TableStyle([
             ('BACKGROUND',    (0,0), (-1,-1), WHITE),
             ('TOPPADDING',    (0,0), (-1,-1), 6),
@@ -378,37 +392,54 @@ def _build_cv_pdf(doc):
     ]))
     story += [banner, sp(5)]
 
-    # 1. Personal Details
+    # ═══════════════════════════════════════════════════════════════════
+    # 1. PERSONAL DETAILS
+    #    Full Name / Address / Mobile / Email / Date of Birth / Nationality
+    # ═══════════════════════════════════════════════════════════════════
     story += [sec('PERSONAL DETAILS'), sp(3)]
     for lbl, val, hi in [
-        ('Full Name:',          full_name,                                True),
-        ('Date of Birth:',      _v(s1.get('date_of_birth')),              False),
-        ('Address:',            _v(s1.get('address')),                    False),
-        ('Mobile Number:',      _v(s1.get('mobile_number')),              False),
-        ('Email Address:',      _v(doc.get('email')),                     False),
-        ('Nationality:',        _v(s1.get('nationality')),                False),
-        ('PPS Number:',         _v(s1.get('pps_number')),                 False),
-        ('Permission to Work:', _v(visa.get('permission_to_work')),       False),
-        ('Visa / Stamp Type:',  _v(visa.get('visa_type')),                False),
-        ('Documents Submitted:',', '.join(doc_list) if doc_list else '—', False),
+        ('Full Name:',      full_name,                          True),
+        ('Address:',        _v(s1.get('address')),              False),
+        ('Mobile Number:',  _v(s1.get('mobile_number')),        False),
+        ('Email Address:',  _v(doc.get('email')),               False),
+        ('Date of Birth:',  _v(s1.get('date_of_birth')),        False),
+        ('Nationality:',    _v(s1.get('nationality')),          False),
     ]:
         story += [lv(lbl, val, highlight=hi), sp(1)]
     story.append(sp(4))
 
-    # 2. Professional Registration
-    story += [sec('PROFESSIONAL REGISTRATION'), sp(3)]
+    # ═══════════════════════════════════════════════════════════════════
+    # 2. PROFESSIONAL PROFILE
+    # ═══════════════════════════════════════════════════════════════════
+    story += [sec('PROFESSIONAL PROFILE'), sp(3)]
+    story.append(Paragraph(
+        'Provide a brief summary of your professional experience, '
+        'qualifications, and career objectives.',
+        S['italic']
+    ))
+    story.append(sp(2))
+    # Show registration info as profile context
+    reg_pin  = _v(s3.get('registration_number_pin'))
+    reg_exp  = _v(s3.get('registration_expiry_date'))
     divisions = ', '.join(s3.get('divisions_registered_in') or [])
-    for lbl, val in [
-        ('Registration PIN:',          _v(s3.get('registration_number_pin'))),
-        ('Divisions:',                 divisions or '—'),
-        ('Registration Expiry:',       _v(s3.get('registration_expiry_date'))),
-        ('NMBI Active Declaration:',
-         'Yes' if s3.get('nmbi_active_declaration') else 'No'),
-    ]:
+    nmbi_active = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+    profile_rows = []
+    if reg_pin:
+        profile_rows.append(('Registration PIN:', reg_pin))
+    if divisions:
+        profile_rows.append(('Divisions:', divisions))
+    if reg_exp:
+        profile_rows.append(('Registration Expiry:', reg_exp))
+    profile_rows.append(('NMBI Active Declaration:', nmbi_active))
+    profile_rows.append(('Permission to Work:', _v(visa.get('permission_to_work'))))
+    profile_rows.append(('Visa / Stamp Type:',  _v(visa.get('visa_type'))))
+    for lbl, val in profile_rows:
         story += [lv(lbl, val, lw=65*mm), sp(1)]
     story.append(sp(4))
 
-    # 3. Education & Qualifications
+    # ═══════════════════════════════════════════════════════════════════
+    # 3. EDUCATION & QUALIFICATIONS
+    # ═══════════════════════════════════════════════════════════════════
     story += [sec('EDUCATION & QUALIFICATIONS'), sp(3)]
     qual_rows = []
     for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
@@ -420,32 +451,47 @@ def _build_cv_pdf(doc):
                 _v(q.get('year_completed')),
             ])
     story += [
-        grid_tbl(['Qualification', 'Institution / College', 'Year'],
-                 qual_rows,
-                 [PAGE_W*0.42, PAGE_W*0.40, PAGE_W*0.18]),
+        grid_tbl(
+            ['Qualification', 'Institution / College', 'Year Completed'],
+            qual_rows,
+            [PAGE_W * 0.42, PAGE_W * 0.40, PAGE_W * 0.18]
+        ),
         sp(4),
     ]
 
-    # 4. Professional Experience
+    # ═══════════════════════════════════════════════════════════════════
+    # 4. PROFESSIONAL EXPERIENCE
+    #    Job Title / Employer / Location / Dates / Duties & Responsibility
+    # ═══════════════════════════════════════════════════════════════════
     story += [sec('PROFESSIONAL EXPERIENCE'), sp(3)]
     entries = s5.get('entries') or []
+    total_exp = _v(s5.get('total_experience'))
+    has_exp = False
     for i, e in enumerate(entries):
-        emp = _v(e.get('employer')); pos = _v(e.get('position'))
+        emp = _v(e.get('employer'))
+        pos = _v(e.get('position'))
         if not (emp or pos):
             continue
-        d_from  = _v(e.get('from'));  d_to = _v(e.get('to'))
+        has_exp = True
+        d_from  = _v(e.get('from'))
+        d_to    = _v(e.get('to'))
         dates   = f"{d_from} – {d_to}" if (d_from or d_to) else '—'
         leaving = _v(e.get('reason_for_leaving'))
-        rows    = [
-            [Paragraph('Job Title', S['lbl']), Paragraph(pos or '—', S['val'])],
-            [Paragraph('Employer',  S['lbl']), Paragraph(emp or '—', S['val'])],
-            [Paragraph('Dates',     S['lbl']), Paragraph(dates,       S['val'])],
+
+        # Job header block: Title / Employer / Location / Dates
+        job_rows = [
+            [Paragraph('Job Title:', S['lbl']),  Paragraph(pos or '—', S['val'])],
+            [Paragraph('Employer:',  S['lbl']),  Paragraph(emp or '—', S['val'])],
+            [Paragraph('Location:',  S['lbl']),  Paragraph('—',         S['val'])],
+            [Paragraph('Dates:',     S['lbl']),  Paragraph(dates,       S['val'])],
         ]
         if leaving:
-            rows.append([Paragraph('Reason for Leaving', S['lbl']),
-                         Paragraph(leaving, S['val'])])
-        et = Table(rows, colWidths=[44*mm, PAGE_W - 44*mm])
-        et.setStyle(TableStyle([
+            job_rows.append([
+                Paragraph('Reason for Leaving:', S['lbl']),
+                Paragraph(leaving, S['val'])
+            ])
+        jt = Table(job_rows, colWidths=[42*mm, PAGE_W - 42*mm])
+        jt.setStyle(TableStyle([
             ('BACKGROUND',    (0,0), (0,-1), LIGHT_BG),
             ('TOPPADDING',    (0,0), (-1,-1), 3),
             ('BOTTOMPADDING', (0,0), (-1,-1), 3),
@@ -454,16 +500,25 @@ def _build_cv_pdf(doc):
             ('LINEBELOW',     (0,0), (-1,-1), 0.3, MID_GRAY),
             ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
         ]))
-        story += [et, sp(3)]
+        story += [jt, sp(2)]
+        story.append(Paragraph('Duties & Responsibilities', S['duties_lbl']))
+        story.append(sp(1))
+        story.append(duties_box())
+        story.append(sp(3))
+
         if i < len(entries) - 1:
             story += [HRFlowable(width=PAGE_W, color=MID_GRAY, thickness=0.4), sp(2)]
 
-    total_exp = _v(s5.get('total_experience'))
+    if not has_exp:
+        story += [duties_box(), sp(3)]
+
     if total_exp:
         story += [lv('Total Experience:', total_exp, lw=55*mm), sp(1)]
     story.append(sp(3))
 
-    # 5. Training & Certifications
+    # ═══════════════════════════════════════════════════════════════════
+    # 5. TRAINING & CERTIFICATIONS
+    # ═══════════════════════════════════════════════════════════════════
     story += [sec('TRAINING & CERTIFICATIONS'), sp(3)]
     TLABELS = {
         'manual_handling':              'Manual Handling',
@@ -488,15 +543,26 @@ def _build_cv_pdf(doc):
                        for p in parts if 'Expiry' in p), '—')
         trows.append([label, status, expiry])
     story += [
-        grid_tbl(['Training / Certification', 'Status', 'Expiry Date'],
-                 trows,
-                 [PAGE_W*0.52, PAGE_W*0.22, PAGE_W*0.26],
-                 status_col=1),
+        grid_tbl(
+            ['Training / Certification', 'Status', 'Expiry Date'],
+            trows,
+            [PAGE_W * 0.52, PAGE_W * 0.22, PAGE_W * 0.26],
+            status_col=1
+        ),
         sp(4),
     ]
 
-    # 6. Occupational Health
-    story += [sec('OCCUPATIONAL HEALTH'), sp(3)]
+    # ═══════════════════════════════════════════════════════════════════
+    # 6. KEY SKILLS  (occupational health + identity as supporting detail)
+    # ═══════════════════════════════════════════════════════════════════
+    story += [sec('KEY SKILLS'), sp(3)]
+    # Vaccination / health status as a quick skills grid
+    vacc_rows = [
+        ['COVID-19 Vaccine',   _v(s9.get('covid_19_vaccine'))],
+        ['Tuberculosis (BCG)', _v(s9.get('tuberculosis_vaccine'))],
+        ['Hepatitis Antibody', _v(s9.get('hepatitis_antibody'))],
+        ['MMR Vaccine',        _v(s9.get('mmr_vaccine'))],
+    ]
     for lbl, val in [
         ('Health Screening Completed:',    'Yes' if s9.get('occupational_health_screening')  else 'No'),
         ('Immunisation Records Provided:', 'Yes' if s9.get('immunisation_records_provided')  else 'No'),
@@ -505,28 +571,38 @@ def _build_cv_pdf(doc):
         story += [lv(lbl, val, lw=72*mm), sp(1)]
     story.append(sp(2))
     story += [
-        grid_tbl(['Vaccination', 'Status'],
-                 [['COVID-19 Vaccine',   _v(s9.get('covid_19_vaccine'))],
-                  ['Tuberculosis (BCG)', _v(s9.get('tuberculosis_vaccine'))],
-                  ['Hepatitis Antibody', _v(s9.get('hepatitis_antibody'))],
-                  ['MMR Vaccine',        _v(s9.get('mmr_vaccine'))]],
-                 [PAGE_W*0.60, PAGE_W*0.40]),
+        grid_tbl(['Vaccination', 'Status'], vacc_rows,
+                 [PAGE_W * 0.60, PAGE_W * 0.40]),
         sp(4),
     ]
 
-    # 7. Identity Verification & Vetting
-    story += [sec('IDENTITY VERIFICATION & VETTING'), sp(3)]
+    # ═══════════════════════════════════════════════════════════════════
+    # 7. ADDITIONAL INFORMATION
+    #    Driving Licence / Own Transport / References / Vetting / Date
+    # ═══════════════════════════════════════════════════════════════════
+    story += [sec('ADDITIONAL INFORMATION'), sp(3)]
+
+    driving = _v(s2.get('driving_licence_number'))
+    docs_list = []
+    if docs_sub.get('passport'):          docs_list.append('Passport')
+    if docs_sub.get('birth_certificate'): docs_list.append('Birth Certificate')
+    if docs_sub.get('driving_licence'):   docs_list.append('Driving Licence')
+    if docs_sub.get('proof_of_address'):  docs_list.append('Proof of Address')
+
     for lbl, val in [
-        ('Passport Expiry Date:',       _v(s2.get('expiry_date'))),
-        ('Driving Licence:',            _v(s2.get('driving_licence_number'))),
+        ('Driving Licence:',            driving if driving else '—'),
+        ('Own Transport:',              '—'),
+        ('Documents Submitted:',        ', '.join(docs_list) if docs_list else '—'),
+        ('Passport Expiry:',            _v(s2.get('expiry_date'))),
         ('Verification Date:',          _v(s2.get('verification_date'))),
         ('Garda Vetting Submitted:',    'Yes' if s8.get('garda_vetting_submitted')    else 'No'),
         ('Police Clearance Submitted:', 'Yes' if s8.get('police_clearance_submitted') else 'No'),
+        ('PPS Number:',                 _v(s1.get('pps_number'))),
     ]:
         story += [lv(lbl, val, lw=70*mm), sp(1)]
     story.append(sp(4))
 
-    # 8. References
+    # References
     story += [sec('REFERENCES'), sp(3)]
     rrows = []
     for rk in ['reference_1', 'reference_2', 'reference_3']:
@@ -535,39 +611,36 @@ def _build_cv_pdf(doc):
             rrows.append([_v(r.get('name')), _v(r.get('position')),
                           _v(r.get('organisation')), _v(r.get('email'))])
     story += [
-        grid_tbl(['Name', 'Position', 'Organisation', 'Email'],
-                 rrows,
-                 [PAGE_W*0.22, PAGE_W*0.18, PAGE_W*0.28, PAGE_W*0.32]),
-        sp(4),
+        grid_tbl(
+            ['Name', 'Position', 'Organisation', 'Email'],
+            rrows,
+            [PAGE_W*0.22, PAGE_W*0.18, PAGE_W*0.28, PAGE_W*0.32]
+        ),
+        sp(6),
     ]
 
-    # 9. Declaration
-    story += [sec('DECLARATION'), sp(3)]
-    for lbl, val in [
-        ('Declaration Agreed:', _v(s12.get('declaration_agreed'))),
-        ('Date:',               _v(s12.get('date'))),
-    ]:
-        story += [lv(lbl, val, lw=55*mm), sp(1)]
-    story.append(sp(8))
+    # Signature / Date
     sig_t = Table(
         [[Paragraph('Signature: _______________________________', S['val']),
-          Paragraph('Date: _____________________',               S['val'])]],
+          Paragraph(f'Date: {_v(s12.get("date")) or "_____________________"}', S['val'])]],
         colWidths=[PAGE_W * 0.55, PAGE_W * 0.45]
     )
     story += [sig_t, sp(6)]
 
-    # Footer
+    # ── Footer ─────────────────────────────────────────────────────────
     story.append(HRFlowable(width=PAGE_W, color=XH_GREEN, thickness=1.2))
     story.append(sp(2))
     if logo_path:
         logo_sm = RLImage(logo_path, width=28*mm, height=28*mm * 94/316)
-        ft = Table([[logo_sm,
-                     Paragraph(
-                         f'Xpress Health  •  {full_name}  •  {emp_code}<br/>'
-                         '<font size="6">This document is confidential and for authorised use only.</font>',
-                         S['footer']
-                     )]],
-                   colWidths=[32*mm, PAGE_W - 32*mm])
+        ft = Table(
+            [[logo_sm,
+              Paragraph(
+                  f'Xpress Health  •  {full_name}  •  {emp_code}<br/>'
+                  '<font size="6">This document is confidential and for authorised use only.</font>',
+                  S['footer']
+              )]],
+            colWidths=[32*mm, PAGE_W - 32*mm]
+        )
         ft.setStyle(TableStyle([
             ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
             ('LEFTPADDING',   (0,0), (-1,-1), 0),
@@ -582,7 +655,7 @@ def _build_cv_pdf(doc):
             S['footer']
         ))
 
-    # Render
+    # ── Render ─────────────────────────────────────────────────────────
     pdf_doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=15*mm, rightMargin=15*mm,
@@ -590,6 +663,7 @@ def _build_cv_pdf(doc):
     )
     pdf_doc.build(story)
     return buf.getvalue()
+
 
 
 
