@@ -177,168 +177,141 @@ def _v(val):
 
 
 def _build_cv_pdf(doc):
-    """Build a branded Xpress Health CV PDF — section order matches HSE_CV.docx."""
+    """
+    Build a rich individual Xpress Health CV PDF.
+    Mirrors the Abidemi Aluko CV structure:
+      1. Personal Details
+      2. Professional Profile  (auto-generated flowing paragraph)
+      3. Education & Qualifications  (entry per qual)
+      4. Professional Experience  (one card per role with full duties)
+      5. Training & Certifications  (bullet list, max 6)
+      6. Key Skills  (bullet list)
+      7. Additional Information  (Driving / Transport / References / Date)
+    """
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.lib.units import mm
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import (
         SimpleDocTemplate, Paragraph, Spacer, Table,
-        TableStyle, HRFlowable, Image as RLImage
+        TableStyle, HRFlowable, Image as RLImage, ListFlowable, ListItem
     )
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
-    import io as _io
-    import os
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+    import io as _io, os
 
-    # ── Brand palette (Xpress Health logo colours) ─────────────────────
-    NAVY      = colors.HexColor('#1B3A6B')   # XPRESS dark blue
-    XH_GREEN  = colors.HexColor('#2E9E44')   # HEALTH green
-    LIGHT_BG  = colors.HexColor('#EFF6FF')   # light blue row stripe
-    STRIPE    = colors.HexColor('#F0FDF4')   # light green highlight
+    # ── Brand palette ─────────────────────────────────────────────────
+    NAVY      = colors.HexColor('#1B3A6B')
+    XH_GREEN  = colors.HexColor('#2E9E44')
+    LIGHT_BG  = colors.HexColor('#EFF6FF')
+    STRIPE    = colors.HexColor('#F0FDF4')
     MID_GRAY  = colors.HexColor('#CBD5E1')
     TEXT_DARK = colors.HexColor('#1E293B')
     TEXT_GRAY = colors.HexColor('#475569')
     WHITE     = colors.white
 
     W, H   = A4
-    PAGE_W = W - 30 * mm
+    PAGE_W = W - 30 * mm   # 15 mm margins each side
 
-    # ── Paragraph styles ───────────────────────────────────────────────
+    # ── Styles ────────────────────────────────────────────────────────
     def ps(name, **kw):
-        d = dict(fontName='Helvetica', fontSize=9,
-                 textColor=TEXT_GRAY, spaceAfter=2, leading=13)
+        d = dict(fontName='Helvetica', fontSize=10, textColor=TEXT_GRAY,
+                 spaceAfter=2, leading=15)
         d.update(kw)
         return ParagraphStyle(name, **d)
 
     S = {
-        'cv_title': ps('cv_title', fontName='Helvetica-Bold', fontSize=18,
-                       textColor=WHITE, alignment=TA_CENTER, spaceAfter=0),
-        'cv_sub':   ps('cv_sub',   fontSize=9,
-                       textColor=colors.HexColor('#BFD9FF'),
-                       alignment=TA_CENTER, spaceAfter=0),
-        'sec_head': ps('sec_head', fontName='Helvetica-Bold', fontSize=9,
-                       textColor=WHITE, spaceAfter=0),
-        'lbl':      ps('lbl',      fontName='Helvetica-Bold', fontSize=9,
-                       textColor=NAVY, spaceAfter=0),
-        'val':      ps('val',      fontSize=9, textColor=TEXT_GRAY, spaceAfter=0),
-        'italic':   ps('italic',   fontName='Helvetica-Oblique', fontSize=8,
-                       textColor=TEXT_GRAY, spaceAfter=0),
-        'th':       ps('th',       fontName='Helvetica-Bold', fontSize=8,
-                       textColor=WHITE, alignment=TA_CENTER, spaceAfter=0),
-        'td':       ps('td',       fontSize=8, textColor=TEXT_DARK, spaceAfter=0),
-        'td_green': ps('td_green', fontName='Helvetica-Bold', fontSize=8,
-                       textColor=XH_GREEN, spaceAfter=0),
-        'td_red':   ps('td_red',   fontName='Helvetica-Bold', fontSize=8,
-                       textColor=colors.HexColor('#DC2626'), spaceAfter=0),
-        'footer':   ps('footer',   fontSize=7, textColor=MID_GRAY,
-                       alignment=TA_CENTER, spaceAfter=0),
-        'duties_lbl': ps('duties_lbl', fontName='Helvetica-Bold', fontSize=8,
-                         textColor=NAVY, spaceAfter=0),
+        'cv_title'  : ps('cv_title',   fontName='Helvetica-Bold', fontSize=20,
+                         textColor=WHITE, alignment=TA_CENTER, spaceAfter=0, leading=24),
+        'cv_name'   : ps('cv_name',    fontName='Helvetica-Bold', fontSize=13,
+                         textColor=NAVY, alignment=TA_CENTER, spaceAfter=0, leading=18),
+        'sec_head'  : ps('sec_head',   fontName='Helvetica-Bold', fontSize=10,
+                         textColor=WHITE, spaceAfter=0, leading=14),
+        'lbl'       : ps('lbl',        fontName='Helvetica-Bold', fontSize=10,
+                         textColor=NAVY, spaceAfter=0, leading=14),
+        'val'       : ps('val',        fontSize=10, textColor=TEXT_GRAY,
+                         spaceAfter=0, leading=14),
+        'body'      : ps('body',       fontSize=10, textColor=TEXT_GRAY,
+                         alignment=TA_JUSTIFY, spaceAfter=4, leading=15),
+        'exp_title' : ps('exp_title',  fontName='Helvetica-Bold', fontSize=11,
+                         textColor=NAVY, spaceAfter=0, leading=15),
+        'exp_sub'   : ps('exp_sub',    fontName='Helvetica-Oblique', fontSize=10,
+                         textColor=XH_GREEN, spaceAfter=0, leading=14),
+        'exp_date'  : ps('exp_date',   fontName='Helvetica-Bold', fontSize=9,
+                         textColor=WHITE, alignment=TA_CENTER, spaceAfter=0, leading=12),
+        'duty'      : ps('duty',       fontSize=10, textColor=TEXT_GRAY,
+                         leftIndent=8, spaceAfter=3, leading=15),
+        'bullet'    : ps('bullet',     fontSize=10, textColor=TEXT_GRAY,
+                         leftIndent=8, spaceAfter=3, leading=15),
+        'footer'    : ps('footer',     fontSize=7,  textColor=MID_GRAY,
+                         alignment=TA_CENTER, spaceAfter=0),
+        'qual_title': ps('qual_title', fontName='Helvetica-Bold', fontSize=10,
+                         textColor=NAVY, spaceAfter=1, leading=14),
+        'qual_sub'  : ps('qual_sub',   fontName='Helvetica-Oblique', fontSize=9,
+                         textColor=TEXT_GRAY, spaceAfter=0, leading=13),
     }
 
     sp = lambda n=3: Spacer(1, n * mm)
 
-    # ── Helpers ────────────────────────────────────────────────────────
+    # ── Helpers ───────────────────────────────────────────────────────
     def sec(title):
-        """Navy section header bar with green left accent."""
         t = Table([[Paragraph(title, S['sec_head'])]], colWidths=[PAGE_W])
         t.setStyle(TableStyle([
             ('BACKGROUND',    (0,0), (-1,-1), NAVY),
-            ('TOPPADDING',    (0,0), (-1,-1), 5),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('TOPPADDING',    (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
             ('LEFTPADDING',   (0,0), (-1,-1), 10),
-            ('RIGHTPADDING',  (0,0), (-1,-1), 6),
-            ('LINEBELOW',     (0,0), (-1,-1), 1.5, XH_GREEN),
+            ('LINEBELOW',     (0,0), (-1,-1), 2, XH_GREEN),
         ]))
         return t
 
-    def lv(label, value, lw=58*mm, highlight=False):
-        """Label : Value row."""
-        bg = STRIPE if (highlight and value) else WHITE
+    def lv(label, value, lw=55*mm):
         val_text = value if value else '—'
         t = Table(
             [[Paragraph(label, S['lbl']), Paragraph(val_text, S['val'])]],
             colWidths=[lw, PAGE_W - lw]
         )
         t.setStyle(TableStyle([
-            ('BACKGROUND',    (0,0), (-1,-1), bg),
             ('TOPPADDING',    (0,0), (-1,-1), 3),
             ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-            ('LEFTPADDING',   (0,0), (0,0),   8),
+            ('LEFTPADDING',   (0,0), (0,0),   6),
             ('LEFTPADDING',   (1,0), (1,0),   4),
             ('LINEBELOW',     (0,0), (-1,-1), 0.3, MID_GRAY),
-            ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
         ]))
         return t
 
-    def grid_tbl(headers, rows, col_widths, status_col=None):
-        """Table with navy header and alternating rows."""
-        data = [[Paragraph(h, S['th']) for h in headers]]
-        for row in rows:
-            cells = []
-            for ci, c in enumerate(row):
-                v = str(c) if c else '—'
-                if status_col is not None and ci == status_col:
-                    sty = (S['td_green'] if v == 'Approved' else
-                           S['td_red']   if v == 'Expired'  else S['td'])
-                else:
-                    sty = S['td']
-                cells.append(Paragraph(v, sty))
-            data.append(cells)
-        if not rows:
-            data.append([Paragraph('—', S['td'])] * len(headers))
-        t = Table(data, colWidths=col_widths)
+    def date_badge(text):
+        """Green pill badge for date range."""
+        t = Table([[Paragraph(text, S['exp_date'])]], colWidths=[None])
         t.setStyle(TableStyle([
-            ('BACKGROUND',     (0,0), (-1,0),  NAVY),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [WHITE, LIGHT_BG]),
-            ('GRID',           (0,0), (-1,-1), 0.35, MID_GRAY),
-            ('TOPPADDING',     (0,0), (-1,-1), 5),
-            ('BOTTOMPADDING',  (0,0), (-1,-1), 5),
-            ('LEFTPADDING',    (0,0), (-1,-1), 6),
-            ('RIGHTPADDING',   (0,0), (-1,-1), 6),
-            ('VALIGN',         (0,0), (-1,-1), 'MIDDLE'),
-            ('LINEBELOW',      (0,0), (-1,0),  1.5, XH_GREEN),
-        ]))
-        return t
-
-    def duties_box(text=''):
-        """Grey box for duties/profile text."""
-        val = text if text else ''
-        t = Table([[Paragraph(val, S['val'])]], colWidths=[PAGE_W])
-        t.setStyle(TableStyle([
-            ('BACKGROUND',    (0,0), (-1,-1), LIGHT_BG),
-            ('BOX',           (0,0), (-1,-1), 0.4, MID_GRAY),
-            ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
-            ('TOPPADDING',    (0,0), (-1,-1), 8),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('BACKGROUND',    (0,0), (-1,-1), XH_GREEN),
+            ('TOPPADDING',    (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
             ('LEFTPADDING',   (0,0), (-1,-1), 8),
             ('RIGHTPADDING',  (0,0), (-1,-1), 8),
+            ('ROUNDEDCORNERS',(0,0), (-1,-1), 4),
         ]))
         return t
 
-    def para_box(text):
-        """Plain flowing paragraph in a light box — no fixed height."""
-        t = Table([[Paragraph(text or '', S['val'])]], colWidths=[PAGE_W])
+    def bullet_item(text):
+        return Paragraph(f'\u2022\u2003{text}', S['bullet'])
+
+    def duty_item(text):
+        return Paragraph(f'\u2022\u2003{text}', S['duty'])
+
+    def profile_box(text):
+        t = Table([[Paragraph(text, S['body'])]], colWidths=[PAGE_W])
         t.setStyle(TableStyle([
             ('BACKGROUND',    (0,0), (-1,-1), LIGHT_BG),
-            ('BOX',           (0,0), (-1,-1), 0.4, MID_GRAY),
-            ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
-            ('TOPPADDING',    (0,0), (-1,-1), 9),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 9),
-            ('LEFTPADDING',   (0,0), (-1,-1), 10),
-            ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+            ('BOX',           (0,0), (-1,-1), 0.5, MID_GRAY),
+            ('LINEBEFORE',    (0,0), (0,-1),  4,   XH_GREEN),
+            ('TOPPADDING',    (0,0), (-1,-1), 10),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+            ('LEFTPADDING',   (0,0), (-1,-1), 12),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 12),
         ]))
         return t
 
-    # Add experience-card styles to S
-    S['exp_title'] = ps('exp_title', fontName='Helvetica-Bold', fontSize=10,
-                        textColor=NAVY, spaceAfter=0, leading=14)
-    S['exp_sub']   = ps('exp_sub',   fontName='Helvetica-Oblique', fontSize=9,
-                        textColor=XH_GREEN, spaceAfter=0, leading=13)
-    S['exp_date']  = ps('exp_date',  fontName='Helvetica', fontSize=8,
-                        textColor=TEXT_GRAY, alignment=1, spaceAfter=0)  # TA_RIGHT=1
-
-    # ── Data extraction ────────────────────────────────────────────────
+    # ── Data ─────────────────────────────────────────────────────────
     s1   = doc.get('section_1_personal_details') or {}
     s2   = doc.get('section_2_identity_verification') or {}
     s3   = doc.get('section_3_professional_registration') or {}
@@ -352,41 +325,62 @@ def _build_cv_pdf(doc):
     visa     = s1.get('work_permit_visa_status') or {}
     docs_sub = s2.get('documents_submitted') or {}
 
-    full_name = _v(s1.get('full_name'))
-    emp_code  = _v(doc.get('employee_code'))
-    user_type = _v(doc.get('user_type'))
+    full_name  = _v(s1.get('full_name'))
+    emp_code   = _v(doc.get('employee_code'))
+    user_type  = _v(doc.get('user_type'))
+    address    = _v(s1.get('address'))
+    mobile     = _v(s1.get('mobile_number'))
+    email      = _v(doc.get('email'))
+    dob        = _v(s1.get('date_of_birth'))
+    nationality= _v(s1.get('nationality'))
+    reg_pin    = _v(s3.get('registration_number_pin'))
+    reg_exp    = _v(s3.get('registration_expiry_date'))
+    divisions  = ', '.join(s3.get('divisions_registered_in') or [])
+    nmbi       = s3.get('nmbi_active_declaration')
+    perm_work  = _v(visa.get('permission_to_work'))
+    visa_type  = _v(visa.get('visa_type'))
+    total_exp  = _v(s5.get('total_experience'))
+    entries    = [e for e in (s5.get('entries') or [])
+                  if e.get('employer') or e.get('position')]
 
-    # ── Logo path (searches common static locations) ───────────────────
+    # ── Logo ─────────────────────────────────────────────────────────
     logo_path = None
-    for candidate in [
+    for c in [
         os.path.join(os.path.dirname(__file__), '..', 'static', 'images', 'logo.png'),
         os.path.join(os.path.dirname(__file__), '..', 'static', 'img', 'logo.png'),
         os.path.join(os.path.dirname(__file__), '..', 'static', 'logo.png'),
         'static/images/logo.png', 'static/img/logo.png', 'static/logo.png',
     ]:
-        if os.path.exists(candidate):
-            logo_path = candidate
+        if os.path.exists(c):
+            logo_path = c
             break
 
-    # ── Build story ────────────────────────────────────────────────────
+    # ── Build story ───────────────────────────────────────────────────
     buf   = _io.BytesIO()
     story = []
 
-    # ── HEADER BANNER ─────────────────────────────────────────────────
+    # ════════════════════════════════════════════════════════════════
+    # HEADER — Logo + "CURRICULUM VITAE" + candidate name
+    # ════════════════════════════════════════════════════════════════
     title_rows = [
         [Paragraph('CURRICULUM VITAE', S['cv_title'])],
+        [Paragraph(full_name or 'Candidate', S['cv_name'])],   # name under title
     ]
-    title_w = PAGE_W - (55*mm if logo_path else 0)
+    title_w   = PAGE_W - (55*mm if logo_path else 0)
     title_tbl = Table(title_rows, colWidths=[title_w])
     title_tbl.setStyle(TableStyle([
         ('BACKGROUND',    (0,0), (-1,-1), NAVY),
         ('TOPPADDING',    (0,0), (-1,-1), 12),
         ('BOTTOMPADDING', (0,0), (-1,-1), 12),
         ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+        # name row slightly lighter bg
+        ('BACKGROUND',    (0,1), (-1,1),  colors.HexColor('#162F58')),
+        ('TOPPADDING',    (0,1), (-1,1),  6),
+        ('BOTTOMPADDING', (0,1), (-1,1),  8),
     ]))
 
     if logo_path:
-        logo_img  = RLImage(logo_path, width=45*mm, height=45*mm * 94/316)
+        logo_img  = RLImage(logo_path, width=45*mm, height=45*mm*94/316)
         logo_cell = Table([[logo_img]], colWidths=[55*mm])
         logo_cell.setStyle(TableStyle([
             ('BACKGROUND',    (0,0), (-1,-1), WHITE),
@@ -406,220 +400,293 @@ def _build_cv_pdf(doc):
         ('LEFTPADDING',   (0,0), (-1,-1), 0),
         ('RIGHTPADDING',  (0,0), (-1,-1), 0),
         ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
-        ('LINEBELOW',     (0,0), (-1,-1), 2.5, XH_GREEN),
+        ('LINEBELOW',     (0,0), (-1,-1), 3, XH_GREEN),
     ]))
     story += [banner, sp(5)]
 
-    # ═══════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════
     # 1. PERSONAL DETAILS
-    #    Full Name / Address / Mobile / Email / Date of Birth / Nationality
-    # ═══════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════
     story += [sec('PERSONAL DETAILS'), sp(3)]
-    for lbl, val, hi in [
-        ('Full Name:',      full_name,                          True),
-        ('Address:',        _v(s1.get('address')),              False),
-        ('Mobile Number:',  _v(s1.get('mobile_number')),        False),
-        ('Email Address:',  _v(doc.get('email')),               False),
-        ('Date of Birth:',  _v(s1.get('date_of_birth')),        False),
-        ('Nationality:',    _v(s1.get('nationality')),          False),
+    for label, value in [
+        ('Full Name:',     full_name),
+        ('Address:',       address),
+        ('Mobile Number:', mobile),
+        ('Email Address:', email),
+        ('Date of Birth:', dob),
+        ('Nationality:',   nationality),
     ]:
-        story += [lv(lbl, val, highlight=hi), sp(1)]
+        if value:
+            story += [lv(label, value), sp(1)]
     story.append(sp(4))
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 2. PROFESSIONAL PROFILE — rich self-description paragraph
-    # ═══════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════
+    # 2. PROFESSIONAL PROFILE — rich individual paragraph
+    # ════════════════════════════════════════════════════════════════
     story += [sec('PROFESSIONAL PROFILE'), sp(3)]
 
-    reg_pin     = _v(s3.get('registration_number_pin'))
-    reg_exp     = _v(s3.get('registration_expiry_date'))
-    divisions   = ', '.join(s3.get('divisions_registered_in') or [])
-    nmbi_active = s3.get('nmbi_active_declaration')
-    perm_work   = _v(visa.get('permission_to_work'))
-    visa_type_v = _v(visa.get('visa_type'))
-    total_exp_p = _v(s5.get('total_experience'))
-    entries_p   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
-    latest_emp  = entries_p[0] if entries_p else {}
+    # Build a natural multi-sentence profile from the data
+    para_sentences = []
 
-    # Build a flowing self-description CV paragraph
-    sentences = []
-
-    # Opening sentence — who they are
+    # Opening — who they are + experience + speciality
     if full_name and user_type:
-        opener = f"{full_name} is a dedicated and experienced {user_type}"
+        opener = f"{full_name} is a compassionate and dedicated {user_type}"
         if divisions:
             opener += f" specialising in {divisions}"
-        if total_exp_p:
-            opener += f", with {total_exp_p} of professional experience"
-        sentences.append(opener)
+        if total_exp:
+            opener += f", with {total_exp} of professional healthcare experience"
+        para_sentences.append(opener)
 
-    # Current/recent role
-    if latest_emp:
-        pos_p = _v(latest_emp.get('position'))
-        emp_p = _v(latest_emp.get('employer'))
-        if pos_p and emp_p:
-            sentences.append(
-                f"Most recently working as {pos_p} at {emp_p}"
-            )
+    # Most recent role
+    if entries:
+        latest = entries[0]
+        pos_l  = _v(latest.get('position'))
+        emp_l  = _v(latest.get('employer'))
+        d_from = _v(latest.get('from'))
+        d_to   = _v(latest.get('to'))
+        if pos_l and emp_l:
+            role_s = f"Most recently working as {pos_l} at {emp_l}"
+            if d_from:
+                role_s += f" from {d_from}"
+                role_s += f" to {d_to}" if d_to else " to present"
+            para_sentences.append(role_s)
 
-    # Registration
-    if reg_pin or reg_exp:
-        reg_str = "Professionally registered"
+    # Registration / professional status
+    if reg_pin or reg_exp or nmbi:
+        reg_s = "Professionally registered"
         if reg_pin:
-            reg_str += f" (PIN: {reg_pin})"
+            reg_s += f" (PIN: {reg_pin})"
         if reg_exp:
-            reg_str += f" with registration valid until {reg_exp}"
-        if nmbi_active:
-            reg_str += " and holds an active NMBI declaration"
-        sentences.append(reg_str)
+            reg_s += f" with registration valid until {reg_exp}"
+        if nmbi:
+            reg_s += ", holding an active NMBI declaration"
+        para_sentences.append(reg_s)
 
     # Work authorisation
-    if perm_work == 'Yes' and visa_type_v:
-        sentences.append(
-            f"Fully authorised to work in Ireland ({visa_type_v})"
+    if perm_work == 'Yes' and visa_type:
+        para_sentences.append(
+            f"Fully authorised to work in Ireland ({visa_type})"
         )
     elif perm_work == 'Yes':
-        sentences.append("Fully authorised to work in Ireland")
+        para_sentences.append("Fully authorised to work in Ireland")
 
-    profile_text = '. '.join(sentences) + '.' if sentences else         'Experienced healthcare professional committed to delivering high-quality patient care. ' \
-        'Holds current professional registration and mandatory training certifications.'
+    # Occupational health
+    if s9.get('fit_for_nursing_duties'):
+        para_sentences.append(
+            "Confirmed fit for nursing duties with up-to-date occupational health clearance"
+        )
 
-    story.append(para_box(profile_text))
+    # Garda vetting
+    if s8.get('garda_vetting_submitted'):
+        para_sentences.append("Garda vetted and cleared to work with vulnerable adults")
+
+    # Qualities closing line
+    qualities = (
+        "Known for excellent communication, a caring and professional manner, "
+        "and a genuine commitment to promoting client dignity, independence, and wellbeing"
+    )
+    para_sentences.append(qualities)
+
+    profile_text = '. '.join(para_sentences) + '.'
+
+    story.append(profile_box(profile_text))
     story.append(sp(4))
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 3. EDUCATION & QUALIFICATIONS — description mode
-    # ═══════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════
+    # 3. EDUCATION & QUALIFICATIONS
+    # ════════════════════════════════════════════════════════════════
     story += [sec('EDUCATION & QUALIFICATIONS'), sp(3)]
 
-    qual_entries = []
-    for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
-        q = s4.get(qk) or {}
-        if q.get('qualification') or q.get('institution'):
-            qual_entries.append(q)
+    qual_keys = ['nursing_degree', 'postgraduate_qualification', 'other_qualification']
+    qual_found = False
+    for qk in qual_keys:
+        q     = s4.get(qk) or {}
+        qname = _v(q.get('qualification'))
+        qinst = _v(q.get('institution'))
+        qyear = _v(q.get('year_completed'))
+        if not (qname or qinst):
+            continue
+        qual_found = True
 
-    if qual_entries:
-        for q in qual_entries:
-            qname = _v(q.get('qualification'))
-            qinst = _v(q.get('institution'))
-            qyear = _v(q.get('year_completed'))
+        # Heading row: qual name left, year right
+        h_left  = Paragraph(f'<b>{qname}</b>' if qname else '<b>Qualification</b>',
+                             S['qual_title'])
+        h_right = Paragraph(qyear, S['exp_date'])
+        yr_cell = Table([[h_right]], colWidths=[30*mm])
+        yr_cell.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), XH_GREEN),
+            ('TOPPADDING',    (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('LEFTPADDING',   (0,0), (-1,-1), 6),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 6),
+        ]))
+        head_row = Table([[h_left, yr_cell]],
+                         colWidths=[PAGE_W - 34*mm, 34*mm])
+        head_row.setStyle(TableStyle([
+            ('TOPPADDING',    (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        story.append(head_row)
+        if qinst:
+            story.append(Paragraph(qinst, S['qual_sub']))
+        story += [sp(2), HRFlowable(width=PAGE_W, color=MID_GRAY, thickness=0.4), sp(3)]
 
-            # Heading line: bold qualification name + year right-aligned
-            heading_left  = Paragraph(f"<b>{qname}</b>" if qname else "<b>Qualification</b>", S['exp_title'])
-            heading_right = Paragraph(qyear, S['exp_date'])
-            heading_row   = Table([[heading_left, heading_right]],
-                                   colWidths=[PAGE_W * 0.75, PAGE_W * 0.25])
-            heading_row.setStyle(TableStyle([
-                ('TOPPADDING',    (0,0), (-1,-1), 0),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-                ('LEFTPADDING',   (0,0), (-1,-1), 0),
-                ('RIGHTPADDING',  (0,0), (-1,-1), 0),
-                ('VALIGN',        (0,0), (-1,-1), 'BOTTOM'),
-            ]))
-            story.append(heading_row)
-            if qinst:
-                story.append(Paragraph(qinst, S['exp_sub']))
-            story.append(sp(2))
-            story.append(HRFlowable(width=PAGE_W, color=MID_GRAY, thickness=0.3))
-            story.append(sp(3))
-    else:
-        story.append(para_box('No qualifications recorded.'))
+    if not qual_found:
+        story.append(Paragraph('No qualifications recorded.', S['body']))
         story.append(sp(3))
 
     story.append(sp(1))
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 4. PROFESSIONAL EXPERIENCE — one card per role, description mode
-    # ═══════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════
+    # 4. PROFESSIONAL EXPERIENCE — one card per role with full duties
+    # ════════════════════════════════════════════════════════════════
     story += [sec('PROFESSIONAL EXPERIENCE'), sp(3)]
-    entries   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
-    total_exp = _v(s5.get('total_experience'))
 
     if entries:
         for i, e in enumerate(entries):
-            emp     = _v(e.get('employer'))
             pos     = _v(e.get('position'))
+            emp     = _v(e.get('employer'))
+            loc     = _v(e.get('location', ''))   # location field if present
             d_from  = _v(e.get('from'))
             d_to    = _v(e.get('to'))
             leaving = _v(e.get('reason_for_leaving'))
 
-            # Date range label
+            # Date range string
             if d_from and d_to:
-                date_label = f"{d_from} – {d_to}"
+                date_str = f"{d_from} \u2013 {d_to}"
             elif d_from:
-                date_label = f"{d_from} – Present"
+                date_str = f"{d_from} \u2013 Present"
             elif d_to:
-                date_label = f"Until {d_to}"
+                date_str = f"Until {d_to}"
             else:
-                date_label = ''
+                date_str = ''
 
-            # ── Role heading row: job title left, dates right ─────────
-            title_p = Paragraph(f"<b>{pos}</b>" if pos else "<b>Role</b>", S['exp_title'])
-            date_p  = Paragraph(date_label, S['exp_date'])
-            head_t  = Table([[title_p, date_p]],
-                            colWidths=[PAGE_W * 0.70, PAGE_W * 0.30])
+            # ── Role heading: title left, date badge right ────────
+            t_para  = Paragraph(f'<b>{pos}</b>' if pos else '<b>Role</b>', S['exp_title'])
+            if date_str:
+                d_badge = Table([[Paragraph(date_str, S['exp_date'])]],
+                                colWidths=[None])
+                d_badge.setStyle(TableStyle([
+                    ('BACKGROUND',    (0,0), (-1,-1), XH_GREEN),
+                    ('TOPPADDING',    (0,0), (-1,-1), 4),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                    ('LEFTPADDING',   (0,0), (-1,-1), 10),
+                    ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+                ]))
+                head_t = Table([[t_para, d_badge]],
+                               colWidths=[PAGE_W * 0.60, PAGE_W * 0.40])
+            else:
+                head_t = Table([[t_para]], colWidths=[PAGE_W])
+
             head_t.setStyle(TableStyle([
                 ('TOPPADDING',    (0,0), (-1,-1), 0),
                 ('BOTTOMPADDING', (0,0), (-1,-1), 2),
                 ('LEFTPADDING',   (0,0), (-1,-1), 0),
                 ('RIGHTPADDING',  (0,0), (-1,-1), 0),
-                ('VALIGN',        (0,0), (-1,-1), 'BOTTOM'),
+                ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
             ]))
+            story.append(head_t)
 
-            # ── Employer sub-line ─────────────────────────────────────
-            emp_p = Paragraph(emp, S['exp_sub']) if emp else None
+            # Employer + location sub-line
+            sub_parts = []
+            if emp: sub_parts.append(emp)
+            if loc: sub_parts.append(loc)
+            if sub_parts:
+                story.append(Paragraph(' \u2022 '.join(sub_parts), S['exp_sub']))
 
-            # ── Description paragraph ─────────────────────────────────
+            story.append(sp(2))
+
+            # ── Description paragraph ─────────────────────────────
+            # Build a rich descriptive paragraph for this role
             desc_parts = []
             if pos and emp:
-                desc_parts.append(
-                    f"Worked as <b>{pos}</b> at {emp}"
-                    + (f" from {d_from} to {d_to}" if (d_from and d_to) else
-                       f" from {d_from}" if d_from else "")
-                )
-            if leaving:
-                desc_parts.append(f"Reason for leaving: {leaving}")
+                desc = f"Worked as <b>{pos}</b> at {emp}"
+                if loc:
+                    desc += f", based in {loc}"
+                if d_from and d_to:
+                    desc += f", from {d_from} to {d_to}"
+                elif d_from:
+                    desc += f" from {d_from} to present"
+                desc_parts.append(desc)
 
-            desc_text = '. '.join(desc_parts) + '.' if desc_parts else ''
+            # Add responsibilities based on user_type keywords
+            ut_lower = user_type.lower() if user_type else ''
+            if 'nurse' in ut_lower or 'nursing' in ut_lower:
+                role_duties = [
+                    "Assisted residents and clients with all aspects of personal care including personal hygiene, dressing, and grooming",
+                    "Supported safe mobility and transfers, assisting with walking, wheelchair use, and repositioning",
+                    "Observed and reported changes in residents' condition — including skin integrity, pain, and behaviour — to the nursing team",
+                    "Assisted with medication administration under the direct supervision of qualified nursing staff",
+                    "Maintained accurate records and contributed to care planning in line with individual care plans",
+                    "Built positive and respectful therapeutic relationships with residents and their families",
+                    "Worked effectively within multidisciplinary teams, supporting a safe and caring environment",
+                ]
+            elif 'healthcare' in ut_lower or 'hca' in ut_lower or 'assistant' in ut_lower:
+                role_duties = [
+                    "Provided high-quality, person-centred care and support tailored to each individual client's needs",
+                    "Assisted clients with all activities of daily living including personal care, meal preparation, and mobility support",
+                    "Observed and reported changes in clients' physical or emotional wellbeing to the supervising care team",
+                    "Promoted client independence, dignity, and choice throughout all aspects of care delivery",
+                    "Maintained comprehensive and accurate care records in line with organisational policies",
+                    "Collaborated effectively with colleagues, families, and multidisciplinary teams to ensure continuity of care",
+                    "Followed safe working practices, infection control procedures, and moving and handling guidelines at all times",
+                ]
+            else:
+                role_duties = [
+                    "Delivered high standards of professional care and support in line with organisational policies and procedures",
+                    "Maintained clear and accurate records and communicated effectively with the wider team",
+                    "Promoted the dignity, independence, and wellbeing of all clients and residents at all times",
+                ]
 
-            # ── Assemble the experience card ──────────────────────────
-            story.append(head_t)
-            if emp_p:
-                story.append(emp_p)
+            if desc_parts:
+                story.append(Paragraph('. '.join(desc_parts) + '.', S['body']))
+                story.append(sp(2))
+
+            # Duties heading
+            story.append(Paragraph('<b>Duties &amp; Responsibilities</b>', S['lbl']))
+            story.append(sp(1))
+            for duty in role_duties:
+                story.append(duty_item(duty))
             story.append(sp(2))
-            if desc_text:
-                story.append(para_box(desc_text))
-            story.append(sp(3))
+
+            if leaving:
+                story.append(Paragraph(
+                    f'<i>Reason for leaving: {leaving}</i>', S['qual_sub']
+                ))
+                story.append(sp(2))
 
             if i < len(entries) - 1:
-                story.append(HRFlowable(width=PAGE_W, color=MID_GRAY, thickness=0.3))
+                story.append(HRFlowable(width=PAGE_W, color=MID_GRAY, thickness=0.5))
                 story.append(sp(3))
+
     else:
-        story.append(para_box('No employment history recorded.'))
+        story.append(Paragraph('No employment history recorded.', S['body']))
         story.append(sp(3))
 
     if total_exp:
-        story += [lv('Total Experience:', total_exp, lw=55*mm), sp(1)]
-    story.append(sp(3))
+        story += [sp(2), lv('Total Experience:', total_exp, lw=55*mm), sp(1)]
+    story.append(sp(4))
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 5. TRAINING & CERTIFICATIONS — bullet list, max 6 items
-    # ═══════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════
+    # 5. TRAINING & CERTIFICATIONS — bullet list, max 6
+    # ════════════════════════════════════════════════════════════════
     story += [sec('TRAINING & CERTIFICATIONS'), sp(3)]
     TLABELS = {
         'manual_handling':              'Manual Handling',
-        'cpr_bls':                      'CPR / BLS',
+        'cpr_bls':                      'CPR / Basic Life Support',
         'fire_safety':                  'Fire Safety',
         'infection_prevention_control': 'Infection Prevention & Control',
         'hand_hygiene':                 'Hand Hygiene',
-        'safeguarding':                 'Safeguarding',
+        'safeguarding':                 'Safeguarding Vulnerable Adults',
         'children_first':               'Children First',
-        'cyber_security':               'Cyber Security',
+        'cyber_security':               'Cyber Security Awareness',
         'dignity_at_work':              'Dignity at Work',
         'open_disclosure':              'Open Disclosure',
-        'mapa_pmav':                    'MAPA / PMAV',
+        'mapa_pmav':                    'MAPA / PMAV (De-escalation)',
     }
-    # Collect only certs that exist in the record, cap at 6
     cert_labels = []
     for key, label in TLABELS.items():
         if s10.get(key):
@@ -628,67 +695,66 @@ def _build_cv_pdf(doc):
             break
 
     if cert_labels:
-        bullet_rows = [[Paragraph(f'•  {label}', S['val'])] for label in cert_labels]
-        cert_tbl = Table(bullet_rows, colWidths=[PAGE_W])
-        cert_tbl.setStyle(TableStyle([
-            ('BACKGROUND',    (0,0), (-1,-1), LIGHT_BG),
-            ('BOX',           (0,0), (-1,-1), 0.4, MID_GRAY),
-            ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
-            ('TOPPADDING',    (0,0), (-1,-1), 5),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-            ('LEFTPADDING',   (0,0), (-1,-1), 14),
-            ('RIGHTPADDING',  (0,0), (-1,-1), 10),
-        ]))
-        story += [cert_tbl, sp(4)]
+        for label in cert_labels:
+            story.append(bullet_item(label))
+        story.append(sp(4))
     else:
-        story += [para_box('No training certifications recorded.'), sp(4)]
+        story.append(Paragraph('No training certifications recorded.', S['body']))
+        story.append(sp(4))
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 6. KEY SKILLS  (occupational health)
-    # ═══════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════
+    # 6. KEY SKILLS — bullets from health/registration data
+    # ════════════════════════════════════════════════════════════════
     story += [sec('KEY SKILLS'), sp(3)]
-    for lbl, val in [
-        ('Health Screening Completed:',    'Yes' if s9.get('occupational_health_screening')  else 'No'),
-        ('Immunisation Records Provided:', 'Yes' if s9.get('immunisation_records_provided')  else 'No'),
-        ('Fit for Nursing Duties:',        'Yes' if s9.get('fit_for_nursing_duties')          else 'No'),
-    ]:
-        story += [lv(lbl, val, lw=72*mm), sp(1)]
+    ut_lower = user_type.lower() if user_type else ''
+    if 'nurse' in ut_lower or 'nursing' in ut_lower:
+        skills = [
+            'Medication administration (under nursing supervision)',
+            'Patient assessment and observation',
+            'Personal and person-centred care',
+            'Patient moving and handling / safe mobility support',
+            'Communication and interpersonal skills',
+            'Observation, monitoring, and reporting of patient condition',
+            'Record keeping and report writing',
+            'Teamwork and collaboration with multidisciplinary teams',
+            'Compassion, empathy, and patience',
+            'Promoting patient dignity and independence',
+        ]
+    else:
+        skills = [
+            'Person-centred care and support',
+            'Assistance with all activities of daily living',
+            'Patient moving and handling / safe mobility support',
+            'Communication and interpersonal skills',
+            'Observation, monitoring, and reporting of client condition',
+            'Record keeping and report writing',
+            'Teamwork and collaboration',
+            'Compassion, empathy, and patience',
+            'Promoting client dignity and independence',
+        ]
+
+    for skill in skills:
+        story.append(bullet_item(skill))
     story.append(sp(4))
 
-    # ═══════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════
     # 7. ADDITIONAL INFORMATION
-    #    Driving Licence / Own Transport / References / Vetting / Date
-    # ═══════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════
     story += [sec('ADDITIONAL INFORMATION'), sp(3)]
-
-    driving = _v(s2.get('driving_licence_number'))
-    docs_list = []
-    if docs_sub.get('passport'):          docs_list.append('Passport')
-    if docs_sub.get('birth_certificate'): docs_list.append('Birth Certificate')
-    if docs_sub.get('driving_licence'):   docs_list.append('Driving Licence')
-    if docs_sub.get('proof_of_address'):  docs_list.append('Proof of Address')
-
-    for lbl, val in [
+    for label, value in [
         ('Driving Licence:', 'No'),
         ('Own Transport:',   'No'),
+        ('References:',      'Available on request'),
+        ('Date:',            _v(s12.get('date')) or '_____________________'),
     ]:
-        story += [lv(lbl, val, lw=70*mm), sp(1)]
+        story += [lv(label, value), sp(1)]
     story.append(sp(4))
 
-
-    # Date only
-    date_t = Table(
-        [[Paragraph('', S['val']),
-          Paragraph(f'Date: {_v(s12.get("date")) or "_____________________"}', S['val'])]],
-        colWidths=[PAGE_W * 0.55, PAGE_W * 0.45]
-    )
-    story += [date_t, sp(6)]
-
-    # ── Render ─────────────────────────────────────────────────────────
+    # ── Render ────────────────────────────────────────────────────────
     pdf_doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=15*mm, rightMargin=15*mm,
-        topMargin=10*mm,  bottomMargin=12*mm,
+        topMargin=10*mm,  bottomMargin=15*mm,
     )
     pdf_doc.build(story)
     return buf.getvalue()
