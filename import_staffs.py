@@ -95,7 +95,7 @@ def import_staffs(filepath, dry_run=False):
 
     for idx, rec in enumerate(records, start=1):
         email = (rec.get('email') or '').strip().lower()
-        name  = rec.get('section_1_personal_details', {}).get('full_name', '?')
+        name  = (rec.get('section_1_personal_details') or {}).get('full_name', '?')
 
         if not email:
             print(f"  [{idx:>5}] ⚠️   Skipped  — no email  ({name})")
