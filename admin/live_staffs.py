@@ -157,6 +157,258 @@ def _ai_interviews_col():
     return db.live_staff_ai_interviews
 
 
+# ── Generate AI CV ────────────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-cv/generate', methods=['POST'])
+@admin_required
+def live_staff_ai_cv_generate():
+    """Call Gemini to write a personalised CV, render to PDF, save to static/cv/."""
+    data     = request.get_json()
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+        s1   = doc.get('section_1_personal_details') or {}
+        s3   = doc.get('section_3_professional_registration') or {}
+        s4   = doc.get('section_4_qualifications') or {}
+        s5   = doc.get('section_5_employment_history') or {}
+        s8   = doc.get('section_8_garda_vetting_police_clearance') or {}
+        s9   = doc.get('section_9_occupational_health') or {}
+        s10  = doc.get('section_10_mandatory_training') or {}
+        visa = s1.get('work_permit_visa_status') or {}
+
+        def _vv(val):
+            if val is None: return ''
+            return str(val).strip()
+
+        full_name   = _vv(s1.get('full_name'))
+        user_type   = _vv(doc.get('user_type'))
+        address     = _vv(s1.get('address'))
+        mobile      = _vv(s1.get('mobile_number'))
+        email       = _vv(doc.get('email'))
+        dob         = _vv(s1.get('date_of_birth'))
+        nationality = _vv(s1.get('nationality'))
+        emp_code    = _vv(doc.get('employee_code'))
+        total_exp   = _vv(s5.get('total_experience'))
+        divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+        reg_pin     = _vv(s3.get('registration_number_pin'))
+        reg_exp     = _vv(s3.get('registration_expiry_date'))
+        nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+        visa_type   = _vv(visa.get('visa_type'))
+        perm_work   = _vv(visa.get('permission_to_work'))
+        garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
+        fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
+
+        qual_lines = []
+        for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
+            q = s4.get(qk) or {}
+            if q.get('qualification') or q.get('institution'):
+                qual_lines.append(
+                    f"  - {_vv(q.get('qualification'))} | "
+                    f"{_vv(q.get('institution'))} | "
+                    f"{_vv(q.get('year_completed'))}"
+                )
+
+        entries = [e for e in (s5.get('entries') or [])
+                   if e.get('employer') or e.get('position')]
+        exp_lines = []
+        for e in entries:
+            exp_lines.append(
+                f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} "
+                f"({_vv(e.get('from'))} - {_vv(e.get('to') or 'Present')})"
+            )
+
+        TLABELS = {
+            'manual_handling': 'Manual Handling',
+            'cpr_bls': 'CPR / BLS',
+            'fire_safety': 'Fire Safety',
+            'infection_prevention_control': 'Infection Prevention & Control',
+            'hand_hygiene': 'Hand Hygiene',
+            'safeguarding': 'Safeguarding',
+            'children_first': 'Children First',
+            'cyber_security': 'Cyber Security',
+            'dignity_at_work': 'Dignity at Work',
+            'open_disclosure': 'Open Disclosure',
+            'mapa_pmav': 'MAPA / PMAV',
+        }
+        certs = [label for k, label in TLABELS.items() if s10.get(k)][:6]
+
+        data_summary = f"""
+Candidate: {full_name}
+Role / User Type: {user_type}
+Employee Code: {emp_code}
+Address: {address}
+Mobile: {mobile}
+Email: {email}
+Date of Birth: {dob}
+Nationality: {nationality}
+Total Experience: {total_exp}
+Divisions / Speciality: {divisions}
+Registration PIN: {reg_pin}
+Registration Expiry: {reg_exp}
+NMBI Active Declaration: {nmbi}
+Permission to Work: {perm_work}
+Visa / Stamp Type: {visa_type}
+Garda Vetted: {garda}
+Fit for Nursing Duties: {fit}
+
+Qualifications:
+{chr(10).join(qual_lines) if qual_lines else '  None recorded'}
+
+Employment History:
+{chr(10).join(exp_lines) if exp_lines else '  None recorded'}
+
+Training & Certifications (on file):
+{chr(10).join('  - ' + c for c in certs) if certs else '  None recorded'}
+""".strip()
+
+        prompt = f"""You are an expert professional CV writer specialising in Irish healthcare staffing.
+
+STRICT RULE — NO HALLUCINATION:
+You MUST use ONLY the exact facts provided in the CANDIDATE DATA section below.
+Do NOT invent, assume, or add any information that is not explicitly stated.
+If a field is empty or says "None recorded", do not fabricate content for it — skip it or write only what is known.
+Do not add employers, qualifications, dates, locations, certifications, or duties that are not in the data.
+Do not pad sections with generic filler text disguised as personal experience.
+
+Using ONLY the verified candidate data below, write a complete, professional, and ATS-optimised Curriculum Vitae in plain text.
+
+Structure the CV exactly as follows (use these EXACT section headings in UPPERCASE on their own line):
+
+PERSONAL DETAILS
+PROFESSIONAL PROFILE
+EDUCATION & QUALIFICATIONS
+PROFESSIONAL EXPERIENCE
+TRAINING & CERTIFICATIONS
+KEY SKILLS
+ADDITIONAL INFORMATION
+
+Section rules:
+- PERSONAL DETAILS: List each field as "Label: Value" on its own line. Only include fields that have actual values — skip blank ones.
+- PROFESSIONAL PROFILE: 2 paragraphs in FIRST PERSON ("I am", "I have", "I bring"). Based strictly on the data provided. No invented qualities, no assumed skills. Only expand naturally on what is explicitly given. This must read like a genuine personal statement the candidate wrote themselves.
+- EDUCATION & QUALIFICATIONS: One entry per qualification using format: Qualification Name | Institution | Year. Only list qualifications that are in the data.
+- PROFESSIONAL EXPERIENCE: One block per role. Format exactly:
+    Job Title: [title]
+    Employer: [employer]
+    Dates: [from] - [to]
+    Duties:
+    - [duty based only on the role type and employer — no invented specifics]
+  Write 5-6 realistic duties appropriate to the job title. Do not invent employer-specific details not in the data.
+- TRAINING & CERTIFICATIONS: Bullet list using only the certifications listed in the data. Do not add any others.
+- KEY SKILLS: 8-10 bullet points drawn only from their role, qualifications, and certifications in the data.
+- ADDITIONAL INFORMATION: Driving Licence: No | Own Transport: No | Date: [pick any date between January 2024 and December 2026, formatted as DD Month YYYY]
+
+---
+CANDIDATE DATA (use ONLY this — do not add anything else):
+{data_summary}
+---
+
+Output the CV text only. No preamble, no explanation, no markdown symbols like ** or ##. Use plain text with section headings and dash bullet points.
+"""
+
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        if not gemini_key:
+            return jsonify({"success": False, "error": "GEMINI_API_KEY not set in environment"}), 500
+
+        from google import genai as google_genai
+        client   = google_genai.Client(api_key=gemini_key)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        cv_text = response.text.strip()
+
+        pdf_bytes = _build_ai_cv_pdf(doc, cv_text)
+
+        safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        cv_filename = f"AI_CV_{safe_name}_{staff_id}.pdf"
+        cv_folder   = os.path.join('static', 'cv')
+        os.makedirs(cv_folder, exist_ok=True)
+        cv_filepath = os.path.join(cv_folder, cv_filename)
+        with open(cv_filepath, 'wb') as f:
+            f.write(pdf_bytes)
+
+        col      = _ai_cvs_col()
+        existing = col.find_one({"staff_id": str(doc['_id'])})
+        ai_doc = {
+            "staff_id":      str(doc['_id']),
+            "staff_name":    full_name,
+            "employee_code": emp_code,
+            "cv_text":       cv_text,
+            "cv_filename":   cv_filename,
+            "cv_filepath":   cv_filepath,
+            "generated_at":  datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": ai_doc})
+            ai_id = str(existing["_id"])
+        else:
+            result = col.insert_one(ai_doc)
+            ai_id  = str(result.inserted_id)
+
+        return jsonify({
+            "success":     True,
+            "ai_cv_id":    ai_id,
+            "cv_filename": cv_filename,
+            "staff_name":  full_name,
+            "message":     f"AI CV generated for {full_name}"
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-cv/download/<ai_cv_id>')
+@admin_required
+def live_staff_ai_cv_download(ai_cv_id):
+    """Serve the saved AI CV PDF from static/cv/."""
+    try:
+        rec = _ai_cvs_col().find_one({"_id": ObjectId(ai_cv_id)})
+        if not rec:
+            return "AI CV not found", 404
+        cv_filepath = rec.get('cv_filepath', '')
+        if not cv_filepath or not os.path.exists(cv_filepath):
+            return "CV file not found on disk — please regenerate", 404
+        name     = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        filename = f"AI_CV_{name}.pdf"
+        with open(cv_filepath, 'rb') as f:
+            pdf_bytes = f.read()
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/ai-cv/saved/<staff_id>')
+@admin_required
+def live_staff_ai_cv_saved(staff_id):
+    """Check if a saved AI CV exists for this staff member."""
+    try:
+        rec = _ai_cvs_col().find_one(
+            {"staff_id": staff_id},
+            {"cv_text": 0}
+        )
+        if not rec:
+            return jsonify({"success": True, "found": False})
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "ai_cv_id":     str(rec["_id"]),
+            "cv_filename":  rec.get("cv_filename", ""),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M"),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ── Generate AI Interview Notes ───────────────────────────────────────
 
 @admin_bp.route('/live-staffs/ai-interview/generate', methods=['POST'])
