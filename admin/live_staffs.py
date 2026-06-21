@@ -270,7 +270,7 @@ STRICT RULES — NO HALLUCINATION:
 Output ONLY the completed template below — no preamble, no explanations, no markdown symbols:
 
 ---
-Completed {user_type} Interview Template
+Completed {user_type} Interview
 
 Name: [full name]
 Location: [county/city from address]
@@ -628,7 +628,7 @@ def _build_interview_pdf(doc, interview_text):
     story = []
 
     # ── Document header banner ────────────────────────────────────────
-    title_text = f'Completed {user_type} Interview Template'
+    title_text = f'Completed {user_type} Interview'
     if logo_path:
         logo_img  = RLImage(logo_path, width=40*mm, height=40*mm*94/316)
         logo_cell = Table([[logo_img]], colWidths=[48*mm])
