@@ -519,18 +519,10 @@ def _build_interview_pdf(doc, interview_text):
         return t
 
     def score_row(label, score):
-        dots = ''
-        try:
-            n = int(score.split('/')[0])
-            dots = '●' * n + '○' * (5 - n)
-        except Exception:
-            dots = score
         t = Table(
             [[Paragraph(label, S['field_lbl']),
-              Paragraph(score, S['score']),
-              Paragraph(dots, ps('dots', fontName='Helvetica', fontSize=12,
-                                 textColor=XH_GREEN, leading=14))]],
-            colWidths=[PAGE_W * 0.45, PAGE_W * 0.15, PAGE_W * 0.40]
+              Paragraph(score, S['score'])]],
+            colWidths=[PAGE_W * 0.60, PAGE_W * 0.40]
         )
         t.setStyle(TableStyle([
             ('TOPPADDING',    (0,0), (-1,-1), 4),
@@ -767,14 +759,7 @@ def _build_interview_pdf(doc, interview_text):
     ]))
     story += [suit_t, sp(6)]
 
-    # Footer
-    story.append(HRFlowable(width=PAGE_W, color=XH_GREEN, thickness=1))
-    story.append(sp(2))
-    story.append(Paragraph(
-        f'Xpress Health Recruitment  •  {full_name}  •  {emp_code}  •  '
-        f'Confidential Interview Record',
-        S['footer']
-    ))
+    # No footer
 
     # Render
     pdf_doc = SimpleDocTemplate(
