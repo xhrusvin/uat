@@ -153,6 +153,640 @@ def live_staff_get():
 def _ai_cvs_col():
     return db.live_staff_ai_cvs
 
+def _ai_interviews_col():
+    return db.live_staff_ai_interviews
+
+
+# ── Generate AI Interview Notes ───────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-interview/generate', methods=['POST'])
+@admin_required
+def live_staff_ai_interview_generate():
+    """
+    Call Gemini to write realistic interview notes for a staff member
+    using the exact structure of the Nurse Interview Template.
+    Saves PDF to static/interviews/ and metadata to MongoDB.
+    """
+    data     = request.get_json()
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+        s1   = doc.get('section_1_personal_details') or {}
+        s3   = doc.get('section_3_professional_registration') or {}
+        s5   = doc.get('section_5_employment_history') or {}
+        s8   = doc.get('section_8_garda_vetting_police_clearance') or {}
+        s9   = doc.get('section_9_occupational_health') or {}
+        s10  = doc.get('section_10_mandatory_training') or {}
+        visa = s1.get('work_permit_visa_status') or {}
+
+        full_name   = _v(s1.get('full_name'))
+        user_type   = _v(doc.get('user_type'))
+        address     = _v(s1.get('address'))
+        nationality = _v(s1.get('nationality'))
+        reg_pin     = _v(s3.get('registration_number_pin'))
+        visa_type   = _v(visa.get('visa_type'))
+        divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+        total_exp   = _v(s5.get('total_experience'))
+        entries     = [e for e in (s5.get('entries') or [])
+                       if e.get('employer') or e.get('position')]
+        nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+        garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
+        bls         = 'Yes' if s10.get('cpr_bls') else 'No'
+        manual      = 'Yes' if s10.get('manual_handling') else 'No'
+        fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
+
+        # Preferred county from address
+        county = ''
+        if address:
+            parts = [p.strip() for p in address.replace(',', ' ').split()]
+            for p in parts:
+                if p.lower().startswith('co.') or p.lower() == 'county':
+                    idx = parts.index(p)
+                    if idx + 1 < len(parts):
+                        county = parts[idx + 1]
+                    break
+            if not county:
+                county = parts[-1] if parts else ''
+
+        # Build experience summary for prompt
+        exp_lines = []
+        for e in entries[:5]:
+            pos = _v(e.get('position')); emp = _v(e.get('employer'))
+            d_from = _v(e.get('from')); d_to = _v(e.get('to'))
+            if pos or emp:
+                exp_lines.append(
+                    f"  - {pos} at {emp} ({d_from} – {d_to or 'Present'})"
+                )
+
+        TLABELS = {
+            'manual_handling': 'Manual Handling',
+            'cpr_bls': 'BLS/CPR',
+            'safeguarding': 'Safeguarding',
+            'fire_safety': 'Fire Safety',
+            'infection_prevention_control': 'Infection Prevention & Control',
+        }
+        certs = [label for k, label in TLABELS.items() if s10.get(k)]
+
+        data_summary = f"""
+Name: {full_name}
+Role / User Type: {user_type}
+Address / Location: {address}
+Nationality: {nationality}
+Visa / Stamp Type: {visa_type}
+NMBI Registration PIN: {reg_pin}
+NMBI Registration Active: {nmbi}
+Divisions / Speciality: {divisions}
+Total Experience: {total_exp}
+Garda Vetted: {garda}
+BLS/CPR on file: {bls}
+Manual Handling on file: {manual}
+Fit for Duties: {fit}
+
+Employment History:
+{chr(10).join(exp_lines) if exp_lines else '  None recorded'}
+
+Certifications on file: {', '.join(certs) if certs else 'None recorded'}
+""".strip()
+
+        prompt = f"""You are an experienced nursing recruitment consultant at Xpress Health, Ireland.
+
+Using ONLY the verified candidate data below, complete a realistic, professional nurse interview notes template.
+Answers must be written as if the candidate themselves just answered each question in a live phone/video interview.
+Write naturally — conversational but professional. First person where appropriate ("I have", "I work", "I currently").
+
+STRICT RULES — NO HALLUCINATION:
+- Use ONLY the facts provided in CANDIDATE DATA. Do not invent employers, dates, locations, or qualifications.
+- If data is missing for a field, write a realistic professional answer appropriate to their role and experience level without inventing specific names.
+- Clinical question answers must be clinically appropriate for a {user_type}.
+- Assessment scores should reflect the quality of answers: score each out of 5.
+- Do NOT add any text outside the template structure below.
+
+Output ONLY the completed template below — no preamble, no explanations, no markdown symbols:
+
+---
+Completed {user_type} Interview Template
+
+Name: [full name]
+Location: [county/city from address]
+NMBI PIN: [registration pin or N/A]
+Visa Status: [visa type]
+
+Experience
+
+1. Tell me about your nursing experience.
+[Write a 4–6 sentence answer in first person describing their experience, speciality, and current/most recent role. Use only the data provided.]
+
+2. How many years in Ireland?
+[Write a realistic answer based on employment history dates. If Ireland-based work is evident, state it clearly.]
+
+3. Acute, Nursing Home, Community, or Mental Health?
+[Based on employment history, state the most relevant care setting.]
+
+Clinical Questions
+
+1. How would you manage a deteriorating patient?
+[Write a clinically accurate 4–5 sentence answer appropriate for a {user_type}. Use recognised frameworks (ABCDE, NEWS2, ISBAR) where appropriate.]
+
+2. What would you do if you witnessed a medication error?
+[Write a clinically accurate 4–5 sentence answer covering patient safety, reporting, documentation, and prevention.]
+
+Compliance
+NMBI Registration: [Yes/No based on data]
+BLS/CPR: [Yes/No based on data]
+Manual Handling: [Yes/No based on data]
+Garda Vetting: [Yes/No based on data]
+References: Yes
+
+Availability
+Preferred counties: [county from address, or nearest city]
+Day/Night/Both: Both
+Earliest start date: Immediate
+
+Assessment
+Communication: [X/5]
+Clinical Knowledge: [X/5]
+Experience: [X/5]
+Suitable: Yes
+---
+
+CANDIDATE DATA (use ONLY this):
+{data_summary}
+"""
+
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        if not gemini_key:
+            return jsonify({"success": False,
+                            "error": "GEMINI_API_KEY not set"}), 500
+
+        from google import genai as google_genai
+        client   = google_genai.Client(api_key=gemini_key)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        interview_text = response.text.strip()
+        # Strip leading/trailing --- if Gemini included them
+        interview_text = interview_text.strip('-').strip()
+
+        # Build PDF
+        pdf_bytes = _build_interview_pdf(doc, interview_text)
+
+        # Save to static/interviews/
+        safe_name    = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        filename     = f"Interview_{safe_name}_{staff_id}.pdf"
+        folder       = os.path.join('static', 'interviews')
+        os.makedirs(folder, exist_ok=True)
+        filepath     = os.path.join(folder, filename)
+        with open(filepath, 'wb') as f:
+            f.write(pdf_bytes)
+
+        # Save metadata to MongoDB
+        col      = _ai_interviews_col()
+        existing = col.find_one({"staff_id": str(doc['_id'])})
+        rec = {
+            "staff_id":     str(doc['_id']),
+            "staff_name":   full_name,
+            "employee_code": _v(doc.get('employee_code')),
+            "interview_text": interview_text,
+            "filename":     filename,
+            "filepath":     filepath,
+            "generated_at": datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+            rec_id = str(existing["_id"])
+        else:
+            result = col.insert_one(rec)
+            rec_id = str(result.inserted_id)
+
+        return jsonify({
+            "success":      True,
+            "interview_id": rec_id,
+            "staff_name":   full_name,
+            "message":      f"Interview notes generated for {full_name}"
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-interview/download/<interview_id>')
+@admin_required
+def live_staff_ai_interview_download(interview_id):
+    """Serve saved interview PDF from static/interviews/."""
+    try:
+        rec = _ai_interviews_col().find_one({"_id": ObjectId(interview_id)})
+        if not rec:
+            return "Interview notes not found", 404
+        fp = rec.get('filepath', '')
+        if not fp or not os.path.exists(fp):
+            return "File not found — please regenerate", 404
+        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        with open(fp, 'rb') as f:
+            pdf_bytes = f.read()
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={"Content-Disposition":
+                     f'attachment; filename="Interview_{name}.pdf"'}
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/ai-interview/saved/<staff_id>')
+@admin_required
+def live_staff_ai_interview_saved(staff_id):
+    """Check if saved interview notes exist for this staff member."""
+    try:
+        rec = _ai_interviews_col().find_one(
+            {"staff_id": staff_id},
+            {"interview_text": 0}
+        )
+        if not rec:
+            return jsonify({"success": True, "found": False})
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "interview_id": str(rec["_id"]),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M"),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Build Interview Notes PDF ─────────────────────────────────────────
+
+def _build_interview_pdf(doc, interview_text):
+    """
+    Render AI-generated interview notes as a clean professional PDF
+    matching the Completed Nurse Interview Template structure.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table,
+        TableStyle, HRFlowable, Image as RLImage
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+    import io as _io
+
+    # ── Palette — professional, clinical feel ─────────────────────────
+    NAVY      = colors.HexColor('#1B3A6B')
+    XH_GREEN  = colors.HexColor('#2E9E44')
+    DARK      = colors.HexColor('#111111')
+    GRAY      = colors.HexColor('#555555')
+    LT_GRAY   = colors.HexColor('#CCCCCC')
+    BG_LIGHT  = colors.HexColor('#F4F7FB')
+    BG_GREEN  = colors.HexColor('#EEF8F1')
+    WHITE     = colors.white
+
+    W, H   = A4
+    LM=RM  = 18 * mm
+    PAGE_W = W - LM - RM
+
+    def ps(name, **kw):
+        d = dict(fontName='Helvetica', fontSize=10, textColor=DARK,
+                 spaceAfter=2, leading=15)
+        d.update(kw)
+        return ParagraphStyle(name, **d)
+
+    S = {
+        'doc_title' : ps('doc_title', fontName='Helvetica-Bold', fontSize=14,
+                         textColor=WHITE, alignment=TA_CENTER, leading=18),
+        'sec_head'  : ps('sec_head',  fontName='Helvetica-Bold', fontSize=10,
+                         textColor=WHITE, leading=14),
+        'q_label'   : ps('q_label',   fontName='Helvetica-Bold', fontSize=9,
+                         textColor=NAVY, leading=13, spaceAfter=1),
+        'answer'    : ps('answer',    fontSize=10, textColor=DARK,
+                         alignment=TA_JUSTIFY, leading=15, spaceAfter=3),
+        'field_lbl' : ps('field_lbl', fontName='Helvetica-Bold', fontSize=10,
+                         textColor=NAVY, leading=14),
+        'field_val' : ps('field_val', fontSize=10, textColor=DARK, leading=14),
+        'score'     : ps('score',     fontName='Helvetica-Bold', fontSize=11,
+                         textColor=XH_GREEN, leading=14),
+        'footer'    : ps('footer',    fontSize=7, textColor=LT_GRAY,
+                         alignment=TA_CENTER),
+    }
+
+    sp   = lambda n=3: Spacer(1, n * mm)
+
+    def sec_bar(title):
+        t = Table([[Paragraph(title, S['sec_head'])]], colWidths=[PAGE_W])
+        t.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), NAVY),
+            ('TOPPADDING',    (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+            ('LINEBELOW',     (0,0), (-1,-1), 2, XH_GREEN),
+        ]))
+        return t
+
+    def answer_box(text, bg=BG_LIGHT):
+        t = Table([[Paragraph(text or '—', S['answer'])]], colWidths=[PAGE_W])
+        t.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), bg),
+            ('BOX',           (0,0), (-1,-1), 0.4, LT_GRAY),
+            ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
+            ('TOPPADDING',    (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+        ]))
+        return t
+
+    def lv_row(label, value, col_w=55*mm):
+        t = Table(
+            [[Paragraph(label, S['field_lbl']),
+              Paragraph(value or '—', S['field_val'])]],
+            colWidths=[col_w, PAGE_W - col_w]
+        )
+        t.setStyle(TableStyle([
+            ('TOPPADDING',    (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('LEFTPADDING',   (0,0), (0,0),   6),
+            ('LEFTPADDING',   (1,0), (1,0),   4),
+            ('LINEBELOW',     (0,0), (-1,-1), 0.3, LT_GRAY),
+        ]))
+        return t
+
+    def score_row(label, score):
+        dots = ''
+        try:
+            n = int(score.split('/')[0])
+            dots = '●' * n + '○' * (5 - n)
+        except Exception:
+            dots = score
+        t = Table(
+            [[Paragraph(label, S['field_lbl']),
+              Paragraph(score, S['score']),
+              Paragraph(dots, ps('dots', fontName='Helvetica', fontSize=12,
+                                 textColor=XH_GREEN, leading=14))]],
+            colWidths=[PAGE_W * 0.45, PAGE_W * 0.15, PAGE_W * 0.40]
+        )
+        t.setStyle(TableStyle([
+            ('TOPPADDING',    (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('LEFTPADDING',   (0,0), (0,0),   6),
+            ('LINEBELOW',     (0,0), (-1,-1), 0.3, LT_GRAY),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        return t
+
+    # ── Parse interview text into structured sections ──────────────────
+    SECTIONS = [
+        'Experience', 'Clinical Questions', 'Compliance',
+        'Availability', 'Assessment'
+    ]
+
+    def parse_interview(text):
+        result = {
+            'header': {},
+            'experience': {},
+            'clinical': {},
+            'compliance': {},
+            'availability': {},
+            'assessment': {},
+        }
+        current = 'header'
+        q_num   = 0
+        cur_q   = None
+        cur_ans = []
+
+        def flush_qa():
+            nonlocal cur_q, cur_ans
+            if cur_q is not None and cur_ans:
+                result[current][cur_q] = ' '.join(cur_ans).strip()
+                cur_ans = []
+                cur_q   = None
+
+        lines = [l.rstrip() for l in text.splitlines()]
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            sl   = line.strip()
+
+            # Section detection
+            if sl == 'Experience':
+                flush_qa(); current = 'experience'; i += 1; continue
+            elif sl == 'Clinical Questions':
+                flush_qa(); current = 'clinical'; i += 1; continue
+            elif sl == 'Compliance':
+                flush_qa(); current = 'compliance'; i += 1; continue
+            elif sl == 'Availability':
+                flush_qa(); current = 'availability'; i += 1; continue
+            elif sl == 'Assessment':
+                flush_qa(); current = 'assessment'; i += 1; continue
+
+            if current == 'header':
+                if ':' in sl:
+                    k, v = sl.split(':', 1)
+                    result['header'][k.strip()] = v.strip()
+            elif current in ('experience', 'clinical'):
+                # Q&A blocks
+                import re as _re
+                m = _re.match(r'^\d+\.\s+.+$', sl)
+                if m:
+                    flush_qa()
+                    cur_q   = sl
+                    cur_ans = []
+                elif cur_q is not None:
+                    if sl:
+                        cur_ans.append(sl)
+                else:
+                    pass
+            elif current in ('compliance', 'availability', 'assessment'):
+                if ':' in sl:
+                    k, v = sl.split(':', 1)
+                    result[current][k.strip()] = v.strip()
+
+            i += 1
+        flush_qa()
+        return result
+
+    parsed = parse_interview(interview_text)
+
+    # ── Logo ──────────────────────────────────────────────────────────
+    logo_path = None
+    for c in [
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'images', 'logo.png'),
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'img', 'logo.png'),
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'logo.png'),
+        'static/images/logo.png', 'static/img/logo.png', 'static/logo.png',
+    ]:
+        if os.path.exists(c):
+            logo_path = c
+            break
+
+    s1_d      = doc.get('section_1_personal_details') or {}
+    full_name = _v(s1_d.get('full_name')) or 'Candidate'
+    user_type = _v(doc.get('user_type')) or 'Nurse'
+    emp_code  = _v(doc.get('employee_code'))
+
+    # ── Build story ───────────────────────────────────────────────────
+    buf   = _io.BytesIO()
+    story = []
+
+    # ── Document header banner ────────────────────────────────────────
+    title_text = f'Completed {user_type} Interview Template'
+    if logo_path:
+        logo_img  = RLImage(logo_path, width=40*mm, height=40*mm*94/316)
+        logo_cell = Table([[logo_img]], colWidths=[48*mm])
+        logo_cell.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), WHITE),
+            ('TOPPADDING',    (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('LEFTPADDING',   (0,0), (-1,-1), 4),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        title_cell = Table(
+            [[Paragraph(title_text, S['doc_title'])]],
+            colWidths=[PAGE_W - 48*mm]
+        )
+        title_cell.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), NAVY),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+            ('TOPPADDING',    (0,0), (-1,-1), 14),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 14),
+        ]))
+        banner = Table([[logo_cell, title_cell]],
+                       colWidths=[48*mm, PAGE_W - 48*mm])
+    else:
+        title_cell = Table(
+            [[Paragraph(title_text, S['doc_title'])]],
+            colWidths=[PAGE_W]
+        )
+        title_cell.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), NAVY),
+            ('TOPPADDING',    (0,0), (-1,-1), 14),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 14),
+        ]))
+        banner = title_cell
+
+    banner.setStyle(TableStyle([
+        ('LINEBELOW',     (0,0), (-1,-1), 3, XH_GREEN),
+        ('TOPPADDING',    (0,0), (-1,-1), 0),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ('LEFTPADDING',   (0,0), (-1,-1), 0),
+        ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+    ]))
+    story += [banner, sp(4)]
+
+    # ── Header fields ─────────────────────────────────────────────────
+    hdr = parsed['header']
+    for key in ['Name', 'Location', 'NMBI PIN', 'Visa Status']:
+        val = hdr.get(key, '')
+        story += [lv_row(f'{key}:', val), sp(1)]
+    story.append(sp(4))
+
+    # ── Experience ────────────────────────────────────────────────────
+    story += [sec_bar('Experience'), sp(3)]
+    exp = parsed['experience']
+    for q_text, answer in exp.items():
+        story.append(Paragraph(q_text, S['q_label']))
+        story.append(sp(1))
+        story.append(answer_box(answer))
+        story.append(sp(3))
+    story.append(sp(2))
+
+    # ── Clinical Questions ────────────────────────────────────────────
+    story += [sec_bar('Clinical Questions'), sp(3)]
+    clin = parsed['clinical']
+    for q_text, answer in clin.items():
+        story.append(Paragraph(q_text, S['q_label']))
+        story.append(sp(1))
+        story.append(answer_box(answer, BG_GREEN))
+        story.append(sp(3))
+    story.append(sp(2))
+
+    # ── Compliance ────────────────────────────────────────────────────
+    story += [sec_bar('Compliance'), sp(3)]
+    comp = parsed['compliance']
+    COMP_FIELDS = [
+        'NMBI Registration', 'BLS/CPR', 'Manual Handling',
+        'Garda Vetting', 'References'
+    ]
+    for field in COMP_FIELDS:
+        val = comp.get(field, '—')
+        badge_col = XH_GREEN if val.lower() == 'yes' else colors.HexColor('#CC0000')
+        badge_p   = Paragraph(f'<b>{val}</b>',
+                              ps('badge', fontName='Helvetica-Bold', fontSize=10,
+                                 textColor=badge_col, leading=14))
+        t = Table(
+            [[Paragraph(f'{field}:', S['field_lbl']), badge_p]],
+            colWidths=[PAGE_W * 0.55, PAGE_W * 0.45]
+        )
+        t.setStyle(TableStyle([
+            ('TOPPADDING',    (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('LEFTPADDING',   (0,0), (0,0),   6),
+            ('LINEBELOW',     (0,0), (-1,-1), 0.3, LT_GRAY),
+        ]))
+        story += [t, sp(1)]
+    story.append(sp(4))
+
+    # ── Availability ──────────────────────────────────────────────────
+    story += [sec_bar('Availability'), sp(3)]
+    avail = parsed['availability']
+    AVAIL_FIELDS = ['Preferred counties', 'Day/Night/Both', 'Earliest start date']
+    for field in AVAIL_FIELDS:
+        val = avail.get(field, '—')
+        story += [lv_row(f'{field}:', val, col_w=60*mm), sp(1)]
+    story.append(sp(4))
+
+    # ── Assessment ────────────────────────────────────────────────────
+    story += [sec_bar('Assessment'), sp(3)]
+    assess = parsed['assessment']
+    SCORE_FIELDS = ['Communication', 'Clinical Knowledge', 'Experience']
+    for field in SCORE_FIELDS:
+        val = assess.get(field, '—')
+        story += [score_row(f'{field}:', val), sp(1)]
+
+    # Suitable badge
+    suitable = assess.get('Suitable', 'Yes')
+    suit_col  = XH_GREEN if suitable.lower() == 'yes' else colors.HexColor('#CC0000')
+    suit_t    = Table(
+        [[Paragraph('Suitable:', S['field_lbl']),
+          Paragraph(f'<b>{suitable}</b>',
+                    ps('suit', fontName='Helvetica-Bold', fontSize=12,
+                       textColor=suit_col, leading=15))]],
+        colWidths=[PAGE_W * 0.45, PAGE_W * 0.55]
+    )
+    suit_t.setStyle(TableStyle([
+        ('TOPPADDING',    (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('LEFTPADDING',   (0,0), (0,0),   6),
+    ]))
+    story += [suit_t, sp(6)]
+
+    # Footer
+    story.append(HRFlowable(width=PAGE_W, color=XH_GREEN, thickness=1))
+    story.append(sp(2))
+    story.append(Paragraph(
+        f'Xpress Health Recruitment  •  {full_name}  •  {emp_code}  •  '
+        f'Confidential Interview Record',
+        S['footer']
+    ))
+
+    # Render
+    pdf_doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=LM, rightMargin=RM,
+        topMargin=12*mm, bottomMargin=12*mm,
+    )
+    pdf_doc.build(story)
+    return buf.getvalue()
+
+
+
 
 # ── Generate AI CV ────────────────────────────────────────────────────
 
