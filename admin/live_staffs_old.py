@@ -334,17 +334,17 @@ CANDIDATE DATA (use ONLY this):
         # Strip leading/trailing --- if Gemini included them
         interview_text = interview_text.strip('-').strip()
 
-        # Build DOCX
-        docx_bytes = _build_interview_docx(doc, interview_text)
+        # Build PDF
+        pdf_bytes = _build_interview_pdf(doc, interview_text)
 
         # Save to static/interviews/
         safe_name    = (full_name or 'staff').replace(' ', '_').replace('/', '_')
-        filename     = f"Interview_{safe_name}_{staff_id}.docx"
+        filename     = f"Interview_{safe_name}_{staff_id}.pdf"
         folder       = os.path.join('static', 'interviews')
         os.makedirs(folder, exist_ok=True)
         filepath     = os.path.join(folder, filename)
         with open(filepath, 'wb') as f:
-            f.write(docx_bytes)
+            f.write(pdf_bytes)
 
         # Save metadata to MongoDB
         col      = _ai_interviews_col()
@@ -379,7 +379,7 @@ CANDIDATE DATA (use ONLY this):
 @admin_bp.route('/live-staffs/ai-interview/download/<interview_id>')
 @admin_required
 def live_staff_ai_interview_download(interview_id):
-    """Serve saved interview DOCX from static/interviews/."""
+    """Serve saved interview PDF from static/interviews/."""
     try:
         rec = _ai_interviews_col().find_one({"_id": ObjectId(interview_id)})
         if not rec:
@@ -389,12 +389,12 @@ def live_staff_ai_interview_download(interview_id):
             return "File not found — please regenerate", 404
         name = (rec.get('staff_name') or 'staff').replace(' ', '_')
         with open(fp, 'rb') as f:
-            docx_bytes = f.read()
+            pdf_bytes = f.read()
         return Response(
-            docx_bytes,
-            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            pdf_bytes,
+            mimetype='application/pdf',
             headers={"Content-Disposition":
-                     f'attachment; filename="Interview_{name}.docx"'}
+                     f'attachment; filename="Interview_{name}.pdf"'}
         )
     except Exception as e:
         return str(e), 500
@@ -423,268 +423,357 @@ def live_staff_ai_interview_saved(staff_id):
 
 # ── Build Interview Notes PDF ─────────────────────────────────────────
 
-
-def _build_interview_docx(doc, interview_text):
+def _build_interview_pdf(doc, interview_text):
     """
-    Render AI-generated interview notes as a clean Word document (.docx)
-    matching the Completed Nurse Interview structure exactly.
-    Uses python-docx for native Word formatting.
+    Render AI-generated interview notes as a clean professional PDF
+    matching the Completed Nurse Interview Template structure.
     """
-    from docx import Document as DocxDocument
-    from docx.shared import Pt, RGBColor, Inches, Cm
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.oxml.ns import qn
-    from docx.oxml import OxmlElement
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table,
+        TableStyle, HRFlowable, Image as RLImage
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
     import io as _io
 
-    NAVY   = RGBColor(0x1B, 0x3A, 0x6B)
-    GREEN  = RGBColor(0x2E, 0x9E, 0x44)
-    BLACK  = RGBColor(0x00, 0x00, 0x00)
-    GRAY   = RGBColor(0x55, 0x55, 0x55)
-    WHITE  = RGBColor(0xFF, 0xFF, 0xFF)
+    # ── Palette — professional, clinical feel ─────────────────────────
+    NAVY      = colors.HexColor('#1B3A6B')
+    XH_GREEN  = colors.HexColor('#2E9E44')
+    DARK      = colors.HexColor('#111111')
+    GRAY      = colors.HexColor('#555555')
+    LT_GRAY   = colors.HexColor('#CCCCCC')
+    BG_LIGHT  = colors.HexColor('#F4F7FB')
+    BG_GREEN  = colors.HexColor('#EEF8F1')
+    WHITE     = colors.white
+
+    W, H   = A4
+    LM=RM  = 18 * mm
+    PAGE_W = W - LM - RM
+
+    def ps(name, **kw):
+        d = dict(fontName='Helvetica', fontSize=10, textColor=DARK,
+                 spaceAfter=2, leading=15)
+        d.update(kw)
+        return ParagraphStyle(name, **d)
+
+    S = {
+        'doc_title' : ps('doc_title', fontName='Helvetica-Bold', fontSize=14,
+                         textColor=WHITE, alignment=TA_CENTER, leading=18),
+        'sec_head'  : ps('sec_head',  fontName='Helvetica-Bold', fontSize=10,
+                         textColor=WHITE, leading=14),
+        'q_label'   : ps('q_label',   fontName='Helvetica-Bold', fontSize=9,
+                         textColor=NAVY, leading=13, spaceAfter=1),
+        'answer'    : ps('answer',    fontSize=10, textColor=DARK,
+                         alignment=TA_JUSTIFY, leading=15, spaceAfter=3),
+        'field_lbl' : ps('field_lbl', fontName='Helvetica-Bold', fontSize=10,
+                         textColor=NAVY, leading=14),
+        'field_val' : ps('field_val', fontSize=10, textColor=DARK, leading=14),
+        'score'     : ps('score',     fontName='Helvetica-Bold', fontSize=11,
+                         textColor=XH_GREEN, leading=14),
+        'footer'    : ps('footer',    fontSize=7, textColor=LT_GRAY,
+                         alignment=TA_CENTER),
+    }
+
+    sp   = lambda n=3: Spacer(1, n * mm)
+
+    def sec_bar(title):
+        t = Table([[Paragraph(title, S['sec_head'])]], colWidths=[PAGE_W])
+        t.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), NAVY),
+            ('TOPPADDING',    (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+            ('LINEBELOW',     (0,0), (-1,-1), 2, XH_GREEN),
+        ]))
+        return t
+
+    def answer_box(text, bg=BG_LIGHT):
+        t = Table([[Paragraph(text or '—', S['answer'])]], colWidths=[PAGE_W])
+        t.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), bg),
+            ('BOX',           (0,0), (-1,-1), 0.4, LT_GRAY),
+            ('LINEBEFORE',    (0,0), (0,-1),  3,   XH_GREEN),
+            ('TOPPADDING',    (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+        ]))
+        return t
+
+    def lv_row(label, value, col_w=55*mm):
+        t = Table(
+            [[Paragraph(label, S['field_lbl']),
+              Paragraph(value or '—', S['field_val'])]],
+            colWidths=[col_w, PAGE_W - col_w]
+        )
+        t.setStyle(TableStyle([
+            ('TOPPADDING',    (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('LEFTPADDING',   (0,0), (0,0),   6),
+            ('LEFTPADDING',   (1,0), (1,0),   4),
+            ('LINEBELOW',     (0,0), (-1,-1), 0.3, LT_GRAY),
+        ]))
+        return t
+
+    def score_row(label, score):
+        t = Table(
+            [[Paragraph(label, S['field_lbl']),
+              Paragraph(score, S['score'])]],
+            colWidths=[PAGE_W * 0.60, PAGE_W * 0.40]
+        )
+        t.setStyle(TableStyle([
+            ('TOPPADDING',    (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('LEFTPADDING',   (0,0), (0,0),   6),
+            ('LINEBELOW',     (0,0), (-1,-1), 0.3, LT_GRAY),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        return t
+
+    # ── Parse interview text into structured sections ──────────────────
+    SECTIONS = [
+        'Experience', 'Clinical Questions', 'Compliance',
+        'Availability', 'Assessment'
+    ]
+
+    def parse_interview(text):
+        result = {
+            'header': {},
+            'experience': {},
+            'clinical': {},
+            'compliance': {},
+            'availability': {},
+            'assessment': {},
+        }
+        current = 'header'
+        q_num   = 0
+        cur_q   = None
+        cur_ans = []
+
+        def flush_qa():
+            nonlocal cur_q, cur_ans
+            if cur_q is not None and cur_ans:
+                result[current][cur_q] = ' '.join(cur_ans).strip()
+                cur_ans = []
+                cur_q   = None
+
+        lines = [l.rstrip() for l in text.splitlines()]
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            sl   = line.strip()
+
+            # Section detection
+            if sl == 'Experience':
+                flush_qa(); current = 'experience'; i += 1; continue
+            elif sl == 'Clinical Questions':
+                flush_qa(); current = 'clinical'; i += 1; continue
+            elif sl == 'Compliance':
+                flush_qa(); current = 'compliance'; i += 1; continue
+            elif sl == 'Availability':
+                flush_qa(); current = 'availability'; i += 1; continue
+            elif sl == 'Assessment':
+                flush_qa(); current = 'assessment'; i += 1; continue
+
+            if current == 'header':
+                if ':' in sl:
+                    k, v = sl.split(':', 1)
+                    result['header'][k.strip()] = v.strip()
+            elif current in ('experience', 'clinical'):
+                # Q&A blocks
+                import re as _re
+                m = _re.match(r'^\d+\.\s+.+$', sl)
+                if m:
+                    flush_qa()
+                    cur_q   = sl
+                    cur_ans = []
+                elif cur_q is not None:
+                    if sl:
+                        cur_ans.append(sl)
+                else:
+                    pass
+            elif current in ('compliance', 'availability', 'assessment'):
+                if ':' in sl:
+                    k, v = sl.split(':', 1)
+                    result[current][k.strip()] = v.strip()
+
+            i += 1
+        flush_qa()
+        return result
+
+    parsed = parse_interview(interview_text)
+
+    # ── Logo ──────────────────────────────────────────────────────────
+    logo_path = None
+    for c in [
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'images', 'logo.png'),
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'img', 'logo.png'),
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'logo.png'),
+        'static/images/logo.png', 'static/img/logo.png', 'static/logo.png',
+    ]:
+        if os.path.exists(c):
+            logo_path = c
+            break
 
     s1_d      = doc.get('section_1_personal_details') or {}
     full_name = _v(s1_d.get('full_name')) or 'Candidate'
     user_type = _v(doc.get('user_type')) or 'Nurse'
+    emp_code  = _v(doc.get('employee_code'))
 
-    d = DocxDocument()
+    # ── Build story ───────────────────────────────────────────────────
+    buf   = _io.BytesIO()
+    story = []
 
-    # ── Page margins ─────────────────────────────────────────────────
-    for section in d.sections:
-        section.top_margin    = Cm(1.8)
-        section.bottom_margin = Cm(1.8)
-        section.left_margin   = Cm(2.0)
-        section.right_margin  = Cm(2.0)
+    # ── Document header banner ────────────────────────────────────────
+    title_text = f'Completed {user_type} Interview'
+    if logo_path:
+        logo_img  = RLImage(logo_path, width=40*mm, height=40*mm*94/316)
+        logo_cell = Table([[logo_img]], colWidths=[48*mm])
+        logo_cell.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), WHITE),
+            ('TOPPADDING',    (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('LEFTPADDING',   (0,0), (-1,-1), 4),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        title_cell = Table(
+            [[Paragraph(title_text, S['doc_title'])]],
+            colWidths=[PAGE_W - 48*mm]
+        )
+        title_cell.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), NAVY),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+            ('TOPPADDING',    (0,0), (-1,-1), 14),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 14),
+        ]))
+        banner = Table([[logo_cell, title_cell]],
+                       colWidths=[48*mm, PAGE_W - 48*mm])
+    else:
+        title_cell = Table(
+            [[Paragraph(title_text, S['doc_title'])]],
+            colWidths=[PAGE_W]
+        )
+        title_cell.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), NAVY),
+            ('TOPPADDING',    (0,0), (-1,-1), 14),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 14),
+        ]))
+        banner = title_cell
 
-    # ── Default style ─────────────────────────────────────────────────
-    style = d.styles['Normal']
-    style.font.name = 'Arial'
-    style.font.size = Pt(11)
-    style.font.color.rgb = BLACK
+    banner.setStyle(TableStyle([
+        ('LINEBELOW',     (0,0), (-1,-1), 3, XH_GREEN),
+        ('TOPPADDING',    (0,0), (-1,-1), 0),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ('LEFTPADDING',   (0,0), (-1,-1), 0),
+        ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+    ]))
+    story += [banner, sp(4)]
 
-    def set_cell_bg(cell, hex_color):
-        """Set table cell background colour."""
-        tc   = cell._tc
-        tcPr = tc.get_or_add_tcPr()
-        shd  = OxmlElement('w:shd')
-        shd.set(qn('w:val'), 'clear')
-        shd.set(qn('w:color'), 'auto')
-        shd.set(qn('w:fill'), hex_color)
-        tcPr.append(shd)
-
-    def add_heading_row(title_text):
-        """Navy bar heading matching the interview template style."""
-        tbl = d.add_table(rows=1, cols=1)
-        tbl.style = 'Table Grid'
-        cell = tbl.rows[0].cells[0]
-        cell.width = Inches(6.5)
-        set_cell_bg(cell, '1B3A6B')
-        p = cell.paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        run = p.add_run(title_text.upper())
-        run.bold = True
-        run.font.size = Pt(11)
-        run.font.color.rgb = WHITE
-        run.font.name = 'Arial'
-        p.paragraph_format.space_before = Pt(4)
-        p.paragraph_format.space_after  = Pt(4)
-        # Green bottom border on cell
-        tcPr = cell._tc.get_or_add_tcPr()
-        tcBorders = OxmlElement('w:tcBorders')
-        bottom = OxmlElement('w:bottom')
-        bottom.set(qn('w:val'), 'single')
-        bottom.set(qn('w:sz'), '12')
-        bottom.set(qn('w:color'), '2E9E44')
-        tcBorders.append(bottom)
-        tcPr.append(tcBorders)
-        d.add_paragraph()  # spacer after bar
-
-    def add_field_row(label, value):
-        """Bold label: plain value on one line."""
-        p = d.add_paragraph()
-        p.paragraph_format.space_before = Pt(2)
-        p.paragraph_format.space_after  = Pt(2)
-        r1 = p.add_run(f'{label}  ')
-        r1.bold = True
-        r1.font.color.rgb = NAVY
-        r1.font.name = 'Arial'
-        r2 = p.add_run(value or '—')
-        r2.font.color.rgb = BLACK
-        r2.font.name = 'Arial'
-
-    def add_question(question_text):
-        """Numbered question in bold navy."""
-        p = d.add_paragraph()
-        p.paragraph_format.space_before = Pt(6)
-        p.paragraph_format.space_after  = Pt(2)
-        r = p.add_run(question_text)
-        r.bold = True
-        r.font.color.rgb = NAVY
-        r.font.name = 'Arial'
-        r.font.size = Pt(10)
-
-    def add_answer(answer_text):
-        """Answer in a light-shaded box (table single cell)."""
-        tbl  = d.add_table(rows=1, cols=1)
-        tbl.style = 'Table Grid'
-        cell = tbl.rows[0].cells[0]
-        set_cell_bg(cell, 'EFF6FF')   # light blue
-        # Green left border
-        tcPr = cell._tc.get_or_add_tcPr()
-        tcBorders = OxmlElement('w:tcBorders')
-        left = OxmlElement('w:left')
-        left.set(qn('w:val'), 'single')
-        left.set(qn('w:sz'), '18')
-        left.set(qn('w:color'), '2E9E44')
-        tcBorders.append(left)
-        tcPr.append(tcBorders)
-        p = cell.paragraphs[0]
-        run = p.add_run(answer_text or '—')
-        run.font.name = 'Arial'
-        run.font.size = Pt(10.5)
-        run.font.color.rgb = BLACK
-        p.paragraph_format.space_before = Pt(4)
-        p.paragraph_format.space_after  = Pt(4)
-        d.add_paragraph()  # spacer
-
-    def add_compliance_row(label, value):
-        """Label and Yes/No value — green for Yes, red for No."""
-        p = d.add_paragraph()
-        p.paragraph_format.space_before = Pt(2)
-        p.paragraph_format.space_after  = Pt(2)
-        r1 = p.add_run(f'{label}  ')
-        r1.bold = True
-        r1.font.name = 'Arial'
-        r1.font.color.rgb = NAVY
-        r2 = p.add_run(value or '—')
-        r2.bold = True
-        r2.font.name = 'Arial'
-        r2.font.color.rgb = GREEN if (value or '').lower() == 'yes' else RGBColor(0xCC, 0x00, 0x00)
-
-    def add_score_row(label, value):
-        """Assessment score — label bold navy, score bold green."""
-        p = d.add_paragraph()
-        p.paragraph_format.space_before = Pt(2)
-        p.paragraph_format.space_after  = Pt(2)
-        r1 = p.add_run(f'{label}  ')
-        r1.bold = True
-        r1.font.name = 'Arial'
-        r1.font.color.rgb = NAVY
-        r2 = p.add_run(value or '—')
-        r2.bold = True
-        r2.font.name = 'Arial'
-        r2.font.color.rgb = GREEN
-
-    # ── Parse interview text ──────────────────────────────────────────
-    SECS = ['Experience', 'Clinical Questions', 'Compliance',
-            'Availability', 'Assessment']
-
-    parsed = {'header': {}, 'experience': {}, 'clinical': {},
-              'compliance': {}, 'availability': {}, 'assessment': {}}
-    current = 'header'
-    cur_q   = None
-    cur_ans = []
-    import re as _re
-
-    def flush():
-        nonlocal cur_q, cur_ans
-        if cur_q and cur_ans:
-            parsed[current][cur_q] = ' '.join(cur_ans).strip()
-            cur_q = None; cur_ans = []
-
-    for line in interview_text.splitlines():
-        sl = line.strip()
-        if sl == 'Experience':
-            flush(); current = 'experience'; continue
-        elif sl == 'Clinical Questions':
-            flush(); current = 'clinical'; continue
-        elif sl == 'Compliance':
-            flush(); current = 'compliance'; continue
-        elif sl == 'Availability':
-            flush(); current = 'availability'; continue
-        elif sl == 'Assessment':
-            flush(); current = 'assessment'; continue
-
-        if current == 'header':
-            if ':' in sl:
-                k, v = sl.split(':', 1)
-                parsed['header'][k.strip()] = v.strip()
-        elif current in ('experience', 'clinical'):
-            if _re.match(r'^[0-9]+.\s+.+$', sl):
-                flush(); cur_q = sl; cur_ans = []
-            elif cur_q and sl:
-                cur_ans.append(sl)
-        elif current in ('compliance', 'availability', 'assessment'):
-            if ':' in sl:
-                k, v = sl.split(':', 1)
-                parsed[current][k.strip()] = v.strip()
-    flush()
-
-    # ── Build document ────────────────────────────────────────────────
-
-    # Title
-    title = d.add_paragraph()
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    tr = title.add_run(f'Completed {user_type} Interview')
-    tr.bold = True
-    tr.font.size = Pt(16)
-    tr.font.color.rgb = NAVY
-    tr.font.name = 'Arial'
-    title.paragraph_format.space_after = Pt(12)
-
-    # Header fields
+    # ── Header fields ─────────────────────────────────────────────────
     hdr = parsed['header']
     for key in ['Name', 'Location', 'NMBI PIN', 'Visa Status']:
-        add_field_row(f'{key}:', hdr.get(key, '—'))
-    d.add_paragraph()
+        val = hdr.get(key, '')
+        story += [lv_row(f'{key}:', val), sp(1)]
+    story.append(sp(4))
 
-    # Experience
-    add_heading_row('Experience')
-    for q, a in parsed['experience'].items():
-        add_question(q)
-        add_answer(a)
-    d.add_paragraph()
+    # ── Experience ────────────────────────────────────────────────────
+    story += [sec_bar('Experience'), sp(3)]
+    exp = parsed['experience']
+    for q_text, answer in exp.items():
+        story.append(Paragraph(q_text, S['q_label']))
+        story.append(sp(1))
+        story.append(answer_box(answer))
+        story.append(sp(3))
+    story.append(sp(2))
 
-    # Clinical Questions
-    add_heading_row('Clinical Questions')
-    for q, a in parsed['clinical'].items():
-        add_question(q)
-        add_answer(a)
-    d.add_paragraph()
+    # ── Clinical Questions ────────────────────────────────────────────
+    story += [sec_bar('Clinical Questions'), sp(3)]
+    clin = parsed['clinical']
+    for q_text, answer in clin.items():
+        story.append(Paragraph(q_text, S['q_label']))
+        story.append(sp(1))
+        story.append(answer_box(answer, BG_GREEN))
+        story.append(sp(3))
+    story.append(sp(2))
 
-    # Compliance
-    add_heading_row('Compliance')
-    for field in ['NMBI Registration', 'BLS/CPR', 'Manual Handling',
-                  'Garda Vetting', 'References']:
-        add_compliance_row(f'{field}:', parsed['compliance'].get(field, '—'))
-    d.add_paragraph()
+    # ── Compliance ────────────────────────────────────────────────────
+    story += [sec_bar('Compliance'), sp(3)]
+    comp = parsed['compliance']
+    COMP_FIELDS = [
+        'NMBI Registration', 'BLS/CPR', 'Manual Handling',
+        'Garda Vetting', 'References'
+    ]
+    for field in COMP_FIELDS:
+        val = comp.get(field, '—')
+        badge_col = XH_GREEN if val.lower() == 'yes' else colors.HexColor('#CC0000')
+        badge_p   = Paragraph(f'<b>{val}</b>',
+                              ps('badge', fontName='Helvetica-Bold', fontSize=10,
+                                 textColor=badge_col, leading=14))
+        t = Table(
+            [[Paragraph(f'{field}:', S['field_lbl']), badge_p]],
+            colWidths=[PAGE_W * 0.55, PAGE_W * 0.45]
+        )
+        t.setStyle(TableStyle([
+            ('TOPPADDING',    (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('LEFTPADDING',   (0,0), (0,0),   6),
+            ('LINEBELOW',     (0,0), (-1,-1), 0.3, LT_GRAY),
+        ]))
+        story += [t, sp(1)]
+    story.append(sp(4))
 
-    # Availability
-    add_heading_row('Availability')
-    for field in ['Preferred counties', 'Day/Night/Both', 'Earliest start date']:
-        add_field_row(f'{field}:', parsed['availability'].get(field, '—'))
-    d.add_paragraph()
+    # ── Availability ──────────────────────────────────────────────────
+    story += [sec_bar('Availability'), sp(3)]
+    avail = parsed['availability']
+    AVAIL_FIELDS = ['Preferred counties', 'Day/Night/Both', 'Earliest start date']
+    for field in AVAIL_FIELDS:
+        val = avail.get(field, '—')
+        story += [lv_row(f'{field}:', val, col_w=60*mm), sp(1)]
+    story.append(sp(4))
 
-    # Assessment
-    add_heading_row('Assessment')
-    for field in ['Communication', 'Clinical Knowledge', 'Experience']:
-        add_score_row(f'{field}:', parsed['assessment'].get(field, '—'))
-    suitable = parsed['assessment'].get('Suitable', 'Yes')
-    p = d.add_paragraph()
-    p.paragraph_format.space_before = Pt(4)
-    r1 = p.add_run('Suitable:  ')
-    r1.bold = True; r1.font.name = 'Arial'; r1.font.color.rgb = NAVY
-    r2 = p.add_run(suitable)
-    r2.bold = True; r2.font.name = 'Arial'
-    r2.font.size = Pt(13)
-    r2.font.color.rgb = GREEN if suitable.lower() == 'yes' else RGBColor(0xCC, 0x00, 0x00)
+    # ── Assessment ────────────────────────────────────────────────────
+    story += [sec_bar('Assessment'), sp(3)]
+    assess = parsed['assessment']
+    SCORE_FIELDS = ['Communication', 'Clinical Knowledge', 'Experience']
+    for field in SCORE_FIELDS:
+        val = assess.get(field, '—')
+        story += [score_row(f'{field}:', val), sp(1)]
 
-    # Save to buffer
-    buf = _io.BytesIO()
-    d.save(buf)
+    # Suitable badge
+    suitable = assess.get('Suitable', 'Yes')
+    suit_col  = XH_GREEN if suitable.lower() == 'yes' else colors.HexColor('#CC0000')
+    suit_t    = Table(
+        [[Paragraph('Suitable:', S['field_lbl']),
+          Paragraph(f'<b>{suitable}</b>',
+                    ps('suit', fontName='Helvetica-Bold', fontSize=12,
+                       textColor=suit_col, leading=15))]],
+        colWidths=[PAGE_W * 0.45, PAGE_W * 0.55]
+    )
+    suit_t.setStyle(TableStyle([
+        ('TOPPADDING',    (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('LEFTPADDING',   (0,0), (0,0),   6),
+    ]))
+    story += [suit_t, sp(6)]
+
+    # No footer
+
+    # Render
+    pdf_doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=LM, rightMargin=RM,
+        topMargin=12*mm, bottomMargin=12*mm,
+    )
+    pdf_doc.build(story)
     return buf.getvalue()
 
 
+
+
+# ── Generate AI CV ────────────────────────────────────────────────────
 
 @admin_bp.route('/live-staffs/ai-cv/generate', methods=['POST'])
 @admin_required
