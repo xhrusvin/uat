@@ -382,17 +382,18 @@ select.parsley-success {
             <span>Send Message</span>
         </a>
 
+        <a class="nav-link {% if request.path.startswith('/admin/whatsapp/conversations') %}active{% endif %}"
+        href="/admin/whatsapp/conversations">
+            <i class="bi bi-chat-left-text"></i>
+            <span>Conversations</span>
+        </a>
+
         <a class="nav-link {% if request.path.startswith('/admin/whatsapp_wati/bulk') %}active{% endif %}"
         href="/admin/whatsapp_wati/bulk">
             <i class="bi bi-send"></i>
             <span>Bulk Messages</span>
         </a>
 
-        <a class="nav-link {% if request.path.startswith('/admin/whatsapp/conversations') %}active{% endif %}"
-        href="/admin/whatsapp/conversations">
-            <i class="bi bi-chat-left-text"></i>
-            <span>Conversations</span>
-        </a>
 
     </div>
 
