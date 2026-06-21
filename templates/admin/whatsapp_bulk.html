@@ -166,74 +166,52 @@
         </div>
     </div>
 
-    <!-- ── Recent Conversations ─────────────────────────────────────────── -->
-    <div class="card border-0 shadow-sm rounded-4 mb-4 mt-4">
+    <!-- ── Recent Conversations (WhatsApp style) ────────────────────────── -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4 mt-4 overflow-hidden">
 
-    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-
-        <div>
-            <h5 class="mb-0 fw-bold">
-                <i class="bi bi-chat-left-text me-2"></i>
-                Recent Conversations
-            </h5>
-            <small class="text-muted">
-                Last 10 phone conversations
-            </small>
+        <div class="card-header border-0 d-flex justify-content-between align-items-center px-4 py-3"
+             style="background:#075e54;">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-whatsapp text-white fs-5"></i>
+                <span class="fw-semibold text-white">Recent Conversations</span>
+                <small class="text-white opacity-75 ms-1">· last 10</small>
+            </div>
+            <button class="btn btn-sm rounded-pill px-3 fw-semibold"
+                    style="background:#25d366;color:#fff;border:none;"
+                    data-bs-toggle="modal"
+                    data-bs-target="#allConversationsModal">
+                <i class="bi bi-clock-history me-1"></i> View All
+            </button>
         </div>
 
-        <button
-            class="btn btn-outline-primary rounded-pill"
-            data-bs-toggle="modal"
-            data-bs-target="#allConversationsModal">
-
-            <i class="bi bi-clock-history me-1"></i>
-            View All
-
-        </button>
-
-    </div>
-
-    <div class="card-body p-0">
-
-        <div id="conversationList">
-
-            <div class="text-center text-muted py-4">
+        <div id="conversationList" style="background:#f0f2f5;">
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-chat-dots fs-2 d-block mb-2 opacity-25"></i>
                 No conversations yet
             </div>
-
         </div>
 
     </div>
-
-</div>
 
 
 <div class="modal fade"
      id="allConversationsModal"
      tabindex="-1">
 
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
 
-        <div class="modal-content">
+        <div class="modal-content border-0 overflow-hidden" style="border-radius:12px;">
 
-            <div class="modal-header">
-
-                <h5 class="modal-title">
-                    All Conversations
-                </h5>
-
-                <button
-                    type="button"
-                    class="btn-close"
-                    data-bs-dismiss="modal">
-                </button>
-
+            <div class="modal-header border-0 px-4 py-3" style="background:#075e54;">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-whatsapp text-white fs-5"></i>
+                    <h5 class="modal-title text-white mb-0 fw-semibold">All Conversations</h5>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
 
-            <div class="modal-body">
-
+            <div class="modal-body p-0" style="background:#f0f2f5;">
                 <div id="allConversationList"></div>
-
             </div>
 
         </div>
@@ -252,57 +230,31 @@
 
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
 
-        <div class="modal-content">
+        <div class="modal-content border-0 overflow-hidden" style="border-radius:12px;">
 
-            <div class="modal-header">
+            <!-- WhatsApp chat header -->
+            <div class="modal-header border-0 px-3 py-2" style="background:#075e54;">
 
-                <div>
-
-                    <div class="d-flex align-items-center">
-
-    <div
-      class="rounded-circle bg-success text-white
-             d-flex align-items-center justify-content-center"
-      style="width:44px;height:44px">
-
-      <i class="bi bi-person-fill"></i>
-
-    </div>
-
-    <div class="ms-3">
-
-        <div
-          id="conversationTitle"
-          class="fw-bold">
-        </div>
-
-        <small
-          id="conversationPhone"
-          class="text-muted">
-        </small>
-
-    </div>
-
-</div>
-
+                <div class="d-flex align-items-center gap-3 flex-fill">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                         style="width:42px;height:42px;background:#25d366;">
+                        <i class="bi bi-person-fill text-white fs-5"></i>
+                    </div>
+                    <div>
+                        <div id="conversationTitle" class="fw-semibold text-white lh-1 mb-1"></div>
+                        <small id="conversationPhone" class="text-white opacity-75" style="font-size:.75rem;"></small>
+                    </div>
                 </div>
 
-                <button
-                    type="button"
-                    class="btn-close"
-                    data-bs-dismiss="modal">
-                </button>
+                <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="modal"></button>
 
             </div>
 
-            <div class="modal-body">
-
-                <div id="conversationMessages">
-
-                    Loading...
-
-                </div>
-
+            <!-- WhatsApp chat body -->
+            <div class="modal-body px-3 py-3"
+                 id="conversationMessages"
+                 style="background:#e5ddd5 url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2260%22 height=%2260%22><rect width=%2260%22 height=%2260%22 fill=%22%23e5ddd5%22/></svg>') repeat;min-height:300px;">
+                <div class="text-center text-muted py-4">Loading…</div>
             </div>
 
         </div>
@@ -499,112 +451,110 @@ async function loadConversations() {
     }
 }
 
+function avatarColor(str) {
+    const colors = ['#e53935','#8e24aa','#1e88e5','#00897b','#f4511e','#6d4c41','#546e7a','#d81b60','#3949ab','#00acc1'];
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
+    return colors[Math.abs(h) % colors.length];
+}
+
+function initials(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(' ');
+    return (parts[0][0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
+}
+
 function renderConversationPreview() {
 
-    const container =
-        document.getElementById(
-            'conversationList'
-        );
-
-    const rows =
-        conversations.slice(0,10);
+    const container = document.getElementById('conversationList');
+    const rows = conversations.slice(0, 10);
 
     if (!rows.length) {
-
-        container.innerHTML =
-            '<div class="text-center text-muted py-4">No conversations</div>';
-
+        container.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-chat-dots fs-2 d-block mb-2 opacity-25"></i>No conversations</div>';
         return;
     }
 
     container.innerHTML = '';
 
     rows.forEach(row => {
+        const name = row.name || 'Unknown';
+        const bg = avatarColor(name);
+        const ini = initials(name);
+        const preview = row.last_message_text || row.campaign_name || '—';
+        const statusIcon = row.last_status === 'sent'
+            ? '<span style="color:#53bdeb;font-size:13px;">&#10003;&#10003;</span> '
+            : row.last_status === 'failed'
+                ? '<span style="color:#e53935;font-size:13px;">&#10005;</span> '
+                : '<span style="color:#aaa;font-size:13px;">&#8987;</span> ';
+        const timeStr = row.last_message_at
+            ? new Date(row.last_message_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+            : '';
 
         container.innerHTML += `
+        <div onclick="openConversation('${row.phone}')"
+             style="cursor:pointer;background:#fff;border-bottom:1px solid #e9edef;display:flex;align-items:center;padding:10px 16px;gap:14px;transition:background .15s;"
+             onmouseover="this.style.background='#f5f6f6'" onmouseout="this.style.background='#fff'">
 
-        <div
-            class="p-3 border-bottom conversation-row"
-            style="cursor:pointer"
-            onclick="openConversation('${row.phone}')">
-
-            <div class="d-flex justify-content-between">
-
-                <div>
-
-                    <div class="fw-semibold">
-                        ${row.name || 'Unknown'}
-                    </div>
-
-                    <div class="text-muted small font-monospace">
-                        ${row.phone}
-                    </div>
-
-                </div>
-
-                <div class="text-end">
-
-                    <div class="badge bg-primary">
-                        ${row.total_messages} msgs
-                    </div>
-
-                </div>
-
+            <div style="width:49px;height:49px;border-radius:50%;background:${bg};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#fff;">
+                ${ini}
             </div>
 
-        </div>
-        `;
-    });
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                    <span style="font-weight:600;font-size:16px;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%;">${name}</span>
+                    <span style="font-size:12px;color:#667781;flex-shrink:0;margin-left:8px;">${timeStr}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:13px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:75%;">${statusIcon}${preview}</span>
+                    <span style="background:#25d366;color:#fff;font-size:11px;font-weight:600;min-width:20px;height:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:0 5px;flex-shrink:0;margin-left:8px;">${row.total_messages}</span>
+                </div>
+            </div>
 
+        </div>`;
+    });
 }
 
 
 function renderAllConversations() {
 
-    const container =
-        document.getElementById(
-            'allConversationList'
-        );
-
+    const container = document.getElementById('allConversationList');
     container.innerHTML = '';
 
     conversations.forEach(row => {
+        const name = row.name || 'Unknown';
+        const bg = avatarColor(name);
+        const ini = initials(name);
+        const preview = row.last_message_text || row.campaign_name || '—';
+        const statusIcon = row.last_status === 'sent'
+            ? '<span style="color:#53bdeb;font-size:13px;">&#10003;&#10003;</span> '
+            : row.last_status === 'failed'
+                ? '<span style="color:#e53935;font-size:13px;">&#10005;</span> '
+                : '<span style="color:#aaa;font-size:13px;">&#8987;</span> ';
+        const timeStr = row.last_message_at
+            ? new Date(row.last_message_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+            : '';
 
         container.innerHTML += `
+        <div onclick="openConversation('${row.phone}')"
+             style="cursor:pointer;background:#fff;border-bottom:1px solid #e9edef;display:flex;align-items:center;padding:10px 16px;gap:14px;transition:background .15s;"
+             onmouseover="this.style.background='#f5f6f6'" onmouseout="this.style.background='#fff'">
 
-        <div
-            class="border-bottom p-3"
-            style="cursor:pointer"
-            onclick="openConversation('${row.phone}')">
-
-            <div class="d-flex justify-content-between">
-
-                <div>
-
-                    <div class="fw-semibold">
-                        ${row.name || 'Unknown'}
-                    </div>
-
-                    <div class="small text-muted font-monospace">
-                        ${row.phone}
-                    </div>
-
-                </div>
-
-                <div>
-
-                    <span class="badge bg-secondary">
-
-                        ${row.total_messages}
-
-                    </span>
-
-                </div>
-
+            <div style="width:49px;height:49px;border-radius:50%;background:${bg};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#fff;">
+                ${ini}
             </div>
 
-        </div>
-        `;
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                    <span style="font-weight:600;font-size:16px;color:#111;">${name}</span>
+                    <span style="font-size:12px;color:#667781;">${timeStr}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:13px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:75%;">${statusIcon}${preview}</span>
+                    <span style="background:#25d366;color:#fff;font-size:11px;font-weight:600;min-width:20px;height:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:0 5px;">${row.total_messages}</span>
+                </div>
+            </div>
+
+        </div>`;
     });
 
 }
@@ -655,77 +605,65 @@ async function openConversation(phone) {
             phone;
 
         let html = '';
+        let lastDate = null;
 
         rows.forEach(msg => {
 
-            const sent =
-                msg.status === 'sent';
+            const sent = msg.status === 'sent';
+            const isPending = msg.status === 'pending';
+            const msgDate = msg.created_at ? new Date(msg.created_at) : null;
+            const time = msgDate ? msgDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+
+            // Date separator
+            if (msgDate) {
+                const dateKey = msgDate.toDateString();
+                if (dateKey !== lastDate) {
+                    lastDate = dateKey;
+                    const dateLabel = msgDate.toLocaleDateString([], {day:'numeric', month:'long', year:'numeric'});
+                    html += `
+                    <div style="display:flex;justify-content:center;margin:12px 0 8px;">
+                        <span style="background:rgba(255,255,255,0.85);color:#54656f;font-size:12px;padding:4px 12px;border-radius:8px;box-shadow:0 1px 1px rgba(0,0,0,.1);">
+                            ${dateLabel}
+                        </span>
+                    </div>`;
+                }
+            }
+
+            // Message text: prefer stored message_text, fall back to campaign name
+            const bodyText = msg.message_text
+                || (msg.template_params && msg.template_params.name
+                    ? `Hi ${msg.template_params.name}! (via ${msg.campaign_name || msg.template_name || 'template'})`
+                    : msg.campaign_name || 'Bulk message');
+
+            // Tick icon
+            let tick = '';
+            if (isPending) {
+                tick = '<span style="color:#aaa;margin-left:4px;">&#8987;</span>';
+            } else if (sent) {
+                tick = '<span style="color:#53bdeb;margin-left:4px;">&#10003;&#10003;</span>';
+            } else {
+                tick = '<span style="color:#e53935;margin-left:4px;">&#10005;</span>';
+            }
 
             html += `
-
-            <div class="d-flex mb-3 ${
-                sent
-                ? 'justify-content-end'
-                : 'justify-content-start'
-            }">
-
-                <div
-                    class="p-3 rounded-4 shadow-sm"
-                    style="
-                        max-width:75%;
-                        background:${
-                            sent
-                            ? '#dcf8c6'
-                            : '#fff3cd'
-                        };
-                    ">
-
-                    <div class="fw-semibold mb-1">
-
-                        ${
-                            msg.campaign_name ||
-                            'Bulk Message'
-                        }
-
+            <div style="display:flex;justify-content:flex-end;margin-bottom:4px;padding:0 8px;">
+                <div style="
+                    max-width:72%;
+                    background:${sent ? '#dcf8c6' : isPending ? '#fff' : '#ffe8e8'};
+                    border-radius:12px 2px 12px 12px;
+                    padding:7px 10px 5px 10px;
+                    box-shadow:0 1px 2px rgba(0,0,0,.13);
+                ">
+                    <div style="font-size:14px;color:#111;line-height:1.4;word-break:break-word;">
+                        ${bodyText}
                     </div>
-
-                    <div class="small">
-
-                        ${
-                            msg.status === 'sent'
-                            ? 'Delivered'
-                            : 'Failed'
-                        }
-
+                    ${msg.error ? `<div style="font-size:11px;color:#c0392b;margin-top:4px;padding-top:4px;border-top:1px solid #f5c6c6;">${msg.error}</div>` : ''}
+                    <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:3px;gap:2px;">
+                        <span style="font-size:11px;color:#667781;">${time}</span>
+                        ${tick}
                     </div>
-
-                    ${
-                        msg.error
-                        ? `
-                        <div class="small text-danger mt-2">
-                            ${msg.error}
-                        </div>
-                        `
-                        : ''
-                    }
-
-                    <div
-                        class="small text-muted text-end mt-2">
-
-                        ${
-                            msg.created_at
-                            ? new Date(
-                                msg.created_at
-                            ).toLocaleString()
-                            : ''
-                        }
-
-                    </div>
-
                 </div>
-
-            </div>
-            `;
+            </div>`;
         });
 
         document.getElementById(
