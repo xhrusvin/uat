@@ -368,6 +368,34 @@ select.parsley-success {
         <span>Website Leads</span>
     </a>
 
+    <div class="nav-link parent-menu {% if request.path.startswith('/admin/whatsapp_wati') or request.path.startswith('/admin/whatsapp/conversations') %}active{% endif %}">
+        <i class="bi bi-whatsapp"></i>
+        <span>WhatsApp</span>
+        <i class="bi bi-chevron-down ms-auto toggle-icon"></i>
+    </div>
+
+    <div class="submenu {% if request.path.startswith('/admin/whatsapp_wati') or request.path.startswith('/admin/whatsapp/conversations') %}open{% endif %}">
+
+        <a class="nav-link {% if request.path == '/admin/whatsapp_wati' %}active{% endif %}"
+        href="/admin/whatsapp_wati">
+            <i class="bi bi-chat-dots"></i>
+            <span>Send Message</span>
+        </a>
+
+        <a class="nav-link {% if request.path.startswith('/admin/whatsapp_wati/bulk') %}active{% endif %}"
+        href="/admin/whatsapp_wati/bulk">
+            <i class="bi bi-send"></i>
+            <span>Bulk Messages</span>
+        </a>
+
+        <a class="nav-link {% if request.path.startswith('/admin/whatsapp/conversations') %}active{% endif %}"
+        href="/admin/whatsapp/conversations">
+            <i class="bi bi-chat-left-text"></i>
+            <span>Conversations</span>
+        </a>
+
+    </div>
+
     <a class="nav-link {% if request.path.startswith('/admin/ivr-calls') %}active{% endif %}"
        href="{{ url_for('admin.ivr_calls') }}">
         <i class="bi bi-telephone"></i>
