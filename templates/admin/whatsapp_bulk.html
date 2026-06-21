@@ -80,6 +80,8 @@
     <!-- ── Campaign Info Banner ──────────────────────────────────────────── -->
     <div id="campaignInfo"></div>
 
+
+
     <!-- ── Stats Row ─────────────────────────────────────────────────────── -->
     <div class="row g-3 mb-4">
 
@@ -164,6 +166,151 @@
         </div>
     </div>
 
+    <!-- ── Recent Conversations ─────────────────────────────────────────── -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4 mt-4">
+
+    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+
+        <div>
+            <h5 class="mb-0 fw-bold">
+                <i class="bi bi-chat-left-text me-2"></i>
+                Recent Conversations
+            </h5>
+            <small class="text-muted">
+                Last 10 phone conversations
+            </small>
+        </div>
+
+        <button
+            class="btn btn-outline-primary rounded-pill"
+            data-bs-toggle="modal"
+            data-bs-target="#allConversationsModal">
+
+            <i class="bi bi-clock-history me-1"></i>
+            View All
+
+        </button>
+
+    </div>
+
+    <div class="card-body p-0">
+
+        <div id="conversationList">
+
+            <div class="text-center text-muted py-4">
+                No conversations yet
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<div class="modal fade"
+     id="allConversationsModal"
+     tabindex="-1">
+
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5 class="modal-title">
+                    All Conversations
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal">
+                </button>
+
+            </div>
+
+            <div class="modal-body">
+
+                <div id="allConversationList"></div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+<div class="modal fade"
+     id="conversationModal"
+     tabindex="-1">
+
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <div>
+
+                    <div class="d-flex align-items-center">
+
+    <div
+      class="rounded-circle bg-success text-white
+             d-flex align-items-center justify-content-center"
+      style="width:44px;height:44px">
+
+      <i class="bi bi-person-fill"></i>
+
+    </div>
+
+    <div class="ms-3">
+
+        <div
+          id="conversationTitle"
+          class="fw-bold">
+        </div>
+
+        <small
+          id="conversationPhone"
+          class="text-muted">
+        </small>
+
+    </div>
+
+</div>
+
+                </div>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal">
+                </button>
+
+            </div>
+
+            <div class="modal-body">
+
+                <div id="conversationMessages">
+
+                    Loading...
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
 </div>
 
 <script>
@@ -175,6 +322,7 @@ let countdownTimer    = null;   // setInterval handle for the 1-second countdown
 let timeoutTimer      = null;   // setTimeout handle for the 5-min hard stop
 let countdownSecs     = 10;
 let currentCampaignId = null;
+let conversations = [];
 
 // ── Start auto-refresh ────────────────────────────────────────────────────
 function startPolling(campaignId) {
@@ -196,6 +344,7 @@ function startPolling(campaignId) {
     // fetch every 10 s
     pollTimer = setInterval(async () => {
         await loadStatuses(campaignId);
+        await loadConversations();
         countdownSecs = POLL_INTERVAL_MS / 1000;   // reset countdown after fetch
     }, POLL_INTERVAL_MS);
 
@@ -239,6 +388,7 @@ async function manualRefresh() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Refreshing…';
     await loadStatuses(currentCampaignId);
+    await loadConversations();
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i> Refresh';
 }
@@ -284,6 +434,7 @@ document.getElementById('bulkForm').addEventListener('submit', async (e) => {
         document.getElementById('refreshBtn').disabled = false;
 
         await loadStatuses(campaignId);
+        await loadConversations();
 
     } catch (err) {
         resultEl.innerHTML = `<div class="alert alert-danger">${err}</div>`;
@@ -311,6 +462,7 @@ document.getElementById('sendBtn').addEventListener('click', async () => {
             '<div class="alert alert-success"><i class="bi bi-send-fill me-2"></i>Processing started. Statuses will update automatically.</div>';
 
         await loadStatuses(currentCampaignId);
+        await loadConversations();
         startPolling(currentCampaignId);
 
     } catch (err) {
@@ -318,6 +470,277 @@ document.getElementById('sendBtn').addEventListener('click', async () => {
             `<div class="alert alert-danger">${err}</div>`;
     }
 });
+
+
+async function loadConversations() {
+
+    try {
+
+        const res = await fetch(
+            '/admin/whatsapp_wati/bulk/conversations'
+        );
+
+        const data = await res.json();
+
+        if (!data.success)
+            return;
+
+        conversations = data.conversations || [];
+
+        renderConversationPreview();
+
+        renderAllConversations();
+
+    }
+    catch(err) {
+
+        console.error(err);
+
+    }
+}
+
+function renderConversationPreview() {
+
+    const container =
+        document.getElementById(
+            'conversationList'
+        );
+
+    const rows =
+        conversations.slice(0,10);
+
+    if (!rows.length) {
+
+        container.innerHTML =
+            '<div class="text-center text-muted py-4">No conversations</div>';
+
+        return;
+    }
+
+    container.innerHTML = '';
+
+    rows.forEach(row => {
+
+        container.innerHTML += `
+
+        <div
+            class="p-3 border-bottom conversation-row"
+            style="cursor:pointer"
+            onclick="openConversation('${row.phone}')">
+
+            <div class="d-flex justify-content-between">
+
+                <div>
+
+                    <div class="fw-semibold">
+                        ${row.name || 'Unknown'}
+                    </div>
+
+                    <div class="text-muted small font-monospace">
+                        ${row.phone}
+                    </div>
+
+                </div>
+
+                <div class="text-end">
+
+                    <div class="badge bg-primary">
+                        ${row.total_messages} msgs
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+        `;
+    });
+
+}
+
+
+function renderAllConversations() {
+
+    const container =
+        document.getElementById(
+            'allConversationList'
+        );
+
+    container.innerHTML = '';
+
+    conversations.forEach(row => {
+
+        container.innerHTML += `
+
+        <div
+            class="border-bottom p-3"
+            style="cursor:pointer"
+            onclick="openConversation('${row.phone}')">
+
+            <div class="d-flex justify-content-between">
+
+                <div>
+
+                    <div class="fw-semibold">
+                        ${row.name || 'Unknown'}
+                    </div>
+
+                    <div class="small text-muted font-monospace">
+                        ${row.phone}
+                    </div>
+
+                </div>
+
+                <div>
+
+                    <span class="badge bg-secondary">
+
+                        ${row.total_messages}
+
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
+        `;
+    });
+
+}
+
+async function openConversation(phone) {
+
+    const modal =
+        new bootstrap.Modal(
+            document.getElementById(
+                'conversationModal'
+            )
+        );
+
+    modal.show();
+
+    document.getElementById(
+        'conversationMessages'
+    ).innerHTML =
+        '<div class="text-center py-4">Loading...</div>';
+
+    try {
+
+        const res =
+            await fetch(
+                `/admin/whatsapp_wati/bulk/conversation/${encodeURIComponent(phone)}`
+            );
+
+        const data =
+            await res.json();
+
+        if (!data.success)
+            return;
+
+        const rows =
+            data.messages || [];
+
+        const first =
+            rows[0] || {};
+
+        document.getElementById(
+            'conversationTitle'
+        ).innerText =
+            first.name || 'Unknown';
+
+        document.getElementById(
+            'conversationPhone'
+        ).innerText =
+            phone;
+
+        let html = '';
+
+        rows.forEach(msg => {
+
+            const sent =
+                msg.status === 'sent';
+
+            html += `
+
+            <div class="d-flex mb-3 ${
+                sent
+                ? 'justify-content-end'
+                : 'justify-content-start'
+            }">
+
+                <div
+                    class="p-3 rounded-4 shadow-sm"
+                    style="
+                        max-width:75%;
+                        background:${
+                            sent
+                            ? '#dcf8c6'
+                            : '#fff3cd'
+                        };
+                    ">
+
+                    <div class="fw-semibold mb-1">
+
+                        ${
+                            msg.campaign_name ||
+                            'Bulk Message'
+                        }
+
+                    </div>
+
+                    <div class="small">
+
+                        ${
+                            msg.status === 'sent'
+                            ? 'Delivered'
+                            : 'Failed'
+                        }
+
+                    </div>
+
+                    ${
+                        msg.error
+                        ? `
+                        <div class="small text-danger mt-2">
+                            ${msg.error}
+                        </div>
+                        `
+                        : ''
+                    }
+
+                    <div
+                        class="small text-muted text-end mt-2">
+
+                        ${
+                            msg.created_at
+                            ? new Date(
+                                msg.created_at
+                            ).toLocaleString()
+                            : ''
+                        }
+
+                    </div>
+
+                </div>
+
+            </div>
+            `;
+        });
+
+        document.getElementById(
+            'conversationMessages'
+        ).innerHTML =
+            html;
+
+    }
+    catch(err) {
+
+        console.error(err);
+
+    }
+
+}
 
 // ── Load / refresh statuses ───────────────────────────────────────────────
 async function loadStatuses(campaignId) {
@@ -368,5 +791,16 @@ async function loadStatuses(campaignId) {
         console.error('loadStatuses error:', err);
     }
 }
+
+document.addEventListener(
+    'DOMContentLoaded',
+    () => {
+        loadConversations();
+    }
+);
+
+
+
+
 </script>
 {% endblock %}

@@ -142,6 +142,7 @@ def whatsapp_bulk_send():
 
         docs.append({
             "campaign_id": campaign_id,
+            "campaign_name": template_name,
             "phone": _normalise_phone(phone),
             "name": name,
             "status": "pending",
@@ -213,6 +214,93 @@ def whatsapp_bulk_messages(campaign_id):
 
     for row in rows:
         row["_id"] = str(row["_id"])
+
+    return jsonify({
+        "success": True,
+        "messages": rows
+    })
+    
+@admin_bp.route("/whatsapp_wati/bulk/conversations")
+@admin_required
+def whatsapp_bulk_conversations():
+
+    conversations = list(
+        _bulk_messages_col().aggregate([
+            {
+                "$sort": {
+                    "created_at": -1
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$phone",
+
+                    "name": {
+                        "$first": "$name"
+                    },
+
+                    "last_message_at": {
+                        "$first": "$created_at"
+                    },
+
+                    "total_messages": {
+                        "$sum": 1
+                    },
+
+                    "messages": {
+                        "$push": {
+                            "_id": "$_id",
+                            "campaign_id": "$campaign_id",
+                            "name": "$name",
+                            "status": "$status",
+                            "created_at": "$created_at"
+                        }
+                    }
+                }
+            },
+            {
+                "$sort": {
+                    "last_message_at": -1
+                }
+            }
+        ])
+    )
+
+    for row in conversations:
+
+        row["phone"] = row.pop("_id")
+
+        for msg in row.get("messages", []):
+
+            msg["_id"] = str(msg["_id"])
+
+            if msg.get("campaign_id"):
+                msg["campaign_id"] = str(
+                    msg["campaign_id"]
+                )
+
+    return jsonify({
+        "success": True,
+        "conversations": conversations
+    })
+    
+
+@admin_bp.route("/whatsapp_wati/bulk/conversation/<phone>")
+@admin_required
+def whatsapp_bulk_conversation(phone):
+
+    rows = list(
+        _bulk_messages_col()
+        .find({"phone": phone})
+        .sort("created_at", 1)
+    )
+
+    for row in rows:
+
+        row["_id"] = str(row["_id"])
+
+        if row.get("campaign_id"):
+            row["campaign_id"] = str(row["campaign_id"])
 
     return jsonify({
         "success": True,
