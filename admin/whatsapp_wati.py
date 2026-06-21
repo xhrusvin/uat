@@ -98,7 +98,10 @@ def _send_template_message(phone: str, template_name: str, parameters: list[dict
     resp = requests.post(url, headers=_headers(), json=payload, timeout=10)
 
     #return resp.text
-    resp.raise_for_status()
+    if not resp.ok:
+        raise ValueError(
+            f"HTTP {resp.status_code}: {resp.text}"
+        )
     data = resp.json()
 
 

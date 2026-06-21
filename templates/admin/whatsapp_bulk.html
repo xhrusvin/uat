@@ -1,0 +1,372 @@
+{% extends "admin/base.html" %}
+{% block title %}Bulk WhatsApp Campaigns • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+    <!-- ── Page Header ──────────────────────────────────────────────────── -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">
+            Bulk WhatsApp Campaigns
+            <span class="badge ms-2 fs-6 align-middle"
+                  style="background:linear-gradient(135deg,#25d366,#128c7e);">
+                <i class="bi bi-whatsapp me-1"></i>WATI
+            </span>
+        </h2>
+        <span class="badge bg-primary fs-6 px-3 py-2" id="campaignBadge" style="display:none;">
+            No Campaign
+        </span>
+    </div>
+
+    <!-- ── Upload Campaign Panel ─────────────────────────────────────────── -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+
+            <p class="small fw-bold text-muted text-uppercase mb-3" style="letter-spacing:.06em;">
+                <i class="bi bi-cloud-upload me-1"></i> Upload Campaign
+            </p>
+
+            <form id="bulkForm">
+                <div class="row g-3 align-items-end">
+
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold text-muted">Template Name</label>
+                        <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+                            <span class="input-group-text bg-white border-0">
+                                <i class="bi bi-layout-text-window text-muted"></i>
+                            </span>
+                            <input type="text"
+                                   class="form-control border-0 ps-0"
+                                   name="template_name"
+                                   value="new_chat_v1"
+                                   placeholder="e.g. new_chat_v1">
+                        </div>
+                    </div>
+
+                    <div class="col-md-5">
+                        <label class="form-label small fw-semibold text-muted">Excel File</label>
+                        <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+                            <span class="input-group-text bg-white border-0">
+                                <i class="bi bi-file-earmark-spreadsheet text-muted"></i>
+                            </span>
+                            <input type="file"
+                                   class="form-control border-0"
+                                   name="file"
+                                   accept=".xlsx,.xls">
+                        </div>
+                    </div>
+
+                    <div class="col-md-3 d-flex gap-2">
+                        <button type="submit"
+                                class="btn btn-primary btn-lg rounded-pill px-4 flex-fill">
+                            <i class="bi bi-upload me-1"></i> Upload
+                        </button>
+                        <button type="button"
+                                id="sendBtn"
+                                disabled
+                                class="btn btn-success btn-lg rounded-pill px-4 flex-fill">
+                            <i class="bi bi-whatsapp me-1"></i> Send
+                        </button>
+                    </div>
+
+                </div>
+            </form>
+
+            <div id="uploadResult" class="mt-3"></div>
+
+        </div>
+    </div>
+
+    <!-- ── Campaign Info Banner ──────────────────────────────────────────── -->
+    <div id="campaignInfo"></div>
+
+    <!-- ── Stats Row ─────────────────────────────────────────────────────── -->
+    <div class="row g-3 mb-4">
+
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body">
+                    <p class="small fw-bold text-muted text-uppercase mb-1" style="letter-spacing:.06em;">Total</p>
+                    <h3 class="mb-0 fw-bold" id="totalCount">0</h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body">
+                    <p class="small fw-bold text-muted text-uppercase mb-1" style="letter-spacing:.06em;">Sent</p>
+                    <h3 class="mb-0 fw-bold text-success" id="sentCount">0</h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body">
+                    <p class="small fw-bold text-muted text-uppercase mb-1" style="letter-spacing:.06em;">Failed</p>
+                    <h3 class="mb-0 fw-bold text-danger" id="failedCount">0</h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body">
+                    <p class="small fw-bold text-muted text-uppercase mb-1" style="letter-spacing:.06em;">Pending</p>
+                    <h3 class="mb-0 fw-bold text-warning" id="pendingCount">0</h3>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Status Table ──────────────────────────────────────────────────── -->
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="d-flex align-items-center justify-content-between px-4 pt-3 pb-2 border-bottom">
+            <p class="small fw-bold text-muted text-uppercase mb-0" style="letter-spacing:.06em;">
+                <i class="bi bi-list-check me-1"></i> Message Statuses
+            </p>
+            <div class="d-flex align-items-center gap-3">
+                <span id="autoRefreshBadge" class="badge rounded-pill text-bg-secondary d-none" style="font-size:.75rem;">
+                    <i class="bi bi-arrow-repeat me-1"></i>
+                    Auto-refresh: <span id="countdownText">10s</span>
+                </span>
+                <button id="refreshBtn"
+                        class="btn btn-outline-secondary btn-sm rounded-pill px-3"
+                        disabled
+                        onclick="manualRefresh()">
+                    <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="statusTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4 text-muted small fw-semibold">Name</th>
+                            <th class="text-muted small fw-semibold">Phone</th>
+                            <th class="text-muted small fw-semibold">Status</th>
+                            <th class="text-muted small fw-semibold">Error</th>
+                        </tr>
+                    </thead>
+                    <tbody id="statusBody">
+                        <tr id="emptyRow">
+                            <td colspan="4" class="text-center py-5 text-muted">
+                                <i class="bi bi-whatsapp fs-1 opacity-25 d-block mb-2"></i>
+                                Upload a campaign to see message statuses.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const POLL_INTERVAL_MS = 10_000;   // 10 seconds
+const POLL_TIMEOUT_MS  = 300_000;  // 5 minutes
+
+let pollTimer         = null;   // setInterval handle for auto-refresh
+let countdownTimer    = null;   // setInterval handle for the 1-second countdown
+let timeoutTimer      = null;   // setTimeout handle for the 5-min hard stop
+let countdownSecs     = 10;
+let currentCampaignId = null;
+
+// ── Start auto-refresh ────────────────────────────────────────────────────
+function startPolling(campaignId) {
+    stopPolling();   // clear any existing timers first
+
+    countdownSecs = POLL_INTERVAL_MS / 1000;
+    updateCountdown();
+
+    const badge = document.getElementById('autoRefreshBadge');
+    badge.classList.remove('d-none', 'text-bg-secondary', 'text-bg-danger');
+    badge.classList.add('text-bg-secondary');
+
+    // 1-second countdown ticker
+    countdownTimer = setInterval(() => {
+        countdownSecs--;
+        updateCountdown();
+    }, 1000);
+
+    // fetch every 10 s
+    pollTimer = setInterval(async () => {
+        await loadStatuses(campaignId);
+        countdownSecs = POLL_INTERVAL_MS / 1000;   // reset countdown after fetch
+    }, POLL_INTERVAL_MS);
+
+    // hard stop after 5 minutes
+    timeoutTimer = setTimeout(() => {
+        stopPolling('timeout');
+    }, POLL_TIMEOUT_MS);
+}
+
+// ── Stop auto-refresh ─────────────────────────────────────────────────────
+function stopPolling(reason) {
+    if (pollTimer)     { clearInterval(pollTimer);     pollTimer     = null; }
+    if (countdownTimer){ clearInterval(countdownTimer); countdownTimer = null; }
+    if (timeoutTimer)  { clearTimeout(timeoutTimer);   timeoutTimer  = null; }
+
+    const badge = document.getElementById('autoRefreshBadge');
+
+    if (reason === 'complete') {
+        badge.classList.remove('text-bg-secondary');
+        badge.classList.add('text-bg-success');
+        badge.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> All done';
+    } else if (reason === 'timeout') {
+        badge.classList.remove('text-bg-secondary');
+        badge.classList.add('text-bg-danger');
+        badge.innerHTML = '<i class="bi bi-clock-history me-1"></i> Auto-refresh stopped (5 min)';
+        badge.classList.remove('d-none');
+    } else {
+        badge.classList.add('d-none');
+    }
+}
+
+function updateCountdown() {
+    const el = document.getElementById('countdownText');
+    if (el) el.textContent = `${countdownSecs}s`;
+}
+
+// ── Manual refresh button ─────────────────────────────────────────────────
+async function manualRefresh() {
+    if (!currentCampaignId) return;
+    const btn = document.getElementById('refreshBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Refreshing…';
+    await loadStatuses(currentCampaignId);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i> Refresh';
+}
+
+// ── Upload form ───────────────────────────────────────────────────────────
+document.getElementById('bulkForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData(e.target);
+    const resultEl = document.getElementById('uploadResult');
+
+    resultEl.innerHTML = '<div class="alert alert-info"><span class="spinner-border spinner-border-sm me-2"></span>Uploading…</div>';
+
+    try {
+        const res  = await fetch('/admin/whatsapp_wati/bulk/send', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (!data.success) {
+            resultEl.innerHTML = `<div class="alert alert-danger">${data.error || 'Upload failed'}</div>`;
+            return;
+        }
+
+        const campaignId = data.campaign_id;
+        currentCampaignId = campaignId;
+
+        resultEl.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle-fill me-2"></i>Campaign queued successfully.</div>`;
+
+        document.getElementById('campaignInfo').innerHTML = `
+            <div class="alert alert-info d-flex gap-3 align-items-center mb-4 rounded-4 shadow-sm border-0">
+                <i class="bi bi-info-circle-fill fs-4"></i>
+                <div>
+                    <strong>Campaign ID:</strong> ${campaignId} &nbsp;·&nbsp;
+                    <strong>Queued:</strong> ${data.queued} messages.
+                    Click <strong>Send</strong> to begin delivery.
+                </div>
+            </div>`;
+
+        const badge = document.getElementById('campaignBadge');
+        badge.textContent = `Campaign ${campaignId}`;
+        badge.style.display = '';
+
+        document.getElementById('sendBtn').disabled = false;
+        document.getElementById('refreshBtn').disabled = false;
+
+        await loadStatuses(campaignId);
+
+    } catch (err) {
+        resultEl.innerHTML = `<div class="alert alert-danger">${err}</div>`;
+    }
+});
+
+// ── Send button ───────────────────────────────────────────────────────────
+document.getElementById('sendBtn').addEventListener('click', async () => {
+    if (!currentCampaignId) return;
+
+    document.getElementById('uploadResult').innerHTML =
+        '<div class="alert alert-info"><span class="spinner-border spinner-border-sm me-2"></span>Sending messages…</div>';
+
+    try {
+        const res  = await fetch(`/admin/whatsapp_wati/bulk/process/${currentCampaignId}`);
+        const data = await res.json();
+
+        if (!data.success) {
+            document.getElementById('uploadResult').innerHTML =
+                '<div class="alert alert-danger">Processing failed.</div>';
+            return;
+        }
+
+        document.getElementById('uploadResult').innerHTML =
+            '<div class="alert alert-success"><i class="bi bi-send-fill me-2"></i>Processing started. Statuses will update automatically.</div>';
+
+        await loadStatuses(currentCampaignId);
+        startPolling(currentCampaignId);
+
+    } catch (err) {
+        document.getElementById('uploadResult').innerHTML =
+            `<div class="alert alert-danger">${err}</div>`;
+    }
+});
+
+// ── Load / refresh statuses ───────────────────────────────────────────────
+async function loadStatuses(campaignId) {
+    try {
+        const res  = await fetch(`/admin/whatsapp_wati/bulk/messages/${campaignId}`);
+        const data = await res.json();
+        if (!data.success) return;
+
+        const tbody = document.getElementById('statusBody');
+        tbody.innerHTML = '';
+
+        let sent = 0, failed = 0, pending = 0;
+
+        data.messages.forEach(row => {
+            let badge;
+            if (row.status === 'sent') {
+                badge = '<span class="badge rounded-pill bg-success"><i class="bi bi-check-circle-fill me-1"></i>Sent</span>';
+                sent++;
+            } else if (row.status === 'failed') {
+                badge = '<span class="badge rounded-pill bg-danger"><i class="bi bi-x-circle-fill me-1"></i>Failed</span>';
+                failed++;
+            } else {
+                badge = '<span class="badge rounded-pill bg-warning text-dark"><i class="bi bi-clock-fill me-1"></i>Pending</span>';
+                pending++;
+            }
+
+            tbody.innerHTML += `
+                <tr>
+                    <td class="ps-4 fw-semibold">${row.name || '—'}</td>
+                    <td class="font-monospace text-muted">${row.phone || '—'}</td>
+                    <td>${badge}</td>
+                    <td class="text-danger small">${row.error || ''}</td>
+                </tr>`;
+        });
+
+        const total = sent + failed + pending;
+        document.getElementById('totalCount').textContent   = total;
+        document.getElementById('sentCount').textContent    = sent;
+        document.getElementById('failedCount').textContent  = failed;
+        document.getElementById('pendingCount').textContent = pending;
+
+        // Stop polling when all messages are resolved
+        if (total > 0 && pending === 0 && pollTimer) {
+            stopPolling('complete');
+        }
+
+    } catch (err) {
+        console.error('loadStatuses error:', err);
+    }
+}
+</script>
+{% endblock %}
