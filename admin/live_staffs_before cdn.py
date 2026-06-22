@@ -14,76 +14,6 @@ from admin.views import admin_required
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
-# ── Google Cloud Storage helpers ──────────────────────────────────────
-
-def _gcs_client():
-    """Return an authenticated GCS client.
-    Priority:
-      1. GCS_CREDENTIALS_JSON env var (full JSON as string) — recommended
-      2. GCS_KEY_FILE env var (path to JSON key file)
-      3. Application Default Credentials (ADC) — if on Google Cloud VM
-    """
-    from google.cloud import storage as _gcs
-    import json as _json
-
-    creds_json = os.environ.get('GCS_CREDENTIALS_JSON', '').strip()
-    if creds_json:
-        from google.oauth2 import service_account
-        info  = _json.loads(creds_json)
-        creds = service_account.Credentials.from_service_account_info(
-            info,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        return _gcs.Client(credentials=creds, project=info.get('project_id'))
-
-    key_path = os.environ.get('GCS_KEY_FILE', '').strip()
-    if key_path and os.path.exists(key_path):
-        return _gcs.Client.from_service_account_json(key_path)
-
-    # Fallback — Application Default Credentials (works on GCE/Cloud Run)
-    return _gcs.Client()
-
-
-def _gcs_bucket():
-    return _gcs_client().bucket(os.environ.get('GCS_BUCKET_NAME', ''))
-
-
-def _gcs_upload(blob_name, data_bytes, content_type='application/octet-stream'):
-    """Upload bytes to GCS and return the blob name."""
-    bucket = _gcs_bucket()
-    blob   = bucket.blob(blob_name)
-    blob.upload_from_string(data_bytes, content_type=content_type)
-    return blob_name
-
-
-def _gcs_download(blob_name):
-    """Download bytes from GCS blob."""
-    bucket = _gcs_bucket()
-    blob   = bucket.blob(blob_name)
-    return blob.download_as_bytes()
-
-
-def _gcs_signed_url(blob_name, expiry_minutes=60):
-    """
-    Generate a signed URL for a GCS blob (time-limited, no public access needed).
-    Requires the service account to have roles/iam.serviceAccountTokenCreator.
-    Falls back to a direct Flask download URL if signing fails.
-    """
-    import datetime as _dt
-    try:
-        bucket = _gcs_bucket()
-        blob   = bucket.blob(blob_name)
-        url    = blob.generate_signed_url(
-            expiration=_dt.timedelta(minutes=expiry_minutes),
-            method='GET',
-            version='v4',
-        )
-        return url
-    except Exception:
-        # Return None — caller will use internal download route instead
-        return None
-
-
 def _staffs_col():
     return db.live_staffs
 
@@ -256,7 +186,7 @@ def _ai_interviews_col():
 @admin_bp.route('/live-staffs/ai-cv/generate', methods=['POST'])
 @admin_required
 def live_staff_ai_cv_generate():
-    """Call Gemini to write a personalised CV, render to DOCX, upload to Google Cloud Storage."""
+    """Call Gemini to write a personalised CV, render to PDF, save to static/cv/."""
     data     = request.get_json()
     staff_id = (data.get('staff_id') or '').strip()
     if not staff_id:
@@ -437,9 +367,11 @@ Output CV text only. No preamble, no explanation, no markdown symbols like ** or
 
         safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
         cv_filename = f"{safe_name}.docx"
-        gcs_blob    = f"cv/{cv_filename}"
-        _gcs_upload(gcs_blob, docx_bytes,
-                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        cv_folder   = os.path.join('static', 'cv')
+        os.makedirs(cv_folder, exist_ok=True)
+        cv_filepath = os.path.join(cv_folder, cv_filename)
+        with open(cv_filepath, 'wb') as f:
+            f.write(docx_bytes)
 
         col      = _ai_cvs_col()
         existing = col.find_one({"staff_id": str(doc['_id'])})
@@ -449,7 +381,7 @@ Output CV text only. No preamble, no explanation, no markdown symbols like ** or
             "employee_code": emp_code,
             "cv_text":       cv_text,
             "cv_filename":   cv_filename,
-            "gcs_blob":      gcs_blob,
+            "cv_filepath":   cv_filepath,
             "generated_at":  datetime.utcnow(),
         }
         if existing:
@@ -474,17 +406,18 @@ Output CV text only. No preamble, no explanation, no markdown symbols like ** or
 @admin_bp.route('/live-staffs/ai-cv/download/<ai_cv_id>')
 @admin_required
 def live_staff_ai_cv_download(ai_cv_id):
-    """Serve the saved AI CV DOCX from Google Cloud Storage."""
+    """Serve the saved AI CV DOCX from static/cv/."""
     try:
         rec = _ai_cvs_col().find_one({"_id": ObjectId(ai_cv_id)})
         if not rec:
             return "AI CV not found", 404
-        gcs_blob = rec.get('gcs_blob', '')
-        if not gcs_blob:
-            return "CV not found in storage — please regenerate", 404
-        name       = (rec.get('staff_name') or 'staff').replace(' ', '_')
-        filename   = f"{name}.docx"
-        docx_bytes = _gcs_download(gcs_blob)
+        cv_filepath = rec.get('cv_filepath', '')
+        if not cv_filepath or not os.path.exists(cv_filepath):
+            return "CV file not found on disk — please regenerate", 404
+        name     = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        filename = f"{name}.docx"
+        with open(cv_filepath, 'rb') as f:
+            docx_bytes = f.read()
         return Response(
             docx_bytes,
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -537,24 +470,27 @@ def live_staff_ai_cv_upload(staff_id):
         if not rec:
             return jsonify({"success": False, "error": "No saved CV found for this staff member"}), 404
 
-        # Determine GCS blob name
-        gcs_blob = rec.get('gcs_blob', '')
-        if not gcs_blob:
-            doc2 = _staffs_col().find_one({"_id": ObjectId(staff_id)})
-            s1   = (doc2.get('section_1_personal_details') or {}) if doc2 else {}
+        # Overwrite the existing file on disk
+        cv_filepath = rec.get('cv_filepath', '')
+
+        if not cv_filepath:
+            # Build a new path if old record didn't have one
+            doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            s1  = (doc.get('section_1_personal_details') or {}) if doc else {}
             name = _v(s1.get('full_name') or 'staff').replace(' ', '_').replace('/', '_')
-            gcs_blob = f"cv/{name}.docx"
+            cv_folder   = os.path.join('static', 'cv')
+            os.makedirs(cv_folder, exist_ok=True)
+            cv_filepath = os.path.join(cv_folder, f"{name}.docx")
 
-        # Upload to GCS — overwrites existing blob
-        data_bytes = file.read()
-        _gcs_upload(gcs_blob, data_bytes,
-                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        # Save the uploaded file over the existing one
+        file.save(cv_filepath)
 
+        # Update MongoDB metadata
         col.update_one(
             {"_id": rec["_id"]},
             {"$set": {
-                "gcs_blob":      gcs_blob,
-                "cv_filename":   os.path.basename(gcs_blob),
+                "cv_filepath":   cv_filepath,
+                "cv_filename":   os.path.basename(cv_filepath),
                 "last_uploaded": datetime.utcnow(),
                 "uploaded_by":   "admin",
             }}
@@ -563,7 +499,7 @@ def live_staff_ai_cv_upload(staff_id):
         return jsonify({
             "success":  True,
             "message":  "CV replaced successfully with uploaded version",
-            "filename": os.path.basename(gcs_blob),
+            "filename": os.path.basename(cv_filepath),
         })
 
     except Exception as e:
@@ -578,7 +514,7 @@ def live_staff_ai_interview_generate():
     """
     Call Gemini to write realistic interview notes for a staff member
     using the exact structure of the Nurse Interview Template.
-    Saves DOCX to Google Cloud Storage and metadata to MongoDB.
+    Saves PDF to static/interviews/ and metadata to MongoDB.
     """
     data     = request.get_json()
     staff_id = (data.get('staff_id') or '').strip()
@@ -750,24 +686,26 @@ CANDIDATE DATA (use ONLY this):
         # Build DOCX
         docx_bytes = _build_interview_docx(doc, interview_text)
 
-        # Upload to Google Cloud Storage
+        # Save to static/interviews/
         safe_name    = (full_name or 'staff').replace(' ', '_').replace('/', '_')
         filename     = f"Interview_{safe_name}_{staff_id}.docx"
-        gcs_blob  = f"interviews/{filename}"
-        _gcs_upload(gcs_blob, docx_bytes,
-                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        folder       = os.path.join('static', 'interviews')
+        os.makedirs(folder, exist_ok=True)
+        filepath     = os.path.join(folder, filename)
+        with open(filepath, 'wb') as f:
+            f.write(docx_bytes)
 
         # Save metadata to MongoDB
         col      = _ai_interviews_col()
         existing = col.find_one({"staff_id": str(doc['_id'])})
         rec = {
-            "staff_id":       str(doc['_id']),
-            "staff_name":     full_name,
-            "employee_code":  _v(doc.get('employee_code')),
+            "staff_id":     str(doc['_id']),
+            "staff_name":   full_name,
+            "employee_code": _v(doc.get('employee_code')),
             "interview_text": interview_text,
-            "filename":       filename,
-            "gcs_blob":       gcs_blob,
-            "generated_at":   datetime.utcnow(),
+            "filename":     filename,
+            "filepath":     filepath,
+            "generated_at": datetime.utcnow(),
         }
         if existing:
             col.update_one({"_id": existing["_id"]}, {"$set": rec})
@@ -790,16 +728,17 @@ CANDIDATE DATA (use ONLY this):
 @admin_bp.route('/live-staffs/ai-interview/download/<interview_id>')
 @admin_required
 def live_staff_ai_interview_download(interview_id):
-    """Serve saved interview DOCX from Google Cloud Storage."""
+    """Serve saved interview DOCX from static/interviews/."""
     try:
         rec = _ai_interviews_col().find_one({"_id": ObjectId(interview_id)})
         if not rec:
             return "Interview notes not found", 404
-        gcs_blob = rec.get('gcs_blob', '')
-        if not gcs_blob:
-            return "File not found in storage — please regenerate", 404
-        name       = (rec.get('staff_name') or 'staff').replace(' ', '_')
-        docx_bytes = _gcs_download(gcs_blob)
+        fp = rec.get('filepath', '')
+        if not fp or not os.path.exists(fp):
+            return "File not found — please regenerate", 404
+        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        with open(fp, 'rb') as f:
+            docx_bytes = f.read()
         return Response(
             docx_bytes,
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -853,22 +792,22 @@ def live_staff_ai_interview_upload(staff_id):
             return jsonify({"success": False,
                             "error": "No saved interview notes found for this staff member"}), 404
 
-        gcs_blob = rec.get('gcs_blob', '')
-        if not gcs_blob:
-            doc2 = _staffs_col().find_one({"_id": ObjectId(staff_id)})
-            s1   = (doc2.get('section_1_personal_details') or {}) if doc2 else {}
+        filepath = rec.get('filepath', '')
+        if not filepath:
+            doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            s1  = (doc.get('section_1_personal_details') or {}) if doc else {}
             name = _v(s1.get('full_name') or 'staff').replace(' ', '_').replace('/', '_')
-            gcs_blob = f"interviews/Interview_{name}_{staff_id}.docx"
+            folder   = os.path.join('static', 'interviews')
+            os.makedirs(folder, exist_ok=True)
+            filepath = os.path.join(folder, f"Interview_{name}_{staff_id}.docx")
 
-        data_bytes = file.read()
-        _gcs_upload(gcs_blob, data_bytes,
-                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        file.save(filepath)
 
         col.update_one(
             {"_id": rec["_id"]},
             {"$set": {
-                "gcs_blob":      gcs_blob,
-                "filename":      os.path.basename(gcs_blob),
+                "filepath":      filepath,
+                "filename":      os.path.basename(filepath),
                 "last_uploaded": datetime.utcnow(),
                 "uploaded_by":   "admin",
             }}
@@ -877,7 +816,7 @@ def live_staff_ai_interview_upload(staff_id):
         return jsonify({
             "success":  True,
             "message":  "Interview notes replaced successfully with uploaded version",
-            "filename": os.path.basename(gcs_blob),
+            "filename": os.path.basename(filepath),
         })
 
     except Exception as e:
