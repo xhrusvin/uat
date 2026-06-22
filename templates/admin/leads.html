@@ -83,6 +83,7 @@
                             <th>Location</th>
                             <th>Call Status</th>
                             <th>Email Sent</th>
+                            <th>WhatsApp</th>
                             <th>Uploaded</th>
                         </tr>
                     </thead>
@@ -110,6 +111,23 @@
                                 <span class="badge bg-warning text-dark rounded-pill">Not Sent</span>
                                 {% endif %}
                                 </td>
+
+                            <td>
+                                {% if lead.whatsapp_sent %}
+                                    <span class="badge bg-success">
+                                        Sent
+                                    </span>
+                                {% elif lead.whatsapp_status %}
+                                    <span class="badge bg-danger">
+                                        Failed
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary">
+                                        Pending
+                                    </span>
+                                {% endif %}
+                            </td>
+
                             <td>
                                 {% if lead.uploaded_at %}
                                     {{ lead.uploaded_at.strftime('%d %b %Y') }}<br>
