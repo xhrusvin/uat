@@ -30,5 +30,6 @@ from . import whatsapp_wati
 from . import campaigns
 from . import live_staffs
 from . import whatsapp_bulk_routes
+from . import whatsapp_conversations
 
 
