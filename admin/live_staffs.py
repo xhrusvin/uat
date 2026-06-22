@@ -1739,7 +1739,7 @@ def live_staff_cron_sync_documents():
         col.update_one(
             {"_id": staff["_id"]},
             {"$set": {"extracted_cv": "[skipped — no email]",
-                      "documents_synced_at": datetime.utcnow()}}
+                      "extracted_cv_at": datetime.utcnow()}}
         )
         return jsonify({
             "success":         True,
@@ -1811,7 +1811,7 @@ def live_staff_cron_sync_documents():
         col.update_one(
             {"_id": staff["_id"]},
             {"$set": {"extracted_cv": f"[API error: {data.get('message', 'unknown')}]",
-                      "documents_synced_at": datetime.utcnow()}}
+                      "extracted_cv_at": datetime.utcnow()}}
         )
         return jsonify({
             "success":         False,
@@ -1846,24 +1846,12 @@ def live_staff_cron_sync_documents():
         })
 
     # ── Process documents ─────────────────────────────────────────────
-    clean_docs        = []
     extracted_cv_text = None
     cv_error          = None
     cv_url_found      = None
 
     for doc_item in documents:
-        clean_docs.append({
-            "document_category_type": doc_item.get('document_category_type'),
-            "document_id":            doc_item.get('document_id'),
-            "document_type_name":     doc_item.get('document_type_name'),
-            "sub_type_id":            doc_item.get('sub_type_id'),
-            "sub_type_name":          doc_item.get('sub_type_name'),
-            "url":                    doc_item.get('url'),
-            "expiry_date":            doc_item.get('expiry_date'),
-            "status":                 doc_item.get('status'),
-        })
-
-        # Extract when document_type_name is exactly "Cv"
+        # Extract only when document_type_name is exactly "Cv"
         doc_name = (doc_item.get('document_type_name') or '').strip()
         doc_url  = doc_item.get('url') or ''
 
@@ -1873,28 +1861,23 @@ def live_staff_cron_sync_documents():
                 extracted_cv_text = _extract_text_from_url(doc_url, api_headers)
             except Exception as cv_err:
                 cv_error = str(cv_err)
-                extracted_cv_text = f"[CV extraction failed: {cv_err}]"  
+                extracted_cv_text = f"[CV extraction failed: {cv_err}]"
 
-    # ── Save to MongoDB ───────────────────────────────────────────────
-    update_fields = {
-        "xn_portal_id":        api_data.get('id'),
-        "xn_portal_name":      api_data.get('name'),
-        "documents":           clean_docs,
-        "documents_synced_at": datetime.utcnow(),
-        # Always write something so this staff won't be picked again
-        "extracted_cv": extracted_cv_text or "[no CV document found]",
-    }
-
-    col.update_one({"_id": staff["_id"]}, {"$set": update_fields})
+    # ── Save only extracted_cv to MongoDB ─────────────────────────────
+    col.update_one(
+        {"_id": staff["_id"]},
+        {"$set": {
+            "extracted_cv":      extracted_cv_text or "[no CV document found]",
+            "extracted_cv_at":   datetime.utcnow(),
+        }}
+    )
 
     return jsonify({
         "success":         True,
         "email":           email,
-        "documents_found": len(clean_docs),
         "cv_extracted":    bool(extracted_cv_text and not cv_error),
         "cv_url_found":    cv_url_found,
         "cv_error":        cv_error,
-        "document_names":  [d.get("document_type_name") for d in clean_docs],
         "remaining_count": max(0, remaining_total - 1),
         "message": (
             f"Processed {email} — "
