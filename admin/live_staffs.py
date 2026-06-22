@@ -367,7 +367,7 @@ Output CV text only. No preamble, no explanation, no markdown symbols like ** or
         docx_bytes = _build_ai_cv_docx(doc, cv_text)
 
         safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
-        cv_filename = f"AI_CV_{safe_name}_{staff_id}.docx"
+        cv_filename = f"{safe_name}.docx"
         cv_folder   = os.path.join('static', 'cv')
         os.makedirs(cv_folder, exist_ok=True)
         cv_filepath = os.path.join(cv_folder, cv_filename)
@@ -416,7 +416,7 @@ def live_staff_ai_cv_download(ai_cv_id):
         if not cv_filepath or not os.path.exists(cv_filepath):
             return "CV file not found on disk — please regenerate", 404
         name     = (rec.get('staff_name') or 'staff').replace(' ', '_')
-        filename = f"AI_CV_{name}.docx"
+        filename = f"{name}.docx"
         with open(cv_filepath, 'rb') as f:
             docx_bytes = f.read()
         return Response(
