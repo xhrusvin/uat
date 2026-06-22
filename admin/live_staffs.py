@@ -1653,6 +1653,265 @@ def live_staff_export():
     return _export_json(items)
 
 
+
+# ── Cron: Sync document list from XN Portal ───────────────────────────
+
+@admin_bp.route('/live-staffs/cron/sync-documents', methods=['GET', 'POST'])
+def live_staff_cron_sync_documents():
+    """
+    Cron job endpoint.
+    For every staff member in live_staffs, calls the XN Portal API:
+      POST {LIVE_STAFF_URL}/ai/recruitments/user-document-list
+    Saves the full document list into live_staffs.documents[].
+    If a document_type_name == "Cv" and has a url, downloads and extracts
+    the text, then saves it to live_staffs.extracted_cv.
+
+    Call this via cron:
+      GET/POST /admin/live-staffs/cron/sync-documents
+    Protect with a cron secret key in the query string:
+      ?cron_key=<CRON_SECRET> (set CRON_SECRET in env)
+    """
+    import requests as _req
+
+    # ── Auth check ────────────────────────────────────────────────────
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    # ── Env config ────────────────────────────────────────────────────
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+
+    if not base_url:
+        return jsonify({"success": False,
+                        "error": "LIVE_STAFF_URL not set in environment"}), 500
+
+    endpoint = f"{base_url}/ai/recruitments/user-document-list"
+    headers  = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    col      = _staffs_col()
+    staffs   = list(col.find({}, {"email": 1, "section_1_personal_details": 1}))
+
+    results  = []
+    errors   = []
+    updated  = 0
+    skipped  = 0
+
+    for staff in staffs:
+        email = _v((staff.get('section_1_personal_details') or {}).get('email_address') or
+                    staff.get('email') or '')
+        if not email:
+            skipped += 1
+            continue
+
+        try:
+            resp = _req.post(
+                endpoint,
+                json={"email": email},
+                headers=headers,
+                timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            if not data.get('success'):
+                errors.append({"email": email, "error": data.get('message', 'API error')})
+                continue
+
+            api_data  = data.get('data') or {}
+            documents = api_data.get('documents') or []
+
+            # Serialize documents (clean for MongoDB)
+            clean_docs = []
+            extracted_cv_text = None
+
+            for doc_item in documents:
+                clean_doc = {
+                    "document_category_type": doc_item.get('document_category_type'),
+                    "document_id":            doc_item.get('document_id'),
+                    "document_type_name":     doc_item.get('document_type_name'),
+                    "sub_type_id":            doc_item.get('sub_type_id'),
+                    "sub_type_name":          doc_item.get('sub_type_name'),
+                    "url":                    doc_item.get('url'),
+                    "expiry_date":            doc_item.get('expiry_date'),
+                    "status":                 doc_item.get('status'),
+                }
+                clean_docs.append(clean_doc)
+
+                # ── Extract CV document ───────────────────────────────
+                if (doc_item.get('document_type_name', '').strip().lower() == 'cv'
+                        and doc_item.get('url')):
+                    try:
+                        extracted_cv_text = _extract_text_from_url(
+                            doc_item['url'], headers
+                        )
+                    except Exception as cv_err:
+                        errors.append({
+                            "email": email,
+                            "error": f"CV extract failed: {cv_err}"
+                        })
+
+            # ── Save to MongoDB ───────────────────────────────────────
+            update_fields = {
+                "xn_portal_id":    api_data.get('id'),
+                "xn_portal_name":  api_data.get('name'),
+                "documents":       clean_docs,
+                "documents_synced_at": datetime.utcnow(),
+            }
+            if extracted_cv_text:
+                update_fields["extracted_cv"] = extracted_cv_text
+
+            col.update_one(
+                {"email": email},
+                {"$set": update_fields}
+            )
+            updated += 1
+            results.append({
+                "email":     email,
+                "documents": len(clean_docs),
+                "cv_extracted": bool(extracted_cv_text),
+            })
+
+        except _req.exceptions.Timeout:
+            errors.append({"email": email, "error": "Request timeout"})
+        except _req.exceptions.RequestException as e:
+            errors.append({"email": email, "error": str(e)})
+        except Exception as e:
+            errors.append({"email": email, "error": str(e)})
+
+    return jsonify({
+        "success":  True,
+        "updated":  updated,
+        "skipped":  skipped,
+        "errors":   len(errors),
+        "error_details": errors[:20],   # cap to avoid huge responses
+        "results":  results[:50],
+        "message":  f"Sync complete — {updated} updated, {skipped} skipped, {len(errors)} errors",
+        "synced_at": datetime.utcnow().isoformat(),
+    })
+
+
+def _extract_text_from_url(url, headers=None):
+    """
+    Download a CV document from URL, then use Gemini AI to extract
+    and structure the full text content.
+
+    Strategy:
+      1. Download the file (PDF or DOCX).
+      2. Get raw text via pdfplumber / python-docx as a pre-extraction step.
+      3. Send that raw text to Gemini 2.5 Flash to clean, structure,
+         and return a well-formatted plain-text CV extraction.
+      4. If Gemini is unavailable, fall back to raw text only.
+    """
+    import requests as _req
+    import io as _io
+
+    # ── Download file ─────────────────────────────────────────────────
+    dl_headers = dict(headers or {})
+    dl_headers.pop('Content-Type', None)
+
+    resp = _req.get(url, headers=dl_headers, timeout=60)
+    resp.raise_for_status()
+
+    content_type = resp.headers.get('Content-Type', '').lower()
+    raw          = resp.content
+    url_lower    = url.lower().split('?')[0]
+
+    # ── Step 1: raw text extraction ───────────────────────────────────
+    raw_text = ''
+
+    # PDF
+    if 'pdf' in content_type or url_lower.endswith('.pdf'):
+        try:
+            import pdfplumber
+            with pdfplumber.open(_io.BytesIO(raw)) as pdf:
+                raw_text = chr(10).join( page.extract_text() or '' for page in pdf.pages ).strip()
+        except Exception:
+            try:
+                import PyPDF2
+                reader   = PyPDF2.PdfReader(_io.BytesIO(raw))
+                raw_text = chr(10).join( page.extract_text() or '' for page in reader.pages ).strip()
+            except Exception:
+                pass
+
+    # DOCX
+    elif ('wordprocessingml' in content_type or
+          url_lower.endswith('.docx') or url_lower.endswith('.doc')):
+        try:
+            from docx import Document as _DocxDoc
+            d        = _DocxDoc(_io.BytesIO(raw))
+            raw_text = chr(10).join(p.text for p in d.paragraphs).strip()
+        except Exception:
+            pass
+
+    # Plain text
+    elif 'text' in content_type:
+        raw_text = raw.decode('utf-8', errors='replace').strip()
+
+    # Last resort — try PDF
+    if not raw_text:
+        try:
+            import pdfplumber
+            with pdfplumber.open(_io.BytesIO(raw)) as pdf:
+                raw_text = chr(10).join( page.extract_text() or '' for page in pdf.pages ).strip()
+        except Exception:
+            pass
+
+    if not raw_text:
+        raise RuntimeError(
+            f"Could not extract any text from document (content-type: {content_type})"
+        )
+
+    # ── Step 2: Gemini AI extraction & structuring ────────────────────
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if not gemini_key:
+        # No Gemini key — return raw text as-is
+        return raw_text
+
+    try:
+        from google import genai as _genai
+        client = _genai.Client(api_key=gemini_key)
+
+        prompt = f"""You are a professional CV parser.
+
+The text below was extracted from a candidate's CV document (PDF or DOCX).
+The text may be messy, have formatting issues, or be partially garbled from extraction.
+
+Your task:
+1. Read the raw extracted text carefully.
+2. Identify and structure all CV content into clean, readable plain text.
+3. Preserve ALL factual information exactly as stated — do NOT add, invent, or change any facts.
+4. Format it with clear section headings (PERSONAL DETAILS, PROFESSIONAL PROFILE, EDUCATION & QUALIFICATIONS, PROFESSIONAL EXPERIENCE, TRAINING & CERTIFICATIONS, KEY SKILLS, ADDITIONAL INFORMATION) where the content exists.
+5. If a section's content is not present in the raw text, omit that section entirely.
+6. Return ONLY the clean structured CV text — no preamble, no commentary.
+
+RAW EXTRACTED TEXT:
+{raw_text[:12000]}
+"""
+
+        response   = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        gemini_out = (response.text or '').strip()
+
+        # Return Gemini-structured text; fall back to raw if empty
+        return gemini_out if gemini_out else raw_text
+
+    except Exception as gemini_err:
+        # Gemini failed — return raw text with a note
+        return f"[Gemini extraction failed: {gemini_err}]\n\n{raw_text}"
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
