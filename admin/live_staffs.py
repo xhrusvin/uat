@@ -2497,28 +2497,33 @@ def live_staff_cron_sync_documents():
             "remaining_count": remaining_total - 1,
         })
 
-    api_data  = data.get('data') or {}
-    documents = api_data.get('documents') or []
+    api_data = data.get('data')
 
-    # Return raw API response for debugging if no documents found
+    # API may return data as a list (empty []) or a dict with documents key
+    if isinstance(api_data, list):
+        documents = api_data          # data itself is the document list
+    elif isinstance(api_data, dict):
+        documents = api_data.get('documents') or []
+    else:
+        documents = []
+
+    # No documents found — save "No doc found" and move on
     if not documents:
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {
+                "extracted_cv":    "No doc found",
+                "extracted_cv_at": datetime.utcnow(),
+            }}
+        )
         return jsonify({
-            "success":          True,
-            "email":            email,
-            "documents_found":  0,
-            "cv_extracted":     False,
-            "cv_url_found":     None,
-            "api_raw":          data,
-            "request_url":      endpoint,
-            "request_method":   "POST (fallback GET if 405)",
-            "request_body":     {"email": email},
-            "request_headers":  {
-                "Api-Key":       api_key[:6] + "..." if api_key else "NOT SET",
-                "X-App-Country": app_country or "NOT SET",
-                "Content-Type":  "application/json",
-            },
-            "remaining_count":  remaining_total,
-            "message":          f"API returned 0 documents for {email} — see api_raw for full response",
+            "success":         True,
+            "email":           email,
+            "documents_found": 0,
+            "cv_extracted":    False,
+            "extracted_cv":    "No doc found",
+            "remaining_count": max(0, remaining_total - 1),
+            "message":         f"No documents returned by API for {email} — marked as 'No doc found'.",
         })
 
     # ── Process documents ─────────────────────────────────────────────
