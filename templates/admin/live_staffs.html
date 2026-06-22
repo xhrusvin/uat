@@ -77,6 +77,7 @@
                             <th>Visa</th>
                             <th class="text-center">NMBI Exp.</th>
                             <th class="text-center">Status</th>
+                            <th class="text-center">CV</th>
                             <th class="text-center">Actions</th>
                         </tr>
                     </thead>
@@ -116,6 +117,17 @@
                                 {% else %}
                                 <span class="badge bg-secondary rounded-pill px-3">
                                     {{ (s.status or 'unknown') | capitalize }}
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if s.extracted_cv and s.extracted_cv != '[no CV document found]' and not s.extracted_cv.startswith('[') %}
+                                <span class="badge bg-success rounded-pill px-2" title="{{ s.extracted_cv[:100] }}">
+                                    <i class="bi bi-file-text-fill me-1"></i>Done
+                                </span>
+                                {% else %}
+                                <span class="badge bg-light text-muted rounded-pill px-2 border">
+                                    <i class="bi bi-hourglass me-1"></i>Pending
                                 </span>
                                 {% endif %}
                             </td>

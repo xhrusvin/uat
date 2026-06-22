@@ -32,24 +32,48 @@ def _serialize(doc):
 
 
 def _get_all(search, page, per_page):
-    query = {}
+    match = {}
     if search:
         pattern = re.compile(re.escape(search), re.IGNORECASE)
-        query = {"$or": [
+        match = {"$or": [
             {"section_1_personal_details.full_name": pattern},
             {"email": pattern},
             {"employee_code": pattern},
             {"section_1_personal_details.nationality": pattern},
             {"user_type": pattern},
         ]}
-    col = _staffs_col()
-    total = col.count_documents(query)
-    items = list(
-        col.find(query)
-           .sort([("section_1_personal_details.full_name", 1)])
-           .skip((page - 1) * per_page)
-           .limit(per_page)
-    )
+    col   = _staffs_col()
+    total = col.count_documents(match)
+
+    # Aggregation: add a sort key so records with extracted_cv come first
+    pipeline = []
+    if match:
+        pipeline.append({"$match": match})
+    pipeline += [
+        {"$addFields": {
+            "_cv_filled": {
+                "$cond": {
+                    "if": {
+                        "$and": [
+                            {"$ifNull": ["$extracted_cv", False]},
+                            {"$ne": ["$extracted_cv", ""]},
+                            {"$ne": ["$extracted_cv", None]},
+                        ]
+                    },
+                    "then": 0,   # has CV — sort first
+                    "else": 1    # no CV — sort after
+                }
+            }
+        }},
+        {"$sort": {
+            "_cv_filled": 1,
+            "section_1_personal_details.full_name": 1
+        }},
+        {"$skip":  (page - 1) * per_page},
+        {"$limit": per_page},
+    ]
+
+    items = list(col.aggregate(pipeline))
     # Serialize BEFORE passing to template so tojson never sees ObjectId
     return [_serialize(doc) for doc in items], total
 
