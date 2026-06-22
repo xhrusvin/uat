@@ -262,6 +262,14 @@ def live_staff_ai_cv_generate():
         }
         certs = [label for k, label in TLABELS.items() if s10.get(k)][:6]
 
+        # Pull extracted_cv text from DB if available
+        extracted_cv = _v(doc.get('extracted_cv') or '')
+        has_extracted_cv = (
+            extracted_cv and
+            not extracted_cv.startswith('[') and
+            extracted_cv != '[no CV document found]'
+        )
+
         data_summary = f"""
 Candidate: {full_name}
 Role / User Type: {user_type}
@@ -284,25 +292,34 @@ Fit for Nursing Duties: {fit}
 Qualifications:
 {chr(10).join(qual_lines) if qual_lines else '  None recorded'}
 
-Employment History:
+Employment History (from profile):
 {chr(10).join(exp_lines) if exp_lines else '  None recorded'}
 
 Training & Certifications (on file):
 {chr(10).join('  - ' + c for c in certs) if certs else '  None recorded'}
 """.strip()
 
+        # Build extracted CV section for prompt
+        extracted_cv_section = f"""
+
+EXTRACTED CV TEXT (use this as the PRIMARY source for PROFESSIONAL EXPERIENCE, TRAINING & CERTIFICATIONS and KEY SKILLS — copy the actual duties, skills and certifications directly from this text, preserving the candidate's own words):
+{extracted_cv[:8000]}
+""" if has_extracted_cv else ""
+
         prompt = f"""You are an expert professional CV writer specialising in Irish healthcare staffing.
 
 STRICT RULE — NO HALLUCINATION:
-You MUST use ONLY the exact facts provided in the CANDIDATE DATA section below.
+You MUST use ONLY the exact facts provided in the CANDIDATE DATA and EXTRACTED CV TEXT below.
 Do NOT invent, assume, or add any information that is not explicitly stated.
-If a field is empty or says "None recorded", do not fabricate content for it — skip it or write only what is known.
-Do not add employers, qualifications, dates, locations, certifications, or duties that are not in the data.
-Do not pad sections with generic filler text disguised as personal experience.
+If a field is empty or says "None recorded", skip it.
 
-Using ONLY the verified candidate data below, write a complete, professional, and ATS-optimised Curriculum Vitae in plain text.
+SECTION SOURCE RULES:
+- PERSONAL DETAILS, PROFESSIONAL PROFILE, EDUCATION & QUALIFICATIONS: use CANDIDATE DATA.
+- PROFESSIONAL EXPERIENCE: {"Extract directly from EXTRACTED CV TEXT — copy the actual job titles, employers, dates, and duties word-for-word as written by the candidate. Do not rewrite or invent." if has_extracted_cv else "Use Employment History from CANDIDATE DATA. Write 5-6 appropriate duties per role."}
+- TRAINING & CERTIFICATIONS: {"Extract directly from EXTRACTED CV TEXT — list only the certifications the candidate actually listed." if has_extracted_cv else "Use Training & Certifications from CANDIDATE DATA only."}
+- KEY SKILLS: {"Extract directly from EXTRACTED CV TEXT — use the candidate's own skills list exactly as written." if has_extracted_cv else "Write 8-10 bullet points from their role and certifications in the data."}
 
-Structure the CV exactly as follows (use these EXACT section headings in UPPERCASE on their own line):
+Structure the CV exactly as follows (EXACT section headings in UPPERCASE on their own line):
 
 PERSONAL DETAILS
 PROFESSIONAL PROFILE
@@ -312,27 +329,27 @@ TRAINING & CERTIFICATIONS
 KEY SKILLS
 ADDITIONAL INFORMATION
 
-Section rules:
-- PERSONAL DETAILS: List each field as "Label: Value" on its own line. Only include fields that have actual values — skip blank ones.
-- PROFESSIONAL PROFILE: 2 paragraphs in FIRST PERSON ("I am", "I have", "I bring"). Based strictly on the data provided. No invented qualities, no assumed skills. Only expand naturally on what is explicitly given. This must read like a genuine personal statement the candidate wrote themselves.
-- EDUCATION & QUALIFICATIONS: One entry per qualification using format: Qualification Name | Institution | Year. Only list qualifications that are in the data.
-- PROFESSIONAL EXPERIENCE: One block per role. Format exactly:
+Section format rules:
+- PERSONAL DETAILS: "Label: Value" per line. Skip blank fields.
+- PROFESSIONAL PROFILE: 2 paragraphs, FIRST PERSON ("I am", "I have", "I bring"). Genuine personal statement.
+- EDUCATION & QUALIFICATIONS: Qualification Name | Institution | Year
+- PROFESSIONAL EXPERIENCE: One block per role:
     Job Title: [title]
     Employer: [employer]
     Dates: [from] - [to]
     Duties:
-    - [duty based only on the role type and employer — no invented specifics]
-  Write 5-6 realistic duties appropriate to the job title. Do not invent employer-specific details not in the data.
-- TRAINING & CERTIFICATIONS: Bullet list using only the certifications listed in the data. Do not add any others.
-- KEY SKILLS: 8-10 bullet points drawn only from their role, qualifications, and certifications in the data.
-- ADDITIONAL INFORMATION: Driving Licence: No | Own Transport: No | Date: [pick any date between January 2024 and December 2026, formatted as DD Month YYYY]
+    - [duty]
+- TRAINING & CERTIFICATIONS: Bullet list of certifications only.
+- KEY SKILLS: 8-10 bullet points.
+- ADDITIONAL INFORMATION: Driving Licence: No | Own Transport: No | Date: [any date Jan 2024 – Dec 2026, as DD Month YYYY]
 
 ---
-CANDIDATE DATA (use ONLY this — do not add anything else):
+CANDIDATE DATA:
 {data_summary}
+{extracted_cv_section}
 ---
 
-Output the CV text only. No preamble, no explanation, no markdown symbols like ** or ##. Use plain text with section headings and dash bullet points.
+Output CV text only. No preamble, no explanation, no markdown symbols like ** or ##. Plain text with section headings and dash bullet points.
 """
 
         gemini_key = os.environ.get('GEMINI_API_KEY', '')
