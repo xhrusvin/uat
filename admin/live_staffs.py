@@ -364,15 +364,15 @@ Output CV text only. No preamble, no explanation, no markdown symbols like ** or
         )
         cv_text = response.text.strip()
 
-        pdf_bytes = _build_ai_cv_pdf(doc, cv_text)
+        docx_bytes = _build_ai_cv_docx(doc, cv_text)
 
         safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
-        cv_filename = f"AI_CV_{safe_name}_{staff_id}.pdf"
+        cv_filename = f"AI_CV_{safe_name}_{staff_id}.docx"
         cv_folder   = os.path.join('static', 'cv')
         os.makedirs(cv_folder, exist_ok=True)
         cv_filepath = os.path.join(cv_folder, cv_filename)
         with open(cv_filepath, 'wb') as f:
-            f.write(pdf_bytes)
+            f.write(docx_bytes)
 
         col      = _ai_cvs_col()
         existing = col.find_one({"staff_id": str(doc['_id'])})
@@ -407,7 +407,7 @@ Output CV text only. No preamble, no explanation, no markdown symbols like ** or
 @admin_bp.route('/live-staffs/ai-cv/download/<ai_cv_id>')
 @admin_required
 def live_staff_ai_cv_download(ai_cv_id):
-    """Serve the saved AI CV PDF from static/cv/."""
+    """Serve the saved AI CV DOCX from static/cv/."""
     try:
         rec = _ai_cvs_col().find_one({"_id": ObjectId(ai_cv_id)})
         if not rec:
@@ -416,12 +416,12 @@ def live_staff_ai_cv_download(ai_cv_id):
         if not cv_filepath or not os.path.exists(cv_filepath):
             return "CV file not found on disk — please regenerate", 404
         name     = (rec.get('staff_name') or 'staff').replace(' ', '_')
-        filename = f"AI_CV_{name}.pdf"
+        filename = f"AI_CV_{name}.docx"
         with open(cv_filepath, 'rb') as f:
-            pdf_bytes = f.read()
+            docx_bytes = f.read()
         return Response(
-            pdf_bytes,
-            mimetype='application/pdf',
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
     except Exception as e:
@@ -972,6 +972,264 @@ def _v(val):
 
 
 
+
+
+
+def _build_ai_cv_docx(doc, cv_text):
+    """
+    Render AI-generated CV text as a clean Word document (.docx).
+    Plain black text, Calibri font, section headings with bottom border —
+    matches the clean professional style of the interview docx.
+    """
+    from docx import Document as DocxDocument
+    from docx.shared import Pt, RGBColor, Inches, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    import io as _io, re as _re
+
+    BLACK = RGBColor(0x00, 0x00, 0x00)
+    GRAY  = RGBColor(0x44, 0x44, 0x44)
+
+    s1_d      = doc.get('section_1_personal_details') or {}
+    full_name = _v(s1_d.get('full_name')) or 'Candidate'
+    mobile    = _v(s1_d.get('mobile_number'))
+    email     = _v(doc.get('email'))
+    address   = _v(s1_d.get('address'))
+
+    d = DocxDocument()
+    for sec in d.sections:
+        sec.top_margin    = Cm(2.54)
+        sec.bottom_margin = Cm(2.54)
+        sec.left_margin   = Cm(2.54)
+        sec.right_margin  = Cm(2.54)
+
+    normal = d.styles['Normal']
+    normal.font.name  = 'Calibri'
+    normal.font.size  = Pt(11)
+
+    def add_border_bottom(para):
+        pPr  = para._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bot  = OxmlElement('w:bottom')
+        bot.set(qn('w:val'),   'single')
+        bot.set(qn('w:sz'),    '6')
+        bot.set(qn('w:space'), '1')
+        bot.set(qn('w:color'), '000000')
+        pBdr.append(bot)
+        pPr.append(pBdr)
+
+    def add_section_heading(title):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(14)
+        p.paragraph_format.space_after  = Pt(4)
+        r = p.add_run(title.upper())
+        r.bold = True
+        r.font.size = Pt(13)
+        r.font.name = 'Calibri'
+        r.font.color.rgb = BLACK
+        add_border_bottom(p)
+
+    def add_name_header():
+        # Name — large centred
+        p = d.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_after = Pt(4)
+        r = p.add_run(full_name)
+        r.bold = True
+        r.font.size = Pt(18)
+        r.font.name = 'Calibri'
+        r.font.color.rgb = BLACK
+        # Contact line
+        contact = '   |   '.join(x for x in [mobile, email, address] if x)
+        if contact:
+            cp = d.add_paragraph()
+            cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            cp.paragraph_format.space_after = Pt(12)
+            cr = cp.add_run(contact)
+            cr.font.size = Pt(9)
+            cr.font.name = 'Calibri'
+            cr.font.color.rgb = GRAY
+
+    def add_body(text):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after  = Pt(6)
+        r = p.add_run(text)
+        r.font.name = 'Calibri'
+        r.font.size = Pt(11)
+        r.font.color.rgb = BLACK
+
+    def add_field(label, value):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after  = Pt(1)
+        r1 = p.add_run(label + '  ')
+        r1.bold = True
+        r1.font.name = 'Calibri'
+        r1.font.color.rgb = BLACK
+        r2 = p.add_run(value or '')
+        r2.font.name = 'Calibri'
+        r2.font.color.rgb = BLACK
+
+    def add_role_heading(title, dates=''):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(8)
+        p.paragraph_format.space_after  = Pt(1)
+        r1 = p.add_run(title)
+        r1.bold = True
+        r1.font.size = Pt(11)
+        r1.font.name = 'Calibri'
+        r1.font.color.rgb = BLACK
+        if dates:
+            r2 = p.add_run(f'   {dates}')
+            r2.font.size = Pt(9)
+            r2.font.name = 'Calibri'
+            r2.font.color.rgb = GRAY
+
+    def add_sub(text):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after  = Pt(2)
+        r = p.add_run(text)
+        r.italic = True
+        r.font.size = Pt(10)
+        r.font.name = 'Calibri'
+        r.font.color.rgb = GRAY
+
+    def add_bullet(text):
+        clean = text.lstrip('- •	').strip()
+        if not clean:
+            return
+        p = d.add_paragraph(style='List Bullet')
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after  = Pt(2)
+        p.paragraph_format.left_indent  = Inches(0.25)
+        r = p.add_run(clean)
+        r.font.name = 'Calibri'
+        r.font.size = Pt(11)
+        r.font.color.rgb = BLACK
+
+    # ── Parse sections ────────────────────────────────────────────────
+    HEADINGS = [
+        'PERSONAL DETAILS', 'PROFESSIONAL PROFILE',
+        'EDUCATION & QUALIFICATIONS', 'PROFESSIONAL EXPERIENCE',
+        'TRAINING & CERTIFICATIONS', 'KEY SKILLS', 'ADDITIONAL INFORMATION',
+    ]
+    sections = {}
+    current  = '__pre__'
+    sections[current] = []
+    for line in cv_text.splitlines():
+        matched = next((h for h in HEADINGS if line.strip().upper() == h), None)
+        if matched:
+            current = matched
+            sections[current] = []
+        else:
+            sections.setdefault(current, []).append(line)
+
+    # ── Build document ────────────────────────────────────────────────
+    add_name_header()
+
+    for heading in HEADINGS:
+        lines = [l for l in sections.get(heading, []) if l.strip()]
+        if not lines:
+            continue
+
+        add_section_heading(heading)
+
+        if heading == 'PERSONAL DETAILS':
+            for line in lines:
+                if ':' in line:
+                    parts = line.split(':', 1)
+                    lbl = parts[0].strip() + ':'
+                    val = parts[1].strip()
+                    if val:
+                        add_field(lbl, val)
+
+        elif heading == 'PROFESSIONAL PROFILE':
+            para_buf = []
+            for line in lines:
+                if line.strip() == '':
+                    if para_buf:
+                        add_body(' '.join(para_buf))
+                        para_buf = []
+                else:
+                    para_buf.append(line.strip())
+            if para_buf:
+                add_body(' '.join(para_buf))
+
+        elif heading == 'EDUCATION & QUALIFICATIONS':
+            for line in lines:
+                s = line.strip().lstrip('- ').strip()
+                if not s:
+                    continue
+                parts = [p.strip() for p in s.split('|')]
+                qual  = parts[0] if parts else s
+                inst  = parts[1] if len(parts) > 1 else ''
+                year  = parts[2] if len(parts) > 2 else ''
+                p = d.add_paragraph()
+                p.paragraph_format.space_before = Pt(4)
+                p.paragraph_format.space_after  = Pt(1)
+                r = p.add_run(qual + (f'  ({year})' if year else ''))
+                r.bold = True
+                r.font.name = 'Calibri'
+                r.font.color.rgb = BLACK
+                if inst:
+                    add_sub(inst)
+
+        elif heading == 'PROFESSIONAL EXPERIENCE':
+            roles = []
+            cur   = []
+            for line in lines:
+                if line.strip().lower().startswith('job title:') and cur:
+                    roles.append(cur); cur = [line]
+                else:
+                    cur.append(line)
+            if cur:
+                roles.append(cur)
+
+            for role_lines in roles:
+                jt = en = ds = ''
+                duties = []
+                for rl in role_lines:
+                    sl = rl.strip(); sll = sl.lower()
+                    if not sl: continue
+                    if sll.startswith('job title:'):  jt = sl.split(':',1)[1].strip()
+                    elif sll.startswith('employer:'): en = sl.split(':',1)[1].strip()
+                    elif sll.startswith('dates:'):    ds = sl.split(':',1)[1].strip()
+                    elif sll.startswith('duties'):    pass
+                    elif sl.startswith('-') or sl.startswith('•'):
+                        duties.append(sl.lstrip('- •').strip())
+                if not jt and not en:
+                    continue
+                add_role_heading(jt or 'Role', ds)
+                if en:
+                    add_sub(en)
+                for duty in duties:
+                    if duty:
+                        add_bullet(duty)
+                d.add_paragraph()
+
+        elif heading in ('TRAINING & CERTIFICATIONS', 'KEY SKILLS'):
+            for line in lines:
+                s = line.strip()
+                if s:
+                    add_bullet(s)
+
+        elif heading == 'ADDITIONAL INFORMATION':
+            for line in lines:
+                s = line.strip()
+                if not s or s.lower().startswith('reference'):
+                    continue
+                if ':' in s:
+                    parts = s.split(':', 1)
+                    add_field(parts[0].strip() + ':', parts[1].strip())
+                else:
+                    add_body(s)
+
+    buf = _io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
 
 
 def _build_ai_cv_pdf(doc, cv_text):
