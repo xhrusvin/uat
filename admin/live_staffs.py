@@ -1817,11 +1817,25 @@ def live_staff_cron_sync_documents():
             "success":         False,
             "email":           email,
             "error":           data.get('message', 'API returned success=false'),
+            "api_raw":         data,
             "remaining_count": remaining_total - 1,
         })
 
     api_data  = data.get('data') or {}
     documents = api_data.get('documents') or []
+
+    # Return raw API response for debugging if no documents found
+    if not documents:
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "documents_found": 0,
+            "cv_extracted":    False,
+            "cv_url_found":    None,
+            "api_raw":         data,
+            "remaining_count": remaining_total,
+            "message":         f"API returned 0 documents for {email} — see api_raw for full response",
+        })
 
     # ── Process documents ─────────────────────────────────────────────
     clean_docs        = []
