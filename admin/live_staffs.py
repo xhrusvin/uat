@@ -1827,6 +1827,7 @@ def live_staff_cron_sync_documents():
     clean_docs        = []
     extracted_cv_text = None
     cv_error          = None
+    cv_url_found      = None
 
     for doc_item in documents:
         clean_docs.append({
@@ -1840,16 +1841,17 @@ def live_staff_cron_sync_documents():
             "status":                 doc_item.get('status'),
         })
 
-        # Extract the CV document via Gemini
-        if (doc_item.get('document_type_name', '').strip().lower() == 'cv'
-                and doc_item.get('url')):
+        # Extract when document_type_name is exactly "Cv"
+        doc_name = (doc_item.get('document_type_name') or '').strip()
+        doc_url  = doc_item.get('url') or ''
+
+        if doc_name == 'Cv' and doc_url and not extracted_cv_text:
+            cv_url_found = doc_url
             try:
-                extracted_cv_text = _extract_text_from_url(
-                    doc_item['url'], api_headers
-                )
+                extracted_cv_text = _extract_text_from_url(doc_url, api_headers)
             except Exception as cv_err:
                 cv_error = str(cv_err)
-                extracted_cv_text = f"[CV extraction failed: {cv_err}]"
+                extracted_cv_text = f"[CV extraction failed: {cv_err}]"  
 
     # ── Save to MongoDB ───────────────────────────────────────────────
     update_fields = {
@@ -1868,7 +1870,9 @@ def live_staff_cron_sync_documents():
         "email":           email,
         "documents_found": len(clean_docs),
         "cv_extracted":    bool(extracted_cv_text and not cv_error),
+        "cv_url_found":    cv_url_found,
         "cv_error":        cv_error,
+        "document_names":  [d.get("document_type_name") for d in clean_docs],
         "remaining_count": max(0, remaining_total - 1),
         "message": (
             f"Processed {email} — "
