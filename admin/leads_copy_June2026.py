@@ -14,7 +14,6 @@ import aiohttp
 
 from .views import admin_bp
 from .views import admin_required
-from .whatsapp_wati import _send_template_message
 
 ALLOWED_EXTENSIONS = {'csv'}
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -179,11 +178,7 @@ def leads_management():
                         "call_answered": None,
                         "feedback": None,
                         "uploaded_at": datetime.utcnow(),
-                        "source_file": filename,
-                        "whatsapp_sent": False,
-                        "whatsapp_sent_at": None,
-                        "whatsapp_status": None,
-                        "whatsapp_message_id": None
+                        "source_file": filename
                     }
 
                     # Remove None values except booleans
@@ -194,69 +189,8 @@ def leads_management():
 
             # Insert all valid unique leads
             if records:
-                result = current_app.db.leads.insert_many(
-                    records,
-                    ordered=False
-                )
-
-                inserted_ids = result.inserted_ids
-
-                for lead_id in inserted_ids:
-
-                    try:
-
-                        lead = current_app.db.leads.find_one(
-                            {"_id": lead_id}
-                        )
-
-                        if not lead:
-                            continue
-
-                        phone = lead.get("phone_number")
-
-                        if not phone:
-                            continue
-
-                        wati_result = _send_template_message(
-                            phone=phone,
-                            template_name="new_chat_v1",
-                            parameters=[]
-                        )
-
-                        current_app.db.leads.update_one(
-                            {"_id": lead_id},
-                            {
-                                "$set": {
-                                    "whatsapp_sent": True,
-                                    "whatsapp_sent_at": datetime.utcnow(),
-                                    "whatsapp_status": "sent",
-                                    "whatsapp_message_id":
-                                        wati_result.get("id")
-                                        or wati_result.get("messageId")
-                                }
-                            }
-                        )
-
-                    except Exception as e:
-
-                        current_app.logger.exception(
-                            f"WhatsApp send failed for lead {lead_id}"
-                        )
-
-                        current_app.db.leads.update_one(
-                            {"_id": lead_id},
-                            {
-                                "$set": {
-                                    "whatsapp_sent": False,
-                                    "whatsapp_status": str(e)
-                                }
-                            }
-                        )
-
-                flash(
-                    f'Success! Imported {len(inserted_ids)} new leads.',
-                    'success'
-                )
+                result = current_app.db.leads.insert_many(records, ordered=False)
+                flash(f'Success! Imported {len(result.inserted_ids)} new leads.', 'success')
                 if duplicates_found:
                     flash(f'{duplicates_found} duplicate phone number(s) were skipped.', 'warning')
             else:
@@ -550,5 +484,3 @@ def clear_all_leads():
     current_app.db.lead_conversations.delete_many({})
     flash(f"Cleared {result.deleted_count} leads and related conversations.", "success")
     return redirect(url_for('admin.leads_management'))
-
-

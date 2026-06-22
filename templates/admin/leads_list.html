@@ -110,6 +110,7 @@
                             <th>Type</th>
                             <th>Location</th>
                             <th>Status</th>
+                            <th>WhatsApp</th>
                             <th>Turns</th>
                             <th class="text-end pe-4">Uploaded</th>
                         </tr>
@@ -164,6 +165,41 @@
             <span class="text-secondary">Not Called</span>
         {% endif %}
     </td>
+
+
+    <td>
+        {% if lead.whatsapp_sent %}
+                <span class="badge bg-success">
+                    Sent
+                </span>
+
+                {% if lead.whatsapp_sent_at %}
+                    <div class="small text-muted mt-1">
+                        {{ lead.whatsapp_sent_at.strftime('%d %b %H:%M') }}
+                    </div>
+                {% endif %}
+
+            {% elif lead.whatsapp_status %}
+
+                <span class="badge bg-danger">
+                    Failed
+                </span>
+
+                <div class="small text-danger text-truncate"
+                    style="max-width:150px;"
+                    title="{{ lead.whatsapp_status }}">
+                    {{ lead.whatsapp_status }}
+                </div>
+
+            {% else %}
+
+                <span class="badge bg-secondary">
+                    Pending
+                </span>
+
+            {% endif %}
+        </td>
+
     <td>
         {% if conv and conv.turns %}
         <span class="badge rounded-pill bg-info text-dark">{{ conv.turns|length }} turns</span>
