@@ -449,6 +449,63 @@ def live_staff_ai_cv_saved(staff_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@admin_bp.route('/live-staffs/ai-cv/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_ai_cv_upload(staff_id):
+    """
+    Replace the saved AI CV file with an edited version uploaded by the user.
+    Accepts a .docx file upload and overwrites the existing file on disk.
+    """
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+
+    file = request.files['file']
+    if not file.filename.lower().endswith('.docx'):
+        return jsonify({"success": False, "error": "Only .docx files are accepted"}), 400
+
+    try:
+        col = _ai_cvs_col()
+        rec = col.find_one({"staff_id": staff_id})
+
+        if not rec:
+            return jsonify({"success": False, "error": "No saved CV found for this staff member"}), 404
+
+        # Overwrite the existing file on disk
+        cv_filepath = rec.get('cv_filepath', '')
+
+        if not cv_filepath:
+            # Build a new path if old record didn't have one
+            doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            s1  = (doc.get('section_1_personal_details') or {}) if doc else {}
+            name = _v(s1.get('full_name') or 'staff').replace(' ', '_').replace('/', '_')
+            cv_folder   = os.path.join('static', 'cv')
+            os.makedirs(cv_folder, exist_ok=True)
+            cv_filepath = os.path.join(cv_folder, f"{name}.docx")
+
+        # Save the uploaded file over the existing one
+        file.save(cv_filepath)
+
+        # Update MongoDB metadata
+        col.update_one(
+            {"_id": rec["_id"]},
+            {"$set": {
+                "cv_filepath":   cv_filepath,
+                "cv_filename":   os.path.basename(cv_filepath),
+                "last_uploaded": datetime.utcnow(),
+                "uploaded_by":   "admin",
+            }}
+        )
+
+        return jsonify({
+            "success":  True,
+            "message":  "CV replaced successfully with uploaded version",
+            "filename": os.path.basename(cv_filepath),
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ── Generate AI Interview Notes ───────────────────────────────────────
 
 @admin_bp.route('/live-staffs/ai-interview/generate', methods=['POST'])

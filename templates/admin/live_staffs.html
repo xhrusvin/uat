@@ -570,13 +570,27 @@
                         A saved AI CV exists from <strong id="aiCvSavedDate"></strong>.
                         You can regenerate or download the saved version.
                     </div>
-                    <div class="d-flex gap-2 flex-wrap">
+                    <div class="d-flex gap-2 flex-wrap mb-3">
                         <button class="btn btn-warning fw-bold px-4" id="aiCvGenerateBtn">
                             <i class="bi bi-stars me-1"></i> Generate with AI
                         </button>
                         <button class="btn btn-outline-success d-none fw-bold px-4" id="aiCvDownloadSavedBtn">
                             <i class="bi bi-download me-1"></i> Download Saved CV
                         </button>
+                    </div>
+                    <!-- Upload edited CV back -->
+                    <div id="aiCvUploadSection" class="d-none border-top pt-3 mt-2">
+                        <p class="text-muted small mb-2">
+                            <i class="bi bi-upload me-1"></i>
+                            Already edited the CV? Upload your revised <code>.docx</code> to replace the saved version.
+                        </p>
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <input type="file" id="aiCvUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiCvUploadBtn">
+                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
+                            </button>
+                        </div>
+                        <div id="aiCvUploadMsg" class="mt-2 small d-none"></div>
                     </div>
                 </div>
 
@@ -1045,6 +1059,9 @@ document.querySelectorAll('.btn-ai-cv').forEach(btn => {
                 document.getElementById('aiCvDownloadSavedBtn').onclick = () => {
                     window.open(aiDownloadUrl(data.ai_cv_id), '_blank');
                 };
+                // Show upload section so user can replace with edited version
+                document.getElementById('aiCvUploadSection').classList.remove('d-none');
+                document.getElementById('aiCvUploadMsg').classList.add('d-none');
             }
         } catch(e) { /* ignore */ }
     });
@@ -1065,6 +1082,8 @@ document.getElementById('aiCvGenerateBtn').addEventListener('click', async () =>
         if (data.success) {
             document.getElementById('aiCvDownloadNewBtn').href = aiDownloadUrl(data.ai_cv_id);
             setAiState('Done');
+            // Show upload section in idle for future use
+            document.getElementById('aiCvUploadSection').classList.remove('d-none');
         } else {
             document.getElementById('aiCvErrorMsg').textContent = data.error || 'Generation failed';
             setAiState('Error');
@@ -1146,6 +1165,77 @@ document.getElementById('aiIntGenerateBtn').addEventListener('click', async () =
     } catch(e) {
         document.getElementById('aiIntErrorMsg').textContent = 'Network error: ' + e.message;
         setIntState('Error');
+    }
+});
+
+
+// ── AI CV Upload ──────────────────────────────────────────────────────
+const AI_UPLOAD_BASE = "{{ url_for('admin.live_staff_ai_cv_upload', staff_id='__ID__') }}";
+function aiUploadUrl(staffId) { return AI_UPLOAD_BASE.replace('__ID__', staffId); }
+
+// Show upload section when a saved CV exists
+const _origAiCvBtnListener = document.getElementById('aiCvGenerateBtn');
+
+// Extend the saved CV check to also show upload section
+const _origCheckSaved = async (staffId) => {
+    try {
+        const res  = await fetch(aiSavedUrl(staffId));
+        const data = await res.json();
+        if (data.success && data.found) {
+            document.getElementById('aiCvSavedInfo').classList.remove('d-none');
+            document.getElementById('aiCvSavedDate').textContent = data.generated_at;
+            document.getElementById('aiCvDownloadSavedBtn').classList.remove('d-none');
+            document.getElementById('aiCvDownloadSavedBtn').onclick = () => {
+                window.open(aiDownloadUrl(data.ai_cv_id), '_blank');
+            };
+            // Show upload section
+            document.getElementById('aiCvUploadSection').classList.remove('d-none');
+        }
+    } catch(e) { /* ignore */ }
+};
+
+document.getElementById('aiCvUploadBtn').addEventListener('click', async () => {
+    const fileInput = document.getElementById('aiCvUploadInput');
+    const msgEl     = document.getElementById('aiCvUploadMsg');
+    const file      = fileInput.files[0];
+
+    if (!file) {
+        msgEl.textContent = 'Please select a .docx file first.';
+        msgEl.className   = 'mt-2 small text-danger';
+        msgEl.classList.remove('d-none');
+        return;
+    }
+
+    const btn       = document.getElementById('aiCvUploadBtn');
+    btn.disabled    = true;
+    btn.innerHTML   = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+        const res    = await fetch(aiUploadUrl(currentAiStaffId), {
+            method: 'POST',
+            body:   fd,
+        });
+        const result = await res.json();
+
+        if (result.success) {
+            msgEl.innerHTML   = `<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;
+            msgEl.className   = 'mt-2 small text-success';
+            fileInput.value   = '';
+        } else {
+            msgEl.textContent = result.error || 'Upload failed';
+            msgEl.className   = 'mt-2 small text-danger';
+        }
+        msgEl.classList.remove('d-none');
+    } catch(e) {
+        msgEl.textContent = 'Network error: ' + e.message;
+        msgEl.className   = 'mt-2 small text-danger';
+        msgEl.classList.remove('d-none');
+    } finally {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
     }
 });
 
