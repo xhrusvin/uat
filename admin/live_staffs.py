@@ -956,6 +956,329 @@ def _v(val):
 
 
 
+
+def _build_ai_cv_pdf(doc, cv_text):
+    """
+    4 visually distinct ATS-friendly CV designs, all black text.
+    Theme chosen by md5(staff_id) % 4 — same staff always gets same design.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, HRFlowable,
+        Image as RLImage, Table, TableStyle
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY, TA_RIGHT
+    import io as _io, hashlib
+
+    BLACK     = colors.HexColor('#000000')
+    NEAR_BLK  = colors.HexColor('#111111')
+    DARK_GRAY = colors.HexColor('#333333')
+    LT_GRAY   = colors.HexColor('#CCCCCC')
+    WHITE     = colors.white
+
+    W, H = A4
+    id_str  = str(doc.get('_id', ''))
+    theme_n = int(hashlib.md5(id_str.encode()).hexdigest(), 16) % 4
+
+    LAYOUTS = [
+        {'lm':22*mm,'rm':22*mm,'tm':18*mm,'bm':15*mm,'bf':'Helvetica','bfb':'Helvetica-Bold','bfi':'Helvetica-Oblique','name_size':22,'name_align':TA_LEFT,'sec_size':10,'body_size':10,'contact_align':TA_LEFT},
+        {'lm':25*mm,'rm':25*mm,'tm':20*mm,'bm':15*mm,'bf':'Times-Roman','bfb':'Times-Bold','bfi':'Times-Italic','name_size':24,'name_align':TA_CENTER,'sec_size':11,'body_size':10,'contact_align':TA_CENTER},
+        {'lm':18*mm,'rm':18*mm,'tm':15*mm,'bm':12*mm,'bf':'Helvetica','bfb':'Helvetica-Bold','bfi':'Helvetica-Oblique','name_size':20,'name_align':TA_LEFT,'sec_size':9,'body_size':9.5,'contact_align':TA_LEFT},
+        {'lm':28*mm,'rm':28*mm,'tm':22*mm,'bm':18*mm,'bf':'Times-Roman','bfb':'Times-Bold','bfi':'Times-Italic','name_size':26,'name_align':TA_CENTER,'sec_size':11,'body_size':10.5,'contact_align':TA_CENTER},
+    ]
+    L      = LAYOUTS[theme_n]
+    PAGE_W = W - L['lm'] - L['rm']
+    BF     = L['bf']
+    BFB    = L['bfb']
+    BFI    = L['bfi']
+
+    def ps(name, **kw):
+        d = dict(fontName=BF, fontSize=L['body_size'], textColor=NEAR_BLK,
+                 spaceAfter=2, leading=L['body_size'] * 1.5)
+        d.update(kw)
+        return ParagraphStyle(name, **d)
+
+    S = {
+        'name'    : ps('name',    fontName=BFB, fontSize=L['name_size'],
+                       textColor=BLACK, alignment=L['name_align'],
+                       spaceAfter=3, leading=L['name_size'] * 1.3),
+        'contact' : ps('contact', fontSize=L['body_size'] - 1,
+                       textColor=DARK_GRAY, alignment=L['contact_align'],
+                       spaceAfter=0, leading=14),
+        'sec'     : ps('sec',     fontName=BFB, fontSize=L['sec_size'],
+                       textColor=BLACK, spaceAfter=0,
+                       leading=L['sec_size'] * 1.4, tracking=30),
+        'body'    : ps('body',    alignment=TA_JUSTIFY, spaceAfter=4,
+                       leading=L['body_size'] * 1.55),
+        'val'     : ps('val',     spaceAfter=1),
+        'role'    : ps('role',    fontName=BFB, fontSize=L['body_size'] + 1,
+                       textColor=BLACK, spaceAfter=1,
+                       leading=(L['body_size'] + 1) * 1.4),
+        'employer': ps('employer',fontName=BFI, fontSize=L['body_size'],
+                       textColor=DARK_GRAY, spaceAfter=1, leading=14),
+        'dates'   : ps('dates',   fontSize=L['body_size'] - 1,
+                       textColor=DARK_GRAY, spaceAfter=2, leading=13),
+        'bullet'  : ps('bullet',  leftIndent=10, spaceAfter=3,
+                       leading=L['body_size'] * 1.5),
+        'qual_q'  : ps('qual_q',  fontName=BFB, fontSize=L['body_size'],
+                       textColor=BLACK, spaceAfter=1),
+        'qual_i'  : ps('qual_i',  fontName=BFI, fontSize=L['body_size'] - 1,
+                       textColor=DARK_GRAY, spaceAfter=0, leading=13),
+    }
+
+    sp   = lambda n=3: Spacer(1, n * mm)
+    thin = lambda: HRFlowable(width=PAGE_W, color=LT_GRAY, thickness=0.5, spaceAfter=2)
+
+    def sec_heading(title):
+        if theme_n == 0:
+            return [Paragraph(title.upper(), S['sec']),
+                    HRFlowable(width=PAGE_W, color=BLACK, thickness=0.8, spaceAfter=3)]
+        elif theme_n == 1:
+            return [HRFlowable(width=PAGE_W, color=BLACK, thickness=0.4, spaceAfter=2),
+                    Paragraph(title.upper(), S['sec']),
+                    HRFlowable(width=PAGE_W, color=BLACK, thickness=1.2, spaceAfter=4)]
+        elif theme_n == 2:
+            t = Table([[Paragraph(f'  {title.upper()}', S['sec'])]], colWidths=[PAGE_W])
+            t.setStyle(TableStyle([
+                ('LINEBEFORE',(0,0),(0,-1),3.5,BLACK),('LINEBELOW',(0,0),(-1,-1),0.4,LT_GRAY),
+                ('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),4),
+                ('LEFTPADDING',(0,0),(-1,-1),6)]))
+            return [t]
+        else:
+            t = Table([[Paragraph(f'  {title.upper()}  ', S['sec'])]], colWidths=[PAGE_W])
+            t.setStyle(TableStyle([
+                ('BOX',(0,0),(-1,-1),0.8,BLACK),('TOPPADDING',(0,0),(-1,-1),4),
+                ('BOTTOMPADDING',(0,0),(-1,-1),4),('LEFTPADDING',(0,0),(-1,-1),8)]))
+            return [t]
+
+    def bullet_p(text):
+        clean = text.lstrip('- \u2022\t').strip()
+        return Paragraph(f'\u2022\u2003{clean}', S['bullet']) if clean else None
+
+    HEADINGS = [
+        'PERSONAL DETAILS','PROFESSIONAL PROFILE','EDUCATION & QUALIFICATIONS',
+        'PROFESSIONAL EXPERIENCE','TRAINING & CERTIFICATIONS','KEY SKILLS',
+        'ADDITIONAL INFORMATION',
+    ]
+    sections = {}
+    current  = '__pre__'
+    sections[current] = []
+    for line in cv_text.splitlines():
+        matched = next((h for h in HEADINGS if line.strip().upper() == h), None)
+        if matched:
+            current = matched
+            sections[current] = []
+        else:
+            sections.setdefault(current, []).append(line)
+
+    s1_d      = doc.get('section_1_personal_details') or {}
+    full_name = _v(s1_d.get('full_name')) or 'Candidate'
+    mobile    = _v(s1_d.get('mobile_number'))
+    email     = _v(doc.get('email'))
+    address   = _v(s1_d.get('address'))
+
+    logo_path = None
+    for c in [
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'images', 'logo.png'),
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'img', 'logo.png'),
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'logo.png'),
+        'static/images/logo.png', 'static/img/logo.png', 'static/logo.png',
+    ]:
+        if os.path.exists(c):
+            logo_path = c
+            break
+
+    buf   = _io.BytesIO()
+    story = []
+
+    # Header
+    if logo_path:
+        logo_w   = 30*mm
+        logo_img = RLImage(logo_path, width=logo_w, height=logo_w*94/316)
+        if L['name_align'] == TA_CENTER:
+            story.append(logo_img); story.append(sp(2))
+        else:
+            hdr_t = Table([[Paragraph('', S['body']), logo_img]],
+                          colWidths=[PAGE_W - logo_w - 2*mm, logo_w + 2*mm])
+            hdr_t.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),
+                                       ('TOPPADDING',(0,0),(-1,-1),0),
+                                       ('BOTTOMPADDING',(0,0),(-1,-1),0),
+                                       ('LEFTPADDING',(0,0),(-1,-1),0),
+                                       ('RIGHTPADDING',(0,0),(-1,-1),0)]))
+            story.append(hdr_t)
+
+    story.append(Paragraph(full_name, S['name']))
+    contact_parts = [p for p in [mobile, email, address] if p]
+    if contact_parts:
+        sep = '   |   ' if L['contact_align'] == TA_CENTER else '  •  '
+        story.append(Paragraph(sep.join(contact_parts), S['contact']))
+
+    story.append(sp(3))
+    if theme_n == 0:
+        story.append(HRFlowable(width=PAGE_W,color=BLACK,thickness=1.5,spaceAfter=0))
+        story.append(HRFlowable(width=PAGE_W,color=BLACK,thickness=0.4,spaceAfter=4))
+    elif theme_n == 1:
+        story.append(HRFlowable(width=PAGE_W,color=BLACK,thickness=1.2,spaceAfter=4))
+    elif theme_n == 2:
+        story.append(HRFlowable(width=PAGE_W,color=LT_GRAY,thickness=0.5,spaceAfter=4))
+    else:
+        story.append(HRFlowable(width=PAGE_W,color=BLACK,thickness=0.6,spaceAfter=2))
+        story.append(HRFlowable(width=PAGE_W,color=BLACK,thickness=0.6,spaceAfter=4))
+    story.append(sp(2))
+
+    for heading in HEADINGS:
+        lines = [l for l in sections.get(heading, []) if l.strip()]
+        if not lines:
+            continue
+        story += sec_heading(heading)
+        story.append(sp(2))
+
+        if heading == 'PERSONAL DETAILS':
+            for line in lines:
+                if ':' in line:
+                    parts = line.split(':', 1)
+                    lbl_t = parts[0].strip() + ':'
+                    val_t = parts[1].strip()
+                    if val_t:
+                        story.append(Paragraph(f'<b>{lbl_t}</b> {val_t}', S['val']))
+                        story.append(sp(1))
+            story.append(sp(3))
+
+        elif heading == 'PROFESSIONAL PROFILE':
+            pb = []
+            for line in lines:
+                if line.strip() == '':
+                    if pb:
+                        story.append(Paragraph(' '.join(pb), S['body']))
+                        story.append(sp(2))
+                        pb = []
+                else:
+                    pb.append(line.strip())
+            if pb:
+                story.append(Paragraph(' '.join(pb), S['body']))
+            story.append(sp(4))
+
+        elif heading == 'EDUCATION & QUALIFICATIONS':
+            for line in lines:
+                s = line.strip().lstrip('- ').strip()
+                if not s:
+                    continue
+                parts = [p.strip() for p in s.split('|')]
+                qual  = parts[0] if parts else s
+                inst  = parts[1] if len(parts) > 1 else ''
+                year  = parts[2] if len(parts) > 2 else ''
+                yr_txt = f' ({year})' if year else ''
+                story.append(Paragraph(f'<b>{qual}</b>{yr_txt}', S['qual_q']))
+                if inst:
+                    story.append(Paragraph(inst, S['qual_i']))
+                story += [sp(2), thin(), sp(2)]
+            story.append(sp(3))
+
+        elif heading == 'PROFESSIONAL EXPERIENCE':
+            roles = []
+            cur   = []
+            for line in lines:
+                if line.strip().lower().startswith('job title:') and cur:
+                    roles.append(cur); cur = [line]
+                else:
+                    cur.append(line)
+            if cur:
+                roles.append(cur)
+
+            for ri, role_lines in enumerate(roles):
+                job_title = emp_name = dates_str = ''
+                duties    = []
+                for rl in role_lines:
+                    sl    = rl.strip()
+                    sl_lo = sl.lower()
+                    if not sl: continue
+                    if sl_lo.startswith('job title:'):   job_title = sl.split(':',1)[1].strip()
+                    elif sl_lo.startswith('employer:'):  emp_name  = sl.split(':',1)[1].strip()
+                    elif sl_lo.startswith('dates:'):     dates_str = sl.split(':',1)[1].strip()
+                    elif sl_lo.startswith('duties'):     pass
+                    elif sl.startswith('-') or sl.startswith('\u2022'):
+                        duties.append(sl.lstrip('- \u2022').strip())
+
+                if not job_title and not emp_name:
+                    continue
+
+                if theme_n in (1, 3) and dates_str:
+                    rt = Table([[Paragraph(f'<b>{job_title}</b>', S['role']),
+                                 Paragraph(dates_str, S['dates'])]],
+                               colWidths=[PAGE_W*0.65, PAGE_W*0.35])
+                    rt.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'BOTTOM'),
+                                            ('TOPPADDING',(0,0),(-1,-1),0),
+                                            ('BOTTOMPADDING',(0,0),(-1,-1),2),
+                                            ('LEFTPADDING',(0,0),(-1,-1),0),
+                                            ('RIGHTPADDING',(0,0),(-1,-1),0),
+                                            ('ALIGN',(1,0),(1,-1),'RIGHT')]))
+                    story.append(rt)
+                else:
+                    story.append(Paragraph(job_title or 'Role', S['role']))
+                    if dates_str:
+                        story.append(Paragraph(dates_str, S['dates']))
+
+                if emp_name:
+                    story.append(Paragraph(emp_name, S['employer']))
+                story.append(sp(2))
+                for d in duties:
+                    if d:
+                        bp = bullet_p(d)
+                        if bp: story.append(bp)
+                story.append(sp(3))
+                if ri < len(roles) - 1:
+                    story.append(thin()); story.append(sp(2))
+            story.append(sp(2))
+
+        elif heading in ('TRAINING & CERTIFICATIONS', 'KEY SKILLS'):
+            if theme_n in (0, 2):
+                bitems = [bullet_p(l.strip()) for l in lines if bullet_p(l.strip())]
+                pairs  = []
+                for i in range(0, len(bitems), 2):
+                    left  = bitems[i]
+                    right = bitems[i+1] if i+1 < len(bitems) else Paragraph('', S['body'])
+                    pairs.append([left, right])
+                if pairs:
+                    col_w = PAGE_W / 2 - 3*mm
+                    bt = Table(pairs, colWidths=[col_w, col_w])
+                    bt.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),
+                                            ('TOPPADDING',(0,0),(-1,-1),1),
+                                            ('BOTTOMPADDING',(0,0),(-1,-1),1),
+                                            ('LEFTPADDING',(0,0),(-1,-1),0),
+                                            ('RIGHTPADDING',(0,0),(-1,-1),4)]))
+                    story.append(bt)
+            else:
+                for line in lines:
+                    bp = bullet_p(line.strip())
+                    if bp: story.append(bp)
+            story.append(sp(4))
+
+        elif heading == 'ADDITIONAL INFORMATION':
+            for line in lines:
+                s = line.strip()
+                if not s or s.lower().startswith('reference'): continue
+                if ':' in s:
+                    parts = s.split(':', 1)
+                    story.append(Paragraph(
+                        f'<b>{parts[0].strip()}:</b> {parts[1].strip()}', S['val']))
+                    story.append(sp(1))
+                else:
+                    story.append(Paragraph(s, S['body']))
+            story.append(sp(4))
+
+    pdf_doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=L['lm'], rightMargin=L['rm'],
+        topMargin=L['tm'],  bottomMargin=L['bm'],
+    )
+    pdf_doc.build(story)
+    return buf.getvalue()
+
+
+
 def _build_cv_pdf(doc):
     """
     Build a rich individual Xpress Health CV PDF.
