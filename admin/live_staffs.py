@@ -1749,6 +1749,8 @@ def live_staff_cron_sync_documents():
         })
 
     # ── Call XN Portal API ────────────────────────────────────────────
+    status_code   = None
+    response_text = ''
     try:
         resp = _req.post(
             endpoint,
@@ -1756,15 +1758,53 @@ def live_staff_cron_sync_documents():
             headers=api_headers,
             timeout=30
         )
+        # If POST not allowed, retry with GET + query param
+        if resp.status_code == 405:
+            resp = _req.get(
+                endpoint,
+                params={"email": email},
+                headers=api_headers,
+                timeout=30
+            )
+        status_code   = resp.status_code
+        response_text = resp.text[:500] if resp.text else ''
         resp.raise_for_status()
         data = resp.json()
+    except _req.exceptions.ConnectionError as api_err:
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"Connection error — cannot reach XN Portal",
+            "detail":          str(api_err)[:300],
+            "endpoint":        endpoint,
+            "check":           "Verify LIVE_STAFF_URL env var is correct and server is reachable",
+            "remaining_count": remaining_total,
+        })
+    except _req.exceptions.Timeout:
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           "Timeout — XN Portal did not respond within 30s",
+            "endpoint":        endpoint,
+            "remaining_count": remaining_total,
+        })
+    except _req.exceptions.HTTPError as api_err:
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"HTTP {status_code} error from XN Portal",
+            "response_body":   response_text,
+            "endpoint":        endpoint,
+            "remaining_count": remaining_total,
+        })
     except Exception as api_err:
         return jsonify({
-            "success": False,
-            "email":   email,
-            "error":   f"API call failed: {api_err}",
+            "success":         False,
+            "email":           email,
+            "error":           f"{type(api_err).__name__}: {api_err}",
+            "endpoint":        endpoint,
             "remaining_count": remaining_total,
-        }), 502
+        })
 
     if not data.get('success'):
         # Mark attempted so cron moves on next time
