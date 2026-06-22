@@ -1827,14 +1827,22 @@ def live_staff_cron_sync_documents():
     # Return raw API response for debugging if no documents found
     if not documents:
         return jsonify({
-            "success":         True,
-            "email":           email,
-            "documents_found": 0,
-            "cv_extracted":    False,
-            "cv_url_found":    None,
-            "api_raw":         data,
-            "remaining_count": remaining_total,
-            "message":         f"API returned 0 documents for {email} — see api_raw for full response",
+            "success":          True,
+            "email":            email,
+            "documents_found":  0,
+            "cv_extracted":     False,
+            "cv_url_found":     None,
+            "api_raw":          data,
+            "request_url":      endpoint,
+            "request_method":   "POST (fallback GET if 405)",
+            "request_body":     {"email": email},
+            "request_headers":  {
+                "Api-Key":       api_key[:6] + "..." if api_key else "NOT SET",
+                "X-App-Country": app_country or "NOT SET",
+                "Content-Type":  "application/json",
+            },
+            "remaining_count":  remaining_total,
+            "message":          f"API returned 0 documents for {email} — see api_raw for full response",
         })
 
     # ── Process documents ─────────────────────────────────────────────
