@@ -277,7 +277,6 @@ Employee Code: {emp_code}
 Address: {address}
 Mobile: {mobile}
 Email: {email}
-Date of Birth: {dob}
 Nationality: {nationality}
 Total Experience: {total_exp}
 Divisions / Speciality: {divisions}
@@ -341,7 +340,7 @@ Section format rules:
     - [duty]
 - TRAINING & CERTIFICATIONS: Bullet list of certifications only.
 - KEY SKILLS: 8-10 bullet points.
-- ADDITIONAL INFORMATION: Driving Licence: No | Own Transport: No | Date: [any date Jan 2024 – Dec 2026, as DD Month YYYY]
+- ADDITIONAL INFORMATION: Driving Licence: No | Own Transport: No
 
 ---
 CANDIDATE DATA:
@@ -1791,7 +1790,6 @@ def _build_cv_pdf(doc):
         ('Address:',       address),
         ('Mobile Number:', mobile),
         ('Email Address:', email),
-        ('Date of Birth:', dob),
         ('Nationality:',   nationality),
     ]:
         if value:
@@ -2128,7 +2126,6 @@ def _build_cv_pdf(doc):
     for label, value in [
         ('Driving Licence:', 'No'),
         ('Own Transport:',   'No'),
-        ('Date:',            _cv_date),
     ]:
         story += [lv(label, value), sp(1)]
     story.append(sp(4))
