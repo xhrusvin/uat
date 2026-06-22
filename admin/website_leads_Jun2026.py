@@ -86,55 +86,6 @@ def run_update_registration_status(app):
 
 
 # ===============================
-# WHATSAPP – send new_chat_v1 on lead capture
-# ===============================
-
-def send_whatsapp_on_lead_capture(lead_id, phone: str, name: str):
-    """
-    Send the 'new_chat_v1' WhatsApp template to a freshly captured lead.
-    Writes the result back to website_leads:
-        whatsapp_sent      : 1 (success) | 0 (failed)
-        whatsapp_sent_at   : datetime (on success)
-        whatsapp_error     : str        (on failure)
-    """
-    db = current_app.db
-    try:
-        _send_template_message(
-            phone=phone,
-            template_name="new_chat_v1",
-            parameters=[{"name": "name", "value": name or "there"}],
-        )
-        db.website_leads.update_one(
-            {"_id": lead_id},
-            {
-                "$set": {
-                    "whatsapp_sent": 1,
-                    "whatsapp_sent_at": datetime.utcnow(),
-                    "whatsapp_error": None,
-                }
-            },
-        )
-    except Exception as exc:
-        db.website_leads.update_one(
-            {"_id": lead_id},
-            {
-                "$set": {
-                    "whatsapp_sent": 0,
-                    "whatsapp_error": str(exc),
-                }
-            },
-        )
-        current_app.logger.error(
-            f"WhatsApp send failed for lead {lead_id}: {exc}"
-        )
-
-
-def run_send_whatsapp_on_lead_capture(app, lead_id, phone: str, name: str):
-    with app.app_context():
-        send_whatsapp_on_lead_capture(lead_id, phone, name)
-
-
-# ===============================
 # WEBSITE LEADS LIST
 # ===============================
 
@@ -149,25 +100,6 @@ def website_leads_list():
         target=run_update_registration_status,
         args=(current_app._get_current_object(),)
     ).start()
-
-    # Send WhatsApp welcome message to any lead not yet messaged
-    _app = current_app._get_current_object()
-    new_leads = list(
-        _app.db.website_leads.find(
-            {"phone": {"$ne": None}, "whatsapp_sent": {"$exists": False}},
-            {"_id": 1, "phone": 1, "name": 1},
-        )
-    )
-    for _lead in new_leads:
-        threading.Thread(
-            target=run_send_whatsapp_on_lead_capture,
-            args=(
-                _app,
-                _lead["_id"],
-                _lead.get("phone", ""),
-                _lead.get("name", ""),
-            ),
-        ).start()
 
     page = int(request.args.get("page", 1))
     per_page = 25
@@ -224,15 +156,6 @@ def website_leads_list():
                         "Yes",
                         "No"
                     ]
-                },
-                "whatsapp_sent_label": {
-                    "$switch": {
-                        "branches": [
-                            {"case": {"$eq": ["$whatsapp_sent", 1]}, "then": "Sent"},
-                            {"case": {"$eq": ["$whatsapp_sent", 0]}, "then": "Failed"},
-                        ],
-                        "default": "Pending"
-                    }
                 }
             }
         },
