@@ -110,6 +110,7 @@
                             <th>Email Sent</th>
                             <th>Link Clicked</th>
                             <th>Registered</th>
+                            <th>WhatsApp</th>
                             <th>Location</th>
                             <th>Call Summary</th>
                             <th>Turns</th>
@@ -165,10 +166,23 @@
 {% endif %}
 </td>
 
-    
+    <td>
+{% if lead.whatsapp_sent_label == 'Sent' %}
+    <span class="badge bg-success" title="Sent at {{ lead.whatsapp_sent_at | strftime('%Y-%m-%d %H:%M') if lead.whatsapp_sent_at else '' }}">
+        <i class="bi bi-whatsapp me-1"></i>Sent
+    </span>
+{% elif lead.whatsapp_sent_label == 'Failed' %}
+    <span class="badge bg-danger" title="{{ lead.whatsapp_error or 'Unknown error' }}">
+        <i class="bi bi-whatsapp me-1"></i>Failed
+    </span>
+{% else %}
+    <span class="badge bg-secondary">
+        <i class="bi bi-whatsapp me-1"></i>Pending
+    </span>
+{% endif %}
+</td>
 
     
-    <td>
         {% if lead.location and lead.location != '-' %}
         <span class="badge bg-light text-dark border">{{ lead.location }}</span>
         {% else %}—{% endif %}
