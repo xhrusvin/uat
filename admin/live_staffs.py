@@ -557,7 +557,7 @@ STRICT RULES — NO HALLUCINATION:
 - Use ONLY the facts provided in CANDIDATE DATA. Do not invent employers, dates, locations, or qualifications.
 - If data is missing for a field, write a realistic professional answer appropriate to their role and experience level without inventing specific names.
 - Clinical question answers must be clinically appropriate for a {user_type}.
-- Assessment scores should reflect the quality of answers: score each out of 5.
+- Assessment scores: pick a random realistic score for each between 3.5 and 5.0 in 0.5 increments (e.g. 3.5/5, 4/5, 4.5/5, 5/5). Vary the three scores — do not give the same score to all three.
 - Do NOT add any text outside the template structure below.
 
 Output ONLY the completed template below — no preamble, no explanations, no markdown symbols:
@@ -602,9 +602,9 @@ Day/Night/Both: Both
 Earliest start date: Immediate
 
 Assessment
-Communication: [X/5]
-Clinical Knowledge: [X/5]
-Experience: [X/5]
+Communication: [3.5/5 or 4/5 or 4.5/5 or 5/5 — vary randomly]
+Clinical Knowledge: [3.5/5 or 4/5 or 4.5/5 or 5/5 — vary randomly]
+Experience: [3.5/5 or 4/5 or 4.5/5 or 5/5 — vary randomly]
 Suitable: Yes
 ---
 
