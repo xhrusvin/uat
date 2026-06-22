@@ -162,6 +162,12 @@
                                         title="Generate AI Interview Notes">
                                     <i class="bi bi-clipboard2-check"></i>
                                 </button>
+                                <button class="btn btn-secondary btn-sm rounded-pill px-3 me-1 btn-ai-appform"
+                                        data-id="{{ s._id }}"
+                                        data-name="{{ p.full_name | default('Staff') | e }}"
+                                        title="Generate Application Form">
+                                    <i class="bi bi-file-earmark-text"></i>
+                                </button>
                                 <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('this record') | e }}">
@@ -480,6 +486,86 @@
 
 
 
+
+
+<!-- ── Application Form Modal ───────────────────────────────────── -->
+<div class="modal fade" id="aiAppFormModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header text-white rounded-top-4"
+                 style="background: linear-gradient(135deg,#1B3A6B 0%,#6c757d 100%);">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-file-earmark-text me-2"></i>Application Form
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+
+                <!-- Idle -->
+                <div id="aiAppIdle">
+                    <p class="text-muted mb-1">
+                        Generate a filled Xpress Health Application Form for
+                        <strong id="aiAppStaffName"></strong>.
+                    </p>
+                    <p class="text-muted small mb-4">
+                        All fields are populated from the staff profile. Saved and re-downloadable any time.
+                    </p>
+                    <div id="aiAppSavedInfo" class="alert alert-success d-none mb-3 py-2 small">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Saved application form from <strong id="aiAppSavedDate"></strong>.
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap mb-3">
+                        <button class="btn btn-secondary fw-bold px-4" id="aiAppGenerateBtn">
+                            <i class="bi bi-file-earmark-text me-1"></i> Generate Form
+                        </button>
+                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiAppDownloadSavedBtn">
+                            <i class="bi bi-download me-1"></i> Download Saved
+                        </button>
+                    </div>
+                    <!-- Upload edited form back -->
+                    <div id="aiAppUploadSection" class="d-none border-top pt-3 mt-2">
+                        <p class="text-muted small mb-2">
+                            <i class="bi bi-upload me-1"></i>
+                            Already edited the form? Upload your revised <code>.docx</code> to replace the saved version.
+                        </p>
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <input type="file" id="aiAppUploadInput" accept=".docx"
+                                   class="form-control form-control-sm" style="max-width:260px;">
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiAppUploadBtn">
+                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
+                            </button>
+                        </div>
+                        <div id="aiAppUploadMsg" class="mt-2 small d-none"></div>
+                    </div>
+                </div>
+
+                <!-- Generating -->
+                <div id="aiAppGenerating" class="text-center py-4 d-none">
+                    <div class="spinner-border text-secondary mb-3" style="width:3rem;height:3rem;"></div>
+                    <p class="fw-semibold text-muted mb-1">Building application form…</p>
+                </div>
+
+                <!-- Done -->
+                <div id="aiAppDone" class="d-none">
+                    <div class="alert alert-success rounded-3 mb-3">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        Application form generated and saved!
+                    </div>
+                    <a href="#" class="btn btn-success fw-bold px-4" id="aiAppDownloadNewBtn" target="_blank">
+                        <i class="bi bi-download me-1"></i> Download Form
+                    </a>
+                </div>
+
+                <!-- Error -->
+                <div id="aiAppError" class="d-none">
+                    <div class="alert alert-danger rounded-3 mb-3" id="aiAppErrorMsg"></div>
+                    <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ── AI Interview Notes Modal ──────────────────────────────────── -->
 <div class="modal fade" id="aiInterviewModal" tabindex="-1" aria-hidden="true">
@@ -1292,6 +1378,115 @@ document.getElementById('aiIntUploadBtn').addEventListener('click', async () => 
         });
         const result = await res.json();
 
+        if (result.success) {
+            msgEl.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;
+            msgEl.className = 'mt-2 small text-success';
+            fileInput.value = '';
+        } else {
+            msgEl.textContent = result.error || 'Upload failed';
+            msgEl.className   = 'mt-2 small text-danger';
+        }
+        msgEl.classList.remove('d-none');
+    } catch(e) {
+        msgEl.textContent = 'Network error: ' + e.message;
+        msgEl.className   = 'mt-2 small text-danger';
+        msgEl.classList.remove('d-none');
+    } finally {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
+    }
+});
+
+
+// ── Application Form ──────────────────────────────────────────────────
+const AI_APP_GEN_URL    = "{{ url_for('admin.live_staff_ai_appform_generate') }}";
+const AI_APP_SAVED_BASE = "{{ url_for('admin.live_staff_ai_appform_saved', staff_id='__ID__') }}";
+const AI_APP_DL_BASE    = "{{ url_for('admin.live_staff_ai_appform_download', appform_id='__ID__') }}";
+const AI_APP_UL_BASE    = "{{ url_for('admin.live_staff_ai_appform_upload', staff_id='__ID__') }}";
+
+function aiAppSavedUrl(id)  { return AI_APP_SAVED_BASE.replace('__ID__', id); }
+function aiAppDownloadUrl(id){ return AI_APP_DL_BASE.replace('__ID__', id); }
+function aiAppUploadUrl(id)  { return AI_APP_UL_BASE.replace('__ID__', id); }
+
+let currentAppStaffId = null;
+
+function setAppState(state) {
+    ['Idle','Generating','Done','Error'].forEach(s =>
+        document.getElementById('aiApp' + s).classList.add('d-none')
+    );
+    document.getElementById('aiApp' + state).classList.remove('d-none');
+}
+
+document.querySelectorAll('.btn-ai-appform').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentAppStaffId = btn.dataset.id;
+        document.getElementById('aiAppStaffName').textContent = btn.dataset.name;
+        document.getElementById('aiAppSavedInfo').classList.add('d-none');
+        document.getElementById('aiAppDownloadSavedBtn').classList.add('d-none');
+        document.getElementById('aiAppUploadSection').classList.add('d-none');
+        document.getElementById('aiAppUploadMsg').classList.add('d-none');
+        document.getElementById('aiAppDownloadNewBtn').href = '#';
+        setAppState('Idle');
+        new bootstrap.Modal(document.getElementById('aiAppFormModal')).show();
+
+        try {
+            const res  = await fetch(aiAppSavedUrl(currentAppStaffId));
+            const data = await res.json();
+            if (data.success && data.found) {
+                document.getElementById('aiAppSavedInfo').classList.remove('d-none');
+                document.getElementById('aiAppSavedDate').textContent = data.generated_at;
+                document.getElementById('aiAppDownloadSavedBtn').classList.remove('d-none');
+                document.getElementById('aiAppDownloadSavedBtn').onclick = () => {
+                    window.open(aiAppDownloadUrl(data.appform_id), '_blank');
+                };
+                document.getElementById('aiAppUploadSection').classList.remove('d-none');
+            }
+        } catch(e) {}
+    });
+});
+
+document.getElementById('aiAppGenerateBtn').addEventListener('click', async () => {
+    if (!currentAppStaffId) return;
+    setAppState('Generating');
+    try {
+        const res  = await fetch(AI_APP_GEN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ staff_id: currentAppStaffId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            document.getElementById('aiAppDownloadNewBtn').href = aiAppDownloadUrl(data.appform_id);
+            document.getElementById('aiAppUploadSection').classList.remove('d-none');
+            setAppState('Done');
+        } else {
+            document.getElementById('aiAppErrorMsg').textContent = data.error || 'Generation failed';
+            setAppState('Error');
+        }
+    } catch(e) {
+        document.getElementById('aiAppErrorMsg').textContent = 'Network error: ' + e.message;
+        setAppState('Error');
+    }
+});
+
+document.getElementById('aiAppUploadBtn').addEventListener('click', async () => {
+    const fileInput = document.getElementById('aiAppUploadInput');
+    const msgEl     = document.getElementById('aiAppUploadMsg');
+    const file      = fileInput.files[0];
+    if (!file) {
+        msgEl.textContent = 'Please select a .docx file first.';
+        msgEl.className   = 'mt-2 small text-danger';
+        msgEl.classList.remove('d-none');
+        return;
+    }
+    const btn     = document.getElementById('aiAppUploadBtn');
+    btn.disabled  = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const res    = await fetch(aiAppUploadUrl(currentAppStaffId), { method: 'POST', body: fd });
+        const result = await res.json();
         if (result.success) {
             msgEl.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;
             msgEl.className = 'mt-2 small text-success';

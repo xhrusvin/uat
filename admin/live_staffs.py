@@ -251,6 +251,370 @@ def _ai_interviews_col():
     return db.live_staff_ai_interviews
 
 
+def _ai_appforms_col():
+    return db.live_staff_ai_appforms
+
+
+# ── Generate AI Application Form ──────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-appform/generate', methods=['POST'])
+@admin_required
+def live_staff_ai_appform_generate():
+    """
+    Build a filled Xpress Health Application Form .docx for a staff member.
+    Uses actual DB data — no AI hallucination, no Gemini needed.
+    Uploads to GCS and saves metadata to MongoDB.
+    """
+    data     = request.get_json()
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+        docx_bytes = _build_appform_docx(doc)
+
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        emp_code  = _v(doc.get('employee_code') or '')
+        safe_name = full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"AppForm_{safe_name}.docx"
+        gcs_blob  = f"appforms/{filename}"
+
+        _gcs_upload(
+            gcs_blob, docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+        col      = _ai_appforms_col()
+        existing = col.find_one({"staff_id": str(doc['_id'])})
+        rec = {
+            "staff_id":      str(doc['_id']),
+            "staff_name":    full_name,
+            "employee_code": emp_code,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "generated_at":  datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+            rec_id = str(existing["_id"])
+        else:
+            result = col.insert_one(rec)
+            rec_id = str(result.inserted_id)
+
+        return jsonify({
+            "success":      True,
+            "appform_id":   rec_id,
+            "staff_name":   full_name,
+            "message":      f"Application form generated for {full_name}",
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-appform/download/<appform_id>')
+@admin_required
+def live_staff_ai_appform_download(appform_id):
+    """Serve saved application form DOCX from Google Cloud Storage."""
+    try:
+        rec = _ai_appforms_col().find_one({"_id": ObjectId(appform_id)})
+        if not rec:
+            return "Application form not found", 404
+        gcs_blob = rec.get('gcs_blob', '')
+        if not gcs_blob:
+            return "File not found in storage — please regenerate", 404
+        name       = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        docx_bytes = _gcs_download(gcs_blob)
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="AppForm_{name}.docx"'}
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/ai-appform/saved/<staff_id>')
+@admin_required
+def live_staff_ai_appform_saved(staff_id):
+    """Check if a saved application form exists for this staff member."""
+    try:
+        rec = _ai_appforms_col().find_one({"staff_id": staff_id})
+        if not rec:
+            return jsonify({"success": True, "found": False})
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "appform_id":   str(rec["_id"]),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M"),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-appform/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_ai_appform_upload(staff_id):
+    """Replace the saved application form with an edited .docx upload."""
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+    file = request.files['file']
+    if not file.filename.lower().endswith('.docx'):
+        return jsonify({"success": False, "error": "Only .docx files are accepted"}), 400
+    try:
+        col = _ai_appforms_col()
+        rec = col.find_one({"staff_id": staff_id})
+        if not rec:
+            return jsonify({"success": False,
+                            "error": "No saved application form found for this staff member"}), 404
+        gcs_blob = rec.get('gcs_blob', '')
+        if not gcs_blob:
+            doc2 = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            s1   = (doc2.get('section_1_personal_details') or {}) if doc2 else {}
+            name = _v(s1.get('full_name') or 'staff').replace(' ', '_').replace('/', '_')
+            gcs_blob = f"appforms/AppForm_{name}.docx"
+        data_bytes = file.read()
+        _gcs_upload(
+            gcs_blob, data_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        col.update_one(
+            {"_id": rec["_id"]},
+            {"$set": {
+                "gcs_blob":      gcs_blob,
+                "filename":      os.path.basename(gcs_blob),
+                "last_uploaded": datetime.utcnow(),
+                "uploaded_by":   "admin",
+            }}
+        )
+        return jsonify({
+            "success":  True,
+            "message":  "Application form replaced successfully",
+            "filename": os.path.basename(gcs_blob),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Build Application Form DOCX ───────────────────────────────────────
+
+def _build_appform_docx(doc):
+    """
+    Build a filled Xpress Health Application Form matching the uploaded template exactly.
+    Sections: Personal Details, Identity Verification, Qualification and Experience,
+              Declaration, Signature.
+    All data pulled from live_staffs MongoDB document — no hallucination.
+    """
+    from docx import Document as DocxDocument
+    from docx.shared import Pt, RGBColor, Inches, Cm, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    import io as _io
+
+    BLACK  = RGBColor(0x00, 0x00, 0x00)
+    NAVY   = RGBColor(0x1B, 0x3A, 0x6B)
+    GREEN  = RGBColor(0x2E, 0x9E, 0x44)
+    GRAY   = RGBColor(0x55, 0x55, 0x55)
+    WHITE  = RGBColor(0xFF, 0xFF, 0xFF)
+
+    # ── Extract data from doc ──────────────────────────────────────────
+    s1   = doc.get('section_1_personal_details') or {}
+    s2   = doc.get('section_2_identity_verification') or {}
+    s3   = doc.get('section_3_professional_registration') or {}
+    s4   = doc.get('section_4_qualifications') or {}
+    s5   = doc.get('section_5_employment_history') or {}
+    visa = s1.get('work_permit_visa_status') or {}
+    docs = s2.get('documents_submitted') or {}
+
+    full_name   = _v(s1.get('full_name'))
+    email       = _v(doc.get('email'))
+    user_type   = _v(doc.get('user_type'))
+    address     = _v(s1.get('address'))
+    eircode     = _v(s1.get('eircode_postcode'))
+    mobile      = _v(s1.get('mobile_number'))
+    pps         = _v(s1.get('pps_number'))
+    perm_work   = _v(visa.get('permission_to_work'))
+    total_exp   = _v(s5.get('total_experience'))
+    nmbi_pin    = _v(s3.get('registration_number_pin'))
+    divisions   = s3.get('divisions_registered_in') or []
+
+    is_nurse  = 'nurse' in user_type.lower() if user_type else bool(divisions or nmbi_pin)
+    is_hca    = not is_nurse
+
+    d = DocxDocument()
+    for sec in d.sections:
+        sec.top_margin    = Cm(1.8)
+        sec.bottom_margin = Cm(1.8)
+        sec.left_margin   = Cm(2.2)
+        sec.right_margin  = Cm(2.2)
+
+    normal = d.styles['Normal']
+    normal.font.name = 'Calibri'
+    normal.font.size = Pt(11)
+
+    def add_border_bottom(para, color='1B3A6B', size=12):
+        pPr  = para._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bot  = OxmlElement('w:bottom')
+        bot.set(qn('w:val'),   'single')
+        bot.set(qn('w:sz'),    str(size))
+        bot.set(qn('w:space'), '1')
+        bot.set(qn('w:color'), color)
+        pBdr.append(bot)
+        pPr.append(pBdr)
+
+    def add_doc_title():
+        p = d.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after  = Pt(14)
+        r = p.add_run('Xpress Health Application Form')
+        r.bold = True
+        r.font.size = Pt(18)
+        r.font.name = 'Calibri'
+        r.font.color.rgb = NAVY
+
+    def add_section_heading(title):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(14)
+        p.paragraph_format.space_after  = Pt(6)
+        r = p.add_run(title)
+        r.bold = True
+        r.font.size = Pt(12)
+        r.font.name = 'Calibri'
+        r.font.color.rgb = NAVY
+        add_border_bottom(p, color='2E9E44', size=8)
+
+    def add_field(label, value):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after  = Pt(2)
+        r1 = p.add_run(label + '  ')
+        r1.bold = True
+        r1.font.name = 'Calibri'
+        r1.font.color.rgb = NAVY
+        r2 = p.add_run(value or '')
+        r2.font.name = 'Calibri'
+        r2.font.color.rgb = BLACK
+
+    def add_checkbox_line(label, checked):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after  = Pt(2)
+        tick = '☑' if checked else '☐'
+        r = p.add_run(f'{tick}  {label}')
+        r.font.name = 'Calibri'
+        r.font.size = Pt(11)
+        r.font.color.rgb = BLACK
+
+    def add_checkbox_row(items):
+        """Multiple checkboxes on one line: [(label, checked), ...]"""
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(3)
+        p.paragraph_format.space_after  = Pt(3)
+        for i, (label, checked) in enumerate(items):
+            tick = '☑' if checked else '☐'
+            run  = p.add_run(f'{tick}  {label}')
+            run.font.name = 'Calibri'
+            run.font.size = Pt(11)
+            run.font.color.rgb = BLACK
+            if i < len(items) - 1:
+                spacer = p.add_run('       ')
+                spacer.font.name = 'Calibri'
+
+    def add_spacer(pts=6):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after  = Pt(0)
+        p.paragraph_format.line_spacing = Pt(pts)
+
+    # ── Build document ─────────────────────────────────────────────────
+
+    add_doc_title()
+
+    # ── Section 1: Personal Details ────────────────────────────────────
+    add_section_heading('Personal Details')
+    add_field('Full Name:', full_name)
+    add_field('Email:', email)
+    add_field('Role:', user_type)
+    add_field('Address:', address)
+    add_field('Eircode/Postcode:', eircode)
+    add_field('Mobile Number:', mobile)
+    add_field('Work Permit / Visa Status:', perm_work or ('Yes' if visa.get('visa_type') else ''))
+    add_field('PPS Number (if applicable)', pps)
+
+    # ── Section 2: Identity Verification ─────────────────────────────
+    add_section_heading('Identity Verification')
+    p_id = d.add_paragraph()
+    p_id.paragraph_format.space_before = Pt(4)
+    p_id.paragraph_format.space_after  = Pt(4)
+    r_id = p_id.add_run('ID Proof:')
+    r_id.bold = True
+    r_id.font.name = 'Calibri'
+    r_id.font.color.rgb = NAVY
+
+    add_checkbox_row([
+        ('Passport',            bool(docs.get('passport'))),
+        ('Birth Certificate',   bool(docs.get('birth_certificate'))),
+        ('Driving Licence',     bool(docs.get('driving_licence'))),
+        ('Proof of Address',    bool(docs.get('proof_of_address'))),
+    ])
+
+    # ── Section 3: Qualification and Experience ───────────────────────
+    add_section_heading('Qualification and Experience')
+
+    add_checkbox_row([
+        ('Nurse (NMBI):', is_nurse),
+        ('HCA (QQI L5):', is_hca),
+    ])
+
+    add_spacer(4)
+    add_field('Total years of experience:', total_exp)
+
+    # NMBI PIN if nurse
+    if is_nurse and nmbi_pin:
+        add_field('NMBI PIN:', nmbi_pin)
+    if divisions:
+        add_field('Divisions:', ', '.join(divisions))
+
+    # ── Declaration ────────────────────────────────────────────────────
+    add_section_heading('Declaration')
+    p_decl = d.add_paragraph()
+    p_decl.paragraph_format.space_before = Pt(4)
+    p_decl.paragraph_format.space_after  = Pt(12)
+    r_decl = p_decl.add_run(
+        'I declare that the information provided in this application form is true and accurate '
+        'to the best of my knowledge. I understand that any false or misleading information may '
+        'result in the withdrawal of an offer of employment or termination of employment.'
+    )
+    r_decl.font.name = 'Calibri'
+    r_decl.font.size = Pt(10)
+    r_decl.font.color.rgb = GRAY
+    r_decl.italic = True
+
+    # ── Signature line ─────────────────────────────────────────────────
+    p_sig = d.add_paragraph()
+    p_sig.paragraph_format.space_before = Pt(6)
+    p_sig.paragraph_format.space_after  = Pt(0)
+    r_sig = p_sig.add_run('Applicant Signature:')
+    r_sig.bold = True
+    r_sig.font.name = 'Calibri'
+    r_sig.font.color.rgb = NAVY
+    p_sig.add_run('   _______________________________')
+
+    buf = _io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+
+
 # ── Generate AI CV ────────────────────────────────────────────────────
 
 @admin_bp.route('/live-staffs/ai-cv/generate', methods=['POST'])
