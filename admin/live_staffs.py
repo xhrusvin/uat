@@ -1659,21 +1659,23 @@ def live_staff_export():
 @admin_bp.route('/live-staffs/cron/sync-documents', methods=['GET', 'POST'])
 def live_staff_cron_sync_documents():
     """
-    Cron job endpoint.
-    For every staff member in live_staffs, calls the XN Portal API:
-      POST {LIVE_STAFF_URL}/ai/recruitments/user-document-list
-    Saves the full document list into live_staffs.documents[].
-    If a document_type_name == "Cv" and has a url, downloads and extracts
-    the text, then saves it to live_staffs.extracted_cv.
+    Cron job — processes ONE staff member per call.
 
-    Call this via cron:
-      GET/POST /admin/live-staffs/cron/sync-documents
-    Protect with a cron secret key in the query string:
-      ?cron_key=<CRON_SECRET> (set CRON_SECRET in env)
+    Logic:
+      1. Find the first live_staffs record where extracted_cv is missing/empty.
+      2. Call the XN Portal API to get their document list.
+      3. If a document_type_name == "Cv" has a URL, download + extract text via Gemini.
+      4. Save documents[] and extracted_cv back to MongoDB.
+      5. Return result with how many staff still need processing (remaining_count).
+
+    Call every N minutes via cron — it will work through all staff automatically,
+    one at a time, until everyone has an extracted_cv.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
     """
     import requests as _req
 
-    # ── Auth check ────────────────────────────────────────────────────
+    # ── Auth ──────────────────────────────────────────────────────────
     cron_secret = os.environ.get('CRON_SECRET', '')
     if cron_secret:
         provided = (request.args.get('cron_key') or
@@ -1681,7 +1683,7 @@ def live_staff_cron_sync_documents():
         if provided != cron_secret:
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
-    # ── Env config ────────────────────────────────────────────────────
+    # ── Env ───────────────────────────────────────────────────────────
     base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
     api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
     app_country = os.environ.get('XN_APP_COUNTRY', '')
@@ -1691,111 +1693,147 @@ def live_staff_cron_sync_documents():
                         "error": "LIVE_STAFF_URL not set in environment"}), 500
 
     endpoint = f"{base_url}/ai/recruitments/user-document-list"
-    headers  = {
+    api_headers = {
         "Api-Key":       api_key,
         "X-App-Country": app_country,
         "Content-Type":  "application/json",
         "Accept":        "application/json",
     }
 
-    col      = _staffs_col()
-    staffs   = list(col.find({}, {"email": 1, "section_1_personal_details": 1}))
+    col = _staffs_col()
 
-    results  = []
-    errors   = []
-    updated  = 0
-    skipped  = 0
+    # ── Find next staff without extracted_cv ──────────────────────────
+    staff = col.find_one(
+        {"$or": [
+            {"extracted_cv": {"$exists": False}},
+            {"extracted_cv": None},
+            {"extracted_cv": ""},
+        ]},
+        {"email": 1, "section_1_personal_details": 1}
+    )
 
-    for staff in staffs:
-        email = _v((staff.get('section_1_personal_details') or {}).get('email_address') or
-                    staff.get('email') or '')
-        if not email:
-            skipped += 1
-            continue
+    # Count how many still need processing (including this one)
+    remaining_total = col.count_documents(
+        {"$or": [
+            {"extracted_cv": {"$exists": False}},
+            {"extracted_cv": None},
+            {"extracted_cv": ""},
+        ]}
+    )
 
-        try:
-            resp = _req.post(
-                endpoint,
-                json={"email": email},
-                headers=headers,
-                timeout=30
-            )
-            resp.raise_for_status()
-            data = resp.json()
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff already have extracted_cv — nothing to do.",
+            "remaining_count": 0,
+            "processed":       None,
+        })
 
-            if not data.get('success'):
-                errors.append({"email": email, "error": data.get('message', 'API error')})
-                continue
+    email = _v(
+        (staff.get('section_1_personal_details') or {}).get('email_address') or
+        staff.get('email') or ''
+    )
 
-            api_data  = data.get('data') or {}
-            documents = api_data.get('documents') or []
+    if not email:
+        # Mark as attempted so it doesn't block the queue forever
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {"extracted_cv": "[skipped — no email]",
+                      "documents_synced_at": datetime.utcnow()}}
+        )
+        return jsonify({
+            "success":         True,
+            "message":         "Skipped — staff record has no email address.",
+            "remaining_count": remaining_total - 1,
+            "processed":       str(staff.get("_id")),
+        })
 
-            # Serialize documents (clean for MongoDB)
-            clean_docs = []
-            extracted_cv_text = None
+    # ── Call XN Portal API ────────────────────────────────────────────
+    try:
+        resp = _req.post(
+            endpoint,
+            json={"email": email},
+            headers=api_headers,
+            timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as api_err:
+        return jsonify({
+            "success": False,
+            "email":   email,
+            "error":   f"API call failed: {api_err}",
+            "remaining_count": remaining_total,
+        }), 502
 
-            for doc_item in documents:
-                clean_doc = {
-                    "document_category_type": doc_item.get('document_category_type'),
-                    "document_id":            doc_item.get('document_id'),
-                    "document_type_name":     doc_item.get('document_type_name'),
-                    "sub_type_id":            doc_item.get('sub_type_id'),
-                    "sub_type_name":          doc_item.get('sub_type_name'),
-                    "url":                    doc_item.get('url'),
-                    "expiry_date":            doc_item.get('expiry_date'),
-                    "status":                 doc_item.get('status'),
-                }
-                clean_docs.append(clean_doc)
+    if not data.get('success'):
+        # Mark attempted so cron moves on next time
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {"extracted_cv": f"[API error: {data.get('message', 'unknown')}]",
+                      "documents_synced_at": datetime.utcnow()}}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           data.get('message', 'API returned success=false'),
+            "remaining_count": remaining_total - 1,
+        })
 
-                # ── Extract CV document ───────────────────────────────
-                if (doc_item.get('document_type_name', '').strip().lower() == 'cv'
-                        and doc_item.get('url')):
-                    try:
-                        extracted_cv_text = _extract_text_from_url(
-                            doc_item['url'], headers
-                        )
-                    except Exception as cv_err:
-                        errors.append({
-                            "email": email,
-                            "error": f"CV extract failed: {cv_err}"
-                        })
+    api_data  = data.get('data') or {}
+    documents = api_data.get('documents') or []
 
-            # ── Save to MongoDB ───────────────────────────────────────
-            update_fields = {
-                "xn_portal_id":    api_data.get('id'),
-                "xn_portal_name":  api_data.get('name'),
-                "documents":       clean_docs,
-                "documents_synced_at": datetime.utcnow(),
-            }
-            if extracted_cv_text:
-                update_fields["extracted_cv"] = extracted_cv_text
+    # ── Process documents ─────────────────────────────────────────────
+    clean_docs        = []
+    extracted_cv_text = None
+    cv_error          = None
 
-            col.update_one(
-                {"email": email},
-                {"$set": update_fields}
-            )
-            updated += 1
-            results.append({
-                "email":     email,
-                "documents": len(clean_docs),
-                "cv_extracted": bool(extracted_cv_text),
-            })
+    for doc_item in documents:
+        clean_docs.append({
+            "document_category_type": doc_item.get('document_category_type'),
+            "document_id":            doc_item.get('document_id'),
+            "document_type_name":     doc_item.get('document_type_name'),
+            "sub_type_id":            doc_item.get('sub_type_id'),
+            "sub_type_name":          doc_item.get('sub_type_name'),
+            "url":                    doc_item.get('url'),
+            "expiry_date":            doc_item.get('expiry_date'),
+            "status":                 doc_item.get('status'),
+        })
 
-        except _req.exceptions.Timeout:
-            errors.append({"email": email, "error": "Request timeout"})
-        except _req.exceptions.RequestException as e:
-            errors.append({"email": email, "error": str(e)})
-        except Exception as e:
-            errors.append({"email": email, "error": str(e)})
+        # Extract the CV document via Gemini
+        if (doc_item.get('document_type_name', '').strip().lower() == 'cv'
+                and doc_item.get('url')):
+            try:
+                extracted_cv_text = _extract_text_from_url(
+                    doc_item['url'], api_headers
+                )
+            except Exception as cv_err:
+                cv_error = str(cv_err)
+                extracted_cv_text = f"[CV extraction failed: {cv_err}]"
+
+    # ── Save to MongoDB ───────────────────────────────────────────────
+    update_fields = {
+        "xn_portal_id":        api_data.get('id'),
+        "xn_portal_name":      api_data.get('name'),
+        "documents":           clean_docs,
+        "documents_synced_at": datetime.utcnow(),
+        # Always write something so this staff won't be picked again
+        "extracted_cv": extracted_cv_text or "[no CV document found]",
+    }
+
+    col.update_one({"_id": staff["_id"]}, {"$set": update_fields})
 
     return jsonify({
-        "success":  True,
-        "updated":  updated,
-        "skipped":  skipped,
-        "errors":   len(errors),
-        "error_details": errors[:20],   # cap to avoid huge responses
-        "results":  results[:50],
-        "message":  f"Sync complete — {updated} updated, {skipped} skipped, {len(errors)} errors",
+        "success":         True,
+        "email":           email,
+        "documents_found": len(clean_docs),
+        "cv_extracted":    bool(extracted_cv_text and not cv_error),
+        "cv_error":        cv_error,
+        "remaining_count": max(0, remaining_total - 1),
+        "message": (
+            f"Processed {email} — "
+            f"{max(0, remaining_total - 1)} staff still need extraction."
+        ),
         "synced_at": datetime.utcnow().isoformat(),
     })
 
