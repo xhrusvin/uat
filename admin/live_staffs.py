@@ -770,6 +770,59 @@ def live_staff_ai_interview_saved(staff_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@admin_bp.route('/live-staffs/ai-interview/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_ai_interview_upload(staff_id):
+    """
+    Replace the saved interview notes file with an edited version uploaded by the user.
+    Accepts a .docx file and overwrites the existing file on disk.
+    """
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+
+    file = request.files['file']
+    if not file.filename.lower().endswith('.docx'):
+        return jsonify({"success": False, "error": "Only .docx files are accepted"}), 400
+
+    try:
+        col = _ai_interviews_col()
+        rec = col.find_one({"staff_id": staff_id})
+
+        if not rec:
+            return jsonify({"success": False,
+                            "error": "No saved interview notes found for this staff member"}), 404
+
+        filepath = rec.get('filepath', '')
+        if not filepath:
+            doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            s1  = (doc.get('section_1_personal_details') or {}) if doc else {}
+            name = _v(s1.get('full_name') or 'staff').replace(' ', '_').replace('/', '_')
+            folder   = os.path.join('static', 'interviews')
+            os.makedirs(folder, exist_ok=True)
+            filepath = os.path.join(folder, f"Interview_{name}_{staff_id}.docx")
+
+        file.save(filepath)
+
+        col.update_one(
+            {"_id": rec["_id"]},
+            {"$set": {
+                "filepath":      filepath,
+                "filename":      os.path.basename(filepath),
+                "last_uploaded": datetime.utcnow(),
+                "uploaded_by":   "admin",
+            }}
+        )
+
+        return jsonify({
+            "success":  True,
+            "message":  "Interview notes replaced successfully with uploaded version",
+            "filename": os.path.basename(filepath),
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ── Build Interview Notes PDF ─────────────────────────────────────────
 
 

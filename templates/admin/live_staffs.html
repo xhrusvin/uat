@@ -508,13 +508,27 @@
                         <i class="bi bi-check-circle me-1"></i>
                         Saved interview notes from <strong id="aiIntSavedDate"></strong>.
                     </div>
-                    <div class="d-flex gap-2 flex-wrap">
+                    <div class="d-flex gap-2 flex-wrap mb-3">
                         <button class="btn btn-info fw-bold px-4 text-white" id="aiIntGenerateBtn">
                             <i class="bi bi-clipboard2-check me-1"></i> Generate Notes
                         </button>
                         <button class="btn btn-outline-success d-none fw-bold px-4" id="aiIntDownloadSavedBtn">
                             <i class="bi bi-download me-1"></i> Download Saved
                         </button>
+                    </div>
+                    <!-- Upload edited interview notes back -->
+                    <div id="aiIntUploadSection" class="d-none border-top pt-3 mt-2">
+                        <p class="text-muted small mb-2">
+                            <i class="bi bi-upload me-1"></i>
+                            Already edited the notes? Upload your revised <code>.docx</code> to replace the saved version.
+                        </p>
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <input type="file" id="aiIntUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiIntUploadBtn">
+                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
+                            </button>
+                        </div>
+                        <div id="aiIntUploadMsg" class="mt-2 small d-none"></div>
                     </div>
                 </div>
 
@@ -1140,6 +1154,9 @@ document.querySelectorAll('.btn-ai-interview').forEach(btn => {
                 document.getElementById('aiIntDownloadSavedBtn').onclick = () => {
                     window.open(aiIntDownloadUrl(data.interview_id), '_blank');
                 };
+                // Show upload section
+                document.getElementById('aiIntUploadSection').classList.remove('d-none');
+                document.getElementById('aiIntUploadMsg').classList.add('d-none');
             }
         } catch(e) { /* ignore */ }
     });
@@ -1161,6 +1178,7 @@ document.getElementById('aiIntGenerateBtn').addEventListener('click', async () =
             document.getElementById('aiIntDownloadNewBtn').href =
                 aiIntDownloadUrl(data.interview_id);
             setIntState('Done');
+            document.getElementById('aiIntUploadSection').classList.remove('d-none');
         } else {
             document.getElementById('aiIntErrorMsg').textContent =
                 data.error || 'Generation failed';
@@ -1228,6 +1246,56 @@ document.getElementById('aiCvUploadBtn').addEventListener('click', async () => {
             msgEl.innerHTML   = `<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;
             msgEl.className   = 'mt-2 small text-success';
             fileInput.value   = '';
+        } else {
+            msgEl.textContent = result.error || 'Upload failed';
+            msgEl.className   = 'mt-2 small text-danger';
+        }
+        msgEl.classList.remove('d-none');
+    } catch(e) {
+        msgEl.textContent = 'Network error: ' + e.message;
+        msgEl.className   = 'mt-2 small text-danger';
+        msgEl.classList.remove('d-none');
+    } finally {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
+    }
+});
+
+
+// ── AI Interview Upload ───────────────────────────────────────────────
+const AI_INT_UPLOAD_BASE = "{{ url_for('admin.live_staff_ai_interview_upload', staff_id='__ID__') }}";
+function aiIntUploadUrl(staffId) { return AI_INT_UPLOAD_BASE.replace('__ID__', staffId); }
+
+document.getElementById('aiIntUploadBtn').addEventListener('click', async () => {
+    const fileInput = document.getElementById('aiIntUploadInput');
+    const msgEl     = document.getElementById('aiIntUploadMsg');
+    const file      = fileInput.files[0];
+
+    if (!file) {
+        msgEl.textContent = 'Please select a .docx file first.';
+        msgEl.className   = 'mt-2 small text-danger';
+        msgEl.classList.remove('d-none');
+        return;
+    }
+
+    const btn     = document.getElementById('aiIntUploadBtn');
+    btn.disabled  = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+        const res    = await fetch(aiIntUploadUrl(currentIntStaffId), {
+            method: 'POST',
+            body:   fd,
+        });
+        const result = await res.json();
+
+        if (result.success) {
+            msgEl.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;
+            msgEl.className = 'mt-2 small text-success';
+            fileInput.value = '';
         } else {
             msgEl.textContent = result.error || 'Upload failed';
             msgEl.className   = 'mt-2 small text-danger';
