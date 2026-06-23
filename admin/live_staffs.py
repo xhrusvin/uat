@@ -1049,7 +1049,8 @@ Section format rules:
     - [duty]
 - TRAINING & CERTIFICATIONS: Bullet list of certifications only.
 - KEY SKILLS: 8-10 bullet points.
-- ADDITIONAL INFORMATION: Put each item on its own line. Include: Driving Licence: No
+- ADDITIONAL INFORMATION: Include ONLY these two lines, nothing else:
+Driving Licence: No
 Own Transport: No
 
 ---
@@ -2074,15 +2075,18 @@ def _build_ai_cv_docx(doc, cv_text):
                     add_bullet(s)
 
         elif heading == 'ADDITIONAL INFORMATION':
+            # Only render Driving Licence and Own Transport lines
             for line in lines:
                 s = line.strip()
-                if not s or s.lower().startswith('reference'):
+                if not s:
+                    continue
+                sl = s.lower()
+                if not (sl.startswith('driving licence') or sl.startswith('own transport')):
                     continue
                 if ':' in s:
                     parts = s.split(':', 1)
                     lbl   = parts[0].strip() + ':'
                     val   = parts[1].strip()
-                    # Each item on its own line, no bold — plain text
                     p = d.add_paragraph()
                     p.paragraph_format.space_before = Pt(1)
                     p.paragraph_format.space_after  = Pt(1)
@@ -2090,8 +2094,6 @@ def _build_ai_cv_docx(doc, cv_text):
                     r.font.name  = 'Calibri'
                     r.font.size  = Pt(11)
                     r.font.color.rgb = BLACK
-                else:
-                    add_body(s)
 
     buf = _io.BytesIO()
     d.save(buf)
@@ -3706,7 +3708,8 @@ Rules:
 - PROFESSIONAL EXPERIENCE: Job Title: / Employer: / Dates: / Duties: / - duty
 - TRAINING & CERTIFICATIONS: Bullet list only.
 - KEY SKILLS: 8-10 bullets.
-- ADDITIONAL INFORMATION: Put each item on its own line. Include: Driving Licence: No
+- ADDITIONAL INFORMATION: Include ONLY these two lines, nothing else:
+Driving Licence: No
 Own Transport: No
 
 ---
