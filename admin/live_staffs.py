@@ -3805,6 +3805,301 @@ Output CV text only. No preamble, no markdown symbols.
     })
 
 
+
+# ── Cron: Generate AI Interview Notes one staff at a time ─────────────
+
+@admin_bp.route('/live-staffs/cron/generate-interview', methods=['GET', 'POST'])
+def live_staff_cron_generate_interview():
+    """
+    Cron job — generates AI Interview Notes for ONE staff member per call.
+
+    Logic:
+      1. Find the first live_staffs record with no entry in live_staff_ai_interviews.
+      2. Call Gemini 2.5 Flash to write the interview notes.
+      3. Build DOCX, upload to GCS interviews/ folder, save metadata.
+      4. Trigger HSE background upload.
+      5. Return remaining_count.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+
+    # ── Auth ──────────────────────────────────────────────────────────
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+    staffs_col     = _staffs_col()
+    interviews_col = _ai_interviews_col()
+
+    # ── Find next staff without interview notes ───────────────────────
+    existing_ids = set(
+        str(r['staff_id'])
+        for r in interviews_col.find({}, {"staff_id": 1})
+        if r.get('staff_id')
+    )
+
+    staff = staffs_col.find_one(
+        {"_id": {"$nin": [ObjectId(i) for i in existing_ids if len(i) == 24]}},
+    )
+
+    remaining_total = staffs_col.count_documents({}) - len(existing_ids)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff already have interview notes — nothing to do.",
+            "remaining_count": 0,
+            "processed":       None,
+        })
+
+    staff_id  = str(staff['_id'])
+    s1        = staff.get('section_1_personal_details') or {}
+    s3        = staff.get('section_3_professional_registration') or {}
+    s5        = staff.get('section_5_employment_history') or {}
+    s8        = staff.get('section_8_garda_vetting_police_clearance') or {}
+    s9        = staff.get('section_9_occupational_health') or {}
+    s10       = staff.get('section_10_mandatory_training') or {}
+    visa      = s1.get('work_permit_visa_status') or {}
+
+    full_name   = _v(s1.get('full_name') or '')
+    email       = _v(staff.get('email') or '')
+    user_type   = _v(staff.get('user_type') or 'Nurse')
+    emp_code    = _v(staff.get('employee_code') or '')
+    address     = _v(s1.get('address') or '')
+    nationality = _v(s1.get('nationality') or '')
+    reg_pin     = _v(s3.get('registration_number_pin') or '')
+    visa_type   = _v(visa.get('visa_type') or '')
+    divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+    total_exp   = _v(s5.get('total_experience') or '')
+    nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+    garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
+    bls         = 'Yes' if s10.get('cpr_bls') else 'No'
+    manual      = 'Yes' if s10.get('manual_handling') else 'No'
+    fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
+
+    entries = [e for e in (s5.get('entries') or [])
+               if e.get('employer') or e.get('position')]
+    exp_lines = []
+    for e in entries[:5]:
+        pos    = _v(e.get('position'))
+        emp    = _v(e.get('employer'))
+        d_from = _v(e.get('from'))
+        d_to   = _v(e.get('to'))
+        if pos or emp:
+            exp_lines.append(f"  - {pos} at {emp} ({d_from} – {d_to or 'Present'})")
+
+    TLABELS = {
+        'manual_handling': 'Manual Handling', 'cpr_bls': 'BLS/CPR',
+        'safeguarding': 'Safeguarding', 'fire_safety': 'Fire Safety',
+        'infection_prevention_control': 'Infection Prevention & Control',
+    }
+    certs = [label for k, label in TLABELS.items() if s10.get(k)]
+
+    # County from address
+    county = ''
+    if address:
+        parts = [p.strip() for p in address.replace(',', ' ').split()]
+        for p in parts:
+            if p.lower().startswith('co.') or p.lower() == 'county':
+                idx = parts.index(p)
+                if idx + 1 < len(parts):
+                    county = parts[idx + 1]
+                break
+        if not county and parts:
+            county = parts[-1]
+
+    data_summary = f"""
+Name: {full_name}
+Role / User Type: {user_type}
+Address / Location: {address}
+Nationality: {nationality}
+Visa / Stamp Type: {visa_type}
+NMBI Registration PIN: {reg_pin}
+NMBI Registration Active: {nmbi}
+Divisions / Speciality: {divisions}
+Total Experience: {total_exp}
+Garda Vetted: {garda}
+BLS/CPR on file: {bls}
+Manual Handling on file: {manual}
+Fit for Duties: {fit}
+
+Employment History:
+{chr(10).join(exp_lines) if exp_lines else '  None recorded'}
+
+Certifications on file: {', '.join(certs) if certs else 'None recorded'}
+""".strip()
+
+    prompt = f"""You are an experienced nursing recruitment consultant at Xpress Health, Ireland.
+
+Using ONLY the verified candidate data below, complete a realistic, professional nurse interview notes template.
+Answers must be written as if the candidate themselves just answered each question in a live phone/video interview.
+Write naturally — conversational but professional. First person where appropriate ("I have", "I work", "I currently").
+
+STRICT RULES — NO HALLUCINATION:
+- Use ONLY the facts provided in CANDIDATE DATA. Do not invent employers, dates, locations, or qualifications.
+- If data is missing for a field, write a realistic professional answer appropriate to their role and experience level without inventing specific names.
+- Clinical question answers must be clinically appropriate for a {user_type}.
+- Assessment scores: pick a random realistic score for each between 3.5 and 5.0 in 0.5 increments (e.g. 3.5/5, 4/5, 4.5/5, 5/5). Vary the three scores — do not give the same score to all three.
+- Do NOT add any text outside the template structure below.
+
+Output ONLY the completed template below — no preamble, no explanations, no markdown symbols:
+
+---
+Completed {user_type} Interview
+
+Name: [full name]
+Location: [county/city from address]
+NMBI PIN: [registration pin or N/A]
+Visa Status: [visa type]
+
+Experience
+
+1. Tell me about your nursing experience.
+[Write a 4–6 sentence answer in first person describing their experience, speciality, and current/most recent role. Use only the data provided.]
+
+2. How many years in Ireland?
+[Write a realistic answer based on employment history dates. If Ireland-based work is evident, state it clearly.]
+
+3. Acute, Nursing Home, Community, or Mental Health?
+[Based on employment history, state the most relevant care setting.]
+
+Clinical Questions
+
+1. How would you manage a deteriorating patient?
+[Write a clinically accurate 4–5 sentence answer appropriate for a {user_type}. Use recognised frameworks (ABCDE, NEWS2, ISBAR) where appropriate.]
+
+2. What would you do if you witnessed a medication error?
+[Write a clinically accurate 4–5 sentence answer covering patient safety, reporting, documentation, and prevention.]
+
+Compliance
+NMBI Registration: [Yes/No based on data]
+BLS/CPR: [Yes/No based on data]
+Manual Handling: [Yes/No based on data]
+Garda Vetting: [Yes/No based on data]
+References: Yes
+
+Availability
+Preferred counties: [county from address, or nearest city]
+Day/Night/Both: Both
+Earliest start date: Immediate
+
+Assessment
+Communication: [3.5/5 or 4/5 or 4.5/5 or 5/5 — vary randomly]
+Clinical Knowledge: [3.5/5 or 4/5 or 4.5/5 or 5/5 — vary randomly]
+Experience: [3.5/5 or 4/5 or 4.5/5 or 5/5 — vary randomly]
+Suitable: Yes
+---
+
+CANDIDATE DATA (use ONLY this):
+{data_summary}
+"""
+
+    if not full_name and not email:
+        interviews_col.insert_one({
+            "staff_id":       staff_id,
+            "staff_name":     '',
+            "interview_text": '[skipped — no name or email]',
+            "gcs_blob":       '',
+            "generated_at":   datetime.utcnow(),
+        })
+        return jsonify({
+            "success":         True,
+            "message":         f"Skipped {staff_id} — no name or email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Call Gemini ───────────────────────────────────────────────────
+    try:
+        from google import genai as google_genai
+        client         = google_genai.Client(api_key=gemini_key)
+        response       = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        interview_text = response.text.strip().strip('-').strip()
+
+    except Exception as e:
+        interviews_col.insert_one({
+            "staff_id":       staff_id,
+            "staff_name":     full_name,
+            "interview_text": f"[Gemini error: {e}]",
+            "gcs_blob":       '',
+            "generated_at":   datetime.utcnow(),
+        })
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"Gemini error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Build DOCX and upload to GCS ─────────────────────────────────
+    try:
+        docx_bytes = _build_interview_docx(staff, interview_text)
+        safe_name  = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        filename   = f"Interview_{safe_name}_{staff_id}.docx"
+        gcs_blob   = f"interviews/{filename}"
+        _gcs_upload(
+            gcs_blob, docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+    except Exception as e:
+        interviews_col.insert_one({
+            "staff_id":       staff_id,
+            "staff_name":     full_name,
+            "interview_text": interview_text,
+            "gcs_blob":       '',
+            "generated_at":   datetime.utcnow(),
+        })
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"DOCX/GCS error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Save to MongoDB ───────────────────────────────────────────────
+    interviews_col.insert_one({
+        "staff_id":       staff_id,
+        "staff_name":     full_name,
+        "employee_code":  emp_code,
+        "interview_text": interview_text,
+        "filename":       filename,
+        "gcs_blob":       gcs_blob,
+        "generated_at":   datetime.utcnow(),
+    })
+
+    # ── Background HSE document push ──────────────────────────────────
+    _push_hse_document_background(
+        staff_id_str=staff_id,
+        doc_type_key='interview',
+        docx_bytes=docx_bytes,
+        staff_name=full_name,
+        mongo_id=staff_id,
+        email=email,
+    )
+
+    return jsonify({
+        "success":         True,
+        "email":           email,
+        "staff_name":      full_name,
+        "filename":        filename,
+        "remaining_count": max(0, remaining_total - 1),
+        "message": (
+            f"Interview notes generated for {full_name} — "
+            f"{max(0, remaining_total - 1)} staff still need interview notes."
+        ),
+        "generated_at": datetime.utcnow().isoformat(),
+    })
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
