@@ -100,11 +100,26 @@ def whatsapp_bulk_send():
 
     if "file" not in request.files:
         return jsonify({"success": False, "error": "file required"}), 400
+    
+    import json
+
+    parameter_config = json.loads(
+        request.form.get(
+            "parameter_config",
+            "[]"
+        )
+    )
+    
+    print("=" * 80)
+    print("PARAMETER CONFIG")
+    print(parameter_config)
+    print("=" * 80)
 
     df = pd.read_excel(request.files["file"])
 
     campaign_id = _bulk_campaigns_col().insert_one({
         "template_name": template_name,
+        "parameter_config": parameter_config,
         "status": "queued",
         "total": len(df),
         "sent": 0,
@@ -127,6 +142,18 @@ def whatsapp_bulk_send():
     docs = []
 
     for _, row in df.iterrows():
+        
+        row_data = {}
+
+        for col in df.columns:
+
+            value = row.get(col)
+
+            if pd.isna(value):
+                value = ""
+
+            row_data[col] = str(value).strip()
+        
         phone = str(row.get(phone_column, "")).strip()
         if not phone:
             continue
@@ -140,6 +167,7 @@ def whatsapp_bulk_send():
             "campaign_name": template_name,
             "phone":         _normalise_phone(phone),
             "name":          name,
+            "row_data":     row_data,
             "status":        "pending",
             "created_at":    datetime.utcnow()
         })

@@ -1,5 +1,6 @@
 
 from datetime import datetime
+from unittest import result
 
 from database import db
 from .whatsapp_wati import _send_template_message
@@ -19,18 +20,46 @@ def process_bulk_messages(campaign_id, batch_size=500):
         template_name = campaign.get("template_name", "new_chat_v1") if campaign else "new_chat_v1"
 
         try:
-            parameters = [
-                {
-                    "name": "name",
-                    "value": msg.get("name", "")
-                }
-            ]
+            parameter_config = campaign.get(
+                "parameter_config",
+                []
+            )
+
+            parameters = []
+
+            for item in parameter_config:
+
+                param_name = item.get("name")
+                param_type = item.get("type")
+                param_value = item.get("value")
+
+                if not param_name:
+                    continue
+
+                if param_type == "excel":
+
+                    value = (
+                        msg.get("row_data", {})
+                        .get(param_value, "")
+                    )
+
+                else:
+
+                    value = param_value or ""
+
+                parameters.append({
+                    "name": param_name,
+                    "value": str(value)
+                })
 
             result = _send_template_message(
                 msg["phone"],
                 template_name,
                 parameters
             )
+            
+            print("WATI RESPONSE")
+            print(result)
 
             # Build a human-readable snapshot of the message that was sent
             param_map = {p["name"]: p["value"] for p in parameters}
