@@ -135,8 +135,98 @@ HSE_DOC_TYPES = {
 }
 
 
+def _resolve_xn_staff_id(staff_mongo_id, email):
+    """
+    Get the XN Portal staff_id to use in the HSE document upload API.
+
+    Priority:
+      1. live_staffs.staff_id field (already stored) — use directly
+      2. live_staffs.xn_staff_id field (previously fetched) — use directly
+      3. Call XN Portal user-document-list API with email → get data.id
+         → store in live_staffs.xn_staff_id for future use
+
+    Returns the resolved staff_id string, or None if not found.
+    """
+    import requests as _req
+
+    col = _staffs_col()
+
+    # 1. Check live_staffs.staff_id field first (primary source)
+    doc = col.find_one(
+        {"_id": ObjectId(staff_mongo_id)},
+        {"staff_id": 1, "xn_staff_id": 1, "email": 1}
+    )
+    if doc and doc.get('staff_id'):
+        return str(doc['staff_id'])
+
+    # 2. Check previously resolved xn_staff_id
+    if doc and doc.get('xn_staff_id'):
+        return str(doc['xn_staff_id'])
+
+    # 3. Fetch from XN Portal API
+    if not email:
+        return None
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+
+    if not base_url:
+        return None
+
+    try:
+        resp = _req.post(
+            f"{base_url}/ai/recruitments/user-document-list",
+            json={"email": email},
+            headers={
+                "Api-Key":       api_key,
+                "X-App-Country": app_country,
+                "Content-Type":  "application/json",
+                "Accept":        "application/json",
+            },
+            timeout=30,
+        )
+        # Handle 405 — retry with GET
+        if resp.status_code == 405:
+            resp = _req.get(
+                f"{base_url}/ai/recruitments/user-document-list",
+                params={"email": email},
+                headers={
+                    "Api-Key":       api_key,
+                    "X-App-Country": app_country,
+                    "Accept":        "application/json",
+                },
+                timeout=30,
+            )
+
+        data     = resp.json()
+        api_data = data.get('data') or {}
+
+        # Handle both list and dict response
+        if isinstance(api_data, list):
+            api_data = api_data[0] if api_data else {}
+
+        xn_id = str(api_data.get('id', '')).strip()
+        if xn_id:
+            # Store as xn_staff_id and also as staff_id for future use
+            col.update_one(
+                {"_id": ObjectId(staff_mongo_id)},
+                {"$set": {
+                    "xn_staff_id": xn_id,
+                    "staff_id":    xn_id,
+                }}
+            )
+            return xn_id
+
+    except Exception:
+        pass
+
+    return None
+
+
 def _push_hse_document_background(staff_id_str, doc_type_key,
-                                   docx_bytes, staff_name=''):
+                                   docx_bytes, staff_name='',
+                                   mongo_id=None, email=''):
     """
     Fire-and-forget background task.
     Converts DOCX → PDF, POSTs to HSE document upload API,
@@ -159,6 +249,13 @@ def _push_hse_document_background(staff_id_str, doc_type_key,
                 "triggered_at": datetime.utcnow(),
             })
             return
+
+        # Resolve xn_staff_id — fetch from XN Portal if missing
+        resolved_staff_id = staff_id_str
+        if mongo_id and email:
+            xn_id = _resolve_xn_staff_id(mongo_id, email)
+            if xn_id:
+                resolved_staff_id = xn_id
 
         endpoint      = f"{base_url}/api/admin/staff/hse-document-upload"
         hse_type      = HSE_DOC_TYPES.get(doc_type_key, doc_type_key)
@@ -188,7 +285,7 @@ def _push_hse_document_background(staff_id_str, doc_type_key,
             resp = _req.post(
                 endpoint,
                 data={
-                    "staff_id":          staff_id_str,
+                    "staff_id":          resolved_staff_id,
                     "hse_document_type": hse_type,
                 },
                 files={
@@ -209,15 +306,16 @@ def _push_hse_document_background(staff_id_str, doc_type_key,
                 resp_json = {"raw": resp.text[:500]}
 
             _doc_webhook_col().insert_one({
-                "staff_id":       staff_id_str,
-                "staff_name":     staff_name,
-                "doc_type":       doc_type_key,
-                "hse_type":       hse_type,
-                "endpoint":       endpoint,
-                "status":         "success" if resp.status_code < 300 else "api_error",
-                "http_status":    resp.status_code,
-                "response":       resp_json,
-                "triggered_at":   datetime.utcnow(),
+                "staff_id":           staff_id_str,
+                "xn_staff_id":        resolved_staff_id,
+                "staff_name":         staff_name,
+                "doc_type":           doc_type_key,
+                "hse_type":           hse_type,
+                "endpoint":           endpoint,
+                "status":             "success" if resp.status_code < 300 else "api_error",
+                "http_status":        resp.status_code,
+                "response":           resp_json,
+                "triggered_at":       datetime.utcnow(),
             })
 
         except Exception as e:
@@ -465,6 +563,8 @@ def live_staff_ai_appform_generate():
             doc_type_key='appform',
             docx_bytes=docx_bytes,
             staff_name=full_name,
+            mongo_id=staff_id,
+            email=email,
         )
 
         return jsonify({
@@ -560,6 +660,8 @@ def live_staff_ai_appform_upload(staff_id):
                 doc_type_key='appform',
                 docx_bytes=data_bytes,
                 staff_name=(rec.get('staff_name') or ''),
+                mongo_id=staff_id,
+                email=_v((_staffs_col().find_one({"_id": ObjectId(staff_id)}) or {}).get('email') or ''),
             )
         except Exception:
             pass
@@ -1001,6 +1103,8 @@ Output CV text only. No preamble, no explanation, no markdown symbols like ** or
             doc_type_key='cv',
             docx_bytes=docx_bytes,
             staff_name=full_name,
+            mongo_id=staff_id,
+            email=email,
         )
 
         return jsonify({
@@ -1111,6 +1215,8 @@ def live_staff_ai_cv_upload(staff_id):
                 doc_type_key='cv',
                 docx_bytes=data_bytes,
                 staff_name=(rec.get('staff_name') or ''),
+                mongo_id=staff_id,
+                email=_v((_staffs_col().find_one({"_id": ObjectId(staff_id)}) or {}).get('email') or ''),
             )
         except Exception:
             pass
@@ -1337,6 +1443,8 @@ CANDIDATE DATA (use ONLY this):
             doc_type_key='interview',
             docx_bytes=docx_bytes,
             staff_name=full_name,
+            mongo_id=staff_id,
+            email=email,
         )
 
         return jsonify({
@@ -1444,6 +1552,8 @@ def live_staff_ai_interview_upload(staff_id):
                 doc_type_key='interview',
                 docx_bytes=data_bytes,
                 staff_name=(rec.get('staff_name') or ''),
+                mongo_id=staff_id,
+                email=_v((_staffs_col().find_one({"_id": ObjectId(staff_id)}) or {}).get('email') or ''),
             )
         except Exception:
             pass
