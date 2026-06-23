@@ -130,8 +130,8 @@ def _docx_to_pdf_bytes(docx_bytes):
 
 HSE_DOC_TYPES = {
     'cv':          'hse_cv',
-    'interview':   'hse_interview_notes',
-    'appform':     'hse_application_form',
+    'interview':   'interview_notes',
+    'appform':     'application_form',
 }
 
 
