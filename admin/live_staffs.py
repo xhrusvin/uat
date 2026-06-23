@@ -2087,9 +2087,9 @@ def _build_ai_cv_docx(doc, cv_text):
                     p.paragraph_format.space_before = Pt(1)
                     p.paragraph_format.space_after  = Pt(1)
                     r = p.add_run(f'{lbl}  {val}')
-                    r.font.name  = BF
-                    r.font.size  = Pt(L['body_size'])
-                    r.font.color.rgb = NEAR_BLK
+                    r.font.name  = 'Calibri'
+                    r.font.size  = Pt(11)
+                    r.font.color.rgb = BLACK
                 else:
                     add_body(s)
 
