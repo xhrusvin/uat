@@ -3490,6 +3490,318 @@ RAW EXTRACTED TEXT:
         return f"[Gemini extraction failed: {gemini_err}]\n\n{raw_text}"
 
 
+
+# ── Cron: Generate AI CV one staff at a time ──────────────────────────
+
+@admin_bp.route('/live-staffs/cron/generate-cv', methods=['GET', 'POST'])
+def live_staff_cron_generate_cv():
+    """
+    Cron job — generates an AI CV for ONE staff member per call.
+
+    Logic:
+      1. Find the first live_staffs record where gcs_blob is missing
+         in live_staff_ai_cvs (i.e. no CV generated yet).
+      2. Call Gemini to write the CV.
+      3. Build DOCX, upload to GCS, save metadata.
+      4. Trigger HSE document upload in background.
+      5. Return remaining_count so you know how many are left.
+
+    Call every N seconds via cron until remaining_count == 0.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    import requests as _req
+
+    # ── Auth ──────────────────────────────────────────────────────────
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if not gemini_key:
+        return jsonify({"success": False,
+                        "error": "GEMINI_API_KEY not set"}), 500
+
+    staffs_col  = _staffs_col()
+    ai_cvs_col  = _ai_cvs_col()
+
+    # ── Find next staff without a generated CV ────────────────────────
+    # Get set of staff_ids that already have a CV
+    existing_ids = set(
+        str(r['staff_id'])
+        for r in ai_cvs_col.find({}, {"staff_id": 1})
+        if r.get('staff_id')
+    )
+
+    staff = staffs_col.find_one(
+        {"_id": {"$nin": [ObjectId(i) for i in existing_ids if len(i) == 24]}},
+        {"email": 1, "section_1_personal_details": 1, "user_type": 1,
+         "employee_code": 1, "extracted_cv": 1}
+    )
+
+    remaining_total = staffs_col.count_documents({}) - len(existing_ids)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff already have AI CVs — nothing to do.",
+            "remaining_count": 0,
+            "processed":       None,
+        })
+
+    staff_id  = str(staff['_id'])
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or '')
+
+    if not full_name and not email:
+        # Mark as skipped so it won't block the queue
+        ai_cvs_col.insert_one({
+            "staff_id":     staff_id,
+            "staff_name":   '',
+            "cv_text":      '[skipped — no name or email]',
+            "gcs_blob":     '',
+            "generated_at": datetime.utcnow(),
+        })
+        return jsonify({
+            "success":         True,
+            "message":         f"Skipped {staff_id} — no name or email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Build full doc object for the CV builder ───────────────────────
+    full_doc = staffs_col.find_one({"_id": staff['_id']})
+    if not full_doc:
+        return jsonify({"success": False, "error": "Staff record disappeared"}), 500
+
+    # ── Call Gemini ───────────────────────────────────────────────────
+    try:
+        s1_f = full_doc.get('section_1_personal_details') or {}
+        s3   = full_doc.get('section_3_professional_registration') or {}
+        s4   = full_doc.get('section_4_qualifications') or {}
+        s5   = full_doc.get('section_5_employment_history') or {}
+        s8   = full_doc.get('section_8_garda_vetting_police_clearance') or {}
+        s9   = full_doc.get('section_9_occupational_health') or {}
+        s10  = full_doc.get('section_10_mandatory_training') or {}
+        visa = s1_f.get('work_permit_visa_status') or {}
+
+        def _vv(val):
+            if val is None: return ''
+            return str(val).strip()
+
+        user_type   = _vv(full_doc.get('user_type'))
+        emp_code    = _vv(full_doc.get('employee_code'))
+        address     = _vv(s1_f.get('address'))
+        mobile      = _vv(s1_f.get('mobile_number'))
+        nationality = _vv(s1_f.get('nationality'))
+        total_exp   = _vv(s5.get('total_experience'))
+        divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+        reg_pin     = _vv(s3.get('registration_number_pin'))
+        reg_exp     = _vv(s3.get('registration_expiry_date'))
+        nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+        visa_type   = _vv(visa.get('visa_type'))
+        perm_work   = _vv(visa.get('permission_to_work'))
+        garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
+        fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
+        dob         = _vv(s1_f.get('date_of_birth'))
+
+        qual_lines = []
+        for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
+            q = s4.get(qk) or {}
+            if q.get('qualification') or q.get('institution'):
+                qual_lines.append(
+                    f"  - {_vv(q.get('qualification'))} | "
+                    f"{_vv(q.get('institution'))} | "
+                    f"{_vv(q.get('year_completed'))}"
+                )
+
+        entries = [e for e in (s5.get('entries') or [])
+                   if e.get('employer') or e.get('position')]
+        exp_lines = []
+        for e in entries:
+            exp_lines.append(
+                f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} "
+                f"({_vv(e.get('from'))} - {_vv(e.get('to') or 'Present')})"
+            )
+
+        TLABELS = {
+            'manual_handling': 'Manual Handling', 'cpr_bls': 'CPR / BLS',
+            'fire_safety': 'Fire Safety',
+            'infection_prevention_control': 'Infection Prevention & Control',
+            'hand_hygiene': 'Hand Hygiene', 'safeguarding': 'Safeguarding',
+            'children_first': 'Children First', 'cyber_security': 'Cyber Security',
+            'dignity_at_work': 'Dignity at Work', 'open_disclosure': 'Open Disclosure',
+            'mapa_pmav': 'MAPA / PMAV',
+        }
+        certs = [label for k, label in TLABELS.items() if s10.get(k)][:6]
+
+        extracted_cv = _v(full_doc.get('extracted_cv') or '')
+        has_extracted = (
+            extracted_cv and
+            not extracted_cv.startswith('[') and
+            extracted_cv != 'No doc found'
+        )
+
+        data_summary = f"""
+Candidate: {full_name}
+Role / User Type: {user_type}
+Employee Code: {emp_code}
+Address: {address}
+Mobile: {mobile}
+Email: {email}
+Nationality: {nationality}
+Total Experience: {total_exp}
+Divisions / Speciality: {divisions}
+Registration PIN: {reg_pin}
+Registration Expiry: {reg_exp}
+NMBI Active Declaration: {nmbi}
+Permission to Work: {perm_work}
+Visa / Stamp Type: {visa_type}
+Garda Vetted: {garda}
+Fit for Nursing Duties: {fit}
+
+Qualifications:
+{chr(10).join(qual_lines) if qual_lines else '  None recorded'}
+
+Employment History:
+{chr(10).join(exp_lines) if exp_lines else '  None recorded'}
+
+Training & Certifications:
+{chr(10).join('  - ' + c for c in certs) if certs else '  None recorded'}
+""".strip()
+
+        extracted_cv_section = f"""
+
+EXTRACTED CV TEXT (use as PRIMARY source for PROFESSIONAL EXPERIENCE, TRAINING & CERTIFICATIONS and KEY SKILLS):
+{extracted_cv[:8000]}
+""" if has_extracted else ""
+
+        prompt = f"""You are an expert professional CV writer specialising in Irish healthcare staffing.
+
+STRICT RULE — NO HALLUCINATION:
+Use ONLY the exact facts in CANDIDATE DATA. Do not invent anything.
+
+SECTION SOURCE RULES:
+- PERSONAL DETAILS, PROFESSIONAL PROFILE, EDUCATION & QUALIFICATIONS: use CANDIDATE DATA.
+- PROFESSIONAL EXPERIENCE: {"Extract directly from EXTRACTED CV TEXT — copy job titles, employers, dates, and duties word-for-word." if has_extracted else "Use Employment History from CANDIDATE DATA. Write 5-6 appropriate duties per role."}
+- TRAINING & CERTIFICATIONS: {"Extract directly from EXTRACTED CV TEXT." if has_extracted else "Use Training & Certifications from CANDIDATE DATA only."}
+- KEY SKILLS: {"Extract directly from EXTRACTED CV TEXT." if has_extracted else "Write 8-10 bullet points from their role and certifications."}
+
+Structure (EXACT UPPERCASE headings on their own line):
+PERSONAL DETAILS
+PROFESSIONAL PROFILE
+EDUCATION & QUALIFICATIONS
+PROFESSIONAL EXPERIENCE
+TRAINING & CERTIFICATIONS
+KEY SKILLS
+ADDITIONAL INFORMATION
+
+Rules:
+- PERSONAL DETAILS: "Label: Value" per line. Skip blank fields.
+- PROFESSIONAL PROFILE: 2 paragraphs, FIRST PERSON. Genuine personal statement.
+- EDUCATION & QUALIFICATIONS: Qualification Name | Institution | Year
+- PROFESSIONAL EXPERIENCE: Job Title: / Employer: / Dates: / Duties: / - duty
+- TRAINING & CERTIFICATIONS: Bullet list only.
+- KEY SKILLS: 8-10 bullets.
+- ADDITIONAL INFORMATION: Put each item on its own line. Include: Driving Licence: No
+Own Transport: No
+
+---
+CANDIDATE DATA:
+{data_summary}
+{extracted_cv_section}
+---
+
+Output CV text only. No preamble, no markdown symbols.
+"""
+
+        from google import genai as google_genai
+        client   = google_genai.Client(api_key=gemini_key)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        cv_text = response.text.strip()
+
+    except Exception as e:
+        # Mark as attempted so cron moves on
+        ai_cvs_col.insert_one({
+            "staff_id":     staff_id,
+            "staff_name":   full_name,
+            "cv_text":      f"[Gemini error: {e}]",
+            "gcs_blob":     '',
+            "generated_at": datetime.utcnow(),
+        })
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"Gemini error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Build DOCX and upload to GCS ─────────────────────────────────
+    try:
+        docx_bytes  = _build_ai_cv_docx(full_doc, cv_text)
+        safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        cv_filename = f"{safe_name}.docx"
+        gcs_blob    = f"cv/{cv_filename}"
+        _gcs_upload(
+            gcs_blob, docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+    except Exception as e:
+        ai_cvs_col.insert_one({
+            "staff_id":     staff_id,
+            "staff_name":   full_name,
+            "cv_text":      cv_text,
+            "gcs_blob":     '',
+            "generated_at": datetime.utcnow(),
+        })
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"DOCX/GCS error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Save to MongoDB ───────────────────────────────────────────────
+    ai_cvs_col.insert_one({
+        "staff_id":      staff_id,
+        "staff_name":    full_name,
+        "employee_code": emp_code,
+        "cv_text":       cv_text,
+        "cv_filename":   cv_filename,
+        "gcs_blob":      gcs_blob,
+        "generated_at":  datetime.utcnow(),
+    })
+
+    # ── Background HSE document push ─────────────────────────────────
+    _push_hse_document_background(
+        staff_id_str=staff_id,
+        doc_type_key='cv',
+        docx_bytes=docx_bytes,
+        staff_name=full_name,
+        mongo_id=staff_id,
+        email=email,
+    )
+
+    return jsonify({
+        "success":         True,
+        "email":           email,
+        "staff_name":      full_name,
+        "cv_filename":     cv_filename,
+        "remaining_count": max(0, remaining_total - 1),
+        "message": (
+            f"CV generated for {full_name} — "
+            f"{max(0, remaining_total - 1)} staff still need a CV."
+        ),
+        "generated_at": datetime.utcnow().isoformat(),
+    })
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
