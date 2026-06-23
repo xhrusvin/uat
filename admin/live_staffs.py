@@ -1260,6 +1260,7 @@ def live_staff_ai_interview_generate():
         visa = s1.get('work_permit_visa_status') or {}
 
         full_name   = _v(s1.get('full_name'))
+        email       = _v(doc.get('email'))
         user_type   = _v(doc.get('user_type'))
         address     = _v(s1.get('address'))
         nationality = _v(s1.get('nationality'))
