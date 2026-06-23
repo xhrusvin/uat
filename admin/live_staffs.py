@@ -1049,7 +1049,8 @@ Section format rules:
     - [duty]
 - TRAINING & CERTIFICATIONS: Bullet list of certifications only.
 - KEY SKILLS: 8-10 bullet points.
-- ADDITIONAL INFORMATION: Driving Licence: No | Own Transport: No
+- ADDITIONAL INFORMATION: Put each item on its own line. Include: Driving Licence: No
+Own Transport: No
 
 ---
 CANDIDATE DATA:
@@ -2079,7 +2080,16 @@ def _build_ai_cv_docx(doc, cv_text):
                     continue
                 if ':' in s:
                     parts = s.split(':', 1)
-                    add_field(parts[0].strip() + ':', parts[1].strip())
+                    lbl   = parts[0].strip() + ':'
+                    val   = parts[1].strip()
+                    # Each item on its own line, no bold — plain text
+                    p = d.add_paragraph()
+                    p.paragraph_format.space_before = Pt(1)
+                    p.paragraph_format.space_after  = Pt(1)
+                    r = p.add_run(f'{lbl}  {val}')
+                    r.font.name  = BF
+                    r.font.size  = Pt(L['body_size'])
+                    r.font.color.rgb = NEAR_BLK
                 else:
                     add_body(s)
 
