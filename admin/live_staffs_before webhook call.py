@@ -6,7 +6,6 @@ import csv
 import io
 import re
 import os
-import threading
 
 from database import db
 from . import admin_bp
@@ -83,158 +82,6 @@ def _gcs_signed_url(blob_name, expiry_minutes=60):
     except Exception:
         # Return None — caller will use internal download route instead
         return None
-
-
-
-# ── Doc webhook collection ────────────────────────────────────────────
-
-def _doc_webhook_col():
-    return db.doc_webhook
-
-
-# ── DOCX → PDF converter ──────────────────────────────────────────────
-
-def _docx_to_pdf_bytes(docx_bytes):
-    """
-    Convert DOCX bytes to PDF bytes.
-    Uses LibreOffice (soffice) via subprocess — available on the server.
-    Falls back to docx2pdf if soffice not found.
-    """
-    import subprocess, tempfile, pathlib
-
-    with tempfile.TemporaryDirectory() as tmp:
-        docx_path = pathlib.Path(tmp) / 'input.docx'
-        pdf_path  = pathlib.Path(tmp) / 'input.pdf'
-        docx_path.write_bytes(docx_bytes)
-
-        # Try LibreOffice first (preferred)
-        for soffice in ['soffice', 'libreoffice',
-                        '/usr/bin/soffice', '/usr/bin/libreoffice']:
-            try:
-                result = subprocess.run(
-                    [soffice, '--headless', '--convert-to', 'pdf',
-                     '--outdir', tmp, str(docx_path)],
-                    capture_output=True, timeout=60
-                )
-                if result.returncode == 0 and pdf_path.exists():
-                    return pdf_path.read_bytes()
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                continue
-
-        raise RuntimeError(
-            'LibreOffice not found. Install with: sudo apt install libreoffice'
-        )
-
-
-# ── Background HSE document upload ───────────────────────────────────
-
-HSE_DOC_TYPES = {
-    'cv':          'hse_cv',
-    'interview':   'hse_interview_notes',
-    'appform':     'hse_application_form',
-}
-
-
-def _push_hse_document_background(staff_id_str, doc_type_key,
-                                   docx_bytes, staff_name=''):
-    """
-    Fire-and-forget background task.
-    Converts DOCX → PDF, POSTs to HSE document upload API,
-    saves full response to doc_webhook collection.
-    """
-    def _run():
-        import requests as _req
-
-        base_url    = os.environ.get('DOC_BASE_URL', '').rstrip('/')
-        api_key     = os.environ.get('DOC_API_KEY', '')
-        app_country = os.environ.get('XN_APP_COUNTRY', '')
-
-        if not base_url:
-            _doc_webhook_col().insert_one({
-                "staff_id":     staff_id_str,
-                "staff_name":   staff_name,
-                "doc_type":     doc_type_key,
-                "status":       "error",
-                "error":        "DOC_BASE_URL not set in environment",
-                "triggered_at": datetime.utcnow(),
-            })
-            return
-
-        endpoint      = f"{base_url}/api/admin/staff/hse-document-upload"
-        hse_type      = HSE_DOC_TYPES.get(doc_type_key, doc_type_key)
-        pdf_bytes     = None
-        convert_error = None
-
-        # Convert DOCX → PDF
-        try:
-            pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
-        except Exception as e:
-            convert_error = str(e)
-
-        if not pdf_bytes:
-            _doc_webhook_col().insert_one({
-                "staff_id":     staff_id_str,
-                "staff_name":   staff_name,
-                "doc_type":     doc_type_key,
-                "hse_type":     hse_type,
-                "status":       "error",
-                "error":        f"PDF conversion failed: {convert_error}",
-                "triggered_at": datetime.utcnow(),
-            })
-            return
-
-        # POST to HSE API
-        try:
-            resp = _req.post(
-                endpoint,
-                data={
-                    "staff_id":          staff_id_str,
-                    "hse_document_type": hse_type,
-                },
-                files={
-                    "file": (f"{hse_type}.pdf", pdf_bytes, "application/pdf"),
-                },
-                headers={
-                    "Api-Key":       api_key,
-                    "X-App-Country": app_country,
-                    "Accept":        "application/json",
-                },
-                timeout=60,
-            )
-
-            # Try to parse JSON response
-            try:
-                resp_json = resp.json()
-            except Exception:
-                resp_json = {"raw": resp.text[:500]}
-
-            _doc_webhook_col().insert_one({
-                "staff_id":       staff_id_str,
-                "staff_name":     staff_name,
-                "doc_type":       doc_type_key,
-                "hse_type":       hse_type,
-                "endpoint":       endpoint,
-                "status":         "success" if resp.status_code < 300 else "api_error",
-                "http_status":    resp.status_code,
-                "response":       resp_json,
-                "triggered_at":   datetime.utcnow(),
-            })
-
-        except Exception as e:
-            _doc_webhook_col().insert_one({
-                "staff_id":     staff_id_str,
-                "staff_name":   staff_name,
-                "doc_type":     doc_type_key,
-                "hse_type":     hse_type,
-                "endpoint":     endpoint,
-                "status":       "error",
-                "error":        str(e),
-                "triggered_at": datetime.utcnow(),
-            })
-
-    # Launch in background thread — does not block the HTTP response
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
 
 
 def _staffs_col():
@@ -459,14 +306,6 @@ def live_staff_ai_appform_generate():
             result = col.insert_one(rec)
             rec_id = str(result.inserted_id)
 
-        # Background: push to HSE document API
-        _push_hse_document_background(
-            staff_id_str=staff_id,
-            doc_type_key='appform',
-            docx_bytes=docx_bytes,
-            staff_name=full_name,
-        )
-
         return jsonify({
             "success":      True,
             "appform_id":   rec_id,
@@ -553,17 +392,6 @@ def live_staff_ai_appform_upload(staff_id):
                 "uploaded_by":   "admin",
             }}
         )
-        # Background: push updated form to HSE document API
-        try:
-            _push_hse_document_background(
-                staff_id_str=staff_id,
-                doc_type_key='appform',
-                docx_bytes=data_bytes,
-                staff_name=(rec.get('staff_name') or ''),
-            )
-        except Exception:
-            pass
-
         return jsonify({
             "success":  True,
             "message":  "Application form replaced successfully",
@@ -995,14 +823,6 @@ Output CV text only. No preamble, no explanation, no markdown symbols like ** or
             result = col.insert_one(ai_doc)
             ai_id  = str(result.inserted_id)
 
-        # Background: push to HSE document API
-        _push_hse_document_background(
-            staff_id_str=staff_id,
-            doc_type_key='cv',
-            docx_bytes=docx_bytes,
-            staff_name=full_name,
-        )
-
         return jsonify({
             "success":     True,
             "ai_cv_id":    ai_id,
@@ -1103,17 +923,6 @@ def live_staff_ai_cv_upload(staff_id):
                 "uploaded_by":   "admin",
             }}
         )
-
-        # Background: push updated CV to HSE document API
-        try:
-            _push_hse_document_background(
-                staff_id_str=staff_id,
-                doc_type_key='cv',
-                docx_bytes=data_bytes,
-                staff_name=(rec.get('staff_name') or ''),
-            )
-        except Exception:
-            pass
 
         return jsonify({
             "success":  True,
@@ -1331,14 +1140,6 @@ CANDIDATE DATA (use ONLY this):
             result = col.insert_one(rec)
             rec_id = str(result.inserted_id)
 
-        # Background: push to HSE document API
-        _push_hse_document_background(
-            staff_id_str=staff_id,
-            doc_type_key='interview',
-            docx_bytes=pdf_bytes,
-            staff_name=full_name,
-        )
-
         return jsonify({
             "success":      True,
             "interview_id": rec_id,
@@ -1436,17 +1237,6 @@ def live_staff_ai_interview_upload(staff_id):
                 "uploaded_by":   "admin",
             }}
         )
-
-        # Background: push updated interview to HSE document API
-        try:
-            _push_hse_document_background(
-                staff_id_str=staff_id,
-                doc_type_key='interview',
-                docx_bytes=data_bytes,
-                staff_name=(rec.get('staff_name') or ''),
-            )
-        except Exception:
-            pass
 
         return jsonify({
             "success":  True,
