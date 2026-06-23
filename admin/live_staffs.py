@@ -530,6 +530,7 @@ def live_staff_ai_appform_generate():
 
         s1        = doc.get('section_1_personal_details') or {}
         full_name = _v(s1.get('full_name') or 'staff')
+        email     = _v(doc.get('email'))
         emp_code  = _v(doc.get('employee_code') or '')
         safe_name = full_name.replace(' ', '_').replace('/', '_')
         filename  = f"AppForm_{safe_name}.docx"
