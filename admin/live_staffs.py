@@ -1335,7 +1335,7 @@ CANDIDATE DATA (use ONLY this):
         _push_hse_document_background(
             staff_id_str=staff_id,
             doc_type_key='interview',
-            docx_bytes=pdf_bytes,
+            docx_bytes=docx_bytes,
             staff_name=full_name,
         )
 
