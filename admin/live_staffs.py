@@ -491,6 +491,45 @@ def live_staff_get():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@admin_bp.route('/live-staffs/points')
+@admin_required
+def live_staff_points():
+    """
+    Get points for a staff member by email address.
+
+    GET /admin/live-staffs/points?email=someone@example.com
+
+    Returns:
+      {
+        "success": true,
+        "email": "someone@example.com",
+        "name": "Sherin Augustine",
+        "points": 8
+      }
+    """
+    email = (request.args.get('email') or '').strip().lower()
+    if not email:
+        return jsonify({"success": False, "error": "Missing email parameter"}), 400
+    try:
+        doc = _staffs_col().find_one(
+            {"email": email},
+            {"points": 1, "section_1_personal_details": 1, "email": 1}
+        )
+        if not doc:
+            return jsonify({"success": False, "error": f"No staff found with email: {email}"}), 404
+
+        s1   = doc.get('section_1_personal_details') or {}
+        name = _v(s1.get('full_name') or '')
+
+        return jsonify({
+            "success": True,
+            "email":   email,
+            "name":    name,
+            "points":  doc.get('points'),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 
 # ── AI CV Collection helper ───────────────────────────────────────────
