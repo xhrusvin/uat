@@ -531,6 +531,45 @@ def live_staff_points():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@admin_bp.route('/live-staffs/import-last-point-scale', methods=['POST'])
+@admin_required
+def live_staff_import_last_point_scale():
+    """
+    Seed last_point_scale for a staff member by email.
+    Also resets points_checked so the cron will re-check them.
+
+    POST /admin/live-staffs/import-last-point-scale
+    Body: {"email": "...", "last_point_scale": 9}
+    """
+    data     = request.get_json() or {}
+    email    = (data.get('email') or '').strip().lower()
+    last_ps  = data.get('last_point_scale')
+
+    if not email:
+        return jsonify({"success": False, "error": "Missing email"}), 400
+    if last_ps is None:
+        return jsonify({"success": False, "error": "Missing last_point_scale"}), 400
+
+    try:
+        result = _staffs_col().update_one(
+            {"email": email},
+            {"$set": {
+                "last_point_scale": last_ps,
+                "points_checked":   False,   # reset so cron re-checks
+            }}
+        )
+        if result.matched_count == 0:
+            return jsonify({"success": False,
+                            "error": f"No staff found with email: {email}"}), 404
+        return jsonify({
+            "success":  True,
+            "email":    email,
+            "last_point_scale": last_ps,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 
 # ── AI CV Collection helper ───────────────────────────────────────────
 
@@ -4388,6 +4427,189 @@ def live_staff_cron_fetch_signature():
             f"{max(0, remaining_total - 1)} staff still need signatures."
         ),
         "synced_at": datetime.utcnow().isoformat(),
+    })
+
+
+
+# ── Cron: Check points vs Last PointScale and flag mismatches ─────────
+
+@admin_bp.route('/live-staffs/cron/check-points', methods=['GET', 'POST'])
+def live_staff_cron_check_points():
+    """
+    Cron job — checks one staff member's current points against their
+    Last PointScale from the spreadsheet and flags mismatches.
+
+    Logic:
+      1. Find first live_staffs record where points_checked is not True.
+      2. Call XN Portal detail API to get current points.
+      3. Compare with last_point_scale stored in live_staffs.
+      4. Save: current_points, points_mismatch (bool), points_checked (True).
+
+    Import last_point_scale into live_staffs first using the import route
+    or via the spreadsheet (email + last_point_scale fields).
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    import requests as _req
+
+    # ── Auth ──────────────────────────────────────────────────────────
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+
+    if not base_url:
+        return jsonify({"success": False,
+                        "error": "LIVE_STAFF_URL not set"}), 500
+
+    col = _staffs_col()
+
+    # Count remaining
+    remaining_total = col.count_documents(
+        {"$or": [
+            {"points_checked": {"$exists": False}},
+            {"points_checked": False},
+            {"points_checked": None},
+        ]}
+    )
+
+    # Find next unchecked
+    staff = col.find_one(
+        {"$or": [
+            {"points_checked": {"$exists": False}},
+            {"points_checked": False},
+            {"points_checked": None},
+        ]}
+    )
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff points checked — nothing to do.",
+            "remaining_count": 0,
+        })
+
+    mongo_id  = str(staff['_id'])
+    xn_id     = _v(staff.get('staff_id') or staff.get('xn_staff_id') or '')
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or staff.get('email') or mongo_id)
+    email     = _v(staff.get('email') or '')
+    last_ps   = staff.get('last_point_scale')   # stored from spreadsheet import
+
+    if not xn_id:
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {
+                "points_checked": True,
+                "points_mismatch": None,
+                "points_check_note": "skipped — no staff_id",
+            }}
+        )
+        return jsonify({
+            "success":         True,
+            "message":         f"Skipped {full_name} — no staff_id",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Call XN Portal detail API ──────────────────────────────────────
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.post(
+            f"{base_url}/ai/recruitments/detail",
+            json={"_id": xn_id},
+            headers=api_headers,
+            timeout=30,
+        )
+        if resp.status_code == 405:
+            resp = _req.get(
+                f"{base_url}/ai/recruitments/detail",
+                params={"_id": xn_id},
+                headers=api_headers,
+                timeout=30,
+            )
+        resp.raise_for_status()
+        data = resp.json()
+
+    except Exception as api_err:
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {
+                "points_checked":    True,
+                "points_mismatch":   None,
+                "points_check_note": f"API error: {api_err}",
+            }}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"API error: {api_err}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not data.get('success'):
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {
+                "points_checked":    True,
+                "points_mismatch":   None,
+                "points_check_note": f"API error: {data.get('message')}",
+            }}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           data.get('message', 'API returned success=false'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    api_data       = data.get('data') or {}
+    current_points = api_data.get('points')
+
+    # ── Compare ────────────────────────────────────────────────────────
+    mismatch = None
+    if last_ps is not None and current_points is not None:
+        try:
+            mismatch = float(current_points) != float(last_ps)
+        except (TypeError, ValueError):
+            mismatch = None
+
+    col.update_one(
+        {"_id": staff['_id']},
+        {"$set": {
+            "points":             current_points,
+            "last_point_scale":   last_ps,
+            "points_mismatch":    mismatch,
+            "points_checked":     True,
+            "points_checked_at":  datetime.utcnow(),
+        }}
+    )
+
+    return jsonify({
+        "success":          True,
+        "email":            email,
+        "staff_name":       full_name,
+        "last_point_scale": last_ps,
+        "current_points":   current_points,
+        "mismatch":         mismatch,
+        "remaining_count":  max(0, remaining_total - 1),
+        "message": (
+            f"{'⚠ MISMATCH' if mismatch else '✓ Match'} — "
+            f"{full_name}: last={last_ps}, current={current_points} — "
+            f"{max(0, remaining_total - 1)} remaining."
+        ),
+        "checked_at": datetime.utcnow().isoformat(),
     })
 
 
