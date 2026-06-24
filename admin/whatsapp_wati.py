@@ -96,6 +96,14 @@ def _send_template_message(phone: str, template_name: str, parameters: list[dict
         "parameters":     parameters,
     }
     resp = requests.post(url, headers=_headers(), json=payload, timeout=10)
+    
+    
+    print("=" * 80)
+    print("WATI URL:", url)
+    print("WATI PAYLOAD:", payload)
+    print("STATUS:", resp.status_code)
+    print("BODY:", resp.text)
+    print("=" * 80)
 
     #return resp.text
     if not resp.ok:

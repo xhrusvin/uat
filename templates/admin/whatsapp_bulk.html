@@ -43,6 +43,31 @@
                         </div>
                     </div>
 
+                    <div class="col-12">
+                        <label class="form-label">
+                            Template Parameters
+                        </label>
+
+                        <table class="table" id="paramTable">
+                            <thead>
+                                <tr>
+                                    <th>Parameter Name (In Template)</th>
+                                    <th>Type</th>
+                                    <th>Value</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            onclick="addParamRow()">
+                            Add Parameter
+                        </button>
+                    </div>
+
                     <div class="col-md-5">
                         <label class="form-label small fw-semibold text-muted">Excel File</label>
                         <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
@@ -350,10 +375,44 @@ document.getElementById('bulkForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const formData = new FormData(e.target);
+
+    const mappings = [];
+
+    document
+    .querySelectorAll('#paramTable tbody tr')
+    .forEach(row => {
+
+        const name =
+            row.querySelector('.param-name')
+                .value
+                .trim();
+
+        if (!name)
+            return;
+
+        mappings.push({
+            name: name,
+            type: row.querySelector('.param-type').value,
+            value: row.querySelector('.param-value').value.trim()
+        });
+
+    });
+
+    formData.append(
+        'parameter_config',
+        JSON.stringify(mappings)
+    );
+
+    console.log(
+        'Parameter Config',
+        mappings
+    );
+
     const resultEl = document.getElementById('uploadResult');
 
     resultEl.innerHTML = '<div class="alert alert-info"><span class="spinner-border spinner-border-sm me-2"></span>Uploading…</div>';
 
+    
     try {
         const res  = await fetch('/admin/whatsapp_wati/bulk/send', { method: 'POST', body: formData });
         const data = await res.json();
@@ -736,6 +795,45 @@ document.addEventListener(
         loadConversations();
     }
 );
+
+
+function addParamRow() {
+
+    const row = `
+    <tr>
+        <td>
+            <input class="form-control param-name">
+        </td>
+
+        <td>
+            <select class="form-select param-type">
+                <option value="excel">Excel Column</option>
+                <option value="static">Static</option>
+            </select>
+        </td>
+
+        <td>
+            <input class="form-control param-value">
+        </td>
+
+        <td>
+            <button
+                type="button"
+                class="btn btn-danger btn-sm"
+                onclick="this.closest('tr').remove()">
+                ×
+            </button>
+        </td>
+    </tr>
+    `;
+
+    document
+        .querySelector('#paramTable tbody')
+        .insertAdjacentHTML(
+            'beforeend',
+            row
+        );
+}
 
 
 
