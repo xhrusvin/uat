@@ -20,7 +20,7 @@ import threading
 import logging
 from flask import jsonify, request, current_app
 from bson import ObjectId
-from certificate_reminder_call import make_certificate_reminder_call as make_ai_call
+from certificatereminder import make_certificate_reminder_call as make_ai_call
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
