@@ -3265,6 +3265,129 @@ def live_staff_export():
     return _export_json(items)
 
 
+@admin_bp.route('/live-staffs/export/xlsx')
+@admin_required
+def live_staff_export_xlsx():
+    """
+    Export all live_staffs records to an Excel (.xlsx) file.
+    Columns: Sno | Name | Email | Points
+    Sorted alphabetically by name.
+
+    GET /admin/live-staffs/export/xlsx
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        # ── Fetch all staff ───────────────────────────────────────────
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1, "points": 1}
+        ))
+
+        # Sort by name
+        def _get_name(d):
+            s1 = d.get('section_1_personal_details') or {}
+            return _v(s1.get('full_name') or '').lower()
+
+        docs.sort(key=_get_name)
+
+        # ── Build workbook ────────────────────────────────────────────
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Staff Points'
+
+        # Styles
+        NAVY_HEX  = '1B3A6B'
+        GREEN_HEX = '2E9E44'
+        WHITE_HEX = 'FFFFFF'
+
+        header_font  = Font(name='Arial', bold=True, color=WHITE_HEX, size=11)
+        header_fill  = PatternFill('solid', start_color=NAVY_HEX, end_color=NAVY_HEX)
+        header_align = Alignment(horizontal='center', vertical='center')
+
+        body_font    = Font(name='Arial', size=10)
+        alt_fill     = PatternFill('solid', start_color='EFF6FF', end_color='EFF6FF')
+        center_align = Alignment(horizontal='center', vertical='center')
+        left_align   = Alignment(horizontal='left', vertical='center')
+
+        thin_side = Side(style='thin', color='CCCCCC')
+        thin_border = Border(
+            left=thin_side, right=thin_side,
+            top=thin_side,  bottom=thin_side
+        )
+
+        # ── Headers ───────────────────────────────────────────────────
+        headers = ['Sno', 'Name', 'Email', 'Points']
+        col_widths = [6, 35, 40, 10]
+
+        for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font      = header_font
+            cell.fill      = header_fill
+            cell.alignment = header_align
+            cell.border    = thin_border
+            ws.column_dimensions[cell.column_letter].width = width
+
+        ws.row_dimensions[1].height = 22
+
+        # ── Bottom border on header in green ─────────────────────────
+        for col_idx in range(1, 5):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.border = Border(
+                left=thin_side, right=thin_side,
+                top=thin_side,
+                bottom=Side(style='medium', color=GREEN_HEX)
+            )
+
+        # ── Data rows ─────────────────────────────────────────────────
+        for row_idx, doc in enumerate(docs, start=2):
+            s1     = doc.get('section_1_personal_details') or {}
+            name   = _v(s1.get('full_name') or '')
+            email  = _v(doc.get('email') or '')
+            points = doc.get('points')
+
+            row_fill = alt_fill if row_idx % 2 == 0 else None
+
+            values = [row_idx - 1, name, email, points]
+            aligns = [center_align, left_align, left_align, center_align]
+
+            for col_idx, (val, align) in enumerate(zip(values, aligns), start=1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                cell.font      = body_font
+                cell.alignment = align
+                cell.border    = thin_border
+                if row_fill:
+                    cell.fill = row_fill
+
+            ws.row_dimensions[row_idx].height = 18
+
+        # Freeze header row
+        ws.freeze_panes = 'A2'
+
+        # ── Auto-filter ───────────────────────────────────────────────
+        ws.auto_filter.ref = f'A1:D{len(docs) + 1}'
+
+        # ── Render to bytes ───────────────────────────────────────────
+        buf = _io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        xlsx_bytes = buf.getvalue()
+
+        return Response(
+            xlsx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={
+                'Content-Disposition':
+                    f'attachment; filename="staff_points_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'
+            }
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 
 # ── Cron: Sync document list from XN Portal ───────────────────────────
 
