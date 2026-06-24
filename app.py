@@ -29,7 +29,8 @@ from elevenlabs1.agent_conversations_followup_call import bp as elevenlabs_bp_fo
 from elevenlabs1.agent_conversations_levelfour_call import bp as elevenlabs_bp_levelfour_call
 from elevenlabs1.agent_conversations_levelfive_call import bp as elevenlabs_bp_levelfive_call
 from elevenlabs1.agent_conversations_onboarding_call import bp as elevenlabs_bp_onboarding_call
-
+from certificate_reminder import register_certificate_reminder_routes
+from certificatereminder import init_certificate_reminder_scheduler
 
 from lead_registration import bp as lead_registration_bp
 from document_validate import bp as document_validate_bp
@@ -155,6 +156,8 @@ register_shift_booking_call_routes(app)
 register_compliance_doc_call_routes(app)
 register_professional_reference_call_routes(app)
 register_onboarding_call_routes(app)
+register_certificate_reminder_routes(app)
+init_certificate_reminder_scheduler(app)
 app.register_blueprint(webhook_bp)
 register_lead_webhook_routes(app)
 register_fb_form_sync_routes(app)
@@ -179,6 +182,7 @@ app.register_blueprint(booking_bp)
 app.register_blueprint(carelearning_bp)
 app.register_blueprint(document_validate_bp)
 app.register_blueprint(document_worker_bp)
+
 
 
 
