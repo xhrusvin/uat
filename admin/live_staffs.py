@@ -4254,10 +4254,14 @@ def live_staff_cron_fetch_signature():
     # ── Count total needing signature ─────────────────────────────────
     needs_sig_query = {
         "$and": [
+            # Missing signature_url OR missing/empty signature_gcs_blob
             {"$or": [
-                {"signature_url": {"$exists": False}},
-                {"signature_url": None},
-                {"signature_url": ""},
+                {"signature_url":      {"$exists": False}},
+                {"signature_url":      None},
+                {"signature_url":      ""},
+                {"signature_gcs_blob": {"$exists": False}},
+                {"signature_gcs_blob": None},
+                {"signature_gcs_blob": ""},
             ]},
             # Must have a staff_id to call the API
             {"$or": [
