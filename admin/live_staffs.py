@@ -756,12 +756,13 @@ def live_staff_ai_appform_upload(staff_id):
 
 # ── Build Application Form DOCX ───────────────────────────────────────
 
-def _build_appform_docx(doc):
+def _build_appform_docx(doc, signature_bytes=None):
     """
     Build a filled Xpress Health Application Form matching the uploaded template exactly.
     Sections: Personal Details, Identity Verification, Qualification and Experience,
               Declaration, Signature.
     All data pulled from live_staffs MongoDB document — no hallucination.
+    If signature_bytes is provided, embeds the actual signature image.
     """
     from docx import Document as DocxDocument
     from docx.shared import Pt, RGBColor, Inches, Cm, RGBColor
@@ -951,15 +952,38 @@ def _build_appform_docx(doc):
     r_decl.font.color.rgb = GRAY
     r_decl.italic = True
 
-    # ── Signature line ─────────────────────────────────────────────────
-    p_sig = d.add_paragraph()
-    p_sig.paragraph_format.space_before = Pt(6)
-    p_sig.paragraph_format.space_after  = Pt(0)
-    r_sig = p_sig.add_run('Applicant Signature:')
+    # ── Signature ──────────────────────────────────────────────────────
+    p_sig_lbl = d.add_paragraph()
+    p_sig_lbl.paragraph_format.space_before = Pt(6)
+    p_sig_lbl.paragraph_format.space_after  = Pt(2)
+    r_sig = p_sig_lbl.add_run('Applicant Signature:')
     r_sig.bold = True
     r_sig.font.name = 'Calibri'
     r_sig.font.color.rgb = NAVY
-    p_sig.add_run('   _______________________________')
+
+    if signature_bytes:
+        # Embed the actual signature image
+        try:
+            import tempfile as _tmp, pathlib as _pl
+            with _tmp.NamedTemporaryFile(suffix='.png', delete=False) as tf:
+                tf.write(signature_bytes)
+                tf_path = tf.name
+            from docx.shared import Inches as _Inches
+            p_img = d.add_paragraph()
+            p_img.paragraph_format.space_before = Pt(0)
+            p_img.paragraph_format.space_after  = Pt(4)
+            run_img = p_img.add_run()
+            run_img.add_picture(tf_path, width=_Inches(2.0))
+            import os as _os
+            _os.unlink(tf_path)
+        except Exception:
+            # Fall back to blank line if image embedding fails
+            p_blank = d.add_paragraph()
+            p_blank.add_run('   _______________________________')
+    else:
+        p_blank = d.add_paragraph()
+        p_blank.paragraph_format.space_before = Pt(0)
+        p_blank.add_run('   _______________________________')
 
     buf = _io.BytesIO()
     d.save(buf)
@@ -4610,6 +4634,146 @@ def live_staff_cron_check_points():
             f"{max(0, remaining_total - 1)} remaining."
         ),
         "checked_at": datetime.utcnow().isoformat(),
+    })
+
+
+
+# ── Cron: Generate Application Form one staff at a time ───────────────
+
+@admin_bp.route('/live-staffs/cron/generate-appform', methods=['GET', 'POST'])
+def live_staff_cron_generate_appform():
+    """
+    Cron job — generates an Application Form for ONE staff member per call.
+
+    Logic:
+      1. Find first live_staffs record with no entry in live_staff_ai_appforms.
+      2. If staff has a signature_gcs_blob, download it from GCS.
+      3. Build the Application Form DOCX (with real signature image if available).
+      4. Upload to GCS appforms/ folder, save metadata to MongoDB.
+      5. Fire HSE document background upload.
+      6. Return remaining_count.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+
+    # ── Auth ──────────────────────────────────────────────────────────
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    staffs_col   = _staffs_col()
+    appforms_col = _ai_appforms_col()
+
+    # ── Find next staff without an application form ───────────────────
+    existing_ids = set(
+        str(r['staff_id'])
+        for r in appforms_col.find({}, {"staff_id": 1})
+        if r.get('staff_id')
+    )
+
+    staff = staffs_col.find_one(
+        {"_id": {"$nin": [ObjectId(i) for i in existing_ids if len(i) == 24]}}
+    )
+
+    remaining_total = staffs_col.count_documents({}) - len(existing_ids)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff already have application forms — nothing to do.",
+            "remaining_count": 0,
+        })
+
+    staff_id  = str(staff['_id'])
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or '')
+    emp_code  = _v(staff.get('employee_code') or '')
+
+    if not full_name and not email:
+        appforms_col.insert_one({
+            "staff_id":     staff_id,
+            "staff_name":   '',
+            "gcs_blob":     '',
+            "generated_at": datetime.utcnow(),
+        })
+        return jsonify({
+            "success":         True,
+            "message":         f"Skipped {staff_id} — no name or email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Download signature from GCS if available ──────────────────────
+    signature_bytes = None
+    sig_blob        = _v(staff.get('signature_gcs_blob') or '')
+    if sig_blob:
+        try:
+            signature_bytes = _gcs_download(sig_blob)
+        except Exception as sig_err:
+            # Non-fatal — form will have blank signature line
+            signature_bytes = None
+
+    # ── Build Application Form DOCX ───────────────────────────────────
+    try:
+        docx_bytes = _build_appform_docx(staff, signature_bytes=signature_bytes)
+        safe_name  = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        filename   = f"AppForm_{safe_name}.docx"
+        gcs_blob   = f"appforms/{filename}"
+        _gcs_upload(
+            gcs_blob, docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+    except Exception as e:
+        appforms_col.insert_one({
+            "staff_id":     staff_id,
+            "staff_name":   full_name,
+            "gcs_blob":     '',
+            "generated_at": datetime.utcnow(),
+        })
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"DOCX/GCS error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Save to MongoDB ───────────────────────────────────────────────
+    appforms_col.insert_one({
+        "staff_id":      staff_id,
+        "staff_name":    full_name,
+        "employee_code": emp_code,
+        "filename":      filename,
+        "gcs_blob":      gcs_blob,
+        "has_signature": bool(signature_bytes),
+        "generated_at":  datetime.utcnow(),
+    })
+
+    # ── Background HSE document push ──────────────────────────────────
+    _push_hse_document_background(
+        staff_id_str=staff_id,
+        doc_type_key='appform',
+        docx_bytes=docx_bytes,
+        staff_name=full_name,
+        mongo_id=staff_id,
+        email=email,
+    )
+
+    return jsonify({
+        "success":         True,
+        "email":           email,
+        "staff_name":      full_name,
+        "filename":        filename,
+        "has_signature":   bool(signature_bytes),
+        "remaining_count": max(0, remaining_total - 1),
+        "message": (
+            f"Application form generated for {full_name} "
+            f"({'with' if signature_bytes else 'without'} signature) — "
+            f"{max(0, remaining_total - 1)} staff still need forms."
+        ),
+        "generated_at": datetime.utcnow().isoformat(),
     })
 
 
