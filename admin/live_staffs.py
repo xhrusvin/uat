@@ -870,7 +870,7 @@ def _build_appform_docx(doc, signature_bytes=None):
         p = d.add_paragraph()
         p.paragraph_format.space_before = Pt(2)
         p.paragraph_format.space_after  = Pt(2)
-        tick = '☑' if checked else '☐'
+        tick = '[X]' if checked else '[ ]'
         r = p.add_run(f'{tick}  {label}')
         r.font.name = 'Calibri'
         r.font.size = Pt(11)
@@ -882,7 +882,7 @@ def _build_appform_docx(doc, signature_bytes=None):
         p.paragraph_format.space_before = Pt(3)
         p.paragraph_format.space_after  = Pt(3)
         for i, (label, checked) in enumerate(items):
-            tick = '☑' if checked else '☐'
+            tick = '[X]' if checked else '[ ]'
             run  = p.add_run(f'{tick}  {label}')
             run.font.name = 'Calibri'
             run.font.size = Pt(11)
