@@ -1,0 +1,664 @@
+{% extends "admin/base.html" %}
+{% block title %}Certificate Reminder Calls • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="mb-0 fw-bold text-primary">
+            <i class="bi bi-file-earmark-medical me-2"></i>Certificate Reminder Calls
+        </h2>
+        <p class="text-muted mb-0 small">
+            Remind users to submit their <strong>PCC</strong> and/or <strong>Garda Vetting</strong> certificate.
+        </p>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-pills mb-4 gap-2" id="reminderTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active px-4 fw-semibold" id="build-tab" data-bs-toggle="pill"
+                    data-bs-target="#buildPane" type="button" role="tab">
+                <i class="bi bi-person-plus me-1"></i> Build List
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link px-4 fw-semibold" id="queue-tab" data-bs-toggle="pill"
+                    data-bs-target="#queuePane" type="button" role="tab">
+                <i class="bi bi-telephone-outbound me-1"></i> Queued Reminders
+                <span class="badge bg-primary rounded-pill ms-1" id="queueCountBadge">0</span>
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+
+    <!-- ════════════════════ BUILD LIST PANE ════════════════════ -->
+    <div class="tab-pane fade show active" id="buildPane" role="tabpanel">
+
+        <!-- Search Bar -->
+        <div class="mb-4">
+            <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+                <span class="input-group-text bg-white border-0">
+                    <i class="bi bi-search text-muted"></i>
+                </span>
+                <input type="text" id="searchInput" class="form-control border-0 ps-0"
+                       placeholder="Search by name, email, or phone..." autofocus>
+                <button class="btn btn-primary px-4" onclick="doSearch()">Search</button>
+                <button class="btn btn-outline-secondary" onclick="clearSearch()">Clear</button>
+            </div>
+            <div class="form-text ps-2 mt-1 text-muted">
+                Toggle a certificate on a row to add that user to the reminder list. Selections are kept as you search.
+            </div>
+        </div>
+
+        <!-- Bulk certificate controls -->
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-3" id="bulkBar" style="display:none!important;">
+            <span class="small text-muted fw-semibold me-1">Set for all shown:</span>
+            <button class="btn btn-sm btn-outline-primary rounded-pill" onclick="setAllVisible('PCC')">PCC</button>
+            <button class="btn btn-sm btn-outline-warning text-dark rounded-pill" onclick="setAllVisible('Garda Vetting')">Garda Vetting</button>
+            <button class="btn btn-sm btn-outline-success rounded-pill" onclick="setAllVisible('both')">Both</button>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setAllVisible('none')">Clear shown</button>
+        </div>
+
+        <!-- Results Table -->
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden" id="resultsCard" style="display:none;">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="text-white"
+                               style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                            <tr>
+                                <th class="ps-4">#</th>
+                                <th>Name</th>
+                                <th>Phone</th>
+                                <th>Designation</th>
+                                <th style="min-width:240px;">Certificates needed</th>
+                                <th class="text-center">In list</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Empty / Initial State -->
+        <div id="emptyState" class="text-center py-5 text-muted mt-4">
+            <i class="bi bi-people display-1 opacity-25 d-block mb-3"></i>
+            <h5>Search for users</h5>
+            <p class="mb-0">Enter a name, email, or phone number above to start building your reminder list.</p>
+        </div>
+
+        <!-- No Results State -->
+        <div id="noResultsState" class="text-center py-5 text-muted mt-4" style="display:none;">
+            <i class="bi bi-person-x display-1 opacity-25 d-block mb-3"></i>
+            <h5>No users found</h5>
+            <p class="mb-0">Try a different search term.</p>
+        </div>
+    </div>
+
+    <!-- ════════════════════ QUEUE PANE ════════════════════ -->
+    <div class="tab-pane fade" id="queuePane" role="tabpanel">
+
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <div class="btn-group btn-group-sm" role="group">
+                <button class="btn btn-outline-secondary active" data-filter="" onclick="setFilter(this,'')">All</button>
+                <button class="btn btn-outline-secondary" data-filter="pending" onclick="setFilter(this,'pending')">Pending</button>
+                <button class="btn btn-outline-secondary" data-filter="triggered" onclick="setFilter(this,'triggered')">Triggered</button>
+                <button class="btn btn-outline-secondary" data-filter="failed" onclick="setFilter(this,'failed')">Failed</button>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="loadQueue()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <button class="btn btn-sm btn-primary rounded-pill ms-auto" id="triggerSelectedBtn"
+                    onclick="triggerSelected()" disabled>
+                <i class="bi bi-telephone-outbound"></i> Trigger selected (<span id="qSelCount">0</span>)
+            </button>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden" id="queueCard" style="display:none;">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="text-white"
+                               style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                            <tr>
+                                <th class="ps-4" style="width:42px;">
+                                    <input type="checkbox" class="form-check-input" id="qSelectAll"
+                                           onchange="toggleSelectAll(this)">
+                                </th>
+                                <th>Name</th>
+                                <th>Phone</th>
+                                <th>Certificates needed</th>
+                                <th class="text-center">Call status</th>
+                                <th>Last triggered</th>
+                                <th class="text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queueBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="queueEmpty" class="text-center py-5 text-muted mt-4">
+            <i class="bi bi-inbox display-1 opacity-25 d-block mb-3"></i>
+            <h5>No reminders queued yet</h5>
+            <p class="mb-0">Build a list in the first tab and save it to see reminders here.</p>
+        </div>
+    </div>
+
+    </div><!-- /tab-content -->
+</div>
+
+<!-- Sticky selection bar (Build List) -->
+<div id="selectionBar" class="shadow-lg border-top bg-white"
+     style="position:fixed;bottom:0;left:0;right:0;z-index:1040;display:none;">
+    <div class="container-fluid px-4 py-3 d-flex align-items-center gap-3 flex-wrap">
+        <div class="fw-bold text-primary">
+            <i class="bi bi-list-check me-1"></i>
+            <span id="selCount">0</span> user(s) selected
+        </div>
+        <div id="selChips" class="d-flex gap-2 flex-nowrap overflow-auto flex-grow-1"
+             style="max-width:100%;"></div>
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-outline-secondary" onclick="clearSelection()">Clear all</button>
+            <button class="btn btn-primary fw-semibold px-4" id="saveBtn" onclick="saveSelection()">
+                <i class="bi bi-save me-1"></i> Save to reminder list
+            </button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+// Endpoint that places the actual reminder call (same origin), injected from the route.
+const CALL_ENDPOINT = "{{ call_endpoint }}";
+const ORIGIN = window.location.origin;
+
+// Certificate display config
+const CERTS = [
+    { key: "PCC",           label: "PCC",           active: "btn-primary" },
+    { key: "Garda Vetting", label: "Garda Vetting", active: "btn-warning text-dark" },
+];
+
+// Selection state across searches: id -> {user_id, xn_user_id, name, phone, certs:[]}
+const selection = new Map();
+// Cache of currently visible search results: id -> user object
+let resultsCache = {};
+
+let searchTimeout = null;
+
+document.getElementById('searchInput').addEventListener('keyup', function (e) {
+    if (e.key === 'Enter') { doSearch(); return; }
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(doSearch, 400);
+});
+
+// ─────────────────────────── Search ───────────────────────────
+async function doSearch() {
+    const q = document.getElementById('searchInput').value.trim();
+    if (!q) { clearSearch(); return; }
+    try {
+        const res = await fetch(`/admin/certificate_reminders/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!data.success) { Swal.fire('Error', data.error || 'Search failed', 'error'); return; }
+        renderResults(data.users, q);
+    } catch {
+        Swal.fire('Error', 'Network error – please try again', 'error');
+    }
+}
+
+function renderResults(users, q) {
+    const body      = document.getElementById('resultsBody');
+    const card      = document.getElementById('resultsCard');
+    const empty     = document.getElementById('emptyState');
+    const noResults = document.getElementById('noResultsState');
+    const bulkBar   = document.getElementById('bulkBar');
+
+    body.innerHTML = '';
+    resultsCache = {};
+
+    if (!users.length) {
+        card.style.display = 'none';
+        empty.style.display = 'none';
+        noResults.style.display = '';
+        bulkBar.style.cssText = 'display:none!important;';
+        return;
+    }
+
+    noResults.style.display = 'none';
+    empty.style.display = 'none';
+    card.style.display = '';
+    bulkBar.style.cssText = '';
+
+    users.forEach((u, i) => {
+        resultsCache[u._id] = u;
+        const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ') || '—';
+        const initials = ((u.first_name?.[0] || '') + (u.last_name?.[0] || '')).toUpperCase() || '?';
+
+        let queuedBadge = '<span class="text-muted small">—</span>';
+        if (u.queued) {
+            const s = u.queued.call_status || 'pending';
+            queuedBadge = `<span class="badge ${statusColor(s)} rounded-pill" title="Already in reminder list">
+                             <i class="bi bi-check2"></i> ${s}
+                           </span>`;
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="ps-4 text-muted small">${i + 1}</td>
+            <td>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white flex-shrink-0"
+                         style="width:36px;height:36px;font-size:.8rem;background:linear-gradient(135deg,#667eea,#764ba2);">
+                        ${initials}
+                    </div>
+                    <span class="fw-semibold">${highlight(fullName, q)}</span>
+                </div>
+            </td>
+            <td class="text-muted small font-monospace">${highlight(u.phone || '—', q)}</td>
+            <td><span class="badge bg-secondary rounded-pill px-2">${u.designation || '—'}</span></td>
+            <td id="certs-${u._id}">${certChips(u._id)}</td>
+            <td class="text-center">${queuedBadge}</td>`;
+        body.appendChild(tr);
+    });
+
+    renderSelectionBar();
+}
+
+function certChips(id) {
+    const sel = selection.get(id);
+    return CERTS.map(c => {
+        const active = sel && sel.certs.includes(c.key);
+        const cls = active ? c.active : 'btn-outline-secondary';
+        const icon = active ? 'bi-check-circle-fill' : 'bi-circle';
+        return `<button type="button" class="btn btn-sm rounded-pill px-3 me-1 ${cls}"
+                        onclick="toggleCert('${id}','${c.key}')">
+                    <i class="bi ${icon} me-1"></i>${c.label}
+                </button>`;
+    }).join('');
+}
+
+function toggleCert(id, cert) {
+    const u = resultsCache[id];
+    if (!u) return;
+
+    let sel = selection.get(id);
+    if (!sel) {
+        sel = {
+            user_id:    u._id,
+            xn_user_id: u.xn_user_id || null,
+            name:       [u.first_name, u.last_name].filter(Boolean).join(' ') || '—',
+            phone:      u.phone || '',
+            certs:      [],
+        };
+        selection.set(id, sel);
+    }
+
+    const i = sel.certs.indexOf(cert);
+    if (i >= 0) sel.certs.splice(i, 1);
+    else        sel.certs.push(cert);
+
+    if (sel.certs.length === 0) selection.delete(id);
+
+    const cell = document.getElementById(`certs-${id}`);
+    if (cell) cell.innerHTML = certChips(id);
+    renderSelectionBar();
+}
+
+function setAllVisible(mode) {
+    Object.keys(resultsCache).forEach(id => {
+        const u = resultsCache[id];
+        if (mode === 'none') {
+            selection.delete(id);
+        } else {
+            const certs = mode === 'both' ? ['PCC', 'Garda Vetting'] : [mode];
+            selection.set(id, {
+                user_id:    u._id,
+                xn_user_id: u.xn_user_id || null,
+                name:       [u.first_name, u.last_name].filter(Boolean).join(' ') || '—',
+                phone:      u.phone || '',
+                certs,
+            });
+        }
+        const cell = document.getElementById(`certs-${id}`);
+        if (cell) cell.innerHTML = certChips(id);
+    });
+    renderSelectionBar();
+}
+
+function highlight(text, q) {
+    if (!q || !text) return text;
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return String(text).replace(new RegExp(`(${escaped})`, 'gi'),
+        '<mark class="px-0 bg-warning bg-opacity-50 rounded-1">$1</mark>');
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('resultsCard').style.display    = 'none';
+    document.getElementById('noResultsState').style.display = 'none';
+    document.getElementById('emptyState').style.display     = '';
+    document.getElementById('bulkBar').style.cssText        = 'display:none!important;';
+}
+
+// ─────────────────── Selection bar (the group) ───────────────────
+function renderSelectionBar() {
+    const bar    = document.getElementById('selectionBar');
+    const count  = document.getElementById('selCount');
+    const chips  = document.getElementById('selChips');
+
+    count.textContent = selection.size;
+
+    if (selection.size === 0) {
+        bar.style.display = 'none';
+        chips.innerHTML = '';
+        return;
+    }
+    bar.style.display = 'block';
+
+    chips.innerHTML = Array.from(selection.values()).map(s => {
+        const tags = s.certs.map(c =>
+            `<span class="badge ${c === 'PCC' ? 'bg-primary' : 'bg-warning text-dark'} ms-1">${c}</span>`
+        ).join('');
+        return `<span class="badge bg-light text-dark border d-inline-flex align-items-center gap-1 py-2 px-2"
+                      style="white-space:nowrap;">
+                    <i class="bi bi-person-fill text-primary"></i>${s.name}${tags}
+                    <i class="bi bi-x-circle ms-1" style="cursor:pointer;"
+                       onclick="removeFromSelection('${s.user_id}')"></i>
+                </span>`;
+    }).join('');
+}
+
+function removeFromSelection(id) {
+    selection.delete(id);
+    const cell = document.getElementById(`certs-${id}`);
+    if (cell) cell.innerHTML = certChips(id);
+    renderSelectionBar();
+}
+
+function clearSelection() {
+    selection.clear();
+    document.querySelectorAll('[id^="certs-"]').forEach(cell => {
+        const id = cell.id.replace('certs-', '');
+        cell.innerHTML = certChips(id);
+    });
+    renderSelectionBar();
+}
+
+async function saveSelection() {
+    if (selection.size === 0) return;
+
+    const users = Array.from(selection.values()).map(s => ({
+        user_id:      s.user_id,
+        xn_user_id:   s.xn_user_id,
+        name:         s.name,
+        phone:        s.phone,
+        certificates: s.certs,
+    }));
+
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true;
+    try {
+        const res = await fetch('/admin/certificate_reminders/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ users }),
+        });
+        const data = await res.json();
+        if (!data.success) { Swal.fire('Error', data.error || 'Save failed', 'error'); return; }
+
+        let msg = `${data.saved} user(s) saved to the reminder list.`;
+        if (data.skipped && data.skipped.length) {
+            msg += `<br><span class="text-muted small">${data.skipped.length} skipped (no certificate selected).</span>`;
+        }
+        await Swal.fire({ icon: 'success', title: 'Saved!', html: msg, confirmButtonColor: '#667eea' });
+
+        selection.clear();
+        renderSelectionBar();
+        document.querySelectorAll('[id^="certs-"]').forEach(cell => {
+            const id = cell.id.replace('certs-', '');
+            cell.innerHTML = certChips(id);
+        });
+
+        // Jump to the queue tab
+        bootstrap.Tab.getOrCreateInstance(document.getElementById('queue-tab')).show();
+        loadQueue();
+    } catch (err) {
+        Swal.fire('Error', 'Network error – ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ─────────────────────── Queue / triggering ───────────────────────
+let currentFilter = '';
+let queueCache = {};   // id -> reminder
+
+document.getElementById('queue-tab').addEventListener('shown.bs.tab', loadQueue);
+
+function setFilter(btn, value) {
+    currentFilter = value;
+    document.querySelectorAll('#queuePane [data-filter]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadQueue();
+}
+
+async function loadQueue() {
+    try {
+        const url = currentFilter
+            ? `/admin/certificate_reminders/list?status=${encodeURIComponent(currentFilter)}`
+            : '/admin/certificate_reminders/list';
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.success) { Swal.fire('Error', data.error || 'Could not load reminders', 'error'); return; }
+        renderQueue(data.reminders);
+    } catch (err) {
+        Swal.fire('Error', 'Network error – ' + err.message, 'error');
+    }
+}
+
+function renderQueue(reminders) {
+    const body  = document.getElementById('queueBody');
+    const card  = document.getElementById('queueCard');
+    const empty = document.getElementById('queueEmpty');
+    const badge = document.getElementById('queueCountBadge');
+
+    body.innerHTML = '';
+    queueCache = {};
+    document.getElementById('qSelectAll').checked = false;
+    badge.textContent = reminders.length;
+
+    if (!reminders.length) {
+        card.style.display = 'none';
+        empty.style.display = '';
+        updateQueueSelCount();
+        return;
+    }
+    empty.style.display = 'none';
+    card.style.display = '';
+
+    reminders.forEach(r => {
+        queueCache[r._id] = r;
+        const certs = (r.certificates_needed || []).map(c =>
+            `<span class="badge ${c === 'PCC' ? 'bg-primary' : 'bg-warning text-dark'} me-1">${c}</span>`
+        ).join('') || '<span class="text-muted small">—</span>';
+
+        const status = r.call_status || 'pending';
+        const last = r.last_triggered_at
+            ? new Date(r.last_triggered_at).toLocaleString('en-GB',
+                { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : '<span class="text-muted small">Never</span>';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="ps-4">
+                <input type="checkbox" class="form-check-input q-check" data-id="${r._id}"
+                       onchange="updateQueueSelCount()">
+            </td>
+            <td class="fw-semibold">${r.name || '—'}</td>
+            <td class="text-muted small font-monospace">${r.phone || '—'}</td>
+            <td>${certs}</td>
+            <td class="text-center"><span class="badge ${statusColor(status)} rounded-pill px-3">${status}</span></td>
+            <td class="text-muted small">${last}</td>
+            <td class="text-center">
+                <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1"
+                        onclick="triggerOneConfirm('${r._id}')">
+                    <i class="bi bi-telephone-outbound"></i> Call
+                </button>
+                <button class="btn btn-outline-danger btn-sm rounded-pill"
+                        onclick="removeOne('${r._id}')" title="Remove">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>`;
+        body.appendChild(tr);
+    });
+
+    updateQueueSelCount();
+}
+
+function statusColor(s) {
+    return {
+        pending:   'bg-secondary',
+        triggered: 'bg-info text-dark',
+        completed: 'bg-success',
+        failed:    'bg-danger',
+    }[s] || 'bg-secondary';
+}
+
+function toggleSelectAll(box) {
+    document.querySelectorAll('.q-check').forEach(c => { c.checked = box.checked; });
+    updateQueueSelCount();
+}
+
+function updateQueueSelCount() {
+    const n = document.querySelectorAll('.q-check:checked').length;
+    document.getElementById('qSelCount').textContent = n;
+    document.getElementById('triggerSelectedBtn').disabled = n === 0;
+}
+
+// Build the reminder-call URL on the same origin.
+function callUrl(reminder) {
+    const certs = (reminder.certificates_needed || []).join(',');
+    return `${ORIGIN}/${CALL_ENDPOINT}`
+         + `?user_id=${encodeURIComponent(reminder.user_ref_id)}`
+         + `&certificates=${encodeURIComponent(certs)}`;
+}
+
+async function markStatus(id, status, error) {
+    const payload = { id, status };
+    if (error !== undefined) payload.error = error;
+    try {
+        await fetch('/admin/certificate_reminders/mark', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+    } catch { /* status update is best-effort */ }
+}
+
+// Fire one reminder call, returns true on success.
+async function triggerOne(id) {
+    const r = queueCache[id];
+    if (!r) return false;
+    try {
+        const res = await fetch(callUrl(r), { method: 'GET' });
+        if (res.ok) { await markStatus(id, 'triggered'); return true; }
+        await markStatus(id, 'failed', `${res.status} ${res.statusText}`);
+        return false;
+    } catch (err) {
+        await markStatus(id, 'failed', err.message);
+        return false;
+    }
+}
+
+async function triggerOneConfirm(id) {
+    const r = queueCache[id];
+    if (!r) return;
+    const { isConfirmed } = await Swal.fire({
+        title: 'Trigger reminder call?',
+        html: `<div class="text-start small">
+                 <strong>${r.name}</strong> — ${r.phone || 'no phone'}<br>
+                 Certificates: ${(r.certificates_needed || []).join(', ') || '—'}<br>
+                 <span class="text-muted font-monospace">${callUrl(r)}</span>
+               </div>`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#667eea',
+        confirmButtonText: 'Yes, call now',
+    });
+    if (!isConfirmed) return;
+
+    const ok = await triggerOne(id);
+    Swal.fire({
+        icon: ok ? 'success' : 'error',
+        title: ok ? 'Triggered!' : 'Failed',
+        text: ok ? `Reminder call sent to ${r.name}.` : `Could not reach the call endpoint for ${r.name}.`,
+        timer: ok ? 1800 : undefined,
+        showConfirmButton: !ok,
+    });
+    loadQueue();
+}
+
+async function triggerSelected() {
+    const ids = Array.from(document.querySelectorAll('.q-check:checked')).map(c => c.dataset.id);
+    if (!ids.length) return;
+
+    const { isConfirmed } = await Swal.fire({
+        title: `Trigger ${ids.length} reminder call(s)?`,
+        text: 'Each selected user will receive a reminder call.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#667eea',
+        confirmButtonText: 'Yes, call them',
+    });
+    if (!isConfirmed) return;
+
+    Swal.fire({ title: 'Triggering calls…', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    let ok = 0, fail = 0;
+    for (const id of ids) {
+        const success = await triggerOne(id);
+        success ? ok++ : fail++;
+    }
+
+    await Swal.fire({
+        icon: fail === 0 ? 'success' : 'warning',
+        title: 'Done',
+        html: `<div class="small">Triggered: <strong>${ok}</strong><br>Failed: <strong>${fail}</strong></div>`,
+        confirmButtonColor: '#667eea',
+    });
+    loadQueue();
+}
+
+async function removeOne(id) {
+    const r = queueCache[id];
+    const { isConfirmed } = await Swal.fire({
+        title: 'Remove from list?',
+        text: r ? `${r.name} will be removed from the reminder list.` : 'This reminder will be removed.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        confirmButtonText: 'Remove',
+    });
+    if (!isConfirmed) return;
+
+    try {
+        const res = await fetch('/admin/certificate_reminders/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (!data.success) { Swal.fire('Error', data.error || 'Delete failed', 'error'); return; }
+        loadQueue();
+    } catch (err) {
+        Swal.fire('Error', 'Network error – ' + err.message, 'error');
+    }
+}
+
+// Load the queue count on first paint
+loadQueue();
+</script>
+{% endblock %}
