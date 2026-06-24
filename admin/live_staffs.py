@@ -4795,6 +4795,232 @@ def live_staff_cron_generate_appform():
     })
 
 
+
+# ── Cron: Sync Garda Vetting & Police Clearance one staff at a time ───
+
+@admin_bp.route('/live-staffs/cron/sync-vetting', methods=['GET', 'POST'])
+def live_staff_cron_sync_vetting():
+    """
+    Cron job — processes ONE staff member per call.
+
+    For each staff member calls the XN Portal document-list API and checks:
+      - document_type_name == "Garda Vetting Document"
+        * status approved  → garda_vetting = 1
+        * status rejected/pending → garda_vetting = 0
+        * expiry_date passed today → garda_vetting_expired = 1 else 0
+      - document_type_name == "Police Clearance"
+        * same logic → police_clearance and police_clearance_expired
+
+    Both checked in a single API call per staff member.
+    Run one staff at a time until all processed (remaining_count == 0).
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    import requests as _req
+    from datetime import date as _date
+
+    # ── Auth ──────────────────────────────────────────────────────────
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+
+    if not base_url:
+        return jsonify({"success": False,
+                        "error": "LIVE_STAFF_URL not set"}), 500
+
+    col = _staffs_col()
+
+    # ── Find next staff without vetting synced ────────────────────────
+    pending_query = {
+        "$or": [
+            {"garda_vetting_synced": {"$exists": False}},
+            {"garda_vetting_synced": False},
+            {"garda_vetting_synced": None},
+        ]
+    }
+    remaining_total = col.count_documents(pending_query)
+
+    staff = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff vetting documents synced — nothing to do.",
+            "remaining_count": 0,
+        })
+
+    mongo_id  = str(staff['_id'])
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or '')
+
+    if not email:
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {"garda_vetting_synced": True,
+                      "garda_vetting_sync_note": "skipped — no email"}}
+        )
+        return jsonify({
+            "success":         True,
+            "message":         f"Skipped {mongo_id} — no email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Call XN Portal API ────────────────────────────────────────────
+    endpoint   = f"{base_url}/ai/recruitments/user-document-list"
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.post(
+            endpoint,
+            json={"email": email},
+            headers=api_headers,
+            timeout=30,
+        )
+        if resp.status_code == 405:
+            resp = _req.get(
+                endpoint,
+                params={"email": email},
+                headers=api_headers,
+                timeout=30,
+            )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as api_err:
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {"garda_vetting_synced": True,
+                      "garda_vetting_sync_note": f"API error: {api_err}"}}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"API error: {api_err}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not data.get('success'):
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {"garda_vetting_synced": True,
+                      "garda_vetting_sync_note": f"API error: {data.get('message')}"}}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           data.get('message', 'API returned success=false'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Parse documents ────────────────────────────────────────────────
+    api_data  = data.get('data') or {}
+    if isinstance(api_data, list):
+        documents = api_data
+    elif isinstance(api_data, dict):
+        documents = api_data.get('documents') or []
+    else:
+        documents = []
+
+    today = _date.today()
+
+    def _parse_expiry(expiry_str):
+        """Parse expiry date string, return date object or None."""
+        if not expiry_str:
+            return None
+        for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d'):
+            try:
+                from datetime import datetime as _dt
+                return _dt.strptime(str(expiry_str)[:10], fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    def _check_doc(doc_type_name):
+        """
+        Find a document by type name and return (status_int, expired_int).
+        status: 1=approved, 0=rejected/pending/missing
+        expired: 1=expired, 0=valid or no expiry
+        """
+        found = [
+            d for d in documents
+            if (d.get('document_type_name') or '').strip().lower()
+            == doc_type_name.strip().lower()
+        ]
+        if not found:
+            return None, None   # document not present at all
+
+        # Use the most recent / approved one if multiple
+        doc = found[0]
+        for d in found:
+            if (d.get('status') or '').lower() == 'approved':
+                doc = d
+                break
+
+        status_str = (doc.get('status') or '').strip().lower()
+        approved   = 1 if status_str == 'approved' else 0
+
+        expiry_date = _parse_expiry(doc.get('expiry_date'))
+        if expiry_date:
+            expired = 1 if expiry_date < today else 0
+        else:
+            expired = 0
+
+        return approved, expired
+
+    garda_status,  garda_expired  = _check_doc('Garda Vetting Document')
+    police_status, police_expired = _check_doc('Police Clearance')
+
+    # ── Save to live_staffs ───────────────────────────────────────────
+    update_fields = {
+        "garda_vetting_synced":  True,
+        "garda_vetting_synced_at": datetime.utcnow(),
+    }
+
+    if garda_status is not None:
+        update_fields["garda_vetting"]         = garda_status
+        update_fields["garda_vetting_expired"] = garda_expired
+    else:
+        update_fields["garda_vetting"]         = 0
+        update_fields["garda_vetting_expired"] = 0
+
+    if police_status is not None:
+        update_fields["police_clearance"]         = police_status
+        update_fields["police_clearance_expired"] = police_expired
+    else:
+        update_fields["police_clearance"]         = 0
+        update_fields["police_clearance_expired"] = 0
+
+    col.update_one({"_id": staff['_id']}, {"$set": update_fields})
+
+    return jsonify({
+        "success":               True,
+        "email":                 email,
+        "staff_name":            full_name,
+        "garda_vetting":         update_fields.get("garda_vetting"),
+        "garda_vetting_expired": update_fields.get("garda_vetting_expired"),
+        "police_clearance":         update_fields.get("police_clearance"),
+        "police_clearance_expired": update_fields.get("police_clearance_expired"),
+        "remaining_count":       max(0, remaining_total - 1),
+        "message": (
+            f"Vetting synced for {full_name} — "
+            f"{max(0, remaining_total - 1)} staff remaining."
+        ),
+        "synced_at": datetime.utcnow().isoformat(),
+    })
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
