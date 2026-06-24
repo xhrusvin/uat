@@ -325,11 +325,19 @@ select.parsley-success {
         </a>
     </div>
 
+
     <a class="nav-link {% if request.path.startswith('/admin/trigger_ai_call') %}active{% endif %}"
        href="{{ url_for('admin.trigger_ai_call') }}">
         <i class="bi bi-telephone"></i>
         <span>Trigger AI Call</span>
     </a>
+
+
+    <a class="nav-link {% if request.path.startswith('/admin/certificate_reminders') %}active{% endif %}"
+        href="/admin/certificate_reminders">
+            <i class="bi bi-file-earmark-check"></i>
+            <span>Reminder Calls</span>
+        </a>
 
     <a class="nav-link {% if request.path.startswith('/admin/prompts') %}active{% endif %}"
        href="{{ url_for('admin.prompts') }}">
@@ -394,7 +402,6 @@ select.parsley-success {
             <span>Bulk Messages</span>
         </a>
 
-
     </div>
 
     <a class="nav-link {% if request.path.startswith('/admin/ivr-calls') %}active{% endif %}"
@@ -408,6 +415,8 @@ select.parsley-success {
             <i class="bi bi-file-earmark-text me-2"></i> User Documents
         </a>
     </li>
+
+
 
     <!-- <li class="nav-item">
         <a class="nav-link" href="{{ url_for('gemini_call.trigger_call') }}">
