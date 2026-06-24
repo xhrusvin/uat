@@ -866,15 +866,27 @@ def _build_appform_docx(doc, signature_bytes=None):
         r2.font.name = 'Calibri'
         r2.font.color.rgb = BLACK
 
+    def _add_tick_run(para, checked):
+        """
+        Add a tick/box icon using Wingdings 2 font.
+        Wingdings 2: P = ✔ (tick), O = ☐ (empty box)
+        LibreOffice renders Wingdings 2 correctly during PDF conversion.
+        """
+        r = para.add_run('P' if checked else 'O')
+        r.font.name = 'Wingdings 2'
+        r.font.size = Pt(12)
+        r.font.color.rgb = BLACK
+        return r
+
     def add_checkbox_line(label, checked):
         p = d.add_paragraph()
         p.paragraph_format.space_before = Pt(2)
         p.paragraph_format.space_after  = Pt(2)
-        tick = '[X]' if checked else '[ ]'
-        r = p.add_run(f'{tick}  {label}')
-        r.font.name = 'Calibri'
-        r.font.size = Pt(11)
-        r.font.color.rgb = BLACK
+        _add_tick_run(p, checked)
+        r2 = p.add_run(f'  {label}')
+        r2.font.name = 'Calibri'
+        r2.font.size = Pt(11)
+        r2.font.color.rgb = BLACK
 
     def add_checkbox_row(items):
         """Multiple checkboxes on one line: [(label, checked), ...]"""
@@ -882,8 +894,8 @@ def _build_appform_docx(doc, signature_bytes=None):
         p.paragraph_format.space_before = Pt(3)
         p.paragraph_format.space_after  = Pt(3)
         for i, (label, checked) in enumerate(items):
-            tick = '[X]' if checked else '[ ]'
-            run  = p.add_run(f'{tick}  {label}')
+            _add_tick_run(p, checked)
+            run = p.add_run(f'  {label}')
             run.font.name = 'Calibri'
             run.font.size = Pt(11)
             run.font.color.rgb = BLACK
