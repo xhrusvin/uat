@@ -604,12 +604,21 @@ def live_staff_ai_appform_generate():
         if not doc:
             return jsonify({"success": False, "error": "Staff record not found"}), 404
 
-        docx_bytes = _build_appform_docx(doc)
-
         s1        = doc.get('section_1_personal_details') or {}
         full_name = _v(s1.get('full_name') or 'staff')
         email     = _v(doc.get('email'))
         emp_code  = _v(doc.get('employee_code') or '')
+
+        # Download signature from GCS if available
+        signature_bytes = None
+        sig_blob = _v(doc.get('signature_gcs_blob') or '')
+        if sig_blob:
+            try:
+                signature_bytes = _gcs_download(sig_blob)
+            except Exception:
+                signature_bytes = None
+
+        docx_bytes = _build_appform_docx(doc, signature_bytes=signature_bytes)
         safe_name = full_name.replace(' ', '_').replace('/', '_')
         filename  = f"AppForm_{safe_name}.docx"
         gcs_blob  = f"appforms/{filename}"
