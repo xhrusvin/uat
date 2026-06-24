@@ -4808,7 +4808,7 @@ def live_staff_cron_sync_vetting():
         * status approved  → garda_vetting = 1
         * status rejected/pending → garda_vetting = 0
         * expiry_date passed today → garda_vetting_expired = 1 else 0
-      - document_type_name == "Police Clearance"
+      - document_type_name == "Police Clearance Certificate ( From Country Of Birth )"
         * same logic → police_clearance and police_clearance_expired
 
     Both checked in a single API call per staff member.
@@ -4980,7 +4980,7 @@ def live_staff_cron_sync_vetting():
         return approved, expired
 
     garda_status,  garda_expired  = _check_doc('Garda Vetting Document')
-    police_status, police_expired = _check_doc('Police Clearance')
+    police_status, police_expired = _check_doc('Police Clearance Certificate ( From Country Of Birth )')
 
     # ── Save to live_staffs ───────────────────────────────────────────
     update_fields = {
