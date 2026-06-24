@@ -3407,6 +3407,186 @@ def live_staff_export_xlsx():
 
 
 
+@admin_bp.route('/live-staffs/export/vetting-xlsx')
+@admin_required
+def live_staff_export_vetting_xlsx():
+    """
+    Export 4 Excel files in one ZIP, each filtered by vetting status:
+
+    ?filter=no_garda         - garda_vetting == 0
+    ?filter=garda_expired    - garda_vetting_expired == 1
+    ?filter=no_police        - police_clearance == 0
+    ?filter=police_expired   - police_clearance_expired == 1
+    ?filter=all              - all staff with all 4 status columns (default)
+
+    Columns: Sno | Name | Email | Phone | Garda Vetting | Garda Expired | Police Clearance | Police Expired
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        filter_type = request.args.get('filter', 'all').lower()
+
+        FILTERS = {
+            'no_garda':       {"garda_vetting":          0},
+            'garda_expired':  {"garda_vetting_expired":  1},
+            'no_police':      {"police_clearance":       0},
+            'police_expired': {"police_clearance_expired": 1},
+            'all':            {},
+        }
+
+        TITLES = {
+            'no_garda':       'No Garda Vetting',
+            'garda_expired':  'Garda Vetting Expired',
+            'no_police':      'No Police Clearance',
+            'police_expired': 'Police Clearance Expired',
+            'all':            'All Staff — Vetting Status',
+        }
+
+        if filter_type not in FILTERS:
+            return jsonify({"success": False,
+                            "error": f"Invalid filter. Use: {', '.join(FILTERS.keys())}"}), 400
+
+        query = FILTERS[filter_type]
+        docs  = list(_staffs_col().find(
+            query,
+            {"section_1_personal_details": 1, "email": 1,
+             "garda_vetting": 1, "garda_vetting_expired": 1,
+             "police_clearance": 1, "police_clearance_expired": 1}
+        ))
+
+        # Sort by name
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        # ── Styles ────────────────────────────────────────────────────
+        NAVY   = '1B3A6B'; GREEN = '2E9E44'; RED = 'CC0000'
+        WHITE  = 'FFFFFF'; ALT   = 'EFF6FF'; WARN = 'FFF3CD'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=11)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Arial', size=10)
+        c_align = Alignment(horizontal='center', vertical='center')
+        l_align = Alignment(horizontal='left', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        def status_label(val, field_type):
+            if val is None:
+                return 'Not Checked'
+            if field_type == 'vetting':
+                return 'Approved' if val == 1 else 'No Garda Vetting'
+            if field_type == 'vetting_exp':
+                return 'Expired' if val == 1 else 'Valid'
+            if field_type == 'police':
+                return 'Approved' if val == 1 else 'No Police Clearance'
+            if field_type == 'police_exp':
+                return 'Expired' if val == 1 else 'Valid'
+            return str(val)
+
+        def cell_color(val, is_expired=False):
+            if val is None:
+                return PatternFill('solid', start_color='EEEEEE', end_color='EEEEEE')
+            if is_expired:
+                return PatternFill('solid', start_color=WARN, end_color=WARN) if val == 1 else None
+            return None if val == 1 else PatternFill('solid', start_color='FFDDDD', end_color='FFDDDD')
+
+        # ── Build workbook ────────────────────────────────────────────
+        wb    = Workbook()
+        ws    = wb.active
+        ws.title = TITLES[filter_type][:31]
+
+        # Title row
+        title_cell = ws.cell(row=1, column=1, value=TITLES[filter_type])
+        title_cell.font = Font(name='Arial', bold=True, size=13, color=NAVY)
+        ws.merge_cells('A1:H1')
+        ws.row_dimensions[1].height = 24
+
+        # Header row
+        headers    = ['Sno', 'Name', 'Email', 'Phone',
+                      'Garda Vetting', 'Garda Expired',
+                      'Police Clearance', 'Police Expired']
+        col_widths = [6, 32, 38, 18, 20, 18, 22, 18]
+
+        for col_idx, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=2, column=col_idx, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = border
+            ws.column_dimensions[cell.column_letter].width = width
+            # Green bottom border
+            cell.border = Border(
+                left=Side(style='thin', color='CCCCCC'),
+                right=Side(style='thin', color='CCCCCC'),
+                top=Side(style='thin', color='CCCCCC'),
+                bottom=Side(style='medium', color=GREEN)
+            )
+        ws.row_dimensions[2].height = 22
+        ws.freeze_panes = 'A3'
+        ws.auto_filter.ref = f'A2:H{len(docs) + 2}'
+
+        # Data rows
+        for row_idx, doc in enumerate(docs, start=3):
+            s1     = doc.get('section_1_personal_details') or {}
+            name   = _v(s1.get('full_name') or '')
+            email  = _v(doc.get('email') or '')
+            phone  = _v(s1.get('mobile_number') or '')
+            gv     = doc.get('garda_vetting')
+            ge     = doc.get('garda_vetting_expired')
+            pc     = doc.get('police_clearance')
+            pe     = doc.get('police_clearance_expired')
+
+            alt = PatternFill('solid', start_color=ALT, end_color=ALT) if row_idx % 2 == 0 else None
+
+            row_data = [
+                (row_idx - 2,              c_align, None),
+                (name,                     l_align, None),
+                (email,                    l_align, None),
+                (phone,                    l_align, None),
+                (status_label(gv,  'vetting'),     c_align, cell_color(gv)),
+                (status_label(ge,  'vetting_exp'), c_align, cell_color(ge, True)),
+                (status_label(pc,  'police'),      c_align, cell_color(pc)),
+                (status_label(pe,  'police_exp'),  c_align, cell_color(pe, True)),
+            ]
+
+            for col_idx, (val, align, fill) in enumerate(row_data, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                cell.font      = b_font
+                cell.alignment = align
+                cell.border    = border
+                if fill:
+                    cell.fill = fill
+                elif alt:
+                    cell.fill = alt
+
+            ws.row_dimensions[row_idx].height = 17
+
+        # Summary row
+        summary_row = len(docs) + 3
+        ws.cell(row=summary_row, column=1,
+                value=f'Total: {len(docs)} staff').font = Font(name='Arial', bold=True, size=10)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        xlsx_bytes = buf.getvalue()
+
+        date_str  = datetime.utcnow().strftime('%Y%m%d')
+        file_name = f"vetting_{filter_type}_{date_str}.xlsx"
+
+        return Response(
+            xlsx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition": f'attachment; filename="{file_name}"'}
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+
 # ── Cron: Sync document list from XN Portal ───────────────────────────
 
 @admin_bp.route('/live-staffs/cron/sync-documents', methods=['GET', 'POST'])

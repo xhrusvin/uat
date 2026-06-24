@@ -19,7 +19,8 @@
                 <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
                     <i class="bi bi-download"></i> Export
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" style="min-width:280px;">
+                    <li><h6 class="dropdown-header text-muted small">General</h6></li>
                     <li>
                         <a class="dropdown-item" href="{{ url_for('admin.live_staff_export') }}?format=json">
                             <i class="bi bi-filetype-json me-2 text-warning"></i>Export as JSON
@@ -30,10 +31,31 @@
                             <i class="bi bi-filetype-csv me-2 text-success"></i>Export as CSV
                         </a>
                     </li>
-                    <li><hr class="dropdown-divider"></li>
                     <li>
                         <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_xlsx') }}">
-                            <i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Export Points (Excel)
+                            <i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Staff Points (Excel)
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><h6 class="dropdown-header text-muted small">Vetting Status</h6></li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_vetting_xlsx') }}?filter=no_garda">
+                            <i class="bi bi-shield-x me-2 text-danger"></i>No Garda Vetting
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_vetting_xlsx') }}?filter=garda_expired">
+                            <i class="bi bi-shield-exclamation me-2 text-warning"></i>Garda Vetting Expired
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_vetting_xlsx') }}?filter=no_police">
+                            <i class="bi bi-file-earmark-x me-2 text-danger"></i>No Police Clearance
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_vetting_xlsx') }}?filter=police_expired">
+                            <i class="bi bi-file-earmark-exclamation me-2 text-warning"></i>Police Clearance Expired
                         </a>
                     </li>
                 </ul>
