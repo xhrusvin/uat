@@ -3587,6 +3587,527 @@ def live_staff_export_vetting_xlsx():
 
 
 
+
+# ── External API: Generate documents via static API key ──────────────
+# Header: X-API-Key: <LIVE_STAFF_API_KEY env var>
+# Body:   {"staff_id": "<mongo _id>"}
+# ─────────────────────────────────────────────────────────────────────
+
+def _validate_api_key():
+    """Validate X-API-Key header against LIVE_STAFF_API_KEY env var."""
+    expected = os.environ.get('LIVE_STAFF_API_KEY', '').strip()
+    if not expected:
+        return False, "LIVE_STAFF_API_KEY not configured on server"
+    provided = (request.headers.get('X-API-Key') or '').strip()
+    if not provided:
+        return False, "Missing X-API-Key header"
+    if provided != expected:
+        return False, "Invalid API key"
+    return True, None
+
+
+@admin_bp.route('/live-staffs/api/generate-cv', methods=['POST'])
+def api_generate_cv():
+    """
+    External API — generate AI CV for a staff member.
+
+    Headers:
+      X-API-Key: <LIVE_STAFF_API_KEY>
+      Content-Type: application/json
+
+    Body:
+      {"staff_id": "68abc123..."}
+
+    Response:
+      {"success": true, "staff_name": "...", "cv_filename": "...", "gcs_blob": "..."}
+    """
+    ok, err = _validate_api_key()
+    if not ok:
+        return jsonify({"success": False, "error": err}), 401
+
+    data     = request.get_json(silent=True) or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id in request body"}), 400
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": f"Staff not found: {staff_id}"}), 404
+
+        s1        = doc.get('section_1_personal_details') or {}
+        s3        = doc.get('section_3_professional_registration') or {}
+        s4        = doc.get('section_4_qualifications') or {}
+        s5        = doc.get('section_5_employment_history') or {}
+        s8        = doc.get('section_8_garda_vetting_police_clearance') or {}
+        s9        = doc.get('section_9_occupational_health') or {}
+        s10       = doc.get('section_10_mandatory_training') or {}
+        visa      = s1.get('work_permit_visa_status') or {}
+
+        def _vv(v): return '' if v is None else str(v).strip()
+
+        full_name   = _vv(s1.get('full_name'))
+        email       = _vv(doc.get('email'))
+        user_type   = _vv(doc.get('user_type'))
+        emp_code    = _vv(doc.get('employee_code'))
+        address     = _vv(s1.get('address'))
+        mobile      = _vv(s1.get('mobile_number'))
+        nationality = _vv(s1.get('nationality'))
+        total_exp   = _vv(s5.get('total_experience'))
+        divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+        reg_pin     = _vv(s3.get('registration_number_pin'))
+        reg_exp     = _vv(s3.get('registration_expiry_date'))
+        nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+        visa_type   = _vv(visa.get('visa_type'))
+        perm_work   = _vv(visa.get('permission_to_work'))
+        garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
+        fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
+
+        qual_lines = []
+        for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
+            q = s4.get(qk) or {}
+            if q.get('qualification') or q.get('institution'):
+                qual_lines.append(
+                    f"  - {_vv(q.get('qualification'))} | "
+                    f"{_vv(q.get('institution'))} | "
+                    f"{_vv(q.get('year_completed'))}"
+                )
+
+        entries   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+        exp_lines = [
+            f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} "
+            f"({_vv(e.get('from'))} - {_vv(e.get('to') or 'Present')})"
+            for e in entries
+        ]
+
+        TLABELS = {
+            'manual_handling': 'Manual Handling', 'cpr_bls': 'CPR / BLS',
+            'fire_safety': 'Fire Safety',
+            'infection_prevention_control': 'Infection Prevention & Control',
+            'hand_hygiene': 'Hand Hygiene', 'safeguarding': 'Safeguarding',
+        }
+        certs = [label for k, label in TLABELS.items() if s10.get(k)][:6]
+
+        extracted_cv = _v(doc.get('extracted_cv') or '')
+        has_extracted = (
+            extracted_cv and
+            not extracted_cv.startswith('[') and
+            extracted_cv != 'No doc found'
+        )
+
+        data_summary = f"""
+Candidate: {full_name}
+Role / User Type: {user_type}
+Employee Code: {emp_code}
+Address: {address}
+Mobile: {mobile}
+Email: {email}
+Nationality: {nationality}
+Total Experience: {total_exp}
+Divisions / Speciality: {divisions}
+Registration PIN: {reg_pin}
+Registration Expiry: {reg_exp}
+NMBI Active Declaration: {nmbi}
+Permission to Work: {perm_work}
+Visa / Stamp Type: {visa_type}
+Garda Vetted: {garda}
+Fit for Nursing Duties: {fit}
+
+Qualifications:
+{chr(10).join(qual_lines) if qual_lines else "  None recorded"}
+
+Employment History:
+{chr(10).join(exp_lines) if exp_lines else "  None recorded"}
+
+Training & Certifications:
+{chr(10).join("  - " + c for c in certs) if certs else "  None recorded"}
+""".strip()
+
+        extracted_cv_section = f"""
+EXTRACTED CV TEXT (use as PRIMARY source for PROFESSIONAL EXPERIENCE, TRAINING & CERTIFICATIONS and KEY SKILLS):
+{extracted_cv[:8000]}
+""" if has_extracted else ""
+
+        prompt = f"""You are an expert professional CV writer specialising in Irish healthcare staffing.
+
+STRICT RULE — NO HALLUCINATION: Use ONLY the exact facts in CANDIDATE DATA.
+
+Structure (EXACT UPPERCASE headings on their own line):
+PERSONAL DETAILS
+PROFESSIONAL PROFILE
+EDUCATION & QUALIFICATIONS
+PROFESSIONAL EXPERIENCE
+TRAINING & CERTIFICATIONS
+KEY SKILLS
+ADDITIONAL INFORMATION
+
+Rules:
+- PERSONAL DETAILS: "Label: Value" per line. Skip blank fields.
+- PROFESSIONAL PROFILE: 2 paragraphs, FIRST PERSON.
+- EDUCATION & QUALIFICATIONS: Qualification Name | Institution | Year
+- PROFESSIONAL EXPERIENCE: Job Title: / Employer: / Dates: / Duties: / - duty
+- TRAINING & CERTIFICATIONS: Bullet list only.
+- KEY SKILLS: 8-10 bullets.
+- ADDITIONAL INFORMATION: Include ONLY these two lines:
+Driving Licence: No
+Own Transport: No
+
+---
+CANDIDATE DATA:
+{data_summary}
+{extracted_cv_section}
+---
+
+Output CV text only. No preamble, no markdown symbols.
+"""
+
+        from google import genai as google_genai
+        client   = google_genai.Client(api_key=gemini_key)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        cv_text  = response.text.strip()
+
+        docx_bytes  = _build_ai_cv_docx(doc, cv_text)
+        safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        cv_filename = f"{safe_name}.docx"
+        gcs_blob    = f"cv/{cv_filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        col      = _ai_cvs_col()
+        existing = col.find_one({"staff_id": str(doc['_id'])})
+        ai_doc   = {
+            "staff_id":      str(doc['_id']),
+            "staff_name":    full_name,
+            "employee_code": emp_code,
+            "cv_text":       cv_text,
+            "cv_filename":   cv_filename,
+            "gcs_blob":      gcs_blob,
+            "generated_at":  datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": ai_doc})
+            ai_id = str(existing["_id"])
+        else:
+            ai_id = str(col.insert_one(ai_doc).inserted_id)
+
+        _push_hse_document_background(
+            staff_id_str=staff_id, doc_type_key='cv',
+            docx_bytes=docx_bytes, staff_name=full_name,
+            mongo_id=staff_id, email=email,
+        )
+
+        return jsonify({
+            "success":     True,
+            "staff_id":    staff_id,
+            "staff_name":  full_name,
+            "cv_id":       ai_id,
+            "cv_filename": cv_filename,
+            "gcs_blob":    gcs_blob,
+            "generated_at": datetime.utcnow().isoformat(),
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/api/generate-interview', methods=['POST'])
+def api_generate_interview():
+    """
+    External API — generate AI Interview Notes for a staff member.
+
+    Headers:
+      X-API-Key: <LIVE_STAFF_API_KEY>
+      Content-Type: application/json
+
+    Body:
+      {"staff_id": "68abc123..."}
+    """
+    ok, err = _validate_api_key()
+    if not ok:
+        return jsonify({"success": False, "error": err}), 401
+
+    data     = request.get_json(silent=True) or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id in request body"}), 400
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": f"Staff not found: {staff_id}"}), 404
+
+        s1        = doc.get('section_1_personal_details') or {}
+        s3        = doc.get('section_3_professional_registration') or {}
+        s5        = doc.get('section_5_employment_history') or {}
+        s8        = doc.get('section_8_garda_vetting_police_clearance') or {}
+        s9        = doc.get('section_9_occupational_health') or {}
+        s10       = doc.get('section_10_mandatory_training') or {}
+        visa      = s1.get('work_permit_visa_status') or {}
+
+        def _vv(v): return '' if v is None else str(v).strip()
+
+        full_name   = _vv(s1.get('full_name'))
+        email       = _vv(doc.get('email'))
+        user_type   = _vv(doc.get('user_type') or 'Nurse')
+        emp_code    = _vv(doc.get('employee_code'))
+        address     = _vv(s1.get('address'))
+        nationality = _vv(s1.get('nationality'))
+        reg_pin     = _vv(s3.get('registration_number_pin'))
+        visa_type   = _vv(visa.get('visa_type'))
+        divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+        total_exp   = _vv(s5.get('total_experience'))
+        nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+        garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
+        bls         = 'Yes' if s10.get('cpr_bls') else 'No'
+        manual      = 'Yes' if s10.get('manual_handling') else 'No'
+        fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
+
+        entries   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+        exp_lines = [
+            f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} "
+            f"({_vv(e.get('from'))} – {_vv(e.get('to') or 'Present')})"
+            for e in entries[:5]
+        ]
+
+        TLABELS = {
+            'manual_handling': 'Manual Handling', 'cpr_bls': 'BLS/CPR',
+            'safeguarding': 'Safeguarding', 'fire_safety': 'Fire Safety',
+            'infection_prevention_control': 'Infection Prevention & Control',
+        }
+        certs = [label for k, label in TLABELS.items() if s10.get(k)]
+
+        county = ''
+        if address:
+            parts = [p.strip() for p in address.replace(',', ' ').split()]
+            for p in parts:
+                if p.lower().startswith('co.') or p.lower() == 'county':
+                    idx = parts.index(p)
+                    county = parts[idx + 1] if idx + 1 < len(parts) else ''
+                    break
+            if not county and parts:
+                county = parts[-1]
+
+        data_summary = f"""
+Name: {full_name}
+Role / User Type: {user_type}
+Address / Location: {address}
+Nationality: {nationality}
+Visa / Stamp Type: {visa_type}
+NMBI Registration PIN: {reg_pin}
+NMBI Registration Active: {nmbi}
+Divisions / Speciality: {divisions}
+Total Experience: {total_exp}
+Garda Vetted: {garda}
+BLS/CPR on file: {bls}
+Manual Handling on file: {manual}
+Fit for Duties: {fit}
+
+Employment History:
+{chr(10).join(exp_lines) if exp_lines else "  None recorded"}
+
+Certifications on file: {", ".join(certs) if certs else "None recorded"}
+""".strip()
+
+        prompt = f"""You are an experienced nursing recruitment consultant at Xpress Health, Ireland.
+
+Complete a realistic professional interview notes template using ONLY the candidate data below.
+Write answers in first person, conversational but professional. NO HALLUCINATION.
+Assessment scores: pick varied random scores 3.5–5/5 in 0.5 increments.
+
+Output ONLY the completed template — no preamble, no markdown:
+
+---
+Completed {user_type} Interview
+
+Name: [full name]
+Location: [county/city]
+NMBI PIN: [pin or N/A]
+Visa Status: [visa type]
+
+Experience
+
+1. Tell me about your nursing experience.
+[4–6 sentence first-person answer using only data provided]
+
+2. How many years in Ireland?
+[realistic answer from employment history]
+
+3. Acute, Nursing Home, Community, or Mental Health?
+[most relevant care setting from employment history]
+
+Clinical Questions
+
+1. How would you manage a deteriorating patient?
+[4–5 sentence clinically accurate answer for a {user_type}, using ABCDE/NEWS2/ISBAR]
+
+2. What would you do if you witnessed a medication error?
+[4–5 sentence answer covering patient safety, reporting, documentation, prevention]
+
+Compliance
+NMBI Registration: [Yes/No]
+BLS/CPR: [Yes/No]
+Manual Handling: [Yes/No]
+Garda Vetting: [Yes/No]
+References: Yes
+
+Availability
+Preferred counties: [county from address]
+Day/Night/Both: Both
+Earliest start date: Immediate
+
+Assessment
+Communication: [score/5]
+Clinical Knowledge: [score/5]
+Experience: [score/5]
+Suitable: Yes
+---
+
+CANDIDATE DATA:
+{data_summary}
+"""
+
+        from google import genai as google_genai
+        client         = google_genai.Client(api_key=gemini_key)
+        response       = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        interview_text = response.text.strip().strip('-').strip()
+
+        docx_bytes = _build_interview_docx(doc, interview_text)
+        safe_name  = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        filename   = f"Interview_{safe_name}_{staff_id}.docx"
+        gcs_blob   = f"interviews/{filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        col      = _ai_interviews_col()
+        existing = col.find_one({"staff_id": str(doc['_id'])})
+        rec = {
+            "staff_id":       str(doc['_id']),
+            "staff_name":     full_name,
+            "employee_code":  emp_code,
+            "interview_text": interview_text,
+            "filename":       filename,
+            "gcs_blob":       gcs_blob,
+            "generated_at":   datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+            rec_id = str(existing["_id"])
+        else:
+            rec_id = str(col.insert_one(rec).inserted_id)
+
+        _push_hse_document_background(
+            staff_id_str=staff_id, doc_type_key='interview',
+            docx_bytes=docx_bytes, staff_name=full_name,
+            mongo_id=staff_id, email=email,
+        )
+
+        return jsonify({
+            "success":       True,
+            "staff_id":      staff_id,
+            "staff_name":    full_name,
+            "interview_id":  rec_id,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "generated_at":  datetime.utcnow().isoformat(),
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/api/generate-appform', methods=['POST'])
+def api_generate_appform():
+    """
+    External API — generate Application Form for a staff member.
+
+    Headers:
+      X-API-Key: <LIVE_STAFF_API_KEY>
+      Content-Type: application/json
+
+    Body:
+      {"staff_id": "68abc123..."}
+    """
+    ok, err = _validate_api_key()
+    if not ok:
+        return jsonify({"success": False, "error": err}), 401
+
+    data     = request.get_json(silent=True) or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id in request body"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": f"Staff not found: {staff_id}"}), 404
+
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        email     = _v(doc.get('email'))
+        emp_code  = _v(doc.get('employee_code') or '')
+
+        # Download signature from GCS if available
+        signature_bytes = None
+        sig_blob = _v(doc.get('signature_gcs_blob') or '')
+        if sig_blob:
+            try:
+                signature_bytes = _gcs_download(sig_blob)
+            except Exception:
+                signature_bytes = None
+
+        docx_bytes = _build_appform_docx(doc, signature_bytes=signature_bytes)
+        safe_name  = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        filename   = f"AppForm_{safe_name}.docx"
+        gcs_blob   = f"appforms/{filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        col      = _ai_appforms_col()
+        existing = col.find_one({"staff_id": str(doc['_id'])})
+        rec = {
+            "staff_id":      str(doc['_id']),
+            "staff_name":    full_name,
+            "employee_code": emp_code,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "has_signature": bool(signature_bytes),
+            "generated_at":  datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+            rec_id = str(existing["_id"])
+        else:
+            rec_id = str(col.insert_one(rec).inserted_id)
+
+        _push_hse_document_background(
+            staff_id_str=staff_id, doc_type_key='appform',
+            docx_bytes=docx_bytes, staff_name=full_name,
+            mongo_id=staff_id, email=email,
+        )
+
+        return jsonify({
+            "success":       True,
+            "staff_id":      staff_id,
+            "staff_name":    full_name,
+            "appform_id":    rec_id,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "has_signature": bool(signature_bytes),
+            "generated_at":  datetime.utcnow().isoformat(),
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ── Cron: Sync document list from XN Portal ───────────────────────────
 
 @admin_bp.route('/live-staffs/cron/sync-documents', methods=['GET', 'POST'])
