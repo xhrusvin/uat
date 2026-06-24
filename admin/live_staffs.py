@@ -584,6 +584,25 @@ def _ai_appforms_col():
     return db.live_staff_ai_appforms
 
 
+@admin_bp.route('/live-staffs/ai-appform/reset-all', methods=['POST'])
+@admin_required
+def live_staff_ai_appform_reset_all():
+    """
+    Delete all saved application forms from MongoDB so the cron
+    will regenerate them with the latest template.
+    POST /admin/live-staffs/ai-appform/reset-all
+    """
+    try:
+        result = _ai_appforms_col().delete_many({})
+        return jsonify({
+            "success": True,
+            "deleted": result.deleted_count,
+            "message": f"Cleared {result.deleted_count} application forms — cron will regenerate them.",
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ── Generate AI Application Form ──────────────────────────────────────
 
 @admin_bp.route('/live-staffs/ai-appform/generate', methods=['POST'])
@@ -923,7 +942,6 @@ def _build_appform_docx(doc, signature_bytes=None):
     add_field('Eircode/Postcode:', eircode)
     add_field('Mobile Number:', mobile)
     add_field('Work Permit / Visa Status:', perm_work or ('Yes' if visa.get('visa_type') else ''))
-    add_field('PPS Number (if applicable)', pps)
 
     # ── Section 2: Identity Verification ─────────────────────────────
     add_section_heading('Identity Verification')
