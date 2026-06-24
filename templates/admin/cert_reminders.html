@@ -5,12 +5,18 @@
 <div class="container-fluid px-4 py-4">
 
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-        <h2 class="mb-0 fw-bold text-primary">
-            <i class="bi bi-file-earmark-medical me-2"></i>Certificate Reminder Calls
-        </h2>
-        <p class="text-muted mb-0 small">
-            Remind users to submit their <strong>PCC</strong> and/or <strong>Garda Vetting</strong> certificate.
-        </p>
+        <div>
+            <h2 class="mb-0 fw-bold text-primary">
+                <i class="bi bi-file-earmark-medical me-2"></i>Certificate Reminder Calls
+            </h2>
+            <p class="text-muted mb-0 small">
+                Remind users to submit their <strong>PCC</strong> and/or <strong>Garda Vetting</strong> certificate.
+            </p>
+        </div>
+        <button class="btn btn-success fw-semibold rounded-pill px-4"
+                data-bs-toggle="modal" data-bs-target="#importModal">
+            <i class="bi bi-file-earmark-excel me-1"></i> Import from Excel
+        </button>
     </div>
 
     <!-- Tabs -->
@@ -166,6 +172,54 @@
             <button class="btn btn-primary fw-semibold px-4" id="saveBtn" onclick="saveSelection()">
                 <i class="bi bi-save me-1"></i> Save to reminder list
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- Import from Excel Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header text-white rounded-top-4"
+                 style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-file-earmark-excel me-2"></i>Import from Excel
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="mb-2">Upload an <strong>.xlsx</strong> or <strong>.csv</strong> file with these columns:</p>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm table-bordered mb-1 small">
+                        <thead class="table-light">
+                            <tr><th>email</th><th>PCC</th><th>Garda Vetting</th><th>Both</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>jane@x.ie</td><td>x</td><td></td><td></td></tr>
+                            <tr><td>tom@x.ie</td><td></td><td></td><td>x</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-muted small">
+                    Mark a cell (e.g. <code>x</code>, <code>yes</code>, <code>1</code>, <code>True</code>) under the certificate each
+                    person needs. <strong>Both</strong> applies PCC and Garda Vetting together. Each email is matched
+                    to an existing user; unmatched emails are reported and skipped.
+                </p>
+
+                <a href="#" class="small" onclick="downloadSample(event)">
+                    <i class="bi bi-download me-1"></i>Download sample CSV
+                </a>
+
+                <div class="mt-3">
+                    <input type="file" id="importFile" class="form-control" accept=".xlsx,.csv">
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success fw-semibold" id="importBtn" onclick="importExcel()">
+                    <i class="bi bi-upload me-1"></i> Import
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -655,6 +709,83 @@ async function removeOne(id) {
         loadQueue();
     } catch (err) {
         Swal.fire('Error', 'Network error – ' + err.message, 'error');
+    }
+}
+
+// ─────────────────────────── Import ───────────────────────────
+function downloadSample(e) {
+    e.preventDefault();
+    const csv = 'email,PCC,Garda Vetting,Both\n'
+              + 'jane@example.ie,x,,\n'
+              + 'tom@example.ie,,x,\n'
+              + 'mary@example.ie,,,x\n';
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'certificate_reminders_sample.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+async function importExcel() {
+    const input = document.getElementById('importFile');
+    const file = input.files[0];
+    if (!file) { Swal.fire('No file', 'Please choose an .xlsx or .csv file first.', 'info'); return; }
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    const btn = document.getElementById('importBtn');
+    btn.disabled = true;
+    Swal.fire({ title: 'Importing…', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    try {
+        const res = await fetch('/admin/certificate_reminders/import', { method: 'POST', body: fd });
+        const data = await res.json();
+
+        if (!data.success) { Swal.fire('Import failed', data.error || 'Could not import file', 'error'); return; }
+
+        const notFound = data.not_found || [];
+        const noCert   = data.no_cert || [];
+
+        let html = `<div class="text-start">
+            <p class="mb-2"><i class="bi bi-check-circle-fill text-success me-1"></i>
+            <strong>${data.imported}</strong> reminder(s) imported / updated
+            <span class="text-muted">(of ${data.total_rows} row(s))</span>.</p>`;
+
+        if (notFound.length) {
+            html += `<details class="mb-2"><summary class="text-danger">
+                       ${notFound.length} email(s) not matched to a user</summary>
+                       <ul class="small mb-0 mt-1">` +
+                     notFound.map(r => `<li>Row ${r.row}: ${r.email}</li>`).join('') +
+                     `</ul></details>`;
+        }
+        if (noCert.length) {
+            html += `<details><summary class="text-warning">
+                       ${noCert.length} row(s) had no certificate marked</summary>
+                       <ul class="small mb-0 mt-1">` +
+                     noCert.map(r => `<li>Row ${r.row}: ${r.email}</li>`).join('') +
+                     `</ul></details>`;
+        }
+        html += `</div>`;
+
+        await Swal.fire({
+            icon: (notFound.length || noCert.length) ? 'warning' : 'success',
+            title: 'Import complete',
+            html,
+            confirmButtonColor: '#667eea',
+            width: 520,
+        });
+
+        // Reset + close modal, then show the queue
+        input.value = '';
+        bootstrap.Modal.getInstance(document.getElementById('importModal'))?.hide();
+        bootstrap.Tab.getOrCreateInstance(document.getElementById('queue-tab')).show();
+        loadQueue();
+    } catch (err) {
+        Swal.fire('Error', 'Network error – ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
     }
 }
 

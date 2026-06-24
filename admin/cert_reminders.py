@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 import re
+import csv
+import io
 
 from flask import render_template, request, jsonify
 from bson import ObjectId
@@ -31,6 +33,84 @@ def _users_col():
 
 def _reminders_col():
     return db.certificate_reminder_calls
+
+
+# ── Shared helpers ───────────────────────────────────────────────────
+def _upsert_reminder(user_ref_id, name, phone, xn_user_id, certs,
+                     now=None, source="manual"):
+    """
+    Insert or update a reminder record keyed on user_ref_id, so re-adding
+    a user updates their required certificates instead of duplicating.
+    Existing call_status is preserved on update.
+    """
+    now = now or datetime.now(timezone.utc)
+    _reminders_col().update_one(
+        {"user_ref_id": str(user_ref_id)},
+        {
+            "$set": {
+                "name":                (name or "—"),
+                "phone":               (phone or ""),
+                "xn_user_id":          xn_user_id,
+                "certificates_needed": certs,
+                "updated_at":          now,
+            },
+            "$setOnInsert": {
+                "user_ref_id": str(user_ref_id),
+                "call_status": "pending",
+                "created_at":  now,
+                "source":      source,
+            },
+        },
+        upsert=True,
+    )
+
+
+# Cell values that mean "not flagged" in the import sheet.
+_NEGATIVE_TOKENS = {"", "0", "no", "n", "false", "f", "none", "nan", "na", "n/a", "-"}
+
+
+def _is_flagged(value):
+    """A cell counts as flagged if it holds any affirmative marker (x, yes, 1, ✓, …)."""
+    if value is None:
+        return False
+    return str(value).strip().lower() not in _NEGATIVE_TOKENS
+
+
+def _find_col(col_idx, *names):
+    """Return the index of the first header name found in col_idx, else None."""
+    for n in names:
+        if n in col_idx:
+            return col_idx[n]
+    return None
+
+
+def _parse_table(file_storage):
+    """
+    Read an uploaded .xlsx or .csv into (header_list, data_rows).
+    Raises ValueError with a clear message on unreadable input.
+    """
+    filename = (file_storage.filename or "").lower()
+    raw = file_storage.read()
+
+    if filename.endswith(".csv"):
+        text = raw.decode("utf-8-sig", errors="replace")
+        rows = list(csv.reader(io.StringIO(text)))
+        if not rows:
+            return [], []
+        return rows[0], rows[1:]
+
+    # default: treat as xlsx
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        raise ValueError("openpyxl is not installed — run: pip install openpyxl")
+
+    wb = load_workbook(filename=io.BytesIO(raw), read_only=True, data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return [], []
+    return list(rows[0]), [list(r) for r in rows[1:]]
 
 
 # ── Pages ────────────────────────────────────────────────────────────
@@ -150,29 +230,114 @@ def certificate_reminders_save():
             phone = (s.get('phone') or '').strip()
             xn_user_id = s.get('xn_user_id')
 
-            # Upsert keyed on the user reference so re-adding a user
-            # updates their required certificates instead of duplicating.
-            _reminders_col().update_one(
-                {"user_ref_id": ref_id},
-                {
-                    "$set": {
-                        "name":                name,
-                        "phone":               phone,
-                        "xn_user_id":          xn_user_id,
-                        "certificates_needed": certs,
-                        "updated_at":          now,
-                    },
-                    "$setOnInsert": {
-                        "user_ref_id": ref_id,
-                        "call_status": "pending",
-                        "created_at":  now,
-                    },
-                },
-                upsert=True,
-            )
+            _upsert_reminder(ref_id, name, phone, xn_user_id, certs, now=now)
             saved += 1
 
         return jsonify({"success": True, "saved": saved, "skipped": skipped})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Import from Excel / CSV ──────────────────────────────────────────
+@admin_bp.route('/certificate_reminders/import', methods=['POST'])
+@admin_required
+def certificate_reminders_import():
+    """
+    Accept an .xlsx/.csv with columns: email, PCC, Garda Vetting, Both.
+    For each row, look up the user by email and upsert a reminder record.
+    """
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+
+    f = request.files['file']
+    if not f or not f.filename:
+        return jsonify({"success": False, "error": "No file selected"}), 400
+
+    try:
+        header, data_rows = _parse_table(f)
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Could not read file: {e}"}), 400
+
+    if not header:
+        return jsonify({"success": False, "error": "The file is empty"}), 400
+
+    # Map header names (case-insensitive) to column indexes
+    col_idx = {}
+    for i, h in enumerate(header):
+        if h is None:
+            continue
+        col_idx[str(h).strip().lower()] = i
+
+    email_i = _find_col(col_idx, "email", "e-mail", "email address")
+    pcc_i   = _find_col(col_idx, "pcc", "police clearance", "police clearance certificate")
+    garda_i = _find_col(col_idx, "garda vetting", "garda", "garda_vetting",
+                        "gardavetting", "garda vetting certificate")
+    both_i  = _find_col(col_idx, "both")
+
+    if email_i is None:
+        return jsonify({"success": False,
+                        "error": "No 'email' column found in the file"}), 400
+    if pcc_i is None and garda_i is None and both_i is None:
+        return jsonify({"success": False,
+                        "error": "No 'PCC', 'Garda Vetting', or 'Both' column found"}), 400
+
+    def cell(row, i):
+        return row[i] if (i is not None and i < len(row)) else None
+
+    now = datetime.now(timezone.utc)
+    imported = 0
+    not_found = []   # email not in users collection
+    no_cert = []     # row has no certificate flagged
+
+    try:
+        for n, row in enumerate(data_rows, start=2):   # row 2 = first data row under the header
+            email = cell(row, email_i)
+            if email is None or str(email).strip() == "":
+                continue   # blank line
+
+            email = str(email).strip()
+
+            if _is_flagged(cell(row, both_i)):
+                certs = ["PCC", "Garda Vetting"]
+            else:
+                certs = []
+                if _is_flagged(cell(row, pcc_i)):
+                    certs.append("PCC")
+                if _is_flagged(cell(row, garda_i)):
+                    certs.append("Garda Vetting")
+
+            if not certs:
+                no_cert.append({"row": n, "email": email})
+                continue
+
+            user = _users_col().find_one(
+                {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}},
+                {"_id": 1, "xn_user_id": 1, "first_name": 1, "last_name": 1, "phone": 1},
+            )
+            if not user:
+                not_found.append({"row": n, "email": email})
+                continue
+
+            name = " ".join(
+                p for p in [user.get("first_name"), user.get("last_name")] if p
+            ).strip() or "—"
+
+            _upsert_reminder(
+                user["_id"], name, user.get("phone"),
+                user.get("xn_user_id"), certs, now=now, source="import",
+            )
+            imported += 1
+
+        return jsonify({
+            "success":     True,
+            "imported":    imported,
+            "not_found":   not_found,
+            "no_cert":     no_cert,
+            "total_rows":  len(data_rows),
+        })
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
