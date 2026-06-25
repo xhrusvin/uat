@@ -590,6 +590,7 @@ def live_staff_experience():
     s1        = doc.get('section_1_personal_details') or {}
     full_name = _v(s1.get('full_name') or '')
     email_out = _v(doc.get('email') or email)
+    user_type = _v(doc.get('user_type') or '')
 
     # ── Determine text to analyse ─────────────────────────────────────
     extracted_cv = _v(doc.get('extracted_cv') or '')
@@ -790,6 +791,7 @@ def api_experience():
     s1        = doc.get('section_1_personal_details') or {}
     full_name = _v(s1.get('full_name') or '')
     email_out = _v(doc.get('email') or email)
+    user_type = _v(doc.get('user_type') or '')
 
     extracted_cv = _v(doc.get('extracted_cv') or '')
     has_cv_text  = (
