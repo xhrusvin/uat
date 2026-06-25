@@ -178,6 +178,12 @@
                                         data-id="{{ s._id }}">
                                     <i class="bi bi-pencil"></i>
                                 </button>
+                                <button class="btn btn-outline-info btn-sm rounded-pill px-3 me-1 btn-edit-cv"
+                                        data-id="{{ s._id }}"
+                                        data-name="{{ p.full_name | default('Staff') | e }}"
+                                        title="Edit Extracted CV Text">
+                                    <i class="bi bi-file-text"></i>
+                                </button>
                                 <a class="btn btn-outline-success btn-sm rounded-pill px-3 me-1"
                                    href="{{ url_for('admin.live_staff_cv', staff_id=s._id) }}"
                                    title="Download Standard CV as PDF" target="_blank">
@@ -520,6 +526,37 @@
 
 
 
+
+
+<!-- ── Edit Extracted CV Modal ──────────────────────────────────── -->
+<div class="modal fade" id="editCvModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header text-white rounded-top-4"
+                 style="background: linear-gradient(135deg,#0369a1 0%,#0ea5e9 100%);">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-file-text me-2"></i>Edit Extracted CV — <span id="editCvStaffName"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-muted small mb-2">
+                    This is the raw CV text extracted from the uploaded document.
+                    Editing this will affect AI CV generation and experience analysis.
+                </p>
+                <textarea id="editCvTextarea" class="form-control font-monospace"
+                          rows="18" style="font-size:12px;resize:vertical;"></textarea>
+                <div id="editCvMsg" class="mt-2 small d-none"></div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary fw-bold px-4" id="editCvSaveBtn">
+                    <i class="bi bi-check-lg me-1"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ── Application Form Modal ───────────────────────────────────── -->
 <div class="modal fade" id="aiAppFormModal" tabindex="-1" aria-hidden="true">
@@ -1536,6 +1573,75 @@ document.getElementById('aiAppUploadBtn').addEventListener('click', async () => 
     } finally {
         btn.disabled  = false;
         btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
+    }
+});
+
+
+// ── Edit Extracted CV ─────────────────────────────────────────────────
+const EDIT_CV_GET_URL  = "{{ url_for('admin.live_staff_get') }}";
+const EDIT_CV_SAVE_URL = "{{ url_for('admin.live_staff_edit_extracted_cv') }}";
+
+let currentEditCvStaffId = null;
+
+document.querySelectorAll('.btn-edit-cv').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentEditCvStaffId = btn.dataset.id;
+        document.getElementById('editCvStaffName').textContent = btn.dataset.name || '';
+        document.getElementById('editCvTextarea').value = 'Loading...';
+        document.getElementById('editCvMsg').classList.add('d-none');
+        new bootstrap.Modal(document.getElementById('editCvModal')).show();
+
+        try {
+            const res  = await fetch(`${EDIT_CV_GET_URL}?id=${currentEditCvStaffId}`);
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('editCvTextarea').value =
+                    data.record.extracted_cv || '';
+            } else {
+                document.getElementById('editCvTextarea').value = '';
+            }
+        } catch(e) {
+            document.getElementById('editCvTextarea').value = '';
+        }
+    });
+});
+
+document.getElementById('editCvSaveBtn').addEventListener('click', async () => {
+    const text  = document.getElementById('editCvTextarea').value;
+    const msgEl = document.getElementById('editCvMsg');
+    const btn   = document.getElementById('editCvSaveBtn');
+
+    btn.disabled  = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
+
+    try {
+        const res    = await fetch(EDIT_CV_SAVE_URL, {
+            method:  'POST',
+            headers: {'Content-Type': 'application/json'},
+            body:    JSON.stringify({
+                staff_id:     currentEditCvStaffId,
+                extracted_cv: text,
+            }),
+        });
+        const result = await res.json();
+
+        if (result.success) {
+            msgEl.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i> Saved successfully.';
+            msgEl.className = 'mt-2 small text-success';
+            msgEl.classList.remove('d-none');
+            setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('editCvModal')).hide(), 1200);
+        } else {
+            msgEl.textContent = result.error || 'Save failed';
+            msgEl.className   = 'mt-2 small text-danger';
+            msgEl.classList.remove('d-none');
+        }
+    } catch(e) {
+        msgEl.textContent = 'Network error: ' + e.message;
+        msgEl.className   = 'mt-2 small text-danger';
+        msgEl.classList.remove('d-none');
+    } finally {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Save Changes';
     }
 });
 

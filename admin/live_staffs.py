@@ -491,6 +491,42 @@ def live_staff_get():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+@admin_bp.route('/live-staffs/edit-extracted-cv', methods=['POST'])
+@admin_required
+def live_staff_edit_extracted_cv():
+    """
+    Save edited extracted_cv text for a staff member.
+    Also resets experience_analysed_at so AI analysis re-runs on next cron call.
+
+    POST /admin/live-staffs/edit-extracted-cv
+    Body: {"staff_id": "...", "extracted_cv": "..."}
+    """
+    data     = request.get_json() or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    new_text = data.get('extracted_cv', '')
+
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+    try:
+        result = _staffs_col().update_one(
+            {"_id": ObjectId(staff_id)},
+            {"$set": {
+                "extracted_cv":         new_text,
+                "extracted_cv_at":      datetime.utcnow(),
+                "extracted_cv_edited":  True,
+                # Reset AI analysis so it re-runs with updated CV text
+                "experience_analysed_at":  None,
+                "experience_list_at":      None,
+                "experience_list_processing": False,
+            }}
+        )
+        if result.matched_count == 0:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+        return jsonify({"success": True, "message": "Extracted CV saved successfully"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @admin_bp.route('/live-staffs/points')
 @admin_required
 def live_staff_points():
