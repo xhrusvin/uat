@@ -53,7 +53,10 @@ def whatsapp_bulk_preview():
     if "file" not in request.files:
         return jsonify({"success": False, "error": "No file uploaded"}), 400
 
-    df = pd.read_excel(request.files["file"])
+    df = pd.read_excel(
+        request.files["file"],
+        dtype=str
+    ).fillna("")
 
     phone_column = None
 
@@ -115,7 +118,10 @@ def whatsapp_bulk_send():
     print(parameter_config)
     print("=" * 80)
 
-    df = pd.read_excel(request.files["file"])
+    df = pd.read_excel(
+        request.files["file"],
+        dtype=str
+    ).fillna("")
 
     campaign_id = _bulk_campaigns_col().insert_one({
         "template_name": template_name,

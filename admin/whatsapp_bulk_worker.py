@@ -7,7 +7,7 @@ from .whatsapp_wati import _send_template_message
 import traceback
 
 
-def process_bulk_messages(campaign_id, batch_size=500):
+def process_bulk_messages(campaign_id, batch_size=1000):
     campaigns = db.whatsapp_bulk_campaigns
     messages = db.whatsapp_bulk_messages
 
