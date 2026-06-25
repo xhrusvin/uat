@@ -4625,7 +4625,18 @@ def api_generate_appform():
             mongo_id=staff_id, email=email,
         )
 
-        download_url = _gcs_signed_url(gcs_blob) or ''
+        # Convert DOCX → PDF and upload to GCS for direct download link
+        pdf_blob     = gcs_blob.replace('.docx', '.pdf')
+        download_url = ''
+        try:
+            pdf_bytes_dl = _docx_to_pdf_bytes(docx_bytes)
+            _gcs_upload(pdf_blob, pdf_bytes_dl, content_type='application/pdf')
+            download_url = _gcs_signed_url(pdf_blob) or ''
+        except Exception:
+            # Fall back to DOCX signed URL if PDF conversion fails
+            download_url = _gcs_signed_url(gcs_blob) or ''
+            pdf_blob     = ''
+
         return jsonify({
             "success":       True,
             "staff_id":      staff_id,
@@ -4633,6 +4644,7 @@ def api_generate_appform():
             "appform_id":    rec_id,
             "filename":      filename,
             "gcs_blob":      gcs_blob,
+            "pdf_blob":      pdf_blob,
             "has_signature": bool(signature_bytes),
             "download_url":  download_url,
             "generated_at":  datetime.utcnow().isoformat(),
