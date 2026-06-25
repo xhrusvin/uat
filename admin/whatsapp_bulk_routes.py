@@ -203,7 +203,7 @@ def whatsapp_bulk_process(campaign_id):
     from bson import ObjectId
     from .whatsapp_bulk_worker import process_bulk_messages
 
-    process_bulk_messages(ObjectId(campaign_id), batch_size=100)
+    process_bulk_messages(ObjectId(campaign_id), batch_size=1000)
 
     return jsonify({"success": True})
 
