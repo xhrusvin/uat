@@ -567,10 +567,17 @@ def live_staff_experience():
         email    = (request.args.get('email') or '').strip().lower()
 
     if staff_id:
-        try:
-            doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
-        except Exception:
-            return jsonify({"success": False, "error": "Invalid staff_id format"}), 400
+        # 1. Try live_staffs.staff_id field (XN Portal ID)
+        doc = _staffs_col().find_one({"staff_id": staff_id})
+        # 2. Try live_staffs.xn_staff_id field
+        if not doc:
+            doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+        # 3. Try MongoDB _id
+        if not doc:
+            try:
+                doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            except Exception:
+                pass
     elif email:
         doc = _staffs_col().find_one({"email": email})
     else:
@@ -727,10 +734,17 @@ def api_experience():
         return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
 
     if staff_id:
-        try:
-            doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
-        except Exception:
-            return jsonify({"success": False, "error": "Invalid staff_id format"}), 400
+        # 1. Try live_staffs.staff_id field (XN Portal ID)
+        doc = _staffs_col().find_one({"staff_id": staff_id})
+        # 2. Try live_staffs.xn_staff_id field
+        if not doc:
+            doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+        # 3. Try MongoDB _id
+        if not doc:
+            try:
+                doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            except Exception:
+                pass
     elif email:
         doc = _staffs_col().find_one({"email": email})
     else:
@@ -3948,7 +3962,15 @@ def api_generate_cv():
         return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
 
     try:
-        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        # Search by staff_id (XN Portal ID), xn_staff_id, then MongoDB _id
+        doc = _staffs_col().find_one({"staff_id": staff_id})
+        if not doc:
+            doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+        if not doc:
+            try:
+                doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            except Exception:
+                doc = None
         if not doc:
             return jsonify({"success": False, "error": f"Staff not found: {staff_id}"}), 404
 
@@ -4153,7 +4175,15 @@ def api_generate_interview():
         return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
 
     try:
-        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        # Search by staff_id (XN Portal ID), xn_staff_id, then MongoDB _id
+        doc = _staffs_col().find_one({"staff_id": staff_id})
+        if not doc:
+            doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+        if not doc:
+            try:
+                doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            except Exception:
+                doc = None
         if not doc:
             return jsonify({"success": False, "error": f"Staff not found: {staff_id}"}), 404
 
@@ -4358,7 +4388,15 @@ def api_generate_appform():
         return jsonify({"success": False, "error": "Missing staff_id in request body"}), 400
 
     try:
-        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        # Search by staff_id (XN Portal ID), xn_staff_id, then MongoDB _id
+        doc = _staffs_col().find_one({"staff_id": staff_id})
+        if not doc:
+            doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+        if not doc:
+            try:
+                doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            except Exception:
+                doc = None
         if not doc:
             return jsonify({"success": False, "error": f"Staff not found: {staff_id}"}), 404
 
