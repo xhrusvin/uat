@@ -6650,6 +6650,328 @@ Return ONLY a JSON object — nothing else, no markdown:
     })
 
 
+
+# ── Cron: Extract formatted experience entries one staff at a time ────
+
+@admin_bp.route('/live-staffs/cron/extract-experience-list', methods=['GET', 'POST'])
+def live_staff_cron_extract_experience_list():
+    """
+    Cron job — extracts a formatted list of relevant experience entries
+    for ONE staff member per call using Gemini AI.
+
+    For each matching role extracts:
+      "Job Title  Date Range  Employer/Location"
+    Only includes roles relevant to live_staffs.user_type
+    (nurse roles for nurses, HCA roles for healthcare assistants).
+
+    Saves to live_staffs.experience_list (array of strings).
+    Background thread to avoid 504 timeouts.
+
+    Protect with ?cron_key=<CRON_SECRET>
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+    col = _staffs_col()
+
+    pending_query = {
+        "$and": [
+            {"$or": [
+                {"experience_list_at": {"$exists": False}},
+                {"experience_list_at": None},
+            ]},
+            {"$or": [
+                {"experience_list_processing": {"$exists": False}},
+                {"experience_list_processing": False},
+                {"experience_list_processing": None},
+            ]},
+        ]
+    }
+    remaining_total = col.count_documents(pending_query)
+    staff = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff experience lists extracted — nothing to do.",
+            "remaining_count": 0,
+        })
+
+    staff_id  = str(staff['_id'])
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or '')
+    user_type = _v(staff.get('user_type') or '')
+
+    extracted_cv = _v(staff.get('extracted_cv') or '')
+    has_cv_text  = (
+        extracted_cv and
+        not extracted_cv.startswith('[') and
+        extracted_cv != 'No doc found'
+    )
+
+    if not has_cv_text:
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {
+                "experience_list":            [],
+                "experience_list_at":         datetime.utcnow(),
+                "experience_list_processing": False,
+            }}
+        )
+        return jsonify({
+            "success":         True,
+            "staff_name":      full_name,
+            "email":           email,
+            "message":         f"Skipped {full_name} — no extracted CV text",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # Mark as processing — return immediately
+    col.update_one(
+        {"_id": staff['_id']},
+        {"$set": {"experience_list_processing": True}}
+    )
+
+    def _run(staff_id_str, user_type_, extracted_cv_, gemini_key_):
+        import json as _json, re as _re
+        from google import genai as google_genai
+
+        _col = _staffs_col()
+        ut_lower = (user_type_ or '').lower()
+
+        if 'nurse' in ut_lower or 'nursing' in ut_lower:
+            role_filter = (
+                "Extract ONLY nursing roles: Registered Nurse, Staff Nurse, Clinical Nurse, "
+                "ICU Nurse, Theatre Nurse, Community Nurse, Mental Health Nurse, Nursing Home Nurse, "
+                "or any role with Nurse or Nursing in the title. "
+                "IGNORE Healthcare Assistant, HCA, Carer, Support Worker, admin, or any non-nursing role."
+            )
+        elif 'hca' in ut_lower or 'healthcare assistant' in ut_lower:
+            role_filter = (
+                "Extract ONLY Healthcare Assistant roles: Healthcare Assistant, HCA, "
+                "Care Assistant, Care Worker, Support Worker in a clinical/care setting, "
+                "Domiciliary Care Assistant, or any role with Healthcare Assistant or HCA in the title. "
+                "IGNORE nursing roles (Registered Nurse, Staff Nurse etc.) and non-care roles."
+            )
+        else:
+            role_filter = (
+                "Extract only healthcare or care-related work experience roles. "
+                "Ignore admin, retail, hospitality, or non-clinical roles."
+            )
+
+        prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+
+Candidate role: {user_type_}
+
+Read the CV text below and extract ALL relevant work experience entries.
+
+{role_filter}
+
+For each matching role, return it as a single formatted string exactly like this example:
+"Healthcare Assistant  Jan 2022 – Present  HSE Sligo Leitrim, Disabilities Services"
+
+Format rules:
+- Job title first
+- Then date range (use the dates as written in the CV, e.g. "Jan 2022 – Present" or "2019 – 2021")
+- Then employer and location/department if available
+- Separate each part with two spaces
+- If no end date, write "Present"
+- List ALL matching roles, most recent first
+
+Return ONLY a JSON array of strings — nothing else, no markdown, no explanation:
+["role 1 formatted string", "role 2 formatted string", ...]
+
+If no matching roles found, return an empty array: []
+
+CV TEXT:
+{extracted_cv_[:10000]}
+"""
+
+        try:
+            client   = google_genai.Client(api_key=gemini_key_)
+            response = client.models.generate_content(
+                model='gemini-2.5-flash', contents=prompt
+            )
+            raw = (response.text or '').strip()
+            raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
+            raw = _re.sub(r'```\s*$', '', raw, flags=_re.MULTILINE).strip()
+
+            result = _json.loads(raw)
+            if not isinstance(result, list):
+                result = []
+            # Clean each entry
+            result = [str(r).strip() for r in result if str(r).strip()]
+
+            _col.update_one(
+                {"_id": ObjectId(staff_id_str)},
+                {"$set": {
+                    "experience_list":            result,
+                    "experience_list_at":         datetime.utcnow(),
+                    "experience_list_processing": False,
+                }}
+            )
+        except Exception as e:
+            _col.update_one(
+                {"_id": ObjectId(staff_id_str)},
+                {"$set": {
+                    "experience_list":            [],
+                    "experience_list_at":         datetime.utcnow(),
+                    "experience_list_processing": False,
+                    "experience_list_error":      str(e),
+                }}
+            )
+
+    threading.Thread(
+        target=_run,
+        args=(staff_id, user_type, extracted_cv, gemini_key),
+        daemon=True,
+    ).start()
+
+    return jsonify({
+        "success":         True,
+        "staff_name":      full_name,
+        "email":           email,
+        "status":          "processing",
+        "remaining_count": max(0, remaining_total - 1),
+        "message": (
+            f"Experience list extraction started for {full_name} in background — "
+            f"{max(0, remaining_total - 1)} staff remaining."
+        ),
+    })
+
+
+# ── Export experience list to Excel ──────────────────────────────────
+
+@admin_bp.route('/live-staffs/export/experience-xlsx')
+@admin_required
+def live_staff_export_experience_xlsx():
+    """
+    Export staff experience list to Excel.
+    Columns: Sno | Name | Email | Experience 1 | Experience 2 | Experience 3 | ...
+
+    The number of experience columns expands automatically based on
+    the maximum number of entries any staff member has.
+
+    GET /admin/live-staffs/export/experience-xlsx
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1,
+             "user_type": 1, "experience_list": 1}
+        ))
+
+        # Sort by name
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        # Find max experience entries across all staff
+        max_exp = max(
+            (len(d.get('experience_list') or []) for d in docs),
+            default=1
+        )
+        max_exp = max(max_exp, 3)  # minimum 3 columns
+
+        # ── Styles ────────────────────────────────────────────────────
+        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'; ALT = 'EFF6FF'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        b_font  = Font(name='Arial', size=9)
+        l_align = Alignment(horizontal='left', vertical='top', wrap_text=True)
+        c_align = Alignment(horizontal='center', vertical='top')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Experience List'
+
+        # ── Headers ───────────────────────────────────────────────────
+        base_headers = ['Sno', 'Name', 'Email', 'User Type']
+        exp_headers  = [f'Experience {i+1}' for i in range(max_exp)]
+        headers      = base_headers + exp_headers
+        col_widths   = [5, 30, 38, 20] + [45] * max_exp
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font      = h_font
+            cell.fill      = h_fill
+            cell.alignment = h_align
+            cell.border    = Border(
+                left=thin, right=thin, top=thin,
+                bottom=Side(style='medium', color=GREEN)
+            )
+            ws.column_dimensions[cell.column_letter].width = width
+
+        ws.row_dimensions[1].height = 30
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:{ws.cell(row=1, column=len(headers)).column_letter}1'
+
+        # ── Data rows ─────────────────────────────────────────────────
+        for ri, doc in enumerate(docs, start=2):
+            s1        = doc.get('section_1_personal_details') or {}
+            name      = _v(s1.get('full_name') or '')
+            email     = _v(doc.get('email') or '')
+            user_type = _v(doc.get('user_type') or '')
+            exp_list  = doc.get('experience_list') or []
+
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) if ri % 2 == 0 else None
+
+            row_data = [ri - 1, name, email, user_type] + exp_list
+
+            for ci, val in enumerate(row_data, start=1):
+                cell = ws.cell(row=ri, column=ci, value=val or '')
+                cell.font      = b_font
+                cell.alignment = c_align if ci in (1,) else l_align
+                cell.border    = border
+                if alt_fill:
+                    cell.fill = alt_fill
+
+            # Fill remaining experience columns with empty
+            for ci in range(len(row_data) + 1, len(headers) + 1):
+                cell = ws.cell(row=ri, column=ci, value='')
+                cell.font      = b_font
+                cell.border    = border
+                if alt_fill:
+                    cell.fill = alt_fill
+
+            ws.row_dimensions[ri].height = max(18, 15 * max(1, len(exp_list)))
+
+        # Summary row
+        ws.cell(row=len(docs) + 2, column=1,
+                value=f'Total: {len(docs)} staff').font = Font(name='Arial', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        date_str = datetime.utcnow().strftime('%Y%m%d')
+
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="experience_list_{date_str}.xlsx"'}
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
