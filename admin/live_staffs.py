@@ -579,7 +579,11 @@ def live_staff_experience():
             except Exception:
                 pass
     elif email:
-        doc = _staffs_col().find_one({"email": email})
+        # Search email in top-level field and section_1 sub-field
+        doc = _staffs_col().find_one({"$or": [
+            {"email": email},
+            {"section_1_personal_details.email_address": email},
+        ]})
     else:
         return jsonify({"success": False,
                         "error": "Provide staff_id or email (query param or JSON body)"}), 400
@@ -589,8 +593,32 @@ def live_staff_experience():
 
     s1        = doc.get('section_1_personal_details') or {}
     full_name = _v(s1.get('full_name') or '')
-    email_out = _v(doc.get('email') or email)
+    email_out = _v(doc.get('email') or s1.get('email_address') or email)
     user_type = _v(doc.get('user_type') or '')
+
+    # ── Return cached result if already analysed ─────────────────────
+    if doc.get('experience_analysed_at') and doc.get('experience_years') is not None:
+        years        = int(doc.get('experience_years') or 0)
+        months       = int(doc.get('experience_months') or 0)
+        total_months = int(doc.get('experience_total_months') or 0)
+        if total_months == 0:
+            total_months = years * 12 + months
+        parts   = []
+        if years:  parts.append(f"{years} year{'s' if years != 1 else ''}")
+        if months: parts.append(f"{months} month{'s' if months != 1 else ''}")
+        summary = ' and '.join(parts) if parts else '0 months'
+        return jsonify({
+            "success":      True,
+            "staff_name":   full_name,
+            "email":        email_out,
+            "years":        years,
+            "months":       months,
+            "total_months": total_months,
+            "summary":      summary,
+            "note":         _v(doc.get('experience_note') or ''),
+            "source":       _v(doc.get('experience_source') or 'cached'),
+            "cached":       True,
+        })
 
     # ── Determine text to analyse ─────────────────────────────────────
     extracted_cv = _v(doc.get('extracted_cv') or '')
@@ -710,14 +738,16 @@ Return ONLY a JSON object — nothing else, no markdown:
         if months: parts.append(f"{months} month{'s' if months != 1 else ''}")
         summary = ' and '.join(parts) if parts else '0 months'
 
-        # Optionally save back to the DB
+        # Save to DB
         _staffs_col().update_one(
             {"_id": doc['_id']},
             {"$set": {
-                "experience_years":       years,
-                "experience_months":      months,
+                "experience_years":        years,
+                "experience_months":       months,
                 "experience_total_months": total_months,
-                "experience_analysed_at": datetime.utcnow(),
+                "experience_note":         note,
+                "experience_source":       source,
+                "experience_analysed_at":  datetime.utcnow(),
             }}
         )
 
@@ -731,6 +761,7 @@ Return ONLY a JSON object — nothing else, no markdown:
             "summary":      summary,
             "note":         note,
             "source":       source,
+            "cached":       False,
         })
 
     except _json.JSONDecodeError:
@@ -780,7 +811,11 @@ def api_experience():
             except Exception:
                 pass
     elif email:
-        doc = _staffs_col().find_one({"email": email})
+        # Search email in top-level field and section_1 sub-field
+        doc = _staffs_col().find_one({"$or": [
+            {"email": email},
+            {"section_1_personal_details.email_address": email},
+        ]})
     else:
         return jsonify({"success": False,
                         "error": "Provide staff_id or email in JSON body"}), 400
@@ -790,7 +825,7 @@ def api_experience():
 
     s1        = doc.get('section_1_personal_details') or {}
     full_name = _v(s1.get('full_name') or '')
-    email_out = _v(doc.get('email') or email)
+    email_out = _v(doc.get('email') or s1.get('email_address') or email)
     user_type = _v(doc.get('user_type') or '')
 
     extracted_cv = _v(doc.get('extracted_cv') or '')
@@ -813,6 +848,30 @@ def api_experience():
             "total_months": None,
             "summary":      "No experience data available",
             "source":       "none",
+        })
+
+    # ── Return cached result if already analysed ──────────────────────
+    if doc.get('experience_analysed_at') and doc.get('experience_years') is not None:
+        years        = int(doc.get('experience_years') or 0)
+        months       = int(doc.get('experience_months') or 0)
+        total_months = int(doc.get('experience_total_months') or 0)
+        if total_months == 0:
+            total_months = years * 12 + months
+        parts   = []
+        if years:  parts.append(f"{years} year{'s' if years != 1 else ''}")
+        if months: parts.append(f"{months} month{'s' if months != 1 else ''}")
+        summary = ' and '.join(parts) if parts else '0 months'
+        return jsonify({
+            "success":      True,
+            "staff_name":   full_name,
+            "email":        email_out,
+            "years":        years,
+            "months":       months,
+            "total_months": total_months,
+            "summary":      summary,
+            "note":         _v(doc.get('experience_note') or ''),
+            "source":       _v(doc.get('experience_source') or 'cached'),
+            "cached":       True,
         })
 
     try:
@@ -6294,6 +6353,228 @@ def live_staff_cron_sync_vetting():
         ),
         "synced_at": datetime.utcnow().isoformat(),
     })
+
+
+
+# ── Cron: Analyse experience one staff at a time ──────────────────────
+
+@admin_bp.route('/live-staffs/cron/analyse-experience', methods=['GET', 'POST'])
+def live_staff_cron_analyse_experience():
+    """
+    Cron job — analyses experience for ONE staff member per call.
+
+    Logic:
+      1. Find first live_staffs record where experience_analysed_at is missing.
+      2. Read extracted_cv (or section_5.total_experience as fallback).
+      3. Call Gemini with role-specific rules (nurse vs HCA vs other).
+      4. Save years, months, total_months, note, source to live_staffs.
+      5. Return remaining_count.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+    col = _staffs_col()
+
+    pending_query = {
+        "$or": [
+            {"experience_analysed_at": {"$exists": False}},
+            {"experience_analysed_at": None},
+        ]
+    }
+    remaining_total = col.count_documents(pending_query)
+
+    staff = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff experience already analysed — nothing to do.",
+            "remaining_count": 0,
+        })
+
+    staff_id  = str(staff['_id'])
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or '')
+    user_type = _v(staff.get('user_type') or '')
+
+    extracted_cv = _v(staff.get('extracted_cv') or '')
+    has_cv_text  = (
+        extracted_cv and
+        not extracted_cv.startswith('[') and
+        extracted_cv != 'No doc found'
+    )
+    s5           = staff.get('section_5_employment_history') or {}
+    total_exp_db = _v(s5.get('total_experience') or '')
+
+    if not has_cv_text and not total_exp_db:
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {
+                "experience_years":        0,
+                "experience_months":       0,
+                "experience_total_months": 0,
+                "experience_note":         "no CV text or experience data available",
+                "experience_source":       "none",
+                "experience_analysed_at":  datetime.utcnow(),
+            }}
+        )
+        return jsonify({
+            "success":         True,
+            "staff_name":      full_name,
+            "email":           email,
+            "message":         f"Skipped {full_name} — no experience data",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Role-specific Gemini prompt ───────────────────────────────────
+    try:
+        from google import genai as google_genai
+        import re as _re, json as _json
+
+        ut_lower = user_type.lower()
+        if 'nurse' in ut_lower or 'nursing' in ut_lower:
+            role_rule = (
+                "IMPORTANT — Count ONLY nursing-related work experience, regardless of the country where it was gained. "
+                "This includes: Registered Nurse, Staff Nurse, Clinical Nurse, ICU Nurse, Theatre Nurse, "
+                "Community Nurse, Mental Health Nurse, Nursing Home Nurse, or any role with Nurse or Nursing in the title. "
+                "DO NOT count non-nursing roles such as healthcare assistant, carer, support worker, admin, or any other role."
+            )
+        elif 'hca' in ut_lower or 'healthcare assistant' in ut_lower or 'health care assistant' in ut_lower:
+            role_rule = (
+                "IMPORTANT — Count ONLY Healthcare Assistant (HCA) work experience, regardless of the country where it was gained. "
+                "This includes: Healthcare Assistant, HCA, Care Assistant, Care Worker, Support Worker in a clinical/care setting, "
+                "or any role with Healthcare Assistant or HCA in the title. "
+                "DO NOT count nursing roles (Registered Nurse, Staff Nurse, etc.) or non-care roles such as admin, retail, or hospitality."
+            )
+        else:
+            role_rule = (
+                "Count only direct healthcare or care-related work experience, regardless of country. "
+                "Exclude non-healthcare roles such as admin, retail, hospitality, or general support roles "
+                "unless they are clearly in a clinical or care setting."
+            )
+
+        if has_cv_text:
+            source = 'extracted_cv'
+            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+
+Candidate role: {user_type}
+
+Read the CV text below and calculate the candidate's TOTAL relevant work experience.
+
+{role_rule}
+
+Calculation Rules:
+- Only count roles that match the role filter above.
+- Experience gained in ANY country counts — not just Ireland.
+- If a matching role has no end date, assume it is still ongoing (use today's date to calculate).
+- If two matching roles overlap in time, count the overlapping period only once.
+- Ignore all non-matching roles entirely — do not add them.
+- Return ONLY a JSON object with these exact keys — nothing else, no markdown, no explanation:
+  {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary of which roles were counted>"}}
+
+CV TEXT:
+{extracted_cv[:10000]}
+"""
+        else:
+            source = 'section_5'
+            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+
+Candidate role: {user_type}
+
+The candidate's total experience is described as: "{total_exp_db}"
+
+{role_rule}
+
+Extract the relevant years and months from this description, applying the role filter above.
+Return ONLY a JSON object — nothing else, no markdown:
+{{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary>"}}
+"""
+
+        client   = google_genai.Client(api_key=gemini_key)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash', contents=prompt
+        )
+        raw = (response.text or '').strip()
+        raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
+        raw = _re.sub(r'```\s*$', '', raw, flags=_re.MULTILINE).strip()
+
+        result       = _json.loads(raw)
+        years        = int(result.get('years', 0) or 0)
+        months       = int(result.get('months', 0) or 0)
+        total_months = int(result.get('total_months', 0) or 0)
+        note         = _v(result.get('note', ''))
+        if total_months == 0:
+            total_months = years * 12 + months
+
+        parts   = []
+        if years:  parts.append(f"{years} year{'s' if years != 1 else ''}")
+        if months: parts.append(f"{months} month{'s' if months != 1 else ''}")
+        summary = ' and '.join(parts) if parts else '0 months'
+
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {
+                "experience_years":        years,
+                "experience_months":       months,
+                "experience_total_months": total_months,
+                "experience_note":         note,
+                "experience_source":       source,
+                "experience_analysed_at":  datetime.utcnow(),
+            }}
+        )
+
+        return jsonify({
+            "success":         True,
+            "staff_name":      full_name,
+            "email":           email,
+            "years":           years,
+            "months":          months,
+            "total_months":    total_months,
+            "summary":         summary,
+            "note":            note,
+            "source":          source,
+            "remaining_count": max(0, remaining_total - 1),
+            "message": (
+                f"Experience analysed for {full_name}: {summary} — "
+                f"{max(0, remaining_total - 1)} staff remaining."
+            ),
+        })
+
+    except _json.JSONDecodeError:
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {"experience_analysed_at": datetime.utcnow(),
+                      "experience_note": "Gemini JSON parse error"}}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           "Gemini returned non-JSON response",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+    except Exception as e:
+        col.update_one(
+            {"_id": staff['_id']},
+            {"$set": {"experience_analysed_at": datetime.utcnow(),
+                      "experience_note": f"error: {e}"}}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
 
 
 def _export_json(items):
