@@ -540,12 +540,37 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-                <p class="text-muted small mb-2">
-                    This is the raw CV text extracted from the uploaded document.
-                    Editing this will affect AI CV generation and experience analysis.
-                </p>
-                <textarea id="editCvTextarea" class="form-control font-monospace"
-                          rows="18" style="font-size:12px;resize:vertical;"></textarea>
+
+                <!-- User Type -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold text-navy small mb-1">
+                        <i class="bi bi-person-badge me-1"></i>User Type
+                    </label>
+                    <select id="editCvUserType" class="form-select form-select-sm">
+                        <option value="">— Select —</option>
+                        <option value="Nurse">Nurse</option>
+                        <option value="Healthcare Assistant">Healthcare Assistant</option>
+                        <option value="Midwife">Midwife</option>
+                        <option value="Doctor">Doctor</option>
+                        <option value="Physiotherapist">Physiotherapist</option>
+                        <option value="Occupational Therapist">Occupational Therapist</option>
+                        <option value="Social Worker">Social Worker</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <!-- Extracted CV -->
+                <div class="mb-2">
+                    <label class="form-label fw-semibold text-navy small mb-1">
+                        <i class="bi bi-file-text me-1"></i>Extracted CV Text
+                    </label>
+                    <p class="text-muted" style="font-size:11px;margin-top:-4px;">
+                        Editing this will affect AI CV generation and experience analysis.
+                    </p>
+                    <textarea id="editCvTextarea" class="form-control font-monospace"
+                              rows="16" style="font-size:12px;resize:vertical;"></textarea>
+                </div>
+
                 <div id="editCvMsg" class="mt-2 small d-none"></div>
             </div>
             <div class="modal-footer border-0 pt-0">
@@ -1597,6 +1622,11 @@ document.querySelectorAll('.btn-edit-cv').forEach(btn => {
             if (data.success) {
                 document.getElementById('editCvTextarea').value =
                     data.record.extracted_cv || '';
+                // Set user_type dropdown
+                const sel = document.getElementById('editCvUserType');
+                const ut  = data.record.user_type || '';
+                const opt = Array.from(sel.options).find(o => o.value === ut);
+                sel.value = opt ? ut : '';
             } else {
                 document.getElementById('editCvTextarea').value = '';
             }
@@ -1607,9 +1637,10 @@ document.querySelectorAll('.btn-edit-cv').forEach(btn => {
 });
 
 document.getElementById('editCvSaveBtn').addEventListener('click', async () => {
-    const text  = document.getElementById('editCvTextarea').value;
-    const msgEl = document.getElementById('editCvMsg');
-    const btn   = document.getElementById('editCvSaveBtn');
+    const text      = document.getElementById('editCvTextarea').value;
+    const user_type = document.getElementById('editCvUserType').value;
+    const msgEl     = document.getElementById('editCvMsg');
+    const btn       = document.getElementById('editCvSaveBtn');
 
     btn.disabled  = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
@@ -1621,6 +1652,7 @@ document.getElementById('editCvSaveBtn').addEventListener('click', async () => {
             body:    JSON.stringify({
                 staff_id:     currentEditCvStaffId,
                 extracted_cv: text,
+                user_type:    user_type,
             }),
         });
         const result = await res.json();

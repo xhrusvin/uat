@@ -502,28 +502,33 @@ def live_staff_edit_extracted_cv():
     POST /admin/live-staffs/edit-extracted-cv
     Body: {"staff_id": "...", "extracted_cv": "..."}
     """
-    data     = request.get_json() or {}
-    staff_id = (data.get('staff_id') or '').strip()
-    new_text = data.get('extracted_cv', '')
+    data      = request.get_json() or {}
+    staff_id  = (data.get('staff_id') or '').strip()
+    new_text  = data.get('extracted_cv', '')
+    user_type = (data.get('user_type') or '').strip()
 
     if not staff_id:
         return jsonify({"success": False, "error": "Missing staff_id"}), 400
     try:
+        update_fields = {
+            "extracted_cv":               new_text,
+            "extracted_cv_at":            datetime.utcnow(),
+            "extracted_cv_edited":        True,
+            # Reset AI analysis so it re-runs with updated text/type
+            "experience_analysed_at":     None,
+            "experience_list_at":         None,
+            "experience_list_processing": False,
+        }
+        if user_type:
+            update_fields["user_type"] = user_type
+
         result = _staffs_col().update_one(
             {"_id": ObjectId(staff_id)},
-            {"$set": {
-                "extracted_cv":         new_text,
-                "extracted_cv_at":      datetime.utcnow(),
-                "extracted_cv_edited":  True,
-                # Reset AI analysis so it re-runs with updated CV text
-                "experience_analysed_at":  None,
-                "experience_list_at":      None,
-                "experience_list_processing": False,
-            }}
+            {"$set": update_fields}
         )
         if result.matched_count == 0:
             return jsonify({"success": False, "error": "Staff not found"}), 404
-        return jsonify({"success": True, "message": "Extracted CV saved successfully"})
+        return jsonify({"success": True, "message": "Changes saved successfully"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
