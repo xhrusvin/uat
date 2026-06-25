@@ -619,30 +619,63 @@ def live_staff_experience():
     try:
         from google import genai as google_genai
 
+        # Determine role filter based on user_type
+        ut_lower = (user_type or '').lower()
+        if 'nurse' in ut_lower or 'nursing' in ut_lower:
+            role_rule = (
+                "IMPORTANT — Count ONLY nursing-related work experience, regardless of the country where it was gained. "
+                "This includes: Registered Nurse, Staff Nurse, Clinical Nurse, ICU Nurse, Theatre Nurse, "
+                "Community Nurse, Mental Health Nurse, Nursing Home Nurse, or any role with Nurse or Nursing in the title. "
+                "DO NOT count non-nursing roles such as healthcare assistant, carer, support worker, admin, or any other role."
+            )
+        elif 'hca' in ut_lower or 'healthcare assistant' in ut_lower or 'health care assistant' in ut_lower:
+            role_rule = (
+                "IMPORTANT — Count ONLY Healthcare Assistant (HCA) work experience, regardless of the country where it was gained. "
+                "This includes: Healthcare Assistant, HCA, Care Assistant, Care Worker, Support Worker in a clinical/care setting, "
+                "or any role with Healthcare Assistant or HCA in the title. "
+                "DO NOT count nursing roles (Registered Nurse, Staff Nurse, etc.) or non-care roles such as admin, retail, or hospitality."
+            )
+        else:
+            role_rule = (
+                "Count only direct healthcare or care-related work experience, regardless of country. "
+                "Exclude non-healthcare roles such as admin, retail, hospitality, or general support roles "
+                "unless they are clearly in a clinical or care setting."
+            )
+
         if has_cv_text:
             source = 'extracted_cv'
-            prompt = f"""You are a professional CV analyser.
+            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
 
-Read the CV text below and calculate the candidate's TOTAL professional work experience.
+Candidate role: {user_type}
 
-Rules:
-- Count all paid employment roles listed.
-- If a role has no end date, assume it is still ongoing (use today's date to calculate).
-- If dates overlap (simultaneous roles), count the overlapping period only once.
+Read the CV text below and calculate the candidate's TOTAL relevant work experience.
+
+{role_rule}
+
+Calculation Rules:
+- Only count roles that match the role filter above.
+- Experience gained in ANY country counts — not just Ireland.
+- If a matching role has no end date, assume it is still ongoing (use today's date to calculate).
+- If two matching roles overlap in time, count the overlapping period only once.
+- Ignore all non-matching roles entirely — do not add them.
 - Return ONLY a JSON object with these exact keys — nothing else, no markdown, no explanation:
-  {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary>"}}
+  {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary of which roles were counted and why>"}}
 
 CV TEXT:
 {extracted_cv[:10000]}
 """
         else:
             source = 'section_5'
-            prompt = f"""You are a professional CV analyser.
+            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+
+Candidate role: {user_type}
 
 The candidate's total experience is described as: "{total_exp_db}"
 
-Extract the number of years and months from this text.
-Return ONLY a JSON object with these exact keys — nothing else, no markdown, no explanation:
+{role_rule}
+
+Extract the relevant years and months from this description, applying the role filter above.
+Return ONLY a JSON object — nothing else, no markdown:
 {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary>"}}
 """
 
@@ -784,32 +817,66 @@ def api_experience():
         from google import genai as google_genai
         import re as _re, json as _json
 
+        # Determine role filter based on user_type
+        ut_lower = (user_type or '').lower()
+        if 'nurse' in ut_lower or 'nursing' in ut_lower:
+            role_rule = (
+                "IMPORTANT — Count ONLY nursing-related work experience, regardless of the country where it was gained. "
+                "This includes: Registered Nurse, Staff Nurse, Clinical Nurse, ICU Nurse, Theatre Nurse, "
+                "Community Nurse, Mental Health Nurse, Nursing Home Nurse, or any role with Nurse or Nursing in the title. "
+                "DO NOT count non-nursing roles such as healthcare assistant, carer, support worker, admin, or any other role."
+            )
+        elif 'hca' in ut_lower or 'healthcare assistant' in ut_lower or 'health care assistant' in ut_lower:
+            role_rule = (
+                "IMPORTANT — Count ONLY Healthcare Assistant (HCA) work experience, regardless of the country where it was gained. "
+                "This includes: Healthcare Assistant, HCA, Care Assistant, Care Worker, Support Worker in a clinical/care setting, "
+                "or any role with Healthcare Assistant or HCA in the title. "
+                "DO NOT count nursing roles (Registered Nurse, Staff Nurse, etc.) or non-care roles such as admin, retail, or hospitality."
+            )
+        else:
+            role_rule = (
+                "Count only direct healthcare or care-related work experience, regardless of country. "
+                "Exclude non-healthcare roles such as admin, retail, hospitality, or general support roles "
+                "unless they are clearly in a clinical or care setting."
+            )
+
         if has_cv_text:
             source = 'extracted_cv'
-            prompt = f"""You are a professional CV analyser.
+            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
 
-Read the CV text below and calculate the candidate's TOTAL professional work experience.
+Candidate role: {user_type}
 
-Rules:
-- Count all paid employment roles listed.
-- If a role has no end date, assume it is still ongoing (use today's date to calculate).
-- If dates overlap (simultaneous roles), count the overlapping period only once.
+Read the CV text below and calculate the candidate's TOTAL relevant work experience.
+
+{role_rule}
+
+Calculation Rules:
+- Only count roles that match the role filter above.
+- Experience gained in ANY country counts — not just Ireland.
+- If a matching role has no end date, assume it is still ongoing (use today's date to calculate).
+- If two matching roles overlap in time, count the overlapping period only once.
+- Ignore all non-matching roles entirely — do not add them.
 - Return ONLY a JSON object with these exact keys — nothing else, no markdown, no explanation:
-  {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary>"}}
+  {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary of which roles were counted>"}}
 
 CV TEXT:
 {extracted_cv[:10000]}
 """
         else:
             source = 'section_5'
-            prompt = f"""You are a professional CV analyser.
+            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+
+Candidate role: {user_type}
 
 The candidate's total experience is described as: "{total_exp_db}"
 
-Extract the number of years and months from this text.
+{role_rule}
+
+Extract the relevant years and months from this description, applying the role filter above.
 Return ONLY a JSON object — nothing else, no markdown:
 {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary>"}}
 """
+
 
         client   = google_genai.Client(api_key=gemini_key)
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
