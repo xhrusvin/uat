@@ -6418,12 +6418,15 @@ def live_staff_cron_analyse_experience():
     """
     Cron job — analyses experience for ONE staff member per call.
 
+    Gemini runs in a background thread so the HTTP response returns
+    immediately — prevents 504 gateway timeouts on slow Gemini calls.
+
     Logic:
-      1. Find first record where experience_analysed_at is missing.
-      2. Read extracted_cv (or section_5.total_experience as fallback).
-      3. Call Gemini with role-specific rules (nurse vs HCA vs other).
-      4. Save years, months, total_months, note, source to live_staffs.
-      5. Return remaining_count.
+      1. Find first record where experience_analysed_at is missing AND
+         experience_processing is not True (not already in-flight).
+      2. Mark experience_processing = True immediately.
+      3. Fire Gemini analysis in background thread.
+      4. Return 200 right away with remaining_count.
 
     Protect with ?cron_key=<CRON_SECRET> env var.
     """
@@ -6441,9 +6444,17 @@ def live_staff_cron_analyse_experience():
     col = _staffs_col()
 
     pending_query = {
-        "$or": [
-            {"experience_analysed_at": {"$exists": False}},
-            {"experience_analysed_at": None},
+        "$and": [
+            {"$or": [
+                {"experience_analysed_at": {"$exists": False}},
+                {"experience_analysed_at": None},
+            ]},
+            # Skip records currently being processed in background
+            {"$or": [
+                {"experience_processing": {"$exists": False}},
+                {"experience_processing": False},
+                {"experience_processing": None},
+            ]},
         ]
     }
     remaining_total = col.count_documents(pending_query)
@@ -6482,6 +6493,7 @@ def live_staff_cron_analyse_experience():
                 "experience_note":         "no CV text or experience data available",
                 "experience_source":       "none",
                 "experience_analysed_at":  datetime.utcnow(),
+                "experience_processing":   False,
             }}
         )
         return jsonify({
@@ -6492,12 +6504,21 @@ def live_staff_cron_analyse_experience():
             "remaining_count": max(0, remaining_total - 1),
         })
 
-    # ── Role-specific Gemini prompt ───────────────────────────────────
-    try:
-        from google import genai as google_genai
-        import re as _re, json as _json
+    # ── Mark as processing then fire Gemini in background ────────────
+    # This prevents 504 gateway timeouts — returns 200 immediately
+    col.update_one(
+        {"_id": staff['_id']},
+        {"$set": {"experience_processing": True}}
+    )
 
-        ut_lower = user_type.lower()
+    def _run_gemini(staff_id_str, user_type_, has_cv_, extracted_cv_,
+                    total_exp_db_, gemini_key_):
+        import re as _re, json as _json
+        from google import genai as google_genai
+
+        _col = _staffs_col()
+
+        ut_lower = (user_type_ or '').lower()
         if 'nurse' in ut_lower or 'nursing' in ut_lower:
             role_rule = (
                 "IMPORTANT — Count ONLY nursing-related work experience, regardless of the country where it was gained. "
@@ -6519,11 +6540,12 @@ def live_staff_cron_analyse_experience():
                 "unless they are clearly in a clinical or care setting."
             )
 
-        if has_cv_text:
-            source = 'extracted_cv'
-            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+        try:
+            if has_cv_:
+                source = 'extracted_cv'
+                prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
 
-Candidate role: {user_type}
+Candidate role: {user_type_}
 
 Read the CV text below and calculate the candidate's TOTAL relevant work experience.
 
@@ -6539,15 +6561,15 @@ Calculation Rules:
   {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary of which roles were counted>"}}
 
 CV TEXT:
-{extracted_cv[:10000]}
+{extracted_cv_[:10000]}
 """
-        else:
-            source = 'section_5'
-            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+            else:
+                source = 'section_5'
+                prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
 
-Candidate role: {user_type}
+Candidate role: {user_type_}
 
-The candidate's total experience is described as: "{total_exp_db}"
+The candidate's total experience is described as: "{total_exp_db_}"
 
 {role_rule}
 
@@ -6556,80 +6578,64 @@ Return ONLY a JSON object — nothing else, no markdown:
 {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary>"}}
 """
 
-        client   = google_genai.Client(api_key=gemini_key)
-        response = client.models.generate_content(
-            model='gemini-2.5-flash', contents=prompt
-        )
-        raw = (response.text or '').strip()
-        raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
-        raw = _re.sub(r'```\s*$', '', raw, flags=_re.MULTILINE).strip()
+            client   = google_genai.Client(api_key=gemini_key_)
+            response = client.models.generate_content(
+                model='gemini-2.5-flash', contents=prompt
+            )
+            raw = (response.text or '').strip()
+            raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
+            raw = _re.sub(r'```\s*$', '', raw, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw)
-        years        = int(result.get('years', 0) or 0)
-        months       = int(result.get('months', 0) or 0)
-        total_months = int(result.get('total_months', 0) or 0)
-        note         = _v(result.get('note', ''))
-        if total_months == 0:
-            total_months = years * 12 + months
+            result       = _json.loads(raw)
+            years        = int(result.get('years', 0) or 0)
+            months       = int(result.get('months', 0) or 0)
+            total_months = int(result.get('total_months', 0) or 0)
+            note         = str(result.get('note', '') or '').strip()
+            if total_months == 0:
+                total_months = years * 12 + months
 
-        parts   = []
-        if years:  parts.append(f"{years} year{'s' if years != 1 else ''}")
-        if months: parts.append(f"{months} month{'s' if months != 1 else ''}")
-        summary = ' and '.join(parts) if parts else '0 months'
+            _col.update_one(
+                {"_id": ObjectId(staff_id_str)},
+                {"$set": {
+                    "experience_years":        years,
+                    "experience_months":       months,
+                    "experience_total_months": total_months,
+                    "experience_note":         note,
+                    "experience_source":       source,
+                    "experience_analysed_at":  datetime.utcnow(),
+                    "experience_processing":   False,
+                }}
+            )
 
-        col.update_one(
-            {"_id": staff['_id']},
-            {"$set": {
-                "experience_years":        years,
-                "experience_months":       months,
-                "experience_total_months": total_months,
-                "experience_note":         note,
-                "experience_source":       source,
-                "experience_analysed_at":  datetime.utcnow(),
-            }}
-        )
+        except Exception as e:
+            _col.update_one(
+                {"_id": ObjectId(staff_id_str)},
+                {"$set": {
+                    "experience_analysed_at":  datetime.utcnow(),
+                    "experience_processing":   False,
+                    "experience_note":         f"error: {e}",
+                }}
+            )
 
-        return jsonify({
-            "success":         True,
-            "staff_name":      full_name,
-            "email":           email,
-            "years":           years,
-            "months":          months,
-            "total_months":    total_months,
-            "summary":         summary,
-            "note":            note,
-            "source":          source,
-            "remaining_count": max(0, remaining_total - 1),
-            "message": (
-                f"Experience analysed for {full_name}: {summary} — "
-                f"{max(0, remaining_total - 1)} staff remaining."
-            ),
-        })
+    threading.Thread(
+        target=_run_gemini,
+        args=(staff_id, user_type, has_cv_text, extracted_cv,
+              total_exp_db, gemini_key),
+        daemon=True,
+    ).start()
 
-    except _json.JSONDecodeError:
-        col.update_one(
-            {"_id": staff['_id']},
-            {"$set": {"experience_analysed_at": datetime.utcnow(),
-                      "experience_note": "Gemini JSON parse error"}}
-        )
-        return jsonify({
-            "success":         False,
-            "email":           email,
-            "error":           "Gemini returned non-JSON response",
-            "remaining_count": max(0, remaining_total - 1),
-        })
-    except Exception as e:
-        col.update_one(
-            {"_id": staff['_id']},
-            {"$set": {"experience_analysed_at": datetime.utcnow(),
-                      "experience_note": f"error: {e}"}}
-        )
-        return jsonify({
-            "success":         False,
-            "email":           email,
-            "error":           str(e),
-            "remaining_count": max(0, remaining_total - 1),
-        })
+    return jsonify({
+        "success":         True,
+        "staff_name":      full_name,
+        "email":           email,
+        "status":          "processing",
+        "remaining_count": max(0, remaining_total - 1),
+        "message": (
+            f"Analysis started for {full_name} in background — "
+            f"{max(0, remaining_total - 1)} staff remaining. "
+            "Result will be saved to DB when complete."
+        ),
+    })
 
 
 def _export_json(items):
