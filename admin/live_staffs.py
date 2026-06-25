@@ -6972,6 +6972,362 @@ def live_staff_export_experience_xlsx():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+
+# ── Cron: Sync Passport/ID card one staff at a time ──────────────────
+
+@admin_bp.route('/live-staffs/cron/sync-passport', methods=['GET', 'POST'])
+def live_staff_cron_sync_passport():
+    """
+    Cron job — processes ONE staff member per call.
+
+    Logic:
+      1. Find first live_staffs record where passport_extracted is missing/empty.
+      2. Call XN Portal user-document-list API with staff email.
+      3. Find document where document_type_name == "Passport/id card".
+      4. Download the document and extract passport data via Gemini AI.
+      5. Save extracted data + passport_id to live_staffs.
+      6. Return remaining_count.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    import requests as _req
+
+    # ── Auth ──────────────────────────────────────────────────────────
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+    gemini_key  = os.environ.get('GEMINI_API_KEY', '')
+
+    if not base_url:
+        return jsonify({"success": False,
+                        "error": "LIVE_STAFF_URL not set"}), 500
+    if not gemini_key:
+        return jsonify({"success": False,
+                        "error": "GEMINI_API_KEY not set"}), 500
+
+    col = _staffs_col()
+
+    # ── Find next staff without passport extracted ────────────────────
+    staff = col.find_one({
+        "$or": [
+            {"passport_extracted": {"$exists": False}},
+            {"passport_extracted": None},
+            {"passport_extracted": ""},
+        ]
+    })
+
+    remaining_total = col.count_documents({
+        "$or": [
+            {"passport_extracted": {"$exists": False}},
+            {"passport_extracted": None},
+            {"passport_extracted": ""},
+        ]
+    })
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff passports already extracted — nothing to do.",
+            "remaining_count": 0,
+        })
+
+    email = _v(
+        (staff.get('section_1_personal_details') or {}).get('email_address') or
+        staff.get('email') or ''
+    )
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+
+    if not email:
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {"passport_extracted": "[skipped — no email]",
+                      "passport_extracted_at": datetime.utcnow()}}
+        )
+        return jsonify({
+            "success":         True,
+            "message":         f"Skipped — no email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Call XN Portal API ────────────────────────────────────────────
+    endpoint    = f"{base_url}/ai/recruitments/user-document-list"
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.post(endpoint, json={"email": email},
+                         headers=api_headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.get(endpoint, params={"email": email},
+                            headers=api_headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as api_err:
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"API error: {api_err}",
+            "remaining_count": remaining_total,
+        })
+
+    if not data.get('success'):
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {"passport_extracted": f"[API error: {data.get('message')}]",
+                      "passport_extracted_at": datetime.utcnow()}}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           data.get('message', 'API error'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    api_data  = data.get('data')
+    if isinstance(api_data, list):
+        documents = api_data
+    elif isinstance(api_data, dict):
+        documents = api_data.get('documents') or []
+    else:
+        documents = []
+
+    if not documents:
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {"passport_extracted": "No doc found",
+                      "passport_extracted_at": datetime.utcnow()}}
+        )
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "passport_found":  False,
+            "message":         f"No documents returned for {email}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Find Passport/id card document ────────────────────────────────
+    passport_doc = None
+    for d in documents:
+        doc_name = (d.get('document_type_name') or '').strip().lower()
+        if doc_name in ('passport/id card', 'passport', 'id card', 'passport/id'):
+            if d.get('url'):
+                passport_doc = d
+                break
+
+    if not passport_doc:
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {"passport_extracted": "No passport doc found",
+                      "passport_extracted_at": datetime.utcnow()}}
+        )
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "passport_found":  False,
+            "message":         f"No Passport/id card document found for {email}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    passport_url = passport_doc.get('url', '')
+
+    # ── Download + extract via Gemini ─────────────────────────────────
+    try:
+        dl_headers = {k: v for k, v in api_headers.items()
+                      if k != 'Content-Type'}
+        img_resp = _req.get(passport_url, headers=dl_headers, timeout=60)
+        img_resp.raise_for_status()
+        raw_bytes    = img_resp.content
+        content_type = img_resp.headers.get('Content-Type', '').lower()
+
+        from google import genai as google_genai
+        import json as _json, re as _re
+
+        client = google_genai.Client(api_key=gemini_key)
+
+        # ── Build Gemini request with image or text ───────────────────
+        is_image = any(t in content_type for t in ('image/', 'jpeg', 'jpg', 'png', 'webp'))
+        is_pdf   = 'pdf' in content_type or passport_url.lower().endswith('.pdf')
+
+        if is_image:
+            import base64
+            ext = 'jpeg' if 'jpeg' in content_type or 'jpg' in content_type else                   'png'  if 'png'  in content_type else                   'webp' if 'webp' in content_type else 'jpeg'
+            b64_data = base64.b64encode(raw_bytes).decode('utf-8')
+            parts = [
+                {
+                    "inline_data": {
+                        "mime_type": f"image/{ext}",
+                        "data": b64_data,
+                    }
+                },
+                {"text": """You are a passport/ID card data extractor.
+
+Extract all readable information from this passport or ID card image.
+
+Return ONLY a JSON object — no markdown, no explanation:
+{
+  "passport_id": "<passport or document number>",
+  "full_name": "<name as printed on document>",
+  "nationality": "<nationality>",
+  "date_of_birth": "<DOB as printed>",
+  "expiry_date": "<expiry date>",
+  "issue_date": "<issue date if visible>",
+  "country": "<issuing country>",
+  "gender": "<gender if visible>",
+  "mrz": "<machine readable zone lines if visible>",
+  "raw_text": "<all text extracted from the document>"
+}
+
+If a field is not visible or readable, set it to null.
+"""}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[{"parts": parts}]
+            )
+        elif is_pdf:
+            import base64
+            b64_data = base64.b64encode(raw_bytes).decode('utf-8')
+            parts = [
+                {
+                    "inline_data": {
+                        "mime_type": "application/pdf",
+                        "data": b64_data,
+                    }
+                },
+                {"text": """You are a passport/ID card data extractor.
+
+Extract all readable information from this passport or ID card document.
+
+Return ONLY a JSON object — no markdown, no explanation:
+{
+  "passport_id": "<passport or document number>",
+  "full_name": "<name as printed on document>",
+  "nationality": "<nationality>",
+  "date_of_birth": "<DOB as printed>",
+  "expiry_date": "<expiry date>",
+  "issue_date": "<issue date if visible>",
+  "country": "<issuing country>",
+  "gender": "<gender if visible>",
+  "mrz": "<machine readable zone if visible>",
+  "raw_text": "<all text extracted>"
+}
+
+If a field is not visible, set it to null.
+"""}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[{"parts": parts}]
+            )
+        else:
+            # Try text extraction fallback
+            try:
+                import io as _io, pdfplumber
+                with pdfplumber.open(_io.BytesIO(raw_bytes)) as pdf:
+                    raw_text = chr(10).join(p.extract_text() or '' for p in pdf.pages).strip()
+            except Exception:
+                raw_text = raw_bytes.decode('utf-8', errors='replace').strip()
+
+            prompt = f"""You are a passport/ID card data extractor.
+
+Extract all information from this passport/ID card text.
+
+Return ONLY a JSON object — no markdown, no explanation:
+{{
+  "passport_id": "<passport or document number>",
+  "full_name": "<name>",
+  "nationality": "<nationality>",
+  "date_of_birth": "<DOB>",
+  "expiry_date": "<expiry date>",
+  "issue_date": "<issue date>",
+  "country": "<issuing country>",
+  "gender": "<gender>",
+  "mrz": "<MRZ lines if present>",
+  "raw_text": "<all extracted text>"
+}}
+
+TEXT:
+{raw_text[:5000]}
+"""
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+
+        raw_out = (response.text or '').strip()
+        raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
+        raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
+
+        passport_data = _json.loads(raw_out)
+        passport_id   = _v(passport_data.get('passport_id') or '')
+
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {
+                "passport_extracted":    passport_data.get('raw_text', '') or '',
+                "passport_data":         passport_data,
+                "passport_id":           passport_id,
+                "passport_url":          passport_url,
+                "passport_extracted_at": datetime.utcnow(),
+            }}
+        )
+
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "passport_found":  True,
+            "passport_id":     passport_id,
+            "passport_data":   passport_data,
+            "remaining_count": max(0, remaining_total - 1),
+            "message": (
+                f"Passport extracted for {full_name} "
+                f"(ID: {passport_id or 'not readable'}) — "
+                f"{max(0, remaining_total - 1)} remaining."
+            ),
+            "synced_at": datetime.utcnow().isoformat(),
+        })
+
+    except _json.JSONDecodeError:
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {"passport_extracted": "[Gemini JSON parse error]",
+                      "passport_extracted_at": datetime.utcnow()}}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           "Gemini returned non-JSON response",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+    except Exception as e:
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {"passport_extracted": f"[error: {e}]",
+                      "passport_extracted_at": datetime.utcnow()}}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
