@@ -7014,27 +7014,24 @@ def live_staff_cron_sync_passport():
 
     col = _staffs_col()
 
-    # ── Find next staff without passport extracted ────────────────────
-    staff = col.find_one({
+    # ── Find next staff where passport not yet fetched ────────────────
+    # passport_fetched is set to True after every attempt (success or skip)
+    # so the cron always moves forward and never re-processes
+    pending_query = {
         "$or": [
-            {"passport_extracted": {"$exists": False}},
-            {"passport_extracted": None},
-            {"passport_extracted": ""},
+            {"passport_fetched": {"$exists": False}},
+            {"passport_fetched": False},
+            {"passport_fetched": None},
         ]
-    })
+    }
 
-    remaining_total = col.count_documents({
-        "$or": [
-            {"passport_extracted": {"$exists": False}},
-            {"passport_extracted": None},
-            {"passport_extracted": ""},
-        ]
-    })
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
 
     if not staff:
         return jsonify({
             "success":         True,
-            "message":         "All staff passports already extracted — nothing to do.",
+            "message":         "All staff passports already fetched — nothing to do.",
             "remaining_count": 0,
         })
 
@@ -7048,12 +7045,15 @@ def live_staff_cron_sync_passport():
     if not email:
         col.update_one(
             {"_id": staff["_id"]},
-            {"$set": {"passport_extracted": "[skipped — no email]",
-                      "passport_extracted_at": datetime.utcnow()}}
+            {"$set": {
+                "passport_extracted":  "[skipped — no email]",
+                "passport_extracted_at": datetime.utcnow(),
+                "passport_fetched":    True,
+            }}
         )
         return jsonify({
             "success":         True,
-            "message":         f"Skipped — no email",
+            "message":         "Skipped — no email",
             "remaining_count": max(0, remaining_total - 1),
         })
 
@@ -7085,8 +7085,11 @@ def live_staff_cron_sync_passport():
     if not data.get('success'):
         col.update_one(
             {"_id": staff["_id"]},
-            {"$set": {"passport_extracted": f"[API error: {data.get('message')}]",
-                      "passport_extracted_at": datetime.utcnow()}}
+            {"$set": {
+                "passport_extracted":    f"[API error: {data.get('message')}]",
+                "passport_extracted_at": datetime.utcnow(),
+                "passport_fetched":      True,
+            }}
         )
         return jsonify({
             "success":         False,
@@ -7106,8 +7109,11 @@ def live_staff_cron_sync_passport():
     if not documents:
         col.update_one(
             {"_id": staff["_id"]},
-            {"$set": {"passport_extracted": "No doc found",
-                      "passport_extracted_at": datetime.utcnow()}}
+            {"$set": {
+                "passport_extracted":    "No doc found",
+                "passport_extracted_at": datetime.utcnow(),
+                "passport_fetched":      True,
+            }}
         )
         return jsonify({
             "success":         True,
@@ -7130,8 +7136,11 @@ def live_staff_cron_sync_passport():
     if not passport_doc:
         col.update_one(
             {"_id": staff["_id"]},
-            {"$set": {"passport_extracted": "No passport doc found",
-                      "passport_extracted_at": datetime.utcnow()}}
+            {"$set": {
+                "passport_extracted":    "No passport doc found",
+                "passport_extracted_at": datetime.utcnow(),
+                "passport_fetched":      True,
+            }}
         )
         return jsonify({
             "success":         True,
@@ -7283,6 +7292,7 @@ TEXT:
                 "passport_id":           passport_id,
                 "passport_url":          passport_url,
                 "passport_extracted_at": datetime.utcnow(),
+                "passport_fetched":      True,    # always mark fetched regardless of ID readability
             }}
         )
 
@@ -7291,13 +7301,14 @@ TEXT:
             "email":           email,
             "staff_name":      full_name,
             "passport_found":  True,
-            "passport_id":     passport_id,
+            "passport_id":     passport_id or None,
+            "passport_readable": bool(passport_id),
             "passport_data":   passport_data,
             "remaining_count": max(0, remaining_total - 1),
             "message": (
-                f"Passport extracted for {full_name} "
-                f"(ID: {passport_id or 'not readable'}) — "
-                f"{max(0, remaining_total - 1)} remaining."
+                f"Passport {'extracted' if passport_id else 'fetched (ID not readable)'} for {full_name} "
+                + (f"(ID: {passport_id}) — " if passport_id else "— ")
+                + f"{max(0, remaining_total - 1)} remaining."
             ),
             "synced_at": datetime.utcnow().isoformat(),
         })
@@ -7305,8 +7316,11 @@ TEXT:
     except _json.JSONDecodeError:
         col.update_one(
             {"_id": staff["_id"]},
-            {"$set": {"passport_extracted": "[Gemini JSON parse error]",
-                      "passport_extracted_at": datetime.utcnow()}}
+            {"$set": {
+                "passport_extracted":    "[Gemini JSON parse error]",
+                "passport_extracted_at": datetime.utcnow(),
+                "passport_fetched":      True,
+            }}
         )
         return jsonify({
             "success":         False,
@@ -7317,8 +7331,11 @@ TEXT:
     except Exception as e:
         col.update_one(
             {"_id": staff["_id"]},
-            {"$set": {"passport_extracted": f"[error: {e}]",
-                      "passport_extracted_at": datetime.utcnow()}}
+            {"$set": {
+                "passport_extracted":    f"[error: {e}]",
+                "passport_extracted_at": datetime.utcnow(),
+                "passport_fetched":      True,
+            }}
         )
         return jsonify({
             "success":         False,
