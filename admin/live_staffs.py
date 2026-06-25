@@ -532,11 +532,12 @@ def live_staff_points():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @admin_bp.route('/live-staffs/experience', methods=['GET', 'POST'])
-@admin_required
 def live_staff_experience():
     """
     Analyse a staff member's extracted_cv using Gemini AI and return
     total years and months of experience as digits.
+
+    Accepts X-API-Key header (no session required) OR admin session cookie.
 
     GET  /admin/live-staffs/experience?email=someone@example.com
     POST /admin/live-staffs/experience  body: {"staff_id": "68abc..."} or {"email": "..."}
@@ -553,6 +554,19 @@ def live_staff_experience():
         "source": "extracted_cv"   // or "section_5" if CV text unavailable
       }
     """
+    # Accept either API key or admin session
+    api_key_provided = request.headers.get('X-API-Key', '').strip()
+    if api_key_provided:
+        ok, err = _validate_api_key()
+        if not ok:
+            return jsonify({"success": False, "error": err}), 401
+    else:
+        from admin.views import admin_required as _admin_required
+        from flask import session, redirect, url_for
+        if not session.get('admin_logged_in'):
+            return jsonify({"success": False,
+                            "error": "Unauthorised — provide X-API-Key header or login"}), 401
+
     gemini_key = os.environ.get('GEMINI_API_KEY', '')
     if not gemini_key:
         return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
