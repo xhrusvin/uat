@@ -4096,25 +4096,37 @@ def api_generate_cv():
 
     data     = request.get_json(silent=True) or {}
     staff_id = (data.get('staff_id') or '').strip()
-    if not staff_id:
-        return jsonify({"success": False, "error": "Missing staff_id in request body"}), 400
+    email    = (data.get('email') or '').strip().lower()
+
+    if not staff_id and not email:
+        return jsonify({"success": False,
+                        "error": "Provide staff_id or email in request body"}), 400
 
     gemini_key = os.environ.get('GEMINI_API_KEY', '')
     if not gemini_key:
         return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
 
     try:
-        # Search by staff_id (XN Portal ID), xn_staff_id, then MongoDB _id
-        doc = _staffs_col().find_one({"staff_id": staff_id})
+        doc = None
+        if staff_id:
+            # Search by staff_id (XN Portal ID), xn_staff_id, then MongoDB _id
+            doc = _staffs_col().find_one({"staff_id": staff_id})
+            if not doc:
+                doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+            if not doc:
+                try:
+                    doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+                except Exception:
+                    pass
+        if not doc and email:
+            doc = _staffs_col().find_one({"$or": [
+                {"email": email},
+                {"section_1_personal_details.email_address": email},
+            ]})
         if not doc:
-            doc = _staffs_col().find_one({"xn_staff_id": staff_id})
-        if not doc:
-            try:
-                doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
-            except Exception:
-                doc = None
-        if not doc:
-            return jsonify({"success": False, "error": f"Staff not found: {staff_id}"}), 404
+            identifier = staff_id or email
+            return jsonify({"success": False,
+                            "error": f"Staff not found: {identifier}"}), 404
 
         s1        = doc.get('section_1_personal_details') or {}
         s3        = doc.get('section_3_professional_registration') or {}
@@ -4277,13 +4289,15 @@ Output CV text only. No preamble, no markdown symbols.
             mongo_id=staff_id, email=email,
         )
 
+        download_url = _gcs_signed_url(gcs_blob) or ''
         return jsonify({
-            "success":     True,
-            "staff_id":    staff_id,
-            "staff_name":  full_name,
-            "cv_id":       ai_id,
-            "cv_filename": cv_filename,
-            "gcs_blob":    gcs_blob,
+            "success":      True,
+            "staff_id":     staff_id,
+            "staff_name":   full_name,
+            "cv_id":        ai_id,
+            "cv_filename":  cv_filename,
+            "gcs_blob":     gcs_blob,
+            "download_url": download_url,
             "generated_at": datetime.utcnow().isoformat(),
         })
 
@@ -4309,25 +4323,37 @@ def api_generate_interview():
 
     data     = request.get_json(silent=True) or {}
     staff_id = (data.get('staff_id') or '').strip()
-    if not staff_id:
-        return jsonify({"success": False, "error": "Missing staff_id in request body"}), 400
+    email    = (data.get('email') or '').strip().lower()
+
+    if not staff_id and not email:
+        return jsonify({"success": False,
+                        "error": "Provide staff_id or email in request body"}), 400
 
     gemini_key = os.environ.get('GEMINI_API_KEY', '')
     if not gemini_key:
         return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
 
     try:
-        # Search by staff_id (XN Portal ID), xn_staff_id, then MongoDB _id
-        doc = _staffs_col().find_one({"staff_id": staff_id})
+        doc = None
+        if staff_id:
+            # Search by staff_id (XN Portal ID), xn_staff_id, then MongoDB _id
+            doc = _staffs_col().find_one({"staff_id": staff_id})
+            if not doc:
+                doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+            if not doc:
+                try:
+                    doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+                except Exception:
+                    pass
+        if not doc and email:
+            doc = _staffs_col().find_one({"$or": [
+                {"email": email},
+                {"section_1_personal_details.email_address": email},
+            ]})
         if not doc:
-            doc = _staffs_col().find_one({"xn_staff_id": staff_id})
-        if not doc:
-            try:
-                doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
-            except Exception:
-                doc = None
-        if not doc:
-            return jsonify({"success": False, "error": f"Staff not found: {staff_id}"}), 404
+            identifier = staff_id or email
+            return jsonify({"success": False,
+                            "error": f"Staff not found: {identifier}"}), 404
 
         s1        = doc.get('section_1_personal_details') or {}
         s3        = doc.get('section_3_professional_registration') or {}
@@ -4494,6 +4520,7 @@ CANDIDATE DATA:
             mongo_id=staff_id, email=email,
         )
 
+        download_url = _gcs_signed_url(gcs_blob) or ''
         return jsonify({
             "success":       True,
             "staff_id":      staff_id,
@@ -4501,6 +4528,7 @@ CANDIDATE DATA:
             "interview_id":  rec_id,
             "filename":      filename,
             "gcs_blob":      gcs_blob,
+            "download_url":  download_url,
             "generated_at":  datetime.utcnow().isoformat(),
         })
 
@@ -4526,21 +4554,32 @@ def api_generate_appform():
 
     data     = request.get_json(silent=True) or {}
     staff_id = (data.get('staff_id') or '').strip()
-    if not staff_id:
-        return jsonify({"success": False, "error": "Missing staff_id in request body"}), 400
+    email    = (data.get('email') or '').strip().lower()
+
+    if not staff_id and not email:
+        return jsonify({"success": False,
+                        "error": "Provide staff_id or email in request body"}), 400
 
     try:
-        # Search by staff_id (XN Portal ID), xn_staff_id, then MongoDB _id
-        doc = _staffs_col().find_one({"staff_id": staff_id})
+        doc = None
+        if staff_id:
+            doc = _staffs_col().find_one({"staff_id": staff_id})
+            if not doc:
+                doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+            if not doc:
+                try:
+                    doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+                except Exception:
+                    pass
+        if not doc and email:
+            doc = _staffs_col().find_one({"$or": [
+                {"email": email},
+                {"section_1_personal_details.email_address": email},
+            ]})
         if not doc:
-            doc = _staffs_col().find_one({"xn_staff_id": staff_id})
-        if not doc:
-            try:
-                doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
-            except Exception:
-                doc = None
-        if not doc:
-            return jsonify({"success": False, "error": f"Staff not found: {staff_id}"}), 404
+            identifier = staff_id or email
+            return jsonify({"success": False,
+                            "error": f"Staff not found: {identifier}"}), 404
 
         s1        = doc.get('section_1_personal_details') or {}
         full_name = _v(s1.get('full_name') or 'staff')
@@ -4586,6 +4625,7 @@ def api_generate_appform():
             mongo_id=staff_id, email=email,
         )
 
+        download_url = _gcs_signed_url(gcs_blob) or ''
         return jsonify({
             "success":       True,
             "staff_id":      staff_id,
@@ -4594,6 +4634,7 @@ def api_generate_appform():
             "filename":      filename,
             "gcs_blob":      gcs_blob,
             "has_signature": bool(signature_bytes),
+            "download_url":  download_url,
             "generated_at":  datetime.utcnow().isoformat(),
         })
 
@@ -6378,7 +6419,7 @@ def live_staff_cron_analyse_experience():
     Cron job — analyses experience for ONE staff member per call.
 
     Logic:
-      1. Find first live_staffs record where experience_analysed_at is missing.
+      1. Find first record where experience_analysed_at is missing.
       2. Read extracted_cv (or section_5.total_experience as fallback).
       3. Call Gemini with role-specific rules (nurse vs HCA vs other).
       4. Save years, months, total_months, note, source to live_staffs.
