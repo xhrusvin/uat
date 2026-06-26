@@ -129,6 +129,8 @@ def sync_agent_conversations_reminder_call():
         resp.raise_for_status()
         data = resp.json()
 
+        return jsonify({"success": True, "data": data}), 200
+
         conversations = data.get("conversations", [])
         processed = inserted = updated = skipped = 0
         now_utc = datetime.utcnow().replace(tzinfo=pytz.UTC)
