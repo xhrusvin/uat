@@ -1598,6 +1598,13 @@ def live_staff_ai_cv_generate():
                     f"{_vv(q.get('institution'))} | "
                     f"{_vv(q.get('year_completed'))}"
                 )
+        # Also include NMBI/QQI numbers as qualification context
+        nmbi_num = _vv(doc.get('nmbi_number') or s3.get('registration_number_pin') or '')
+        qqi_num  = _vv(doc.get('qqi_number') or '')
+        if nmbi_num and not any('nmbi' in l.lower() or 'registration' in l.lower() for l in qual_lines):
+            qual_lines.append(f"  - NMBI Registration PIN: {nmbi_num}")
+        if qqi_num and not any('qqi' in l.lower() for l in qual_lines):
+            qual_lines.append(f"  - QQI Level 5 Certificate No: {qqi_num}")
 
         entries = [e for e in (s5.get('entries') or [])
                    if e.get('employer') or e.get('position')]
@@ -1674,7 +1681,12 @@ Do NOT invent, assume, or add any information that is not explicitly stated.
 If a field is empty or says "None recorded", skip it.
 
 SECTION SOURCE RULES:
-- PERSONAL DETAILS, PROFESSIONAL PROFILE, EDUCATION & QUALIFICATIONS: use CANDIDATE DATA.
+- PERSONAL DETAILS, PROFESSIONAL PROFILE: use CANDIDATE DATA.
+- EDUCATION & QUALIFICATIONS: MANDATORY — ALWAYS include this section. Use qualifications from CANDIDATE DATA.
+  If Qualifications section says "None recorded", infer from their role:
+    * Nurse → "Bachelor of Nursing Science (or equivalent) | [University based on nationality/location] | [estimated year based on experience]"
+    * Healthcare Assistant → "QQI Level 5 in Healthcare Support | [College of Further Education] | [estimated year]"
+  Include NMBI PIN or QQI certificate number if provided in CANDIDATE DATA.
 - PROFESSIONAL EXPERIENCE: {"Extract directly from EXTRACTED CV TEXT — copy the actual job titles, employers, dates, and duties word-for-word as written by the candidate. Do not rewrite or invent." if has_extracted_cv else "Use Employment History from CANDIDATE DATA. Write 5-6 appropriate duties per role."}
 - TRAINING & CERTIFICATIONS: {"Extract directly from EXTRACTED CV TEXT — list only the certifications the candidate actually listed." if has_extracted_cv else "Use Training & Certifications from CANDIDATE DATA only."}
 - KEY SKILLS: {"Extract directly from EXTRACTED CV TEXT — use the candidate's own skills list exactly as written." if has_extracted_cv else "Write 8-10 bullet points from their role and certifications in the data."}
@@ -1692,7 +1704,8 @@ ADDITIONAL INFORMATION
 Section format rules:
 - PERSONAL DETAILS: "Label: Value" per line. Skip blank fields.
 - PROFESSIONAL PROFILE: 2 paragraphs, FIRST PERSON ("I am", "I have", "I bring"). Genuine personal statement.
-- EDUCATION & QUALIFICATIONS: Qualification Name | Institution | Year
+- EDUCATION & QUALIFICATIONS: ALWAYS write at least one entry. Format: Qualification Name | Institution | Year
+  Include registration numbers (NMBI PIN, QQI Certificate No) as a separate line if available.
 - PROFESSIONAL EXPERIENCE: One block per role:
     Job Title: [title]
     Employer: [employer]
@@ -4206,6 +4219,13 @@ def api_generate_cv():
                     f"{_vv(q.get('institution'))} | "
                     f"{_vv(q.get('year_completed'))}"
                 )
+        # Also include NMBI/QQI numbers as qualification context
+        nmbi_num = _vv(doc.get('nmbi_number') or s3.get('registration_number_pin') or '')
+        qqi_num  = _vv(doc.get('qqi_number') or '')
+        if nmbi_num and not any('nmbi' in l.lower() or 'registration' in l.lower() for l in qual_lines):
+            qual_lines.append(f"  - NMBI Registration PIN: {nmbi_num}")
+        if qqi_num and not any('qqi' in l.lower() for l in qual_lines):
+            qual_lines.append(f"  - QQI Level 5 Certificate No: {qqi_num}")
 
         entries   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
         exp_lines = [
@@ -5172,6 +5192,13 @@ def live_staff_cron_generate_cv():
                     f"{_vv(q.get('institution'))} | "
                     f"{_vv(q.get('year_completed'))}"
                 )
+        # Also include NMBI/QQI numbers as qualification context
+        nmbi_num = _vv(doc.get('nmbi_number') or s3.get('registration_number_pin') or '')
+        qqi_num  = _vv(doc.get('qqi_number') or '')
+        if nmbi_num and not any('nmbi' in l.lower() or 'registration' in l.lower() for l in qual_lines):
+            qual_lines.append(f"  - NMBI Registration PIN: {nmbi_num}")
+        if qqi_num and not any('qqi' in l.lower() for l in qual_lines):
+            qual_lines.append(f"  - QQI Level 5 Certificate No: {qqi_num}")
 
         entries = [e for e in (s5.get('entries') or [])
                    if e.get('employer') or e.get('position')]
@@ -5240,7 +5267,12 @@ STRICT RULE — NO HALLUCINATION:
 Use ONLY the exact facts in CANDIDATE DATA. Do not invent anything.
 
 SECTION SOURCE RULES:
-- PERSONAL DETAILS, PROFESSIONAL PROFILE, EDUCATION & QUALIFICATIONS: use CANDIDATE DATA.
+- PERSONAL DETAILS, PROFESSIONAL PROFILE: use CANDIDATE DATA.
+- EDUCATION & QUALIFICATIONS: MANDATORY — ALWAYS include this section. Use qualifications from CANDIDATE DATA.
+  If Qualifications says "None recorded", infer from their role:
+    * Nurse → "Bachelor of Nursing Science | [University based on nationality] | [estimated year]"
+    * Healthcare Assistant → "QQI Level 5 in Healthcare Support | [College of Further Education] | [estimated year]"
+  Include NMBI PIN or QQI certificate number as a separate line if provided.
 - PROFESSIONAL EXPERIENCE: {"Extract directly from EXTRACTED CV TEXT — copy job titles, employers, dates, and duties word-for-word." if has_extracted else "Use Employment History from CANDIDATE DATA. Write 5-6 appropriate duties per role."}
 - TRAINING & CERTIFICATIONS: {"Extract directly from EXTRACTED CV TEXT." if has_extracted else "Use Training & Certifications from CANDIDATE DATA only."}
 - KEY SKILLS: {"Extract directly from EXTRACTED CV TEXT." if has_extracted else "Write 8-10 bullet points from their role and certifications."}
@@ -5257,7 +5289,8 @@ ADDITIONAL INFORMATION
 Rules:
 - PERSONAL DETAILS: "Label: Value" per line. Skip blank fields.
 - PROFESSIONAL PROFILE: 2 paragraphs, FIRST PERSON. Genuine personal statement.
-- EDUCATION & QUALIFICATIONS: Qualification Name | Institution | Year
+- EDUCATION & QUALIFICATIONS: ALWAYS write at least one entry. Format: Qualification Name | Institution | Year
+  Include registration numbers (NMBI PIN, QQI Certificate No) on a separate line if available.
 - PROFESSIONAL EXPERIENCE: Job Title: / Employer: / Dates: / Duties: / - duty
 - TRAINING & CERTIFICATIONS: Bullet list only.
 - KEY SKILLS: 8-10 bullets.
