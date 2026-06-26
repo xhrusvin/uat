@@ -12117,14 +12117,16 @@ def _build_pcc_docx(doc, reviewer_index=0):
     # Reviewer rotation
     reviewer = _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)]
 
-    # Date Reviewed = first_shift - 2 weeks
-    date_reviewed = ''
+    # Parse first_shift date
+    first_shift_formatted = ''
+    date_reviewed         = ''
     if first_shift:
         for fmt in ('%d/%m/%Y','%Y-%m-%d','%d-%m-%Y','%d %B %Y','%d %b %Y'):
             try:
-                d = _dt.strptime(first_shift.strip(), fmt)
-                d -= _td(weeks=2)
-                date_reviewed = d.strftime('%d %B %Y')
+                d_shift = _dt.strptime(first_shift.strip(), fmt)
+                first_shift_formatted = d_shift.strftime('%d %B %Y')
+                # Date Reviewed = first shift + 1 day
+                date_reviewed = (d_shift + _td(days=1)).strftime('%d %B %Y')
                 break
             except Exception:
                 continue
@@ -12281,12 +12283,13 @@ def _build_pcc_docx(doc, reviewer_index=0):
     tbl.cell(1,0).text = ''; tbl.cell(1,1).text = ''
     for p_, label_, val_ in [
         (tbl.cell(0,0).paragraphs[0], 'Employee Name:', full_name),
-        (tbl.cell(0,1).paragraphs[0], 'Date of Birth:', dob),
-        (tbl.cell(1,0).paragraphs[0], 'Nationality:', nationality),
-        (tbl.cell(1,1).paragraphs[0], 'Position / Role:', role),
+        (tbl.cell(0,1).paragraphs[0], 'Nationality:', nationality),
+        (tbl.cell(1,0).paragraphs[0], 'Position / Role:', role),
+        (tbl.cell(1,1).paragraphs[0], '', ''),
     ]:
-        _add_run(p_, label_ + '  ', bold=True, size=10)
-        _add_run(p_, val_ if val_ else '_' * 28, size=10)
+        if label_:
+            _add_run(p_, label_ + '  ', bold=True, size=10)
+            _add_run(p_, val_ if val_ else '_' * 28, size=10)
     sp(4)
 
     # ── Section 2 ─────────────────────────────────────────────────────
@@ -12439,9 +12442,9 @@ CV TEXT:
     else:
         _add_run(sig_cell.paragraphs[0], '_' * 32, size=9.5, color=GRAY)
 
-    # Date cell
+    # Date cell = first shift date
     _add_run(stbl.cell(0,1).paragraphs[0], 'Date  ', bold=True, size=9.5)
-    _add_run(stbl.cell(0,1).paragraphs[0], '_' * 32, size=9.5, color=GRAY)
+    _add_run(stbl.cell(0,1).paragraphs[0], first_shift_formatted or '_' * 32, size=9.5)
 
     # Employee Full Name (Print) — use full_name from Section 1
     _add_run(stbl.cell(1,0).paragraphs[0], 'Employee Full Name (Print)  ', bold=True, size=9.5)
@@ -12485,20 +12488,6 @@ CV TEXT:
     checkbox_item('Further Information Required')
     checkbox_item('Escalated for Risk Review')
     checkbox_item('Not Accepted')
-    sp(4)
-    blank_line('Comments / Notes:')
-    p = document.add_paragraph()
-    _add_run(p, '_' * 100, size=9, color=GRAY)
-    sp(4)
-    stbl2 = document.add_table(rows=1, cols=2)
-    stbl2.style = 'Table Grid'
-    for cell in stbl2.rows[0].cells:
-        for b in cell._tc.iter(qn('w:tcBorders')):
-            b.getparent().remove(b)
-    _add_run(stbl2.cell(0,0).paragraphs[0], 'Compliance Officer Signature  ', bold=True, size=9.5)
-    _add_run(stbl2.cell(0,0).paragraphs[0], '_' * 30, size=9.5, color=GRAY)
-    _add_run(stbl2.cell(0,1).paragraphs[0], 'Date  ', bold=True, size=9.5)
-    _add_run(stbl2.cell(0,1).paragraphs[0], '_' * 30, size=9.5, color=GRAY)
     sp(4)
 
     p = document.add_paragraph()
