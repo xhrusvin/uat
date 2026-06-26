@@ -29,6 +29,7 @@ from elevenlabs1.agent_conversations_followup_call import bp as elevenlabs_bp_fo
 from elevenlabs1.agent_conversations_levelfour_call import bp as elevenlabs_bp_levelfour_call
 from elevenlabs1.agent_conversations_levelfive_call import bp as elevenlabs_bp_levelfive_call
 from elevenlabs1.agent_conversations_onboarding_call import bp as elevenlabs_bp_onboarding_call
+from elevenlabs1.agent_conversations_reminder_call import bp as elevenlabs_bp_reminder_call
 from certificate_reminder import register_certificate_reminder_routes
 from certificatereminder import init_certificate_reminder_scheduler
 
@@ -175,6 +176,7 @@ app.register_blueprint(elevenlabs_bp_followup_call)
 app.register_blueprint(elevenlabs_bp_levelfour_call)
 app.register_blueprint(elevenlabs_bp_levelfive_call)
 app.register_blueprint(elevenlabs_bp_onboarding_call)
+app.register_blueprint(elevenlabs_bp_reminder_call)
 app.register_blueprint(lead_registration_bp)
 app.register_blueprint(xpressgp_bp)
 app.register_blueprint(gemini_call_bp)
