@@ -12065,6 +12065,496 @@ def live_staff_export_open_disclosure_xlsx_new():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+
+# ── Reviewers list — rotated alternately per staff ────────────────────
+_PCC_REVIEWERS = [
+    'Letty Mathew',
+    'Valencia Da Silva',
+    'Ann Maria',
+    'Audrey Maguire',
+    'Liberata Gama',
+]
+_PCC_COMPLIANCE_OFFICER = 'Betsy Daniel'
+
+
+def _build_pcc_docx(doc, reviewer_index=0):
+    """
+    Generate the PCC Self-Declaration & Risk Assessment DOCX for a staff member.
+    Pure Python — uses python-docx only, no Node.js required.
+    Returns bytes of the generated DOCX.
+    """
+    import io as _io
+    from datetime import datetime as _dt, timedelta as _td
+    from docx import Document as _Doc
+    from docx.shared import Pt, Inches, RGBColor, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    import copy
+
+    s1          = doc.get('section_1_personal_details') or {}
+    full_name   = _v(s1.get('full_name') or '')
+    dob         = _v(s1.get('date_of_birth') or '')
+    nationality = _v(s1.get('nationality') or '')
+    role        = _v(doc.get('user_type') or '')
+    first_shift = _v(doc.get('first_shift_date') or '')
+
+    # Reviewer rotation
+    reviewer = _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)]
+
+    # Date Reviewed = first_shift - 2 weeks
+    date_reviewed = ''
+    if first_shift:
+        for fmt in ('%d/%m/%Y','%Y-%m-%d','%d-%m-%Y','%d %B %Y','%d %b %Y'):
+            try:
+                d = _dt.strptime(first_shift.strip(), fmt)
+                d -= _td(weeks=2)
+                date_reviewed = d.strftime('%d %B %Y')
+                break
+            except Exception:
+                continue
+
+    # ── Helpers ──────────────────────────────────────────────────────
+    NAVY  = RGBColor(0x1B, 0x3A, 0x6B)
+    GREEN = RGBColor(0x2E, 0x9E, 0x44)
+    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+    GRAY  = RGBColor(0x64, 0x74, 0x8B)
+
+    def _set_cell_bg(cell, hex_color):
+        tc   = cell._tc
+        tcPr = tc.get_or_add_tcPr()
+        shd  = OxmlElement('w:shd')
+        shd.set(qn('w:val'), 'clear')
+        shd.set(qn('w:color'), 'auto')
+        shd.set(qn('w:fill'), hex_color)
+        tcPr.append(shd)
+
+    def _set_cell_border(cell, color='CCCCCC', sz=4):
+        tc   = cell._tc
+        tcPr = tc.get_or_add_tcPr()
+        tcBorders = OxmlElement('w:tcBorders')
+        for side in ('top','left','bottom','right'):
+            b = OxmlElement(f'w:{side}')
+            b.set(qn('w:val'),   'single')
+            b.set(qn('w:sz'),    str(sz))
+            b.set(qn('w:color'), color)
+            tcBorders.append(b)
+        tcPr.append(tcBorders)
+
+    def _para_border_bottom(para, color='1B3A6B', sz=8):
+        pPr  = para._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bot  = OxmlElement('w:bottom')
+        bot.set(qn('w:val'),   'single')
+        bot.set(qn('w:sz'),    str(sz))
+        bot.set(qn('w:color'), color)
+        pBdr.append(bot)
+        pPr.append(pBdr)
+
+    def _add_run(para, text, bold=False, size=10, color=None, italic=False):
+        run = para.add_run(text)
+        run.bold   = bold
+        run.italic = italic
+        run.font.size = Pt(size)
+        run.font.name = 'Arial'
+        if color:
+            run.font.color.rgb = color
+        return run
+
+    document = _Doc()
+
+    # Page margins
+    for section in document.sections:
+        section.top_margin    = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+        section.left_margin   = Cm(2.0)
+        section.right_margin  = Cm(2.0)
+
+    # Default font
+    document.styles['Normal'].font.name = 'Arial'
+    document.styles['Normal'].font.size = Pt(10)
+
+    def sp(before=4, after=4):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(before)
+        p.paragraph_format.space_after  = Pt(after)
+        return p
+
+    def section_heading(text):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(8)
+        p.paragraph_format.space_after  = Pt(3)
+        _para_border_bottom(p, '1B3A6B', 8)
+        run = p.add_run('  ' + text + '  ')
+        run.bold = True
+        run.font.size = Pt(11)
+        run.font.name = 'Arial'
+        run.font.color.rgb = WHITE
+        # Shading on run
+        rPr  = run._r.get_or_add_rPr()
+        shd  = OxmlElement('w:shd')
+        shd.set(qn('w:val'),   'clear')
+        shd.set(qn('w:color'), 'auto')
+        shd.set(qn('w:fill'),  '1B3A6B')
+        rPr.append(shd)
+        return p
+
+    def label_value(label, value, bold_label=True):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(3)
+        p.paragraph_format.space_after  = Pt(3)
+        _add_run(p, label + '  ', bold=bold_label, size=10)
+        _add_run(p, value if value else '_' * 35, bold=False, size=10)
+        return p
+
+    def body_text(text, size=9.5):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(3)
+        p.paragraph_format.space_after  = Pt(3)
+        _add_run(p, text, size=size)
+        return p
+
+    def numbered_item(num, text):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after  = Pt(2)
+        p.paragraph_format.left_indent  = Cm(0.8)
+        _add_run(p, f'{num}.  ', bold=True, size=9.5)
+        _add_run(p, text, size=9.5)
+        return p
+
+    def checkbox_item(text, checked=False):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after  = Pt(2)
+        _add_run(p, ('☑' if checked else '☐') + '  ', size=11)
+        _add_run(p, text, size=9.5)
+        return p
+
+    def blank_line(label):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(4)
+        p.paragraph_format.space_after  = Pt(4)
+        _add_run(p, label + '  ', bold=True, size=9.5)
+        _add_run(p, '_' * 40, size=9.5, color=GRAY)
+        return p
+
+    # ── Header ────────────────────────────────────────────────────────
+    p = document.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _para_border_bottom(p, '2E9E44', 6)
+    _add_run(p, 'XPRESS HEALTH', bold=True, size=18, color=NAVY)
+    p = document.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _add_run(p, 'SELF-DECLARATION & INTERNATIONAL RISK ASSESSMENT FORM', bold=True, size=11, color=GRAY)
+    p = document.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _add_run(p, 'International Police Clearance Certificate (PCC) — Residential History Declaration',
+             italic=True, size=9, color=GRAY)
+    sp(4, 8)
+
+    # ── Section 1 ─────────────────────────────────────────────────────
+    section_heading('SECTION 1 — EMPLOYEE DETAILS')
+    sp(2)
+    tbl = document.add_table(rows=2, cols=2)
+    tbl.style = 'Table Grid'
+    for row in tbl.rows:
+        for cell in row.cells:
+            for border_el in cell._tc.iter(qn('w:tcBorders')):
+                border_el.getparent().remove(border_el)
+    tbl.cell(0,0).text = ''; tbl.cell(0,1).text = ''
+    tbl.cell(1,0).text = ''; tbl.cell(1,1).text = ''
+    for p_, label_, val_ in [
+        (tbl.cell(0,0).paragraphs[0], 'Employee Name:', full_name),
+        (tbl.cell(0,1).paragraphs[0], 'Date of Birth:', dob),
+        (tbl.cell(1,0).paragraphs[0], 'Nationality:', nationality),
+        (tbl.cell(1,1).paragraphs[0], 'Position / Role:', role),
+    ]:
+        _add_run(p_, label_ + '  ', bold=True, size=10)
+        _add_run(p_, val_ if val_ else '_' * 28, size=10)
+    sp(4)
+
+    # ── Section 2 ─────────────────────────────────────────────────────
+    section_heading('SECTION 2 — PURPOSE OF THIS DECLARATION')
+    body_text('As part of the recruitment and compliance process, an International Police Clearance Certificate (PCC) is required from all countries where you have resided. As you are currently unable to provide the required certificate(s), this Self-Declaration & Risk Assessment Form must be completed.')
+    body_text('Completion of this form does not exempt you from the requirement to obtain and submit the PCC. You remain obligated to provide the certificate(s) as soon as reasonably practicable.')
+    sp(2)
+
+    # ── Section 3 ─────────────────────────────────────────────────────
+    section_heading('SECTION 3 — INTERNATIONAL RESIDENTIAL HISTORY')
+    body_text('Please list ALL countries (other than your current country of residence) where you have lived for six (6) months or more since the age of 18. Include the reason for your stay.')
+    sp(2)
+    cols_  = ['Country', 'City / Region', 'From (MM/YYYY)', 'To (MM/YYYY)', 'Reason for Stay']
+    widths_= [3, 3, 2.5, 2.5, 4]
+    htbl   = document.add_table(rows=5, cols=5)
+    htbl.style = 'Table Grid'
+    for ci, (hdr, _) in enumerate(zip(cols_, widths_)):
+        c = htbl.cell(0, ci)
+        _set_cell_bg(c, '1B3A6B')
+        _set_cell_border(c, '1B3A6B')
+        p_ = c.paragraphs[0]
+        p_.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _add_run(p_, hdr, bold=True, size=9, color=WHITE)
+    for ri in range(1, 5):
+        for ci in range(5):
+            c = htbl.cell(ri, ci)
+            _set_cell_border(c, 'CCCCCC')
+            c.paragraphs[0].add_run(' ')
+    sp(6)
+
+    # ── Section 4 ─────────────────────────────────────────────────────
+    section_heading('SECTION 4 — SELF-DECLARATION')
+    body_text('I declare that:')
+    numbered_item(1, 'I have accurately listed all countries in which I have resided for six (6) months or more since the age of 18.')
+    numbered_item(2, 'I understand that I have not yet provided the required International Police Clearance Certificate(s) for the country/countries listed above.')
+    numbered_item(3, 'I confirm that I have NEVER been convicted of a criminal offence in any country, nor am I currently the subject of any criminal investigation, prosecution, or pending criminal proceedings, EXCEPT as disclosed below.')
+    sp(2)
+    p = document.add_paragraph()
+    _add_run(p, 'Disclosure of Criminal History (if applicable — leave blank if none):', italic=True, size=9, color=GRAY)
+    p = document.add_paragraph()
+    _add_run(p, '_' * 100, size=9, color=GRAY)
+    sp(4)
+
+    # ── Section 5 ─────────────────────────────────────────────────────
+    section_heading('SECTION 5 — RISK ACKNOWLEDGEMENT')
+    body_text('I understand and acknowledge that:')
+    numbered_item(1, 'Failure to provide the required International Police Clearance Certificate(s) may affect my compliance status and/or eligibility for certain assignments or postings.')
+    numbered_item(2, 'My employment and/or continued engagement may be subject to additional compliance reviews, conditions, or restrictions until the PCC is received.')
+    numbered_item(3, 'If any information provided in this declaration is found to be false, misleading, or incomplete, it may result in disciplinary action, withdrawal of employment offer, termination of engagement, or notification to relevant regulatory or statutory authorities.')
+    numbered_item(4, 'I remain responsible for pursuing the required Police Clearance Certificate(s) and providing them to Xpress Health as soon as they become available.')
+    sp(4)
+
+    # ── Section 6 ─────────────────────────────────────────────────────
+    section_heading('SECTION 6 — CONSENT')
+    body_text('I authorise Xpress Health to:')
+    numbered_item(1, 'Verify the information provided in this declaration where required.')
+    numbered_item(2, 'Request additional information or supporting documentation relevant to my residential history or compliance status.')
+    numbered_item(3, 'Conduct further background checks as permitted under applicable laws and regulations.')
+    numbered_item(4, 'Retain this form as part of my personnel and compliance records.')
+    sp(4)
+
+    # ── Section 7 ─────────────────────────────────────────────────────
+    section_heading('SECTION 7 — EMPLOYEE DECLARATION & SIGNATURE')
+    body_text('I declare that the information provided in this form is true, complete, and accurate to the best of my knowledge and belief. I understand that knowingly providing false or misleading information may result in disciplinary action, including termination of employment or engagement.')
+    sp(4)
+    stbl = document.add_table(rows=2, cols=2)
+    stbl.style = 'Table Grid'
+    for row in stbl.rows:
+        for cell in row.cells:
+            for b in cell._tc.iter(qn('w:tcBorders')):
+                b.getparent().remove(b)
+    for p_, label_ in [
+        (stbl.cell(0,0).paragraphs[0], 'Employee Signature'),
+        (stbl.cell(0,1).paragraphs[0], 'Date'),
+        (stbl.cell(1,0).paragraphs[0], 'Employee Full Name (Print)'),
+        (stbl.cell(1,1).paragraphs[0], ''),
+    ]:
+        if label_:
+            _add_run(p_, label_ + '  ', bold=True, size=9.5)
+            _add_run(p_, '_' * 32, size=9.5, color=GRAY)
+    sp(6)
+
+    # ── For Office Use Only ────────────────────────────────────────────
+    p = document.add_paragraph()
+    p.paragraph_format.space_before = Pt(4)
+    p.paragraph_format.space_after  = Pt(4)
+    rr = p.add_run('  FOR OFFICE USE ONLY  ')
+    rr.bold = True; rr.font.size = Pt(12); rr.font.name = 'Arial'
+    rr.font.color.rgb = WHITE
+    rPr = rr._r.get_or_add_rPr()
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear'); shd.set(qn('w:color'), 'auto'); shd.set(qn('w:fill'), '1B3A6B')
+    rPr.append(shd)
+    sp(2)
+
+    otbl = document.add_table(rows=4, cols=2)
+    otbl.style = 'Table Grid'
+    office_rows = [
+        ('Reviewed By:', reviewer),
+        ('Date Reviewed:', date_reviewed),
+        ('Compliance Officer:', _PCC_COMPLIANCE_OFFICER),
+        ('Compliance Officer Date:', date_reviewed),
+    ]
+    for ri, (label_, val_) in enumerate(office_rows):
+        lc = otbl.cell(ri, 0)
+        vc = otbl.cell(ri, 1)
+        _set_cell_border(lc, 'CCCCCC')
+        _set_cell_border(vc, 'CCCCCC')
+        if ri % 2 == 0:
+            _set_cell_bg(lc, 'EFF6FF')
+        _add_run(lc.paragraphs[0], label_, bold=True, size=9.5)
+        _add_run(vc.paragraphs[0], val_, size=9.5)
+    sp(4)
+
+    body_text('Compliance Decision:', )
+    checkbox_item('Acceptable — pending PCC submission')
+    checkbox_item('Further Information Required')
+    checkbox_item('Escalated for Risk Review')
+    checkbox_item('Not Accepted')
+    sp(4)
+    blank_line('Comments / Notes:')
+    p = document.add_paragraph()
+    _add_run(p, '_' * 100, size=9, color=GRAY)
+    sp(4)
+    stbl2 = document.add_table(rows=1, cols=2)
+    stbl2.style = 'Table Grid'
+    for cell in stbl2.rows[0].cells:
+        for b in cell._tc.iter(qn('w:tcBorders')):
+            b.getparent().remove(b)
+    _add_run(stbl2.cell(0,0).paragraphs[0], 'Compliance Officer Signature  ', bold=True, size=9.5)
+    _add_run(stbl2.cell(0,0).paragraphs[0], '_' * 30, size=9.5, color=GRAY)
+    _add_run(stbl2.cell(0,1).paragraphs[0], 'Date  ', bold=True, size=9.5)
+    _add_run(stbl2.cell(0,1).paragraphs[0], '_' * 30, size=9.5, color=GRAY)
+    sp(4)
+
+    p = document.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _add_run(p, 'Xpress Health — Confidential & Compliance Document  |  Not for distribution',
+             italic=True, size=8, color=GRAY)
+
+    buf = _io.BytesIO()
+    document.save(buf)
+    return buf.getvalue()
+
+
+def _ai_pcc_col():
+    from flask import current_app
+    return current_app.db.live_staff_ai_pcc
+
+
+# ── PCC Generate ──────────────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-pcc/generate', methods=['POST'])
+@admin_required
+def live_staff_ai_pcc_generate():
+    """Generate PCC Self-Declaration form for a staff member."""
+    data     = request.get_json(silent=True) or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        emp_code  = _v(doc.get('employee_code') or '')
+
+        # Rotate reviewer based on total docs count
+        total = _ai_pcc_col().count_documents({})
+        reviewer_index = total % len(_PCC_REVIEWERS)
+
+        docx_bytes = _build_pcc_docx(doc, reviewer_index=reviewer_index)
+        safe_name  = full_name.replace(' ', '_').replace('/', '_')
+        filename   = f"PCC_{safe_name}.docx"
+        gcs_blob   = f"pcc/{filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        col      = _ai_pcc_col()
+        existing = col.find_one({"staff_id": staff_id})
+        rec = {
+            "staff_id":      staff_id,
+            "staff_name":    full_name,
+            "employee_code": emp_code,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "reviewer":      _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)],
+            "generated_at":  datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+            rec_id = str(existing["_id"])
+        else:
+            rec_id = str(col.insert_one(rec).inserted_id)
+
+        return jsonify({
+            "success":      True,
+            "pcc_id":       rec_id,
+            "staff_name":   full_name,
+            "filename":     filename,
+            "gcs_blob":     gcs_blob,
+            "reviewer":     _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)],
+            "generated_at": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── PCC Download ──────────────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-pcc/download/<pcc_id>')
+@admin_required
+def live_staff_ai_pcc_download(pcc_id):
+    """Download saved PCC DOCX from GCS."""
+    try:
+        rec = _ai_pcc_col().find_one({"_id": ObjectId(pcc_id)})
+        if not rec or not rec.get('gcs_blob'):
+            return jsonify({"success": False, "error": "PCC not found"}), 404
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{rec["filename"]}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── PCC Saved check ───────────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-pcc/saved/<staff_id>')
+@admin_required
+def live_staff_ai_pcc_saved(staff_id):
+    """Check if a saved PCC exists for this staff member."""
+    rec = _ai_pcc_col().find_one({"staff_id": staff_id})
+    if rec:
+        return jsonify({
+            "success":    True,
+            "found":      True,
+            "pcc_id":     str(rec["_id"]),
+            "filename":   rec.get("filename", ""),
+            "reviewer":   rec.get("reviewer", ""),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M") if rec.get("generated_at") else "",
+        })
+    return jsonify({"success": True, "found": False})
+
+
+# ── PCC Upload (replace) ──────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-pcc/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_ai_pcc_upload(staff_id):
+    """Upload an edited PCC DOCX to replace saved version in GCS."""
+    f = request.files.get('file')
+    if not f:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        safe_name = full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"PCC_{safe_name}.docx"
+        gcs_blob  = f"pcc/{filename}"
+        docx_bytes = f.read()
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        _ai_pcc_col().update_one(
+            {"staff_id": staff_id},
+            {"$set": {"gcs_blob": gcs_blob, "filename": filename,
+                      "generated_at": datetime.utcnow()}},
+            upsert=True
+        )
+        return jsonify({"success": True, "gcs_blob": gcs_blob, "filename": filename})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)

@@ -265,6 +265,12 @@
                                         title="Generate AI-Personalised CV">
                                     <i class="bi bi-stars"></i>
                                 </button>
+                                <button class="btn btn-outline-dark btn-sm rounded-pill px-3 me-1 btn-pcc"
+                                        data-id="{{ s._id }}"
+                                        data-name="{{ p.full_name | default('Staff') | e }}"
+                                        title="Generate PCC Self-Declaration Form">
+                                    <i class="bi bi-file-earmark-lock"></i>
+                                </button>
                                 <button class="btn btn-info btn-sm rounded-pill px-3 me-1 btn-ai-interview"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
@@ -647,6 +653,51 @@
                 <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button class="btn btn-primary fw-bold px-4" id="editCvSaveBtn">
                     <i class="bi bi-check-lg me-1"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ── PCC Self-Declaration Modal ──────────────────────────────────── -->
+<div class="modal fade" id="pccModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header text-white rounded-top-4"
+                 style="background: linear-gradient(135deg,#1B3A6B 0%,#2E9E44 100%);">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-file-earmark-lock me-2"></i>PCC Self-Declaration — <span id="pccModalName"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4" id="pccModalBody">
+                <p class="text-muted small">Generate the International Police Clearance Certificate Self-Declaration & Risk Assessment Form for this staff member.</p>
+                <div id="pccExistingAlert" class="alert alert-info d-none small py-2 mb-3"></div>
+                <div id="pccGenerating" class="d-none text-center py-3">
+                    <div class="spinner-border text-primary me-2"></div>
+                    <span>Generating PCC form...</span>
+                </div>
+                <div id="pccResult" class="d-none">
+                    <div class="alert alert-success small py-2">
+                        <i class="bi bi-check-circle me-1"></i> PCC form generated successfully.
+                    </div>
+                    <div class="d-flex gap-2 mt-2">
+                        <a id="pccDownloadBtn" href="#" class="btn btn-primary btn-sm">
+                            <i class="bi bi-download me-1"></i>Download DOCX
+                        </a>
+                    </div>
+                </div>
+                <div id="pccError" class="d-none alert alert-danger small py-2"></div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                <label class="btn btn-outline-secondary btn-sm mb-0">
+                    <i class="bi bi-upload me-1"></i> Upload Edited
+                    <input type="file" id="pccUploadInput" accept=".docx" class="d-none">
+                </label>
+                <button class="btn btn-dark btn-sm fw-bold px-4" id="pccGenerateBtn">
+                    <i class="bi bi-magic me-1"></i> Generate
                 </button>
             </div>
         </div>
@@ -1745,6 +1796,99 @@ document.getElementById('editCvSaveBtn').addEventListener('click', async () => {
         btn.disabled  = false;
         btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Save Changes';
     }
+});
+
+
+// ── PCC Self-Declaration ──────────────────────────────────────────────
+const PCC_GEN_URL    = "{{ url_for('admin.live_staff_ai_pcc_generate') }}";
+const PCC_SAVED_URL  = "{{ url_for('admin.live_staff_ai_pcc_saved', staff_id='STAFF_ID') }}";
+const PCC_DL_URL     = "{{ url_for('admin.live_staff_ai_pcc_download', pcc_id='PCC_ID') }}";
+const PCC_UPL_URL    = "{{ url_for('admin.live_staff_ai_pcc_upload', staff_id='STAFF_ID') }}";
+
+let currentPccStaffId = null;
+
+document.querySelectorAll('.btn-pcc').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentPccStaffId = btn.dataset.id;
+        const name = btn.dataset.name || '';
+        document.getElementById('pccModalName').textContent = name;
+        document.getElementById('pccExistingAlert').classList.add('d-none');
+        document.getElementById('pccGenerating').classList.add('d-none');
+        document.getElementById('pccResult').classList.add('d-none');
+        document.getElementById('pccError').classList.add('d-none');
+        new bootstrap.Modal(document.getElementById('pccModal')).show();
+
+        // Check if already exists
+        try {
+            const r = await fetch(PCC_SAVED_URL.replace('STAFF_ID', currentPccStaffId));
+            const d = await r.json();
+            if (d.success && d.found) {
+                const el = document.getElementById('pccExistingAlert');
+                el.innerHTML = `<i class="bi bi-info-circle me-1"></i> Existing form found (${d.generated_at}, Reviewer: ${d.reviewer}). Click Generate to regenerate.`;
+                el.classList.remove('d-none');
+                document.getElementById('pccDownloadBtn').href = PCC_DL_URL.replace('PCC_ID', d.pcc_id);
+                document.getElementById('pccResult').classList.remove('d-none');
+            }
+        } catch(e) {}
+    });
+});
+
+document.getElementById('pccGenerateBtn').addEventListener('click', async () => {
+    const gen  = document.getElementById('pccGenerating');
+    const res  = document.getElementById('pccResult');
+    const err  = document.getElementById('pccError');
+    const btn  = document.getElementById('pccGenerateBtn');
+    gen.classList.remove('d-none');
+    res.classList.add('d-none');
+    err.classList.add('d-none');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Generating…';
+
+    try {
+        const r = await fetch(PCC_GEN_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({staff_id: currentPccStaffId}),
+        });
+        const d = await r.json();
+        gen.classList.add('d-none');
+        if (d.success) {
+            document.getElementById('pccDownloadBtn').href = PCC_DL_URL.replace('PCC_ID', d.pcc_id);
+            res.classList.remove('d-none');
+        } else {
+            err.textContent = d.error || 'Generation failed';
+            err.classList.remove('d-none');
+        }
+    } catch(e) {
+        gen.classList.add('d-none');
+        err.textContent = 'Network error: ' + e.message;
+        err.classList.remove('d-none');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-magic me-1"></i> Generate';
+    }
+});
+
+document.getElementById('pccUploadInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file || !currentPccStaffId) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const r = await fetch(PCC_UPL_URL.replace('STAFF_ID', currentPccStaffId), {method:'POST', body:fd});
+        const d = await r.json();
+        const err = document.getElementById('pccError');
+        if (d.success) {
+            err.className = 'alert alert-success small py-2';
+            err.textContent = 'Uploaded successfully';
+            err.classList.remove('d-none');
+        } else {
+            err.className = 'alert alert-danger small py-2';
+            err.textContent = d.error || 'Upload failed';
+            err.classList.remove('d-none');
+        }
+    } catch(ex) {}
+    e.target.value = '';
 });
 
 </script>
