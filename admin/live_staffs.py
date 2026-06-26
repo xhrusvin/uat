@@ -7386,6 +7386,443 @@ TEXT:
         })
 
 
+
+# ── Cron: Extract NMBI/QQI number from qualification docs ─────────────
+
+@admin_bp.route('/live-staffs/cron/sync-qualification', methods=['GET', 'POST'])
+def live_staff_cron_sync_qualification():
+    """
+    Cron job — processes ONE staff member per call.
+
+    Logic:
+      - Nurse:             looks for "Nmbi Qualification" document
+      - Healthcare Asst:   looks for "QQI Level 5 or equivalent..." document
+      Downloads doc, sends to Gemini to extract registration/ID number.
+      Saves to live_staffs.nmbi_number or live_staffs.qqi_number.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    import requests as _req
+
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+    gemini_key  = os.environ.get('GEMINI_API_KEY', '')
+
+    if not base_url:
+        return jsonify({"success": False, "error": "LIVE_STAFF_URL not set"}), 500
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+    col = _staffs_col()
+
+    # ── Find next unprocessed staff ────────────────────────────────────
+    # Only process Nurses and Healthcare Assistants
+    # Skip if already fetched (qualification_fetched = True)
+    pending_query = {
+        "$and": [
+            {"$or": [
+                {"user_type": {"$regex": "nurse", "$options": "i"}},
+                {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
+                {"user_type": {"$regex": "hca", "$options": "i"}},
+            ]},
+            {"$or": [
+                {"qualification_fetched": {"$exists": False}},
+                {"qualification_fetched": False},
+                {"qualification_fetched": None},
+            ]},
+        ]
+    }
+
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff qualifications already extracted — nothing to do.",
+            "remaining_count": 0,
+        })
+
+    staff_id  = str(staff['_id'])
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or '')
+    user_type = _v(staff.get('user_type') or '')
+    ut_lower  = user_type.lower()
+
+    is_nurse = 'nurse' in ut_lower or 'nursing' in ut_lower
+    is_hca   = 'hca' in ut_lower or 'healthcare assistant' in ut_lower or 'health care assistant' in ut_lower
+
+    # Determine target document type
+    if is_nurse:
+        target_doc_types = ['nmbi qualification', 'nmbi', 'nursing qualification']
+        save_field       = 'nmbi_number'
+        extract_hint     = (
+            "This is a nursing registration document. "
+            "Find the NMBI registration PIN number. "
+            "It is typically 6 digits, or a combination of letters and numbers (e.g. 123456, NMC12345). "
+            "Look for labels like: PIN, Registration Number, NMBI Number, Reg No, Certificate No."
+        )
+    else:
+        target_doc_types = [
+            'qqi level 5 or equivalent in health service skills or healthcare support',
+            'qqi level 5', 'qqi', 'healthcare support',
+            'health service skills', 'qqi certificate',
+        ]
+        save_field   = 'qqi_number'
+        extract_hint = (
+            "This is a QQI / FETAC qualification certificate. "
+            "Find the certificate number, learner ID, or award reference number. "
+            "Look for labels like: Certificate No, Learner ID, Award Reference, QQI No, Record No, Registration No."
+        )
+
+    def _mark_done(update_dict):
+        update_dict["qualification_fetched"]    = True
+        update_dict["qualification_fetched_at"] = datetime.utcnow()
+        col.update_one({"_id": staff['_id']}, {"$set": update_dict})
+
+    if not email:
+        _mark_done({"qualification_note": "skipped — no email"})
+        return jsonify({
+            "success":         True,
+            "message":         f"Skipped {staff_id} — no email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Call XN Portal API ────────────────────────────────────────────
+    endpoint    = f"{base_url}/ai/recruitments/user-document-list"
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.post(endpoint, json={"email": email},
+                         headers=api_headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.get(endpoint, params={"email": email},
+                            headers=api_headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as api_err:
+        _mark_done({"qualification_note": f"API error: {api_err}"})
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"API error: {api_err}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not data.get('success'):
+        _mark_done({"qualification_note": f"API error: {data.get('message')}"})
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           data.get('message', 'API error'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    api_data  = data.get('data')
+    documents = api_data if isinstance(api_data, list) else                 (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+
+    if not documents:
+        _mark_done({"qualification_note": "no documents returned"})
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "doc_found":       False,
+            "message":         f"No documents returned for {email}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Find matching qualification document ──────────────────────────
+    qual_doc = None
+    for d in documents:
+        doc_name = (d.get('document_type_name') or '').strip().lower()
+        if any(t in doc_name for t in target_doc_types) and d.get('url'):
+            qual_doc = d
+            break
+
+    if not qual_doc:
+        _mark_done({"qualification_note": f"no matching qualification doc found"})
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "doc_found":       False,
+            "message":         f"No qualification document found for {full_name}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    doc_url = qual_doc.get('url', '')
+
+    # ── Download document ─────────────────────────────────────────────
+    try:
+        dl_headers = {k: v for k, v in api_headers.items() if k != 'Content-Type'}
+        dl_resp    = _req.get(doc_url, headers=dl_headers, timeout=60)
+        dl_resp.raise_for_status()
+        raw_bytes    = dl_resp.content
+        content_type = dl_resp.headers.get('Content-Type', '').lower()
+
+        from google import genai as google_genai
+        import json as _json, re as _re, base64
+
+        client = google_genai.Client(api_key=gemini_key)
+
+        prompt_text = f"""{extract_hint}
+
+Return ONLY a JSON object — no markdown, no explanation:
+{{
+  "registration_number": "<the number you found, exactly as printed>",
+  "label_found": "<the label printed next to the number, e.g. PIN, Certificate No>",
+  "confidence": "<high|medium|low>",
+  "raw_text": "<all readable text from the document>"
+}}
+
+If no registration/certificate number is found, set "registration_number" to null.
+"""
+
+        is_image = any(t in content_type for t in ('image/', 'jpeg', 'jpg', 'png', 'webp'))
+        is_pdf   = 'pdf' in content_type or doc_url.lower().split('?')[0].endswith('.pdf')
+
+        if is_image:
+            ext  = 'jpeg' if any(t in content_type for t in ('jpeg','jpg')) else                    'png'  if 'png' in content_type else 'webp' if 'webp' in content_type else 'jpeg'
+            parts = [
+                {"inline_data": {"mime_type": f"image/{ext}",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[{"parts": parts}]
+            )
+        elif is_pdf:
+            parts = [
+                {"inline_data": {"mime_type": "application/pdf",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[{"parts": parts}]
+            )
+        else:
+            try:
+                import io as _io, pdfplumber
+                with pdfplumber.open(_io.BytesIO(raw_bytes)) as pdf:
+                    raw_text = chr(10).join(p.extract_text() or '' for p in pdf.pages).strip()
+            except Exception:
+                raw_text = raw_bytes.decode('utf-8', errors='replace').strip()
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt_text + "\n\nDOCUMENT TEXT:\n" + raw_text[:5000]
+            )
+
+        raw_out = (response.text or '').strip()
+        raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
+        raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
+
+        result    = _json.loads(raw_out)
+        reg_num   = _v(result.get('registration_number') or '')
+        raw_text_ = _v(result.get('raw_text') or '')
+
+        _mark_done({
+            save_field:             reg_num,
+            "qualification_doc_type": qual_doc.get('document_type_name', ''),
+            "qualification_doc_url":  doc_url,
+            "qualification_raw":      raw_text_,
+            "qualification_data":     result,
+            "qualification_note":     f"extracted from {qual_doc.get('document_type_name','')}",
+        })
+
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "user_type":       user_type,
+            "doc_found":       True,
+            save_field:        reg_num,
+            "doc_type":        qual_doc.get('document_type_name', ''),
+            "readable":        bool(reg_num),
+            "remaining_count": max(0, remaining_total - 1),
+            "message": (
+                f"{save_field} {'extracted: ' + reg_num if reg_num else 'not readable'} "
+                f"for {full_name} — {max(0, remaining_total - 1)} remaining."
+            ),
+        })
+
+    except _json.JSONDecodeError:
+        _mark_done({"qualification_note": "Gemini JSON parse error"})
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           "Gemini returned non-JSON",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+    except Exception as e:
+        _mark_done({"qualification_note": f"error: {e}"})
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+
+# ── Export: Nurse NMBI list ───────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/export/nmbi-xlsx')
+@admin_required
+def live_staff_export_nmbi_xlsx():
+    """Export Nurse staff with NMBI numbers to Excel."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {"$or": [
+                {"user_type": {"$regex": "nurse", "$options": "i"}},
+                {"user_type": {"$regex": "nursing", "$options": "i"}},
+            ]},
+            {"section_1_personal_details": 1, "email": 1,
+             "user_type": 1, "nmbi_number": 1, "qualification_fetched": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        wb, ws = _build_qual_xlsx(docs, 'Nurses — NMBI', 'nmbi_number', 'NMBI Number')
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="nmbi_numbers_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Export: HCA QQI list ──────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/export/qqi-xlsx')
+@admin_required
+def live_staff_export_qqi_xlsx():
+    """Export Healthcare Assistant staff with QQI numbers to Excel."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {"$or": [
+                {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
+                {"user_type": {"$regex": "\bhca\b", "$options": "i"}},
+            ]},
+            {"section_1_personal_details": 1, "email": 1,
+             "user_type": 1, "qqi_number": 1, "qualification_fetched": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        wb, ws = _build_qual_xlsx(docs, 'HCA — QQI Level 5', 'qqi_number', 'QQI Number')
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="qqi_numbers_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+def _build_qual_xlsx(docs, sheet_title, number_field, number_label):
+    """Shared builder for NMBI/QQI Excel exports."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
+    ALT  = 'EFF6FF'; WARN  = 'FFFBEB'
+
+    h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+    h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+    h_align = Alignment(horizontal='center', vertical='center')
+    b_font  = Font(name='Arial', size=10)
+    l_align = Alignment(horizontal='left', vertical='center')
+    c_align = Alignment(horizontal='center', vertical='center')
+    thin    = Side(style='thin', color='CCCCCC')
+    border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+    green_b = Border(left=thin, right=thin, top=thin,
+                     bottom=Side(style='medium', color=GREEN))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_title[:31]
+
+    headers    = ['Sno', 'Name', 'Email', number_label, 'Status']
+    col_widths = [5, 32, 40, 25, 18]
+
+    for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+        cell = ws.cell(row=1, column=ci, value=hdr)
+        cell.font      = h_font
+        cell.fill      = h_fill
+        cell.alignment = h_align
+        cell.border    = green_b
+        ws.column_dimensions[cell.column_letter].width = width
+    ws.row_dimensions[1].height = 24
+    ws.freeze_panes = 'A2'
+
+    for ri, doc in enumerate(docs, start=2):
+        s1     = doc.get('section_1_personal_details') or {}
+        name   = _v(s1.get('full_name') or '')
+        email  = _v(doc.get('email') or '')
+        number = _v(doc.get(number_field) or '')
+        fetched= doc.get('qualification_fetched', False)
+
+        if number:
+            status = 'Found'
+            row_fill = None
+        elif fetched:
+            status = 'Not Found'
+            row_fill = PatternFill('solid', start_color='FFDDDD', end_color='FFDDDD')
+        else:
+            status = 'Not Checked'
+            row_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
+
+        alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) if ri % 2 == 0 and not row_fill else None
+
+        for ci, (val, align) in enumerate(
+            [(ri-1, c_align), (name, l_align), (email, l_align), (number, c_align), (status, c_align)],
+            start=1
+        ):
+            cell = ws.cell(row=ri, column=ci, value=val)
+            cell.font      = b_font
+            cell.alignment = align
+            cell.border    = border
+            cell.fill      = row_fill or alt_fill or PatternFill()
+
+        ws.row_dimensions[ri].height = 17
+
+    ws.cell(row=len(docs)+2, column=1,
+            value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
+
+    return wb, ws
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)

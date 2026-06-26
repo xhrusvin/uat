@@ -102,18 +102,22 @@ async def create_shift_group(request: Request, payload: ShiftGroupCreate):
 
 # ── GET group ─────────────────────────────────────────────────────────────────
 
-@router.get(
-    "/{group_id}",
+class ShiftGroupDetailRequest(BaseModel):
+    group_id: str
+
+
+@router.post(
+    "/detail",
     summary="Get a shift group with shift details",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("60/minute")
-async def get_shift_group(request: Request, group_id: str):
+async def get_shift_group(request: Request, payload: ShiftGroupDetailRequest):
     db = _get_db()
-    if not ObjectId.is_valid(group_id):
+    if not ObjectId.is_valid(payload.group_id):
         raise HTTPException(status_code=422, detail="Invalid group_id")
 
-    group = await db["shifts_group"].find_one({"_id": ObjectId(group_id)})
+    group = await db["shifts_group"].find_one({"_id": ObjectId(payload.group_id)})
     if not group:
         raise HTTPException(status_code=404, detail="Shift group not found")
 
@@ -261,19 +265,23 @@ async def remove_shifts_from_group(request: Request, payload: RemoveShiftsReques
 
 # ── DELETE group ──────────────────────────────────────────────────────────────
 
-@router.delete(
-    "/{group_id}",
+class ShiftGroupDeleteRequest(BaseModel):
+    group_id: str
+
+
+@router.post(
+    "/delete",
     summary="Delete a shift group",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("30/minute")
-async def delete_shift_group(request: Request, group_id: str):
+async def delete_shift_group(request: Request, payload: ShiftGroupDeleteRequest):
     db = _get_db()
-    if not ObjectId.is_valid(group_id):
+    if not ObjectId.is_valid(payload.group_id):
         raise HTTPException(status_code=422, detail="Invalid group_id")
 
-    result = await db["shifts_group"].delete_one({"_id": ObjectId(group_id)})
+    result = await db["shifts_group"].delete_one({"_id": ObjectId(payload.group_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Shift group not found")
 
-    return {"success": True, "message": "Shift group deleted", "id": group_id}
+    return {"success": True, "message": "Shift group deleted", "id": payload.group_id}
