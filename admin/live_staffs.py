@@ -12295,28 +12295,81 @@ def _build_pcc_docx(doc, reviewer_index=0):
     body_text('Completion of this form does not exempt you from the requirement to obtain and submit the PCC. You remain obligated to provide the certificate(s) as soon as reasonably practicable.')
     sp(2)
 
-    # ── Section 3 ─────────────────────────────────────────────────────
+    # ── Section 3 — extract from extracted_cv via Gemini ────────────
     section_heading('SECTION 3 — INTERNATIONAL RESIDENTIAL HISTORY')
     body_text('Please list ALL countries (other than your current country of residence) where you have lived for six (6) months or more since the age of 18. Include the reason for your stay.')
     sp(2)
-    cols_   = ['Country', 'City / Region', 'From (MM/YYYY)', 'To (MM/YYYY)', 'Reason for Stay']
-    # Build rows from employment history — use employer/position/from/to as proxies
+
+    # Parse employment history from extracted_cv using Gemini
     hist_rows = []
-    for e in emp_entries[:8]:
-        country  = _v(e.get('country') or '')
-        city     = _v(e.get('employer') or '')
-        frm      = _v(e.get('from') or '')
-        to_      = _v(e.get('to') or 'Present')
-        reason   = _v(e.get('position') or '')
-        hist_rows.append((country, city, frm, to_, reason))
-    # Always have at least 4 rows
+    extracted_cv_ = _v(doc.get('extracted_cv') or '')
+    has_cv_ = (extracted_cv_ and not extracted_cv_.startswith('[')
+               and extracted_cv_ != 'No doc found')
+
+    if has_cv_:
+        try:
+            import json as _json2, re as _re2
+            from google import genai as _genai2
+            _gemini_key2 = __import__('os').environ.get('GEMINI_API_KEY', '')
+            if _gemini_key2:
+                _prompt2 = f"""You are a CV analyser. Extract all employment history entries from the CV text below.
+
+For each job role extract:
+- country: the country where the job was based
+- city_region: the city, region, county or employer location
+- from_date: start date (MM/YYYY format if possible)
+- to_date: end date (MM/YYYY format) or "Present" if current
+- reason: the job title / role description
+
+Return ONLY a JSON array — no markdown:
+[
+  {{"country": "...", "city_region": "...", "from_date": "...", "to_date": "...", "reason": "..."}}
+]
+
+If country is not mentioned, infer from city/employer name if possible, otherwise leave blank.
+
+CV TEXT:
+{extracted_cv_[:6000]}
+"""
+                _client2 = _genai2.Client(api_key=_gemini_key2)
+                _resp2   = _client2.models.generate_content(
+                    model='gemini-2.5-flash', contents=_prompt2
+                )
+                _raw2 = (_resp2.text or '').strip()
+                _raw2 = _re2.sub(r'^```(?:json)?\s*', '', _raw2, flags=_re2.MULTILINE)
+                _raw2 = _re2.sub(r'```\s*$', '', _raw2, flags=_re2.MULTILINE).strip()
+                _parsed2 = _json2.loads(_raw2)
+                for _e in _parsed2[:10]:
+                    hist_rows.append((
+                        _v(_e.get('country') or ''),
+                        _v(_e.get('city_region') or ''),
+                        _v(_e.get('from_date') or ''),
+                        _v(_e.get('to_date') or 'Present'),
+                        _v(_e.get('reason') or ''),
+                    ))
+        except Exception:
+            pass
+
+    # Fallback to section_5 entries if Gemini failed
+    if not hist_rows:
+        for e in emp_entries[:8]:
+            hist_rows.append((
+                _v(e.get('country') or ''),
+                _v(e.get('employer') or ''),
+                _v(e.get('from') or ''),
+                _v(e.get('to') or 'Present'),
+                _v(e.get('position') or ''),
+            ))
+
+    # Ensure at least 4 rows
     while len(hist_rows) < 4:
         hist_rows.append(('', '', '', '', ''))
-    num_rows = len(hist_rows) + 1  # +1 for header
-    htbl = document.add_table(rows=num_rows, cols=5)
+
+    cols_ = ['Country', 'City / Region', 'From (MM/YYYY)', 'To (MM/YYYY)', 'Reason for Stay']
+    htbl  = document.add_table(rows=len(hist_rows) + 1, cols=5)
     htbl.style = 'Table Grid'
     for ci, hdr in enumerate(cols_):
-        c = htbl.cell(0, ci)
+        c  = htbl.cell(0, ci)
         _set_cell_bg(c, '1B3A6B')
         _set_cell_border(c, '1B3A6B')
         p_ = c.paragraphs[0]
