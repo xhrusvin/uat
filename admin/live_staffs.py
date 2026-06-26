@@ -7480,22 +7480,24 @@ def live_staff_cron_sync_qualification():
                 {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
                 {"user_type": {"$regex": "hca", "$options": "i"}},
             ]},
-            # Not yet fetched OR is HCA with no valid alphanumeric qqi_number
+            # Exclude staff where document URL returned 404 — cannot retry
+            {"qualification_doc_404": {"$ne": True}},
+            # Not yet fetched OR HCA with no valid alphanumeric qqi_number
             {"$or": [
                 {"qualification_fetched": {"$exists": False}},
                 {"qualification_fetched": False},
                 {"qualification_fetched": None},
-                # Re-run HCA if qqi_number is missing or does not contain a letter
+                # Re-run HCA only if NOT 404 and qqi_number is missing/digits-only
                 {"$and": [
                     {"$or": [
                         {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
                         {"user_type": {"$regex": "hca", "$options": "i"}},
                     ]},
+                    {"qualification_doc_404": {"$ne": True}},
                     {"$or": [
                         {"qqi_number": {"$exists": False}},
                         {"qqi_number": None},
                         {"qqi_number": ""},
-                        # Number is all digits only (no letters) — likely wrong, re-extract
                         {"qqi_number": {"$not": {"$regex": "[A-Za-z]"}}},
                     ]},
                 ]},
@@ -7644,7 +7646,10 @@ def live_staff_cron_sync_qualification():
 
         # 404 = document missing/expired URL — mark done and skip
         if dl_resp.status_code == 404:
-            _mark_done({"qualification_note": f"document URL returned 404 — skipped"})
+            _mark_done({
+                "qualification_note":   "document URL returned 404 — skipped",
+                "qualification_doc_404": True,
+            })
             return jsonify({
                 "success":         True,
                 "email":           email,
