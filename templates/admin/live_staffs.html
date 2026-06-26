@@ -19,7 +19,7 @@
                 <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
                     <i class="bi bi-download"></i> Export
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" style="min-width:280px;">
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" style="min-width:280px;max-height:80vh;overflow-y:auto;">
                     <li><h6 class="dropdown-header text-muted small">General</h6></li>
                     <li>
                         <a class="dropdown-item" href="{{ url_for('admin.live_staff_export') }}?format=json">
@@ -94,6 +94,11 @@
                     <li>
                         <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_cpi_xlsx') }}">
                             <i class="bi bi-person-arms-up me-2 text-warning"></i>CPI/MAPA/PMAV Certificates (Excel)
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_employment_contract_xlsx') }}">
+                            <i class="bi bi-file-earmark-text me-2 text-secondary"></i>Employment Contracts (Excel)
                         </a>
                     </li>
                     <li>
