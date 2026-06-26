@@ -17950,6 +17950,383 @@ def live_staff_export_driving_licence_xlsx():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+
+# ── Cron: Extract Point Scale Document ───────────────────────────────
+
+@admin_bp.route('/live-staffs/cron/sync-point-scale', methods=['GET', 'POST'])
+def live_staff_cron_sync_point_scale():
+    """
+    Cron job — processes ONE staff member per call.
+    Finds "Point Scale Document" document, extracts details via Gemini AI.
+    Saves: psd_document_name, psd_staff_name, psd_signed_date,
+           psd_point_scale, psd_issuing_body, psd_fetched = True
+    """
+    import requests as _req
+    import json as _json, re as _re, base64
+    from google import genai as google_genai
+
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+    gemini_key  = os.environ.get('GEMINI_API_KEY', '')
+
+    if not base_url:
+        return jsonify({"success": False, "error": "LIVE_STAFF_URL not set"}), 500
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+    col = _staffs_col()
+
+    pending_query = {
+        "$or": [
+            {"psd_fetched": {"$exists": False}},
+            {"psd_fetched": False},
+            {"psd_fetched": None},
+        ]
+    }
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff Point Scale Documents already extracted.",
+            "remaining_count": 0,
+        })
+
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or s1.get('email_address') or '')
+
+    def _mark_done(fields):
+        fields["psd_fetched"]    = True
+        fields["psd_fetched_at"] = datetime.utcnow()
+        col.update_one({"_id": staff['_id']}, {"$set": fields})
+
+    if not email:
+        _mark_done({"psd_note": "skipped — no email"})
+        return jsonify({
+            "success":         True,
+            "message":         "Skipped — no email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    endpoint    = f"{base_url}/ai/recruitments/user-document-list"
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.post(endpoint, json={"email": email},
+                         headers=api_headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.get(endpoint, params={"email": email},
+                            headers=api_headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        _mark_done({"psd_note": f"API error: {e}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": f"API error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not data.get('success'):
+        _mark_done({"psd_note": f"API error: {data.get('message')}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": data.get('message', 'API error'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    api_data  = data.get('data')
+    documents = api_data if isinstance(api_data, list) else                 (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+
+    if not documents:
+        _mark_done({"psd_note": "no documents returned"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": False,
+            "message": f"No documents returned for {email}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    psd_doc = None
+    for d in documents:
+        doc_name = (d.get('document_type_name') or '').strip().lower()
+        if any(t in doc_name for t in (
+            'point scale document', 'point scale',
+            'points scale document', 'points scale',
+            'salary scale', 'pay scale', 'incremental scale',
+        )) and d.get('url'):
+            psd_doc = d
+            break
+
+    if not psd_doc:
+        _mark_done({"psd_note": "no Point Scale Document found"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": False,
+            "message": f"No Point Scale Document found for {full_name}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    doc_url = (psd_doc.get('url') or '').strip()
+
+    if not doc_url:
+        _mark_done({"psd_note": "document found but URL is empty — skipped"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": True, "skipped": True,
+            "reason": "Document URL is empty",
+            "remaining_count": max(0, remaining_total - 1),
+            "message": f"Skipped {full_name} ({email}) — Point Scale doc has no URL",
+        })
+
+    try:
+        dl_headers = {k: v for k, v in api_headers.items() if k != 'Content-Type'}
+        dl_resp    = _req.get(doc_url, headers=dl_headers, timeout=60)
+
+        if dl_resp.status_code == 404:
+            _mark_done({"psd_note": "document URL 404 — skipped", "psd_doc_404": True})
+            return jsonify({
+                "success": True, "email": email, "staff_name": full_name,
+                "doc_found": True, "skipped": True,
+                "reason": "Document URL returned 404",
+                "remaining_count": max(0, remaining_total - 1),
+                "message": f"Skipped {full_name} ({email}) — Point Scale doc URL 404",
+            })
+
+        dl_resp.raise_for_status()
+        raw_bytes    = dl_resp.content
+        content_type = dl_resp.headers.get('Content-Type', '').lower()
+
+        client = google_genai.Client(api_key=gemini_key)
+
+        prompt_text = """You are a document data extractor.
+
+Extract the following details from this Point Scale Document (salary/pay scale document):
+1. Document name (e.g. "Point Scale Document", "Salary Scale", "Pay Scale Agreement")
+2. Staff / employee name as printed on the document
+3. Point scale or salary scale value (e.g. "Point 1", "Scale 5", "€32,000")
+4. Date the document was signed or issued
+5. Issuing body or employer name
+
+Return ONLY a JSON object — no markdown, no explanation:
+{
+  "document_name": "<exact document title as printed>",
+  "staff_name_on_doc": "<name as printed on document>",
+  "point_scale": "<point scale, salary scale or pay value as shown>",
+  "signed_date": "<date signed or issued as printed>",
+  "issuing_body": "<employer or issuing organisation name>"
+}
+
+If a field is not visible, set it to null.
+"""
+
+        is_image = any(t in content_type for t in ('image/', 'jpeg', 'jpg', 'png', 'webp'))
+        is_pdf   = 'pdf' in content_type or doc_url.lower().split('?')[0].endswith('.pdf')
+
+        if is_image:
+            ext   = 'jpeg' if any(t in content_type for t in ('jpeg', 'jpg')) else                     'png'  if 'png'  in content_type else                     'webp' if 'webp' in content_type else 'jpeg'
+            parts = [
+                {"inline_data": {"mime_type": f"image/{ext}",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash', contents=[{"parts": parts}]
+            )
+        elif is_pdf:
+            parts = [
+                {"inline_data": {"mime_type": "application/pdf",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash', contents=[{"parts": parts}]
+            )
+        else:
+            try:
+                import io as _io, pdfplumber
+                with pdfplumber.open(_io.BytesIO(raw_bytes)) as pdf:
+                    raw_text = chr(10).join(p.extract_text() or '' for p in pdf.pages).strip()
+            except Exception:
+                raw_text = raw_bytes.decode('utf-8', errors='replace').strip()
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt_text + "\n\nDOCUMENT TEXT:\n" + raw_text[:5000]
+            )
+
+        raw_out = (response.text or '').strip()
+        raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
+        raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
+
+        result       = _json.loads(raw_out)
+        doc_name     = _v(result.get('document_name') or '')
+        staff_on_doc = _v(result.get('staff_name_on_doc') or '')
+        point_scale  = _v(result.get('point_scale') or '')
+        signed_date  = _v(result.get('signed_date') or '')
+        issuing_body = _v(result.get('issuing_body') or '')
+
+        _mark_done({
+            "psd_document_name": doc_name,
+            "psd_staff_name":    staff_on_doc,
+            "psd_point_scale":   point_scale,
+            "psd_signed_date":   signed_date,
+            "psd_issuing_body":  issuing_body,
+            "psd_doc_url":       doc_url,
+            "psd_doc_type":      psd_doc.get('document_type_name', ''),
+            "psd_note":          "extracted successfully",
+        })
+
+        return jsonify({
+            "success":          True,
+            "email":            email,
+            "staff_name":       full_name,
+            "doc_found":        True,
+            "document_name":    doc_name,
+            "staff_name_on_doc": staff_on_doc,
+            "point_scale":      point_scale,
+            "signed_date":      signed_date,
+            "issuing_body":     issuing_body,
+            "remaining_count":  max(0, remaining_total - 1),
+            "message": (
+                f"Point Scale Document extracted for {full_name} ({email}) "
+                f"— {max(0, remaining_total - 1)} remaining."
+            ),
+        })
+
+    except _json.JSONDecodeError:
+        _mark_done({"psd_note": "Gemini JSON parse error"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": "Gemini returned non-JSON",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+    except Exception as e:
+        _mark_done({"psd_note": f"error: {e}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+
+# ── Export: Point Scale Documents to Excel ───────────────────────────
+
+@admin_bp.route('/live-staffs/export/point-scale-xlsx')
+@admin_required
+def live_staff_export_point_scale_xlsx():
+    """Export Point Scale Document details to Excel."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1,
+             "psd_document_name": 1, "psd_staff_name": 1,
+             "psd_point_scale": 1, "psd_signed_date": 1,
+             "psd_issuing_body": 1, "psd_fetched": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
+        ALT  = 'EFF6FF'; WARN  = 'FFF3CD'; RED   = 'FFDDDD'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Arial', size=10)
+        l_align = Alignment(horizontal='left',   vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        green_b = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Point Scale Documents'
+
+        headers    = ['Sno', 'Staff Name', 'Email', 'Document Name',
+                      'Name on Doc', 'Point Scale', 'Signed Date', 'Issuing Body', 'Status']
+        col_widths = [5, 28, 36, 30, 28, 16, 16, 28, 14]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = green_b
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
+
+        for ri, doc in enumerate(docs, start=2):
+            s1       = doc.get('section_1_personal_details') or {}
+            name     = _v(s1.get('full_name') or '')
+            email    = _v(doc.get('email') or '')
+            doc_n    = _v(doc.get('psd_document_name') or '')
+            doc_s    = _v(doc.get('psd_staff_name') or '')
+            scale    = _v(doc.get('psd_point_scale') or '')
+            signed   = _v(doc.get('psd_signed_date') or '')
+            issuer   = _v(doc.get('psd_issuing_body') or '')
+            fetched  = doc.get('psd_fetched', False)
+
+            if not fetched:
+                status   = 'Not Checked'
+                row_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
+            elif not doc_n:
+                status   = 'No Doc Found'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+            else:
+                status   = 'Found'
+                row_fill = None
+
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT)                        if ri % 2 == 0 and not row_fill else None
+
+            row_vals = [ri-1, name, email, doc_n, doc_s, scale, signed, issuer, status]
+            aligns   = [c_align, l_align, l_align, l_align, l_align,
+                        c_align, c_align, l_align, c_align]
+
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border
+                cell.fill = row_fill or alt_fill or PatternFill()
+
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(docs)+2, column=1,
+                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="point_scale_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
