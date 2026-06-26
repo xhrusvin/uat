@@ -8167,7 +8167,7 @@ def live_staff_export_cpr_xlsx():
 
         wb = Workbook()
         ws = wb.active
-        ws.title = 'CPR/BLS Certificates'
+        ws.title = 'CPR-BLS Certificates'
 
         headers    = ['Sno', 'Staff Name', 'Email', 'Certificate Name',
                       'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Status']
