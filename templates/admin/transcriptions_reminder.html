@@ -1,0 +1,925 @@
+<!-- admin/transcriptions_reminder.html -->
+{% extends "admin/base.html" %}
+
+{% block title %}Reminder Calls • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">Certificate Reminder Calls</h2>
+        <div>
+            <span class="badge bg-primary fs-5 px-3 py-2">{{ total }} Total Calls</span>
+        </div>
+    </div>
+
+    <!-- Search + Filters -->
+    <form method="get" class="mb-4">
+        <div class="d-flex gap-3 align-items-center flex-wrap">
+
+            <!-- Search Input -->
+            <div class="flex-grow-1 position-relative">
+                <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
+                    <span class="input-group-text bg-white border-0">
+                        <i class="bi bi-search"></i>
+                    </span>
+                    <input type="text"
+                           id="userSearch"
+                           name="search"
+                           class="form-control border-0 ps-0"
+                           placeholder="Search by phone number or name..."
+                           value="{{ search }}"
+                           autocomplete="off"
+                           autofocus>
+                    <button class="btn btn-primary px-4 border-0" type="submit">Search</button>
+                </div>
+                <div id="suggestionsBox"
+                     class="list-group position-absolute w-100 shadow"
+                     style="z-index:1000; display:none;"></div>
+            </div>
+
+            <!-- Filter Dropdown -->
+            <div class="dropdown">
+                <button class="btn btn-light border shadow-sm rounded-4 px-4 py-3 dropdown-toggle"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        data-bs-auto-close="outside">
+                    <i class="bi bi-funnel-fill me-2 text-primary"></i>
+                    Filters
+                    {% if date_range or designation or county %}
+                        <span class="badge bg-primary ms-2">Active</span>
+                    {% endif %}
+                </button>
+
+                <div class="dropdown-menu dropdown-menu-end p-4 shadow border-0 rounded-4"
+                     style="width: 340px;">
+
+                    <!-- Date -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold text-muted small mb-2">Date Range</label>
+                        <input type="text"
+                               id="date-range"
+                               name="date_range"
+                               class="form-control rounded-3"
+                               placeholder="Select date range"
+                               value="{{ date_range }}">
+                    </div>
+
+                    <!-- Designation -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold text-muted small mb-2">Designation</label>
+                        <select name="designation" class="form-select rounded-3">
+                            <option value="">All Designations</option>
+                            {% for d in designations %}
+                                <option value="{{ d }}" {% if designation == d %}selected{% endif %}>{{ d }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- County -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold text-muted small mb-2">County</label>
+                        <select name="county" class="form-select rounded-3">
+                            <option value="">All Counties</option>
+                            {% for cty in counties %}
+                                <option value="{{ cty }}" {% if county == cty %}selected{% endif %}>{{ cty }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill rounded-3">Apply Filters</button>
+                        <a href="{{ url_for('admin.reminder_tr') }}" class="btn btn-outline-secondary rounded-3">Clear</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <!-- Table -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="text-white" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <tr>
+                            <th class="ps-4">Phone</th>
+                            <th>Name</th>
+                            <th>Designation</th>
+                            <th>Certificates Needed</th>
+                            <th>Status</th>
+                            <th>Summary</th>
+                            <th>Duration</th>
+                            <th class="text-end pe-4">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in convs %}
+                        <tr class="transcript-row" style="cursor: pointer;"
+                            data-conv-id="{{ c.conv_id }}"
+                            data-phone="{{ c.phone }}"
+                            data-name="{{ c.name }}"
+                            data-email="{{ c.email or '' }}"
+                            data-started="{{ c.started_at }}"
+                            data-ended="{{ c.ended_at }}"
+                            data-call-status="{{ c.call_status }}"
+                            data-elevenlabs-id="{{ c.elevenlabs_conversation_id or '' }}"
+                            data-created-at="{{ c.created_at or '' }}"
+                            data-onboarded="{{ c.onboarded or 0 }}"
+                            data-onboarded-at="{{ c.onboarded_at or '' }}"
+                            data-certificates="{{ c.certificates_needed | join(', ') }}">
+
+                            <td class="ps-4 fw-bold text-primary">{{ c.phone }}</td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <div class="avatar avatar-sm bg-danger text-white rounded-circle me-3 d-flex align-items-center justify-content-center fw-bold">
+                                        {{ c.name[0]|upper if c.name and c.name != 'Unknown' else 'U' }}
+                                    </div>
+                                    <div><div class="fw-semibold">{{ c.name }}</div></div>
+                                </div>
+                            </td>
+                            <td><span class="text-muted">{{ c.designation }}</span></td>
+                            <td>
+                                {% if c.certificates_needed %}
+                                    {% for cert in c.certificates_needed %}
+                                        <span class="badge bg-warning text-dark me-1 mb-1">{{ cert }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if c.ended_at != 'Ongoing' and c.ended_at != '—' %}
+                                    {% if c.call_status == 'User Busy' %}
+                                        <span class="text-warning fw-bold">User Busy</span>
+                                    {% elif c.call_status == 'User Rejected Call' %}
+                                        <span class="text-danger fw-bold">{{ c.call_status }}</span>
+                                    {% elif c.call_status == 'Voice Mail Detected' %}
+                                        <span class="text-info fw-bold">Voice Mail Detected</span>
+                                    {% elif c.call_status == 'No Required Experience' %}
+                                        <span class="text-primary fw-bold">No Required Experience</span>
+                                    {% else %}
+                                        <span class="text-success fw-bold">{{ c.call_status }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-warning fw-bold">Ongoing</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if c.elevenlabs_conversation_id %}
+                                <button class="btn btn-sm btn-outline-info rounded-circle info-btn mt-1"
+                                        title="Brief Summary"
+                                        data-elevenlabs-id="{{ c.elevenlabs_conversation_id }}"
+                                        style="width:32px;height:32px;padding:0;line-height:1;">
+                                    <i class="bi bi-info-lg"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if c.ended_at and c.ended_at not in ['Ongoing', '—', ''] %}
+                                    {% set start_dt = c.started_at | strptime('%Y-%m-%d %H:%M:%S') %}
+                                    {% set end_dt   = c.ended_at   | strptime('%Y-%m-%d %H:%M:%S') %}
+                                    {% set duration_minutes = (end_dt - start_dt).total_seconds() / 60 %}
+                                    <span class="badge rounded-pill bg-secondary text-white">
+                                        {{ "%.1f"|format(duration_minutes) }} min
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4 small text-muted">
+                                {{ c.started_at | format_datetime_12h }}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-6">
+                                <div class="py-5">
+                                    <i class="bi bi-bell-slash display-1 text-muted opacity-25 d-block mb-3"></i>
+                                    <h5 class="text-muted">No reminder calls found</h5>
+                                    {% if search %}
+                                    <p>Try adjusting your search term.</p>
+                                    <a href="{{ url_for('admin.reminder_tr') }}" class="btn btn-outline-primary">Clear Search</a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if total > per_page %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center pagination-lg">
+            {% if page > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page - 1 }}&search={{ search }}&date_range={{ date_range|urlencode }}">Previous</a>
+            </li>
+            {% endif %}
+
+            {% set start_page = [page - 2, 1] | max %}
+            {% set end_page = [start_page + 4, ((total / per_page) | round(0, 'ceil') | int)] | min %}
+
+            {% if start_page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page=1&search={{ search }}&date_range={{ date_range|urlencode }}">1</a></li>
+            {% if start_page > 2 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+            {% endif %}
+
+            {% for p in range(start_page, end_page + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}&search={{ search }}&date_range={{ date_range|urlencode }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if end_page < (total / per_page) | round(0, 'ceil') | int %}
+            {% if end_page < (total / per_page) | round(0, 'ceil') | int - 1 %}
+            <li class="page-item disabled"><span class="page-link">...</span></li>
+            {% endif %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ ((total / per_page) | round(0, 'ceil') | int) }}&search={{ search }}&date_range={{ date_range|urlencode }}">
+                    {{ ((total / per_page) | round(0, 'ceil') | int) }}
+                </a>
+            </li>
+            {% endif %}
+
+            {% if page < (total / per_page) | round(0, 'ceil') | int %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page + 1 }}&search={{ search }}&date_range={{ date_range|urlencode }}">Next</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     MAIN TRANSCRIPT MODAL
+════════════════════════════════════════════════ -->
+<div class="modal fade" id="transcriptModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content rounded-4 shadow-lg border-0">
+
+            <div class="modal-header text-white border-0"
+                 style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                <h5 class="modal-title fw-bold" id="transcript-modal-title">User Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+
+                <!-- Meta Info -->
+                <div class="row g-4 mb-4">
+                    <div class="col-md-4">
+                        <small class="text-muted">Caller Name</small>
+                        <h6 class="mb-0 fw-bold" id="modal-name"></h6>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted">Email</small>
+                        <h6 class="mb-0 fw-semibold text-primary" id="modal-email">—</h6>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted">Phone</small>
+                        <h6 class="mb-0 fw-bold text-primary" id="modal-phone"></h6>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted">Started</small>
+                        <h6 class="mb-0" id="modal-started"></h6>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted">Certificates Needed</small>
+                        <div id="modal-certificates" class="mt-1"></div>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted">Status</small>
+                        <h6 class="mb-0">
+                            <span id="modal-status" class="badge bg-success">Completed</span>
+                        </h6>
+                    </div>
+                    <div class="col-md-6">
+                        <small class="text-muted">Lead Created</small>
+                        <h6 class="mb-0 fw-bold text-dark" id="modal-lead-created">—</h6>
+                    </div>
+                    <div class="col-md-6">
+                        <small class="text-muted">Onboarded</small>
+                        <h6 class="mb-0 fw-bold" id="modal-onboarded">—</h6>
+                    </div>
+                </div>
+
+                <hr class="my-4">
+
+                <!-- Two-column layout: Transcript + Brief Summary -->
+                <div class="row g-4">
+
+                    <!-- LEFT: Transcript -->
+                    <div class="col-lg-7">
+
+                        <!-- Audio Player -->
+                        <h6 class="fw-bold text-primary mb-3">Full Call Recording</h6>
+                        <div id="audio-player-container" class="mb-4 d-none">
+                            <audio id="call-audio" controls class="w-100" style="height:48px;border-radius:8px;"></audio>
+                            <div class="small text-muted mt-2">Powered by ElevenLabs • High-quality original recording</div>
+                        </div>
+                        <div id="audio-loading" class="text-primary mb-3 d-none">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            <strong>Loading audio recording...</strong>
+                        </div>
+                        <div id="audio-error" class="alert alert-danger d-none" role="alert">
+                            <strong>Audio unavailable:</strong> <span id="error-message"></span>
+                            <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="retry-audio">Retry</button>
+                        </div>
+
+                        <h6 class="fw-bold text-primary mb-3">Conversation Transcript</h6>
+
+                        <div id="transcript-loading" class="text-center py-5 d-none">
+                            <div class="spinner-border text-primary" style="width:2.5rem;height:2.5rem;" role="status"></div>
+                            <p class="mt-3 text-muted">Loading transcript...</p>
+                        </div>
+                        <div id="transcript-error" class="alert alert-danger d-none" role="alert">
+                            <strong>Failed to load transcript:</strong> <span id="transcript-error-msg"></span>
+                            <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="retry-transcript">Retry</button>
+                        </div>
+                        <div id="transcript-empty" class="text-center py-5 d-none">
+                            <i class="bi bi-chat-square-dots display-4 text-muted opacity-50"></i>
+                            <p class="mt-3 text-muted">No transcript available for this call.</p>
+                        </div>
+                        <div id="modal-turns" class="border-start border-4 border-danger ps-4"
+                             style="max-height: 520px; overflow-y: auto;"></div>
+                    </div>
+
+                    <!-- RIGHT: Brief Summary -->
+                    <div class="col-lg-5">
+                        <h6 class="fw-bold text-primary mb-3">Brief Lead Summary</h6>
+                        <div id="modal-brief-summary" class="border-start border-4 border-warning ps-4"
+                             style="max-height: 520px; overflow-y: auto;">
+                            <div id="brief-summary-loading" class="text-center py-5">
+                                <div class="spinner-border text-primary" style="width:2rem;height:2rem;" role="status"></div>
+                                <p class="mt-3 text-muted">Loading brief summary...</p>
+                            </div>
+                            <div id="brief-summary-content" class="d-none"></div>
+                            <div id="brief-summary-empty" class="text-center py-5 text-muted d-none">
+                                <i class="bi bi-info-circle display-4 opacity-50"></i>
+                                <p class="mt-3 mb-0">No summary data available for this call.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer border-0 d-flex justify-content-between">
+                <div>
+                    <button type="button" id="data-collected-btn" class="btn btn-success d-none me-2">Data Collected</button>
+                    <button type="button" id="brief-summary-btn" class="btn btn-outline-info d-none">Brief Summary</button>
+                </div>
+                <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     DATA COLLECTED MODAL
+════════════════════════════════════════════════ -->
+<div class="modal fade" id="dataCollectedModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content rounded-4 shadow-lg border-0">
+            <div class="modal-header text-white"
+                 style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                <h5 class="modal-title fw-bold">Collected Lead Data</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="data-collected-body">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-success" role="status"></div>
+                    <p class="mt-3">Fetching data from ElevenLabs...</p>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     BRIEF SUMMARY MODAL
+════════════════════════════════════════════════ -->
+<div class="modal fade" id="briefSummaryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content rounded-4 shadow-lg border-0">
+            <div class="modal-header text-white"
+                 style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                <h5 class="modal-title fw-bold" id="brief-summary-title">User Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="brief-summary-body">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-3">Loading brief summary...</p>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     STYLES
+════════════════════════════════════════════════ -->
+<style>
+    .avatar-sm { width: 40px; height: 40px; font-size: 1rem; }
+    tr.transcript-row:hover {
+        background-color: #fff5f7 !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        transition: all 0.2s;
+    }
+    #modal-turns .turn-bubble { animation: fadeSlideIn 0.2s ease both; }
+    @keyframes fadeSlideIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    #suggestionsBox { border-radius: 1rem; overflow: hidden; max-height: 320px; overflow-y: auto; }
+    #suggestionsBox .list-group-item { border: 0; padding: 12px 16px; }
+    #suggestionsBox .list-group-item:hover { background: #fff5f7; }
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+
+<!-- ═══════════════════════════════════════════════
+     SCRIPTS
+════════════════════════════════════════════════ -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    // ── Flatpickr date range ──
+    const dateRangeInput = document.getElementById('date-range');
+    if (dateRangeInput) {
+        flatpickr(dateRangeInput, {
+            mode: "range", dateFormat: "Y-m-d", allowInput: true,
+            altInput: true, altFormat: "d M Y",
+        });
+    }
+
+    // ── Modal instances ──
+    const transcriptModal   = new bootstrap.Modal('#transcriptModal');
+    const dataModal         = new bootstrap.Modal('#dataCollectedModal');
+    const briefSummaryModal = new bootstrap.Modal('#briefSummaryModal');
+
+    // ── DOM refs ──
+    const audioPlayer        = document.getElementById('call-audio');
+    const audioContainer     = document.getElementById('audio-player-container');
+    const audioLoading       = document.getElementById('audio-loading');
+    const audioError         = document.getElementById('audio-error');
+    const errorMessageEl     = document.getElementById('error-message');
+
+    const turnsDiv           = document.getElementById('modal-turns');
+    const transcriptLoading  = document.getElementById('transcript-loading');
+    const transcriptError    = document.getElementById('transcript-error');
+    const transcriptErrorMsg = document.getElementById('transcript-error-msg');
+    const transcriptEmpty    = document.getElementById('transcript-empty');
+
+    const briefSummaryLoading = document.getElementById('brief-summary-loading');
+    const briefSummaryContent = document.getElementById('brief-summary-content');
+    const briefSummaryEmpty   = document.getElementById('brief-summary-empty');
+
+    const dataBtn  = document.getElementById('data-collected-btn');
+    const briefBtn = document.getElementById('brief-summary-btn');
+
+    // ── State ──
+    let currentConvId       = null;
+    let currentElevenLabsId = null;
+    let currentIsCompleted  = false;
+
+    // ──────────────────────────────────────────────
+    // AUDIO helpers
+    // ──────────────────────────────────────────────
+    function resetAudioUI() {
+        audioLoading.classList.add('d-none');
+        audioError.classList.add('d-none');
+        audioContainer.classList.add('d-none');
+    }
+
+    function showAudioError(msg) {
+        errorMessageEl.textContent = msg;
+        audioError.classList.remove('d-none');
+        audioLoading.classList.add('d-none');
+    }
+
+    async function loadAudio() {
+        resetAudioUI();
+        audioLoading.classList.remove('d-none');
+        try {
+            const res = await fetch(`/admin/reminder_tr/${currentConvId}/audio`);
+            if (!res.ok) {
+                throw new Error(res.status === 404
+                    ? 'Audio is still being generated by ElevenLabs'
+                    : 'Audio not available yet');
+            }
+            if (audioPlayer.src?.startsWith('blob:')) URL.revokeObjectURL(audioPlayer.src);
+            const blob = await res.blob();
+            audioPlayer.src = URL.createObjectURL(blob);
+            audioContainer.classList.remove('d-none');
+            audioLoading.classList.add('d-none');
+        } catch (err) {
+            showAudioError(err.message);
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // TRANSCRIPT helpers
+    // ──────────────────────────────────────────────
+    function resetTranscriptUI() {
+        turnsDiv.innerHTML = '';
+        transcriptLoading.classList.add('d-none');
+        transcriptError.classList.add('d-none');
+        transcriptEmpty.classList.add('d-none');
+    }
+
+    async function loadTranscript() {
+        resetTranscriptUI();
+        transcriptLoading.classList.remove('d-none');
+        try {
+            const res = await fetch(`/admin/api/reminder_tr/${currentConvId}/transcript`);
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `Server error ${res.status}`);
+            }
+            const data = await res.json();
+            transcriptLoading.classList.add('d-none');
+            renderTurns(data.turns || []);
+        } catch (err) {
+            transcriptLoading.classList.add('d-none');
+            transcriptErrorMsg.textContent = err.message;
+            transcriptError.classList.remove('d-none');
+        }
+    }
+
+    function renderTurns(turns) {
+        turnsDiv.innerHTML = '';
+        if (!turns || turns.length === 0) { transcriptEmpty.classList.remove('d-none'); return; }
+        turns.forEach((turn, idx) => {
+            const isAgent = turn.role === 'agent';
+            const bubble  = document.createElement('div');
+            bubble.className = `turn-bubble mb-4 ${isAgent ? 'text-end' : ''}`;
+            bubble.style.animationDelay = `${idx * 30}ms`;
+            bubble.innerHTML = `
+                <div class="d-inline-block p-3 rounded-3 shadow-sm
+                            ${isAgent ? 'bg-danger text-white' : 'bg-light'}"
+                     style="max-width:80%;">
+                    <div class="small fw-bold mb-1 ${isAgent ? 'text-white opacity-75' : 'text-danger'}">
+                        ${isAgent ? 'Agent' : 'Caller'} &bull; ${turn.time || '—'}
+                    </div>
+                    <div style="white-space:pre-wrap;">${(turn.text || '').replace(/\n/g, '<br>')}</div>
+                </div>`;
+            turnsDiv.appendChild(bubble);
+        });
+    }
+
+    // ──────────────────────────────────────────────
+    // BRIEF SUMMARY helpers
+    // ──────────────────────────────────────────────
+    function resetBriefSummaryUI() {
+        briefSummaryLoading.classList.remove('d-none');
+        briefSummaryContent.classList.add('d-none');
+        briefSummaryEmpty.classList.add('d-none');
+        briefSummaryContent.innerHTML = '';
+    }
+
+    async function fetchBriefSummaryData() {
+        if (!currentElevenLabsId) return null;
+        const resp = await fetch(`/admin/elevenlabs/api/reminder_tr/${currentElevenLabsId}/summary`);
+        if (!resp.ok) throw new Error('Failed to fetch summary');
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        return data;
+    }
+
+    async function loadBriefSummaryIntoModal() {
+        if (!currentElevenLabsId) {
+            briefSummaryLoading.classList.add('d-none');
+            briefSummaryEmpty.classList.remove('d-none');
+            return;
+        }
+        resetBriefSummaryUI();
+        try {
+            const data = await fetchBriefSummaryData();
+            if (!data || !data.rows || data.rows.length === 0) {
+                briefSummaryLoading.classList.add('d-none');
+                briefSummaryEmpty.classList.remove('d-none');
+                return;
+            }
+            let html = '';
+            if (data.call_summary) {
+                html += `<div class="alert alert-info">
+                            <strong>Call Summary:</strong> ${data.call_summary}
+                         </div>`;
+            }
+            html += '<h6 class="text-success mt-3 mb-3">Collected Information</h6>';
+            html += data.rows.map(row => `
+                <div class="row mb-3">
+                    <div class="col-md-5"><strong class="text-muted">${row.label}</strong></div>
+                    <div class="col-md-7">
+                        <span class="fw-semibold ${row.is_null ? 'text-muted fst-italic' : ''}">${row.value}</span>
+                    </div>
+                </div>`).join('');
+            briefSummaryContent.innerHTML = html;
+            briefSummaryLoading.classList.add('d-none');
+            briefSummaryContent.classList.remove('d-none');
+        } catch (err) {
+            console.error(err);
+            briefSummaryLoading.classList.add('d-none');
+            briefSummaryEmpty.classList.remove('d-none');
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // ⓘ INFO BUTTON — opens Brief Summary modal
+    // ──────────────────────────────────────────────
+    document.querySelectorAll('.info-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const row = btn.closest('tr');
+            currentElevenLabsId = btn.dataset.elevenlabsId?.trim() || null;
+            document.getElementById('brief-summary-title').textContent = row.dataset.name || 'Unknown User';
+            loadBriefSummary();
+            briefSummaryModal.show();
+        });
+    });
+
+    // ──────────────────────────────────────────────
+    // ROW CLICK — open main modal
+    // ──────────────────────────────────────────────
+    document.querySelectorAll('.transcript-row').forEach(row => {
+        row.addEventListener('click', () => {
+            currentConvId       = row.dataset.convId;
+            currentElevenLabsId = row.dataset.elevenlabsId?.trim() || null;
+            currentIsCompleted  = !['Ongoing', '—', ''].includes(row.dataset.ended);
+
+            document.getElementById('transcript-modal-title').textContent = row.dataset.name || 'Unknown User';
+            document.getElementById('modal-name').textContent    = row.dataset.name    || 'Unknown';
+            document.getElementById('modal-email').textContent   = row.dataset.email   || '—';
+            document.getElementById('modal-phone').textContent   = row.dataset.phone   || '—';
+            document.getElementById('modal-started').textContent = row.dataset.started || '—';
+
+            // Certificates needed badges
+            const certEl   = document.getElementById('modal-certificates');
+            const rawCerts = row.dataset.certificates || '';
+            if (rawCerts.trim()) {
+                certEl.innerHTML = rawCerts.split(',')
+                    .map(c => c.trim())
+                    .filter(Boolean)
+                    .map(c => `<span class="badge bg-warning text-dark me-1 mb-1">${c}</span>`)
+                    .join('');
+            } else {
+                certEl.innerHTML = '<span class="text-muted">—</span>';
+            }
+
+            // Lead created / onboarded
+            const createdAt   = row.dataset.createdAt;
+            const onboarded   = row.dataset.onboarded;
+            const onboardedAt = row.dataset.onboardedAt;
+
+            const leadCreatedEl = document.getElementById('modal-lead-created');
+            const onboardedEl   = document.getElementById('modal-onboarded');
+
+            function daysBetween(d1, d2) {
+                return Math.floor(Math.abs(d2 - d1) / (1000 * 60 * 60 * 24));
+            }
+
+            if (createdAt) {
+                const days = daysBetween(new Date(createdAt), new Date());
+                leadCreatedEl.textContent = `${days} day${days !== 1 ? 's' : ''} ago`;
+            } else {
+                leadCreatedEl.textContent = '—';
+            }
+
+            if (String(onboarded) === '1') {
+                if (createdAt && onboardedAt) {
+                    const days = daysBetween(new Date(createdAt), new Date(onboardedAt));
+                    onboardedEl.innerHTML = `<span class="text-success">Yes (After ${days} day${days !== 1 ? 's' : ''})</span>`;
+                } else {
+                    onboardedEl.innerHTML = `<span class="text-success">Yes</span>`;
+                }
+            } else {
+                onboardedEl.innerHTML = `<span class="text-danger">No</span>`;
+            }
+
+            // Status badge
+            const statusEl   = document.getElementById('modal-status');
+            const callStatus = row.dataset.callStatus || '';
+
+            if (!currentIsCompleted) {
+                statusEl.textContent = 'Ongoing';        statusEl.className = 'badge bg-warning text-dark';
+            } else if (callStatus === 'User Busy') {
+                statusEl.textContent = 'User Busy';      statusEl.className = 'badge bg-warning text-dark';
+            } else if (callStatus === 'User Rejected Call') {
+                statusEl.textContent = callStatus;       statusEl.className = 'badge bg-danger text-white';
+            } else if (callStatus === 'Voice Mail Detected') {
+                statusEl.textContent = callStatus;       statusEl.className = 'badge bg-info text-dark';
+            } else if (callStatus === 'No Required Experience') {
+                statusEl.textContent = callStatus;       statusEl.className = 'badge bg-primary';
+            } else if (callStatus) {
+                statusEl.textContent = callStatus;       statusEl.className = 'badge bg-success';
+            } else {
+                statusEl.textContent = 'Completed';      statusEl.className = 'badge bg-success';
+            }
+
+            // Action buttons
+            const showBtns = currentIsCompleted && !!currentElevenLabsId;
+            dataBtn.classList.toggle('d-none', !showBtns);
+            briefBtn.classList.toggle('d-none', !showBtns);
+
+            // Reset + show modal
+            resetAudioUI();
+            resetTranscriptUI();
+            resetBriefSummaryUI();
+            transcriptModal.show();
+
+            // Load data
+            loadTranscript();
+            loadBriefSummaryIntoModal();
+
+            if (currentIsCompleted) {
+                loadAudio();
+            } else {
+                audioContainer.innerHTML = `
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-hourglass-split display-4"></i>
+                        <p class="mt-2">Call ongoing — audio available when finished</p>
+                    </div>`;
+                audioContainer.classList.remove('d-none');
+            }
+        });
+    });
+
+    // ──────────────────────────────────────────────
+    // DATA COLLECTED MODAL
+    // ──────────────────────────────────────────────
+    async function loadCollectedData() {
+        if (!currentElevenLabsId) {
+            document.getElementById('data-collected-body').innerHTML =
+                `<div class="alert alert-warning text-center">No ElevenLabs conversation ID found.</div>`;
+            return;
+        }
+        document.getElementById('data-collected-body').innerHTML =
+            `<div class="text-center py-5">
+                <div class="spinner-border text-success" style="width:3rem;height:3rem;"></div>
+                <p class="mt-3 fs-5">Loading collected data...</p>
+             </div>`;
+        try {
+            const resp = await fetch(`/admin/elevenlabs/api/reminder_tr/${currentElevenLabsId}`);
+            if (!resp.ok) throw new Error('Failed to fetch data');
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+
+            const dcr = data.analysis?.data_collection_results || {};
+            if (Object.keys(dcr).length === 0) {
+                document.getElementById('data-collected-body').innerHTML =
+                    `<div class="text-center py-5 text-info">
+                        <i class="bi bi-check-circle-fill display-4"></i>
+                        <h5 class="mt-3">No structured data collected</h5>
+                     </div>`;
+                return;
+            }
+
+            let rows = '';
+            for (const key in dcr) {
+                const item  = dcr[key];
+                const label = item.json_schema?.description
+                    || item.data_collection_id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const value      = item.value ?? '—';
+                const valueClass = item.value === null ? 'text-muted'
+                    : typeof item.value === 'boolean'
+                        ? (item.value ? 'text-success fw-bold' : 'text-danger fw-bold')
+                        : 'text-dark fw-semibold';
+                rows += `
+                    <div class="row border-bottom pb-3 mb-3">
+                        <div class="col-md-5">
+                            <strong>${label}</strong>
+                            <small class="text-muted d-block">(${item.data_collection_id})</small>
+                        </div>
+                        <div class="col-md-7">
+                            <div class="fs-5 ${valueClass}">${String(value)}</div>
+                            ${item.rationale
+                                ? `<p class="small text-muted mt-2"><em>Why:</em> ${item.rationale}</p>`
+                                : ''}
+                        </div>
+                    </div>`;
+            }
+
+            const summary = data.analysis?.call_summary_title
+                ? `<div class="alert alert-success mb-4"><strong>Summary:</strong> ${data.analysis.call_summary_title}</div>`
+                : '';
+            document.getElementById('data-collected-body').innerHTML =
+                summary + `<h5 class="text-success mb-4">Collected Lead Data</h5><div style="max-width:800px;margin:auto">${rows}</div>`;
+
+        } catch (err) {
+            document.getElementById('data-collected-body').innerHTML =
+                `<div class="alert alert-danger">Failed to load data: ${err.message}</div>`;
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // BRIEF SUMMARY MODAL (standalone)
+    // ──────────────────────────────────────────────
+    async function loadBriefSummary() {
+        const bodyEl = document.getElementById('brief-summary-body');
+        if (!currentElevenLabsId) {
+            bodyEl.innerHTML = `<div class="alert alert-warning text-center">No ElevenLabs conversation ID found.</div>`;
+            return;
+        }
+        bodyEl.innerHTML = `<div class="text-center py-5">
+            <div class="spinner-border text-primary"></div>
+            <p class="mt-3">Loading brief summary...</p>
+        </div>`;
+        try {
+            const data = await fetchBriefSummaryData();
+            if (!data || !data.rows || data.rows.length === 0) {
+                bodyEl.innerHTML = `<div class="text-center py-5 text-info">
+                    <i class="bi bi-info-circle-fill display-4"></i>
+                    <h5 class="mt-3">No data collected</h5></div>`;
+                return;
+            }
+            bodyEl.innerHTML = `<div class="px-3">` +
+                data.rows.map(row => `
+                    <div class="row mb-3 align-items-start">
+                        <div class="col-6"><small class="text-muted fw-medium">${row.label}</small></div>
+                        <div class="col-6">
+                            <div class="fs-5 ${row.is_null ? 'text-muted fst-italic' : 'text-dark'}">${row.value}</div>
+                        </div>
+                    </div>`).join('') +
+                `</div>`;
+        } catch (err) {
+            bodyEl.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // BUTTON WIRING
+    // ──────────────────────────────────────────────
+    dataBtn.addEventListener('click',  () => { loadCollectedData(); dataModal.show(); });
+    briefBtn.addEventListener('click', () => { loadBriefSummary(); briefSummaryModal.show(); });
+
+    document.getElementById('retry-audio').addEventListener('click', loadAudio);
+    document.getElementById('retry-transcript').addEventListener('click', loadTranscript);
+
+    // ──────────────────────────────────────────────
+    // MODAL CLOSE — cleanup
+    // ──────────────────────────────────────────────
+    document.getElementById('transcriptModal').addEventListener('hidden.bs.modal', () => {
+        audioPlayer.pause();
+        if (audioPlayer.src?.startsWith('blob:')) { URL.revokeObjectURL(audioPlayer.src); audioPlayer.src = ''; }
+        resetAudioUI();
+        resetTranscriptUI();
+    });
+
+});
+</script>
+
+<!-- ── Search suggestions ── -->
+<script>
+const SUGGESTION_URL = "{{ url_for('admin.user_suggestions') }}";
+const input = document.getElementById('userSearch');
+const box   = document.getElementById('suggestionsBox');
+let debounceTimer;
+
+if (input) {
+    input.addEventListener('input', function () {
+        clearTimeout(debounceTimer);
+        const query = this.value.trim();
+        if (query.length < 2) { box.style.display = 'none'; return; }
+        debounceTimer = setTimeout(async () => {
+            try {
+                const res  = await fetch(`${SUGGESTION_URL}?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                box.innerHTML = '';
+                if (!data.length) { box.style.display = 'none'; return; }
+                data.forEach(user => {
+                    const item = document.createElement('a');
+                    item.className = 'list-group-item list-group-item-action';
+                    item.innerHTML = `<div><strong>${user.name || 'No Name'}</strong></div>
+                                      <small class="text-muted">${user.email} • ${user.phone}</small>`;
+                    item.onclick = () => { input.value = user.name || user.email; box.style.display = 'none'; input.form.submit(); };
+                    box.appendChild(item);
+                });
+                box.style.display = 'block';
+            } catch (err) { console.error(err); }
+        }, 300);
+    });
+    document.addEventListener('click', e => {
+        if (!input.contains(e.target) && !box.contains(e.target)) box.style.display = 'none';
+    });
+}
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+{% endblock %}
