@@ -12438,8 +12438,12 @@ CV TEXT:
     sp(2)
     p = document.add_paragraph()
     _add_run(p, 'Disclosure of Criminal History (if applicable — leave blank if none):', italic=True, size=9, color=GRAY)
-    p = document.add_paragraph()
-    _add_run(p, '_' * 100, size=9, color=GRAY)
+    for _ in range(3):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after  = Pt(2)
+        _para_border_bottom(p, 'CCCCCC', 4)
+        _add_run(p, '', size=9)
     sp(4)
 
     # ── Section 5 ─────────────────────────────────────────────────────
@@ -12495,7 +12499,14 @@ CV TEXT:
     _add_run(stbl.cell(1,0).paragraphs[0], full_name, size=9.5)
     sp(6)
 
-    # ── For Office Use Only ────────────────────────────────────────────
+    body_text('Compliance Decision:')
+    checkbox_item('Acceptable — pending PCC submission', checked=True)
+    checkbox_item('Further Information Required')
+    checkbox_item('Escalated for Risk Review')
+    checkbox_item('Not Accepted')
+    sp(6)
+
+    # ── For Office Use Only — just above footer text ──────────────────
     p = document.add_paragraph()
     p.paragraph_format.space_before = Pt(4)
     p.paragraph_format.space_after  = Pt(4)
@@ -12510,11 +12521,20 @@ CV TEXT:
 
     otbl = document.add_table(rows=4, cols=2)
     otbl.style = 'Table Grid'
+    # Approval On = Date Reviewed + 1 day
+    approval_on = ''
+    if date_reviewed:
+        try:
+            _d = _dt.strptime(date_reviewed, '%d %B %Y')
+            approval_on = (_d + _td(days=1)).strftime('%d %B %Y')
+        except Exception:
+            approval_on = date_reviewed
+
     office_rows = [
         ('Reviewed By:', reviewer),
         ('Date Reviewed:', date_reviewed),
         ('Approved By (Compliance Officer):', _PCC_COMPLIANCE_OFFICER),
-        ('Approval On:', date_reviewed),
+        ('Approval On:', approval_on),
     ]
     for ri, (label_, val_) in enumerate(office_rows):
         lc = otbl.cell(ri, 0)
@@ -12525,14 +12545,7 @@ CV TEXT:
             _set_cell_bg(lc, 'EFF6FF')
         _add_run(lc.paragraphs[0], label_, bold=True, size=9.5)
         _add_run(vc.paragraphs[0], val_, size=9.5)
-    sp(4)
-
-    body_text('Compliance Decision:')
-    checkbox_item('Acceptable — pending PCC submission', checked=True)
-    checkbox_item('Further Information Required')
-    checkbox_item('Escalated for Risk Review')
-    checkbox_item('Not Accepted')
-    sp(4)
+    sp(6)
 
     p = document.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
