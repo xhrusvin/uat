@@ -10038,10 +10038,17 @@ def live_staff_cron_push_passport_number():
             })
 
         else:
-            # Non-200 — mark as failed but don't block (retry manually)
+            # Non-200 — log full response, mark as failed
+            try:
+                err_json = resp.json()
+            except Exception:
+                err_json = None
+            err_text = resp.text[:500]
+
             _mark_done({
-                "passport_number_pushed": False,
-                "passport_push_note":     f"API returned {resp.status_code}: {resp.text[:200]}",
+                "passport_number_pushed":  False,
+                "passport_push_note":      f"API returned {resp.status_code}: {err_text}",
+                "passport_push_response":  err_json or err_text,
             })
             return jsonify({
                 "success":         False,
@@ -10051,9 +10058,10 @@ def live_staff_cron_push_passport_number():
                 "passport_number": passport_id,
                 "pushed":          False,
                 "http_status":     resp.status_code,
-                "api_error":       resp.text[:300],
+                "api_error":       err_text,
+                "api_error_json":  err_json,
                 "remaining_count": max(0, remaining_total - 1),
-                "message":         f"API error {resp.status_code} for {full_name} ({email})",
+                "message":         f"API error {resp.status_code} for {full_name} ({email}): {err_text}",
             })
 
     except Exception as e:
