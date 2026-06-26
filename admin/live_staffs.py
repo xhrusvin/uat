@@ -7225,7 +7225,20 @@ def live_staff_cron_sync_passport():
             "remaining_count": max(0, remaining_total - 1),
         })
 
-    passport_url = passport_doc.get('url', '')
+    passport_url = (passport_doc.get('url') or '').strip()
+
+    if not passport_url:
+        _mark_done({"passport_extracted": "[skipped — document URL is empty]"})
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "passport_found":  True,
+            "skipped":         True,
+            "reason":          "Document URL is empty",
+            "remaining_count": max(0, remaining_total - 1),
+            "message":         f"Skipped {full_name} ({email}) — passport doc has no URL",
+        })
 
     # ── Download + extract via Gemini ─────────────────────────────────
     try:
@@ -7544,13 +7557,24 @@ def live_staff_cron_sync_qualification():
         save_field   = 'qqi_number'
         extract_hint = (
             "This is a QQI / FETAC qualification certificate for a Healthcare Assistant. "
-            "Find the certificate number, learner ID, or award reference number. "
-            "IMPORTANT: The number must be ALPHANUMERIC — it contains both letters and numbers "
-            "(e.g. F12345678, L123456789, QF12345, 12345ABC). "
-            "If you find a number that is ONLY digits with no letters, look for another reference "
-            "number on the certificate that includes letters. "
+            "Your task is to carefully read and extract the certificate or registration number. "
+            "\n\n"
+            "READING INSTRUCTIONS — follow these steps carefully:\n"
+            "1. Examine the ENTIRE document thoroughly, including headers, footers, watermarks, "
+            "   stamps, and small print.\n"
+            "2. If text appears small, blurry, or partially obscured — zoom in mentally and try "
+            "   your best to reconstruct each character. Use context clues from surrounding text.\n"
+            "3. Look at EVERY number/code on the document — not just the most obvious one.\n"
+            "4. If a number is partially visible (e.g. only some digits readable), attempt to "
+            "   reconstruct the full number using the visible characters and document format.\n"
+            "\n"
+            "IMPORTANT — The correct number MUST BE ALPHANUMERIC (contains both letters AND numbers), "
+            "for example: F12345678, L123456789, QF12345, 12345ABC, FET123456. "
+            "If you find a digits-only number, keep looking — there is almost certainly an "
+            "alphanumeric reference elsewhere on the document.\n"
+            "\n"
             "Look for labels like: Certificate No, Learner ID, Award Reference, QQI No, Record No, "
-            "Registration No, Reference Number, Award ID."
+            "Registration No, Reference Number, Award ID, Cert Ref, Roll No."
         )
 
     def _mark_done(update_dict):
@@ -7634,7 +7658,21 @@ def live_staff_cron_sync_qualification():
             "remaining_count": max(0, remaining_total - 1),
         })
 
-    doc_url = qual_doc.get('url', '')
+    doc_url = (qual_doc.get('url') or '').strip()
+
+    # ── Guard: only proceed if URL is present ─────────────────────────
+    if not doc_url:
+        _mark_done({"qualification_note": "document found but URL is empty — skipped"})
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "doc_found":       True,
+            "skipped":         True,
+            "reason":          "Document URL is empty",
+            "remaining_count": max(0, remaining_total - 1),
+            "message":         f"Skipped {full_name} ({email}) — document has no URL",
+        })
 
     # ── Download document ─────────────────────────────────────────────
     import json as _json, re as _re, base64
@@ -7669,15 +7707,23 @@ def live_staff_cron_sync_qualification():
 
         prompt_text = f"""{extract_hint}
 
+EXTRACTION RULES:
+- Scan every part of the document: title, body, header, footer, stamps, seals, watermarks.
+- If any text is small or unclear, zoom in and do your best to read each character.
+- Even if only partially readable, attempt to reconstruct the number using visible characters.
+- Prefer alphanumeric codes over digit-only numbers.
+- Report your confidence level honestly.
+
 Return ONLY a JSON object — no markdown, no explanation:
 {{
-  "registration_number": "<the number you found, exactly as printed>",
-  "label_found": "<the label printed next to the number, e.g. PIN, Certificate No>",
-  "confidence": "<high|medium|low>",
-  "raw_text": "<all readable text from the document>"
+  "registration_number": "<the alphanumeric number you found, exactly as printed — reconstruct if partially visible>",
+  "label_found": "<the label printed next to the number, e.g. PIN, Certificate No, Learner ID>",
+  "confidence": "<high|medium|low — how clearly was the number readable>",
+  "reconstruction_note": "<if you had to reconstruct any characters, explain here — otherwise null>",
+  "raw_text": "<all readable text extracted from the document>"
 }}
 
-If no registration/certificate number is found, set "registration_number" to null.
+If after thorough examination no registration/certificate number is found, set "registration_number" to null.
 """
 
         is_image = any(t in content_type for t in ('image/', 'jpeg', 'jpg', 'png', 'webp'))
@@ -7754,12 +7800,15 @@ If no registration/certificate number is found, set "registration_number" to nul
                 })
             reg_num = reg_num.strip()
 
+        recon_note = _v(result.get('reconstruction_note') or '')
         _mark_done({
             save_field:               reg_num,
             "qualification_doc_type": qual_doc.get('document_type_name', ''),
             "qualification_doc_url":  doc_url,
             "qualification_raw":      raw_text_,
             "qualification_data":     result,
+            "qualification_confidence": _v(result.get('confidence') or ''),
+            "qualification_reconstruction": recon_note,
             "qualification_note":     f"extracted from {qual_doc.get('document_type_name','')}",
         })
 
@@ -8089,7 +8138,20 @@ def live_staff_cron_sync_cpr_certificate():
             "remaining_count": max(0, remaining_total - 1),
         })
 
-    doc_url = cpr_doc.get('url', '')
+    doc_url = (cpr_doc.get('url') or '').strip()
+
+    if not doc_url:
+        _mark_done({"cpr_note": "document found but URL is empty — skipped"})
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "doc_found":       True,
+            "skipped":         True,
+            "reason":          "Document URL is empty",
+            "remaining_count": max(0, remaining_total - 1),
+            "message":         f"Skipped {full_name} ({email}) — CPR doc has no URL",
+        })
 
     # ── Download and extract with Gemini ──────────────────────────────
     try:
@@ -8584,6 +8646,841 @@ def live_staff_reset_hca_qualification():
         "total_hca":   len(all_hca),
         "message":     f"Reset {result.modified_count} HCA staff — cron will re-extract their QQI numbers.",
     })
+
+
+
+# ── Cron: Extract Infection Prevention & Control Certificate ──────────
+
+@admin_bp.route('/live-staffs/cron/sync-ipc-certificate', methods=['GET', 'POST'])
+def live_staff_cron_sync_ipc_certificate():
+    """
+    Cron job — processes ONE staff member per call.
+
+    Finds "Infection Prevention Control Certificate" document from XN Portal,
+    sends to Gemini AI to extract:
+      - Certificate name
+      - Staff name as printed on certificate
+      - Expiry date / completion date
+
+    Saves to live_staffs:
+      - ipc_certificate_name
+      - ipc_staff_name
+      - ipc_expiry_date
+      - ipc_issue_date
+      - ipc_issuing_body
+      - ipc_fetched = True
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    import requests as _req
+    import json as _json, re as _re, base64
+    from google import genai as google_genai
+
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+    gemini_key  = os.environ.get('GEMINI_API_KEY', '')
+
+    if not base_url:
+        return jsonify({"success": False, "error": "LIVE_STAFF_URL not set"}), 500
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+    col = _staffs_col()
+
+    pending_query = {
+        "$or": [
+            {"ipc_fetched": {"$exists": False}},
+            {"ipc_fetched": False},
+            {"ipc_fetched": None},
+        ]
+    }
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff IPC certificates already extracted.",
+            "remaining_count": 0,
+        })
+
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or s1.get('email_address') or '')
+
+    def _mark_done(fields):
+        fields["ipc_fetched"]    = True
+        fields["ipc_fetched_at"] = datetime.utcnow()
+        col.update_one({"_id": staff['_id']}, {"$set": fields})
+
+    if not email:
+        _mark_done({"ipc_note": "skipped — no email"})
+        return jsonify({
+            "success":         True,
+            "message":         "Skipped — no email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Call XN Portal API ────────────────────────────────────────────
+    endpoint    = f"{base_url}/ai/recruitments/user-document-list"
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.post(endpoint, json={"email": email},
+                         headers=api_headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.get(endpoint, params={"email": email},
+                            headers=api_headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        _mark_done({"ipc_note": f"API error: {e}"})
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           f"API error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not data.get('success'):
+        _mark_done({"ipc_note": f"API error: {data.get('message')}"})
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           data.get('message', 'API error'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    api_data  = data.get('data')
+    documents = api_data if isinstance(api_data, list) else                 (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+
+    if not documents:
+        _mark_done({"ipc_note": "no documents returned"})
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "doc_found":       False,
+            "message":         f"No documents returned for {email}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Find IPC document ─────────────────────────────────────────────
+    ipc_doc = None
+    for d in documents:
+        doc_name = (d.get('document_type_name') or '').strip().lower()
+        if any(t in doc_name for t in (
+            'infection prevention control certificate',
+            'infection prevention and control',
+            'infection prevention & control',
+            'infection control certificate',
+            'infection prevention',
+            'ipc certificate',
+            'ipc',
+        )) and d.get('url'):
+            ipc_doc = d
+            break
+
+    if not ipc_doc:
+        _mark_done({"ipc_note": "no IPC document found"})
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "doc_found":       False,
+            "message":         f"No IPC certificate found for {full_name}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    doc_url = (ipc_doc.get('url') or '').strip()
+
+    if not doc_url:
+        _mark_done({"ipc_note": "document found but URL is empty — skipped"})
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "doc_found":       True,
+            "skipped":         True,
+            "reason":          "Document URL is empty",
+            "remaining_count": max(0, remaining_total - 1),
+            "message":         f"Skipped {full_name} ({email}) — IPC doc has no URL",
+        })
+
+    # ── Download and extract with Gemini ──────────────────────────────
+    try:
+        dl_headers = {k: v for k, v in api_headers.items() if k != 'Content-Type'}
+        dl_resp    = _req.get(doc_url, headers=dl_headers, timeout=60)
+
+        if dl_resp.status_code == 404:
+            _mark_done({"ipc_note": "document URL returned 404 — skipped",
+                        "ipc_doc_404": True})
+            return jsonify({
+                "success":         True,
+                "email":           email,
+                "staff_name":      full_name,
+                "doc_found":       True,
+                "skipped":         True,
+                "reason":          "Document URL returned 404",
+                "remaining_count": max(0, remaining_total - 1),
+                "message":         f"Skipped {full_name} ({email}) — IPC doc URL 404",
+            })
+
+        dl_resp.raise_for_status()
+        raw_bytes    = dl_resp.content
+        content_type = dl_resp.headers.get('Content-Type', '').lower()
+
+        client = google_genai.Client(api_key=gemini_key)
+
+        prompt_text = """You are a certificate data extractor.
+
+Extract the following details from this Infection Prevention and Control (IPC) certificate:
+1. Certificate name (e.g. "Infection Prevention and Control", "IPC Training Certificate")
+2. Staff name as printed on the certificate
+3. Expiry date or renewal date (if shown)
+4. Issue / completion date
+5. Issuing body or training provider
+
+Return ONLY a JSON object — no markdown, no explanation:
+{
+  "certificate_name": "<exact certificate title as printed>",
+  "staff_name_on_cert": "<name as printed on certificate>",
+  "expiry_date": "<expiry or renewal date as printed, e.g. 01/06/2027 or June 2027>",
+  "issue_date": "<issue or completion date as printed>",
+  "issuing_body": "<organization that issued the certificate>"
+}
+
+If a field is not visible, set it to null.
+"""
+
+        is_image = any(t in content_type for t in ('image/', 'jpeg', 'jpg', 'png', 'webp'))
+        is_pdf   = 'pdf' in content_type or doc_url.lower().split('?')[0].endswith('.pdf')
+
+        if is_image:
+            ext   = 'jpeg' if any(t in content_type for t in ('jpeg', 'jpg')) else                     'png'  if 'png'  in content_type else                     'webp' if 'webp' in content_type else 'jpeg'
+            parts = [
+                {"inline_data": {"mime_type": f"image/{ext}",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[{"parts": parts}]
+            )
+        elif is_pdf:
+            parts = [
+                {"inline_data": {"mime_type": "application/pdf",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[{"parts": parts}]
+            )
+        else:
+            try:
+                import io as _io, pdfplumber
+                with pdfplumber.open(_io.BytesIO(raw_bytes)) as pdf:
+                    raw_text = chr(10).join(p.extract_text() or '' for p in pdf.pages).strip()
+            except Exception:
+                raw_text = raw_bytes.decode('utf-8', errors='replace').strip()
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt_text + "\n\nCERTIFICATE TEXT:\n" + raw_text[:5000]
+            )
+
+        raw_out = (response.text or '').strip()
+        raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
+        raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
+
+        result       = _json.loads(raw_out)
+        cert_name    = _v(result.get('certificate_name') or '')
+        cert_staff   = _v(result.get('staff_name_on_cert') or '')
+        expiry_date  = _v(result.get('expiry_date') or '')
+        issue_date   = _v(result.get('issue_date') or '')
+        issuing_body = _v(result.get('issuing_body') or '')
+
+        _mark_done({
+            "ipc_certificate_name": cert_name,
+            "ipc_staff_name":       cert_staff,
+            "ipc_expiry_date":      expiry_date,
+            "ipc_issue_date":       issue_date,
+            "ipc_issuing_body":     issuing_body,
+            "ipc_doc_url":          doc_url,
+            "ipc_doc_type":         ipc_doc.get('document_type_name', ''),
+            "ipc_note":             "extracted successfully",
+        })
+
+        return jsonify({
+            "success":              True,
+            "email":                email,
+            "staff_name":           full_name,
+            "doc_found":            True,
+            "certificate_name":     cert_name,
+            "staff_name_on_cert":   cert_staff,
+            "expiry_date":          expiry_date,
+            "issue_date":           issue_date,
+            "issuing_body":         issuing_body,
+            "remaining_count":      max(0, remaining_total - 1),
+            "message": (
+                f"IPC cert extracted for {full_name} "
+                f"(expires: {expiry_date or 'unknown'}) — "
+                f"{max(0, remaining_total - 1)} remaining."
+            ),
+        })
+
+    except _json.JSONDecodeError:
+        _mark_done({"ipc_note": "Gemini JSON parse error"})
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           "Gemini returned non-JSON",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+    except Exception as e:
+        _mark_done({"ipc_note": f"error: {e}"})
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+
+# ── Export: IPC certificates to Excel ────────────────────────────────
+
+@admin_bp.route('/live-staffs/export/ipc-xlsx')
+@admin_required
+def live_staff_export_ipc_xlsx():
+    """Export IPC certificate details to Excel."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1,
+             "ipc_certificate_name": 1, "ipc_staff_name": 1,
+             "ipc_expiry_date": 1, "ipc_issue_date": 1,
+             "ipc_issuing_body": 1, "ipc_fetched": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
+        ALT  = 'EFF6FF'; WARN  = 'FFF3CD'; RED   = 'FFDDDD'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Arial', size=10)
+        l_align = Alignment(horizontal='left', vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        green_b = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'IPC Certificates'
+
+        headers    = ['Sno', 'Staff Name', 'Email', 'Certificate Name',
+                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Status']
+        col_widths = [5, 28, 36, 35, 28, 16, 16, 30, 14]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = green_b
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
+
+        from datetime import date as _date
+        today = _date.today()
+
+        def _is_expired(expiry_str):
+            if not expiry_str:
+                return None
+            for fmt in ('%d/%m/%Y','%m/%Y','%Y-%m-%d','%d-%m-%Y','%B %Y','%b %Y'):
+                try:
+                    from datetime import datetime as _dt
+                    d = _dt.strptime(expiry_str.strip(), fmt).date()
+                    return d < today
+                except Exception:
+                    continue
+            return None
+
+        for ri, doc in enumerate(docs, start=2):
+            s1       = doc.get('section_1_personal_details') or {}
+            name     = _v(s1.get('full_name') or '')
+            email    = _v(doc.get('email') or '')
+            cert_n   = _v(doc.get('ipc_certificate_name') or '')
+            cert_s   = _v(doc.get('ipc_staff_name') or '')
+            expiry   = _v(doc.get('ipc_expiry_date') or '')
+            issue    = _v(doc.get('ipc_issue_date') or '')
+            issuer   = _v(doc.get('ipc_issuing_body') or '')
+            fetched  = doc.get('ipc_fetched', False)
+
+            expired  = _is_expired(expiry)
+
+            if not fetched:
+                status   = 'Not Checked'
+                row_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
+            elif not cert_n:
+                status   = 'No Cert Found'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+            elif expired is True:
+                status   = 'EXPIRED'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+            elif expired is False:
+                status   = 'Valid'
+                row_fill = None
+            else:
+                status   = 'Found'
+                row_fill = None
+
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT)                        if ri % 2 == 0 and not row_fill else None
+
+            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, status]
+            aligns   = [c_align,l_align,l_align,l_align,l_align,c_align,c_align,l_align,c_align]
+
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border
+                cell.fill = row_fill or alt_fill or PatternFill()
+
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(docs)+2, column=1,
+                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="ipc_certificates_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+# ── Cron: Extract Hand Hygiene Certificate ────────────────────────────
+
+@admin_bp.route('/live-staffs/cron/sync-hand-hygiene', methods=['GET', 'POST'])
+def live_staff_cron_sync_hand_hygiene():
+    """
+    Cron job — processes ONE staff member per call.
+    Finds "Hand Hygiene" document, extracts certificate details via Gemini.
+    Saves: hh_certificate_name, hh_staff_name, hh_expiry_date,
+           hh_issue_date, hh_issuing_body, hh_fetched = True
+    """
+    import requests as _req
+    import json as _json, re as _re, base64
+    from google import genai as google_genai
+
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+    gemini_key  = os.environ.get('GEMINI_API_KEY', '')
+
+    if not base_url:
+        return jsonify({"success": False, "error": "LIVE_STAFF_URL not set"}), 500
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+    col = _staffs_col()
+
+    pending_query = {
+        "$or": [
+            {"hh_fetched": {"$exists": False}},
+            {"hh_fetched": False},
+            {"hh_fetched": None},
+        ]
+    }
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff Hand Hygiene certificates already extracted.",
+            "remaining_count": 0,
+        })
+
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or s1.get('email_address') or '')
+
+    def _mark_done(fields):
+        fields["hh_fetched"]    = True
+        fields["hh_fetched_at"] = datetime.utcnow()
+        col.update_one({"_id": staff['_id']}, {"$set": fields})
+
+    if not email:
+        _mark_done({"hh_note": "skipped — no email"})
+        return jsonify({
+            "success":         True,
+            "message":         "Skipped — no email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    endpoint    = f"{base_url}/ai/recruitments/user-document-list"
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.post(endpoint, json={"email": email},
+                         headers=api_headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.get(endpoint, params={"email": email},
+                            headers=api_headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        _mark_done({"hh_note": f"API error: {e}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": f"API error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not data.get('success'):
+        _mark_done({"hh_note": f"API error: {data.get('message')}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": data.get('message', 'API error'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    api_data  = data.get('data')
+    documents = api_data if isinstance(api_data, list) else                 (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+
+    if not documents:
+        _mark_done({"hh_note": "no documents returned"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": False,
+            "message": f"No documents returned for {email}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    hh_doc = None
+    for d in documents:
+        doc_name = (d.get('document_type_name') or '').strip().lower()
+        if any(t in doc_name for t in (
+            'hand hygiene', 'hand washing', 'hand hygiene certificate',
+            'handhygiene', 'hand-hygiene',
+        )) and d.get('url'):
+            hh_doc = d
+            break
+
+    if not hh_doc:
+        _mark_done({"hh_note": "no Hand Hygiene document found"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": False,
+            "message": f"No Hand Hygiene certificate found for {full_name}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    doc_url = (hh_doc.get('url') or '').strip()
+
+    if not doc_url:
+        _mark_done({"hh_note": "document found but URL is empty — skipped"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": True, "skipped": True,
+            "reason": "Document URL is empty",
+            "remaining_count": max(0, remaining_total - 1),
+            "message": f"Skipped {full_name} ({email}) — Hand Hygiene doc has no URL",
+        })
+
+    try:
+        dl_headers = {k: v for k, v in api_headers.items() if k != 'Content-Type'}
+        dl_resp    = _req.get(doc_url, headers=dl_headers, timeout=60)
+
+        if dl_resp.status_code == 404:
+            _mark_done({"hh_note": "document URL 404 — skipped", "hh_doc_404": True})
+            return jsonify({
+                "success": True, "email": email, "staff_name": full_name,
+                "doc_found": True, "skipped": True,
+                "reason": "Document URL returned 404",
+                "remaining_count": max(0, remaining_total - 1),
+                "message": f"Skipped {full_name} ({email}) — Hand Hygiene doc URL 404",
+            })
+
+        dl_resp.raise_for_status()
+        raw_bytes    = dl_resp.content
+        content_type = dl_resp.headers.get('Content-Type', '').lower()
+
+        client = google_genai.Client(api_key=gemini_key)
+
+        prompt_text = """You are a certificate data extractor.
+
+Extract the following details from this Hand Hygiene certificate:
+1. Certificate name (e.g. "Hand Hygiene", "Hand Washing Training Certificate")
+2. Staff name as printed on the certificate
+3. Expiry date or renewal date (if shown)
+4. Issue / completion date
+5. Issuing body or training provider
+
+Return ONLY a JSON object — no markdown, no explanation:
+{
+  "certificate_name": "<exact certificate title as printed>",
+  "staff_name_on_cert": "<name as printed on certificate>",
+  "expiry_date": "<expiry or renewal date as printed, e.g. 01/06/2027 or June 2027>",
+  "issue_date": "<issue or completion date as printed>",
+  "issuing_body": "<organization that issued the certificate>"
+}
+
+If a field is not visible, set it to null.
+"""
+
+        is_image = any(t in content_type for t in ('image/', 'jpeg', 'jpg', 'png', 'webp'))
+        is_pdf   = 'pdf' in content_type or doc_url.lower().split('?')[0].endswith('.pdf')
+
+        if is_image:
+            ext   = 'jpeg' if any(t in content_type for t in ('jpeg','jpg')) else                     'png'  if 'png'  in content_type else                     'webp' if 'webp' in content_type else 'jpeg'
+            parts = [
+                {"inline_data": {"mime_type": f"image/{ext}",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash', contents=[{"parts": parts}]
+            )
+        elif is_pdf:
+            parts = [
+                {"inline_data": {"mime_type": "application/pdf",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash', contents=[{"parts": parts}]
+            )
+        else:
+            try:
+                import io as _io, pdfplumber
+                with pdfplumber.open(_io.BytesIO(raw_bytes)) as pdf:
+                    raw_text = chr(10).join(p.extract_text() or '' for p in pdf.pages).strip()
+            except Exception:
+                raw_text = raw_bytes.decode('utf-8', errors='replace').strip()
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt_text + "\n\nCERTIFICATE TEXT:\n" + raw_text[:5000]
+            )
+
+        raw_out = (response.text or '').strip()
+        raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
+        raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
+
+        result       = _json.loads(raw_out)
+        cert_name    = _v(result.get('certificate_name') or '')
+        cert_staff   = _v(result.get('staff_name_on_cert') or '')
+        expiry_date  = _v(result.get('expiry_date') or '')
+        issue_date   = _v(result.get('issue_date') or '')
+        issuing_body = _v(result.get('issuing_body') or '')
+
+        _mark_done({
+            "hh_certificate_name": cert_name,
+            "hh_staff_name":       cert_staff,
+            "hh_expiry_date":      expiry_date,
+            "hh_issue_date":       issue_date,
+            "hh_issuing_body":     issuing_body,
+            "hh_doc_url":          doc_url,
+            "hh_doc_type":         hh_doc.get('document_type_name', ''),
+            "hh_note":             "extracted successfully",
+        })
+
+        return jsonify({
+            "success":            True,
+            "email":              email,
+            "staff_name":         full_name,
+            "doc_found":          True,
+            "certificate_name":   cert_name,
+            "staff_name_on_cert": cert_staff,
+            "expiry_date":        expiry_date,
+            "issue_date":         issue_date,
+            "issuing_body":       issuing_body,
+            "remaining_count":    max(0, remaining_total - 1),
+            "message": (
+                f"Hand Hygiene cert extracted for {full_name} "
+                f"(expires: {expiry_date or 'unknown'}) — "
+                f"{max(0, remaining_total - 1)} remaining."
+            ),
+        })
+
+    except _json.JSONDecodeError:
+        _mark_done({"hh_note": "Gemini JSON parse error"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": "Gemini returned non-JSON",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+    except Exception as e:
+        _mark_done({"hh_note": f"error: {e}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+
+# ── Export: Hand Hygiene certificates to Excel ────────────────────────
+
+@admin_bp.route('/live-staffs/export/hand-hygiene-xlsx')
+@admin_required
+def live_staff_export_hand_hygiene_xlsx():
+    """Export Hand Hygiene certificate details to Excel."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1,
+             "hh_certificate_name": 1, "hh_staff_name": 1,
+             "hh_expiry_date": 1, "hh_issue_date": 1,
+             "hh_issuing_body": 1, "hh_fetched": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
+        ALT  = 'EFF6FF'; WARN  = 'FFF3CD'; RED   = 'FFDDDD'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Arial', size=10)
+        l_align = Alignment(horizontal='left', vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        green_b = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Hand Hygiene Certificates'
+
+        headers    = ['Sno', 'Staff Name', 'Email', 'Certificate Name',
+                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Status']
+        col_widths = [5, 28, 36, 32, 28, 16, 16, 30, 14]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = green_b
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
+
+        from datetime import date as _date
+        today = _date.today()
+
+        def _is_expired(expiry_str):
+            if not expiry_str:
+                return None
+            for fmt in ('%d/%m/%Y','%m/%Y','%Y-%m-%d','%d-%m-%Y','%B %Y','%b %Y'):
+                try:
+                    from datetime import datetime as _dt
+                    d = _dt.strptime(expiry_str.strip(), fmt).date()
+                    return d < today
+                except Exception:
+                    continue
+            return None
+
+        for ri, doc in enumerate(docs, start=2):
+            s1       = doc.get('section_1_personal_details') or {}
+            name     = _v(s1.get('full_name') or '')
+            email    = _v(doc.get('email') or '')
+            cert_n   = _v(doc.get('hh_certificate_name') or '')
+            cert_s   = _v(doc.get('hh_staff_name') or '')
+            expiry   = _v(doc.get('hh_expiry_date') or '')
+            issue    = _v(doc.get('hh_issue_date') or '')
+            issuer   = _v(doc.get('hh_issuing_body') or '')
+            fetched  = doc.get('hh_fetched', False)
+            expired  = _is_expired(expiry)
+
+            if not fetched:
+                status   = 'Not Checked'
+                row_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
+            elif not cert_n:
+                status   = 'No Cert Found'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+            elif expired is True:
+                status   = 'EXPIRED'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+            elif expired is False:
+                status   = 'Valid'
+                row_fill = None
+            else:
+                status   = 'Found'
+                row_fill = None
+
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT)                        if ri % 2 == 0 and not row_fill else None
+
+            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, status]
+            aligns   = [c_align,l_align,l_align,l_align,l_align,c_align,c_align,l_align,c_align]
+
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border
+                cell.fill = row_fill or alt_fill or PatternFill()
+
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(docs)+2, column=1,
+                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="hand_hygiene_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 def _export_json(items):

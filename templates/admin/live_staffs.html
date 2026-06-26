@@ -67,6 +67,16 @@
                         </a>
                     </li>
                     <li>
+                        <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_ipc_xlsx') }}">
+                            <i class="bi bi-shield-check me-2 text-success"></i>IPC Certificates (Excel)
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_hand_hygiene_xlsx') }}">
+                            <i class="bi bi-droplet me-2 text-info"></i>Hand Hygiene Certificates (Excel)
+                        </a>
+                    </li>
+                    <li>
                         <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_passport_xlsx') }}">
                             <i class="bi bi-passport me-2 text-secondary"></i>Passport IDs (Excel)
                         </a>
