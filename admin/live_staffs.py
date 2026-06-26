@@ -7466,10 +7466,25 @@ def live_staff_cron_sync_qualification():
                 {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
                 {"user_type": {"$regex": "hca", "$options": "i"}},
             ]},
+            # Not yet fetched OR is HCA with no valid alphanumeric qqi_number
             {"$or": [
                 {"qualification_fetched": {"$exists": False}},
                 {"qualification_fetched": False},
                 {"qualification_fetched": None},
+                # Re-run HCA if qqi_number is missing or does not contain a letter
+                {"$and": [
+                    {"$or": [
+                        {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
+                        {"user_type": {"$regex": "hca", "$options": "i"}},
+                    ]},
+                    {"$or": [
+                        {"qqi_number": {"$exists": False}},
+                        {"qqi_number": None},
+                        {"qqi_number": ""},
+                        # Number is all digits only (no letters) — likely wrong, re-extract
+                        {"qqi_number": {"$not": {"$regex": "[A-Za-z]"}}},
+                    ]},
+                ]},
             ]},
         ]
     }
@@ -7512,9 +7527,14 @@ def live_staff_cron_sync_qualification():
         ]
         save_field   = 'qqi_number'
         extract_hint = (
-            "This is a QQI / FETAC qualification certificate. "
+            "This is a QQI / FETAC qualification certificate for a Healthcare Assistant. "
             "Find the certificate number, learner ID, or award reference number. "
-            "Look for labels like: Certificate No, Learner ID, Award Reference, QQI No, Record No, Registration No."
+            "IMPORTANT: The number must be ALPHANUMERIC — it contains both letters and numbers "
+            "(e.g. F12345678, L123456789, QF12345, 12345ABC). "
+            "If you find a number that is ONLY digits with no letters, look for another reference "
+            "number on the certificate that includes letters. "
+            "Look for labels like: Certificate No, Learner ID, Award Reference, QQI No, Record No, "
+            "Registration No, Reference Number, Award ID."
         )
 
     def _mark_done(update_dict):
@@ -7670,8 +7690,38 @@ If no registration/certificate number is found, set "registration_number" to nul
         reg_num   = _v(result.get('registration_number') or '')
         raw_text_ = _v(result.get('raw_text') or '')
 
+        # ── For HCA: validate qqi_number is alphanumeric (contains letters) ──
+        # If Gemini returned digits-only, reset and let cron retry next run
+        import re as _re2
+        if is_hca and reg_num:
+            has_letter = bool(_re2.search(r'[A-Za-z]', reg_num))
+            if not has_letter:
+                # Digits-only — invalid QQI number, reset so cron retries
+                col.update_one(
+                    {"_id": staff['_id']},
+                    {"$set": {
+                        "qqi_number":            "",
+                        "qualification_fetched": False,
+                        "qualification_note":    f"digits-only QQI rejected: {reg_num} — will retry",
+                        "qualification_doc_url": doc_url,
+                    }}
+                )
+                return jsonify({
+                    "success":         False,
+                    "email":           email,
+                    "staff_name":      full_name,
+                    "user_type":       user_type,
+                    "doc_found":       True,
+                    "qqi_number":      "",
+                    "rejected":        reg_num,
+                    "reason":          "QQI number must be alphanumeric (contain letters). Digits-only rejected.",
+                    "remaining_count": remaining_total,
+                    "message":         f"Rejected digits-only QQI '{reg_num}' for {full_name} — will retry.",
+                })
+            reg_num = reg_num.strip()
+
         _mark_done({
-            save_field:             reg_num,
+            save_field:               reg_num,
             "qualification_doc_type": qual_doc.get('document_type_name', ''),
             "qualification_doc_url":  doc_url,
             "qualification_raw":      raw_text_,
@@ -8423,6 +8473,69 @@ def live_staff_export_passport_xlsx():
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+@admin_bp.route('/live-staffs/cron/reset-hca-qualification', methods=['GET', 'POST'])
+@admin_required
+def live_staff_reset_hca_qualification():
+    """
+    Reset qualification_fetched for ALL HCA staff so sync-qualification
+    cron re-runs and re-extracts their QQI numbers.
+
+    Also resets any HCA with a digits-only qqi_number (invalid).
+
+    GET /admin/live-staffs/cron/reset-hca-qualification
+    """
+    import re as _re2
+    col = _staffs_col()
+
+    hca_query = {"$or": [
+        {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
+        {"user_type": {"$regex": r"\bhca\b", "$options": "i"}},
+    ]}
+
+    # Find HCA with digits-only or missing qqi_number
+    reset_query = {"$and": [
+        hca_query,
+        {"$or": [
+            {"qualification_fetched": True},
+            {"qqi_number": {"$exists": False}},
+            {"qqi_number": None},
+            {"qqi_number": ""},
+        ]},
+    ]}
+
+    all_hca  = list(col.find(hca_query, {"qqi_number": 1}))
+    to_reset = []
+    for doc in all_hca:
+        qqi = _v(doc.get('qqi_number') or '')
+        # Reset if empty OR digits-only (no letters)
+        if not qqi or not _re2.search(r'[A-Za-z]', qqi):
+            to_reset.append(doc['_id'])
+
+    if not to_reset:
+        return jsonify({
+            "success": True,
+            "reset_count": 0,
+            "message": "No HCA staff need resetting — all have valid alphanumeric QQI numbers.",
+        })
+
+    result = col.update_many(
+        {"_id": {"$in": to_reset}},
+        {"$set": {
+            "qualification_fetched": False,
+            "qqi_number":            "",
+            "qualification_note":    "reset for re-extraction",
+        }}
+    )
+
+    return jsonify({
+        "success":     True,
+        "reset_count": result.modified_count,
+        "total_hca":   len(all_hca),
+        "message":     f"Reset {result.modified_count} HCA staff — cron will re-extract their QQI numbers.",
+    })
 
 
 def _export_json(items):
