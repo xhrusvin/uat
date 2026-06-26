@@ -11667,7 +11667,7 @@ def live_staff_export_employment_contract_xlsx():
 # ── Cron: Extract Open Disclosure Certificate ─────────────────────────
 
 @admin_bp.route('/live-staffs/cron/sync-open-disclosure', methods=['GET', 'POST'])
-def live_staff_cron_sync_open_disclosure():
+def live_staff_cron_sync_open_disclosure_new():
     """
     Cron job — processes ONE staff member per call.
     Finds "Open Disclosure" document, extracts details via Gemini AI.
