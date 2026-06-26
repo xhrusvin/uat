@@ -12100,6 +12100,20 @@ def _build_pcc_docx(doc, reviewer_index=0):
     role        = _v(doc.get('user_type') or '')
     first_shift = _v(doc.get('first_shift_date') or '')
 
+    # Employment history for Section 3
+    s5 = doc.get('section_5_employment_history') or {}
+    emp_entries = [e for e in (s5.get('entries') or [])
+                   if e.get('employer') or e.get('position')]
+
+    # Signature image bytes from GCS (if available)
+    sig_bytes = None
+    sig_blob  = _v(doc.get('signature_gcs_blob') or '')
+    if sig_blob:
+        try:
+            sig_bytes = _gcs_download(sig_blob)
+        except Exception:
+            sig_bytes = None
+
     # Reviewer rotation
     reviewer = _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)]
 
@@ -12285,22 +12299,34 @@ def _build_pcc_docx(doc, reviewer_index=0):
     section_heading('SECTION 3 — INTERNATIONAL RESIDENTIAL HISTORY')
     body_text('Please list ALL countries (other than your current country of residence) where you have lived for six (6) months or more since the age of 18. Include the reason for your stay.')
     sp(2)
-    cols_  = ['Country', 'City / Region', 'From (MM/YYYY)', 'To (MM/YYYY)', 'Reason for Stay']
-    widths_= [3, 3, 2.5, 2.5, 4]
-    htbl   = document.add_table(rows=5, cols=5)
+    cols_   = ['Country', 'City / Region', 'From (MM/YYYY)', 'To (MM/YYYY)', 'Reason for Stay']
+    # Build rows from employment history — use employer/position/from/to as proxies
+    hist_rows = []
+    for e in emp_entries[:8]:
+        country  = _v(e.get('country') or '')
+        city     = _v(e.get('employer') or '')
+        frm      = _v(e.get('from') or '')
+        to_      = _v(e.get('to') or 'Present')
+        reason   = _v(e.get('position') or '')
+        hist_rows.append((country, city, frm, to_, reason))
+    # Always have at least 4 rows
+    while len(hist_rows) < 4:
+        hist_rows.append(('', '', '', '', ''))
+    num_rows = len(hist_rows) + 1  # +1 for header
+    htbl = document.add_table(rows=num_rows, cols=5)
     htbl.style = 'Table Grid'
-    for ci, (hdr, _) in enumerate(zip(cols_, widths_)):
+    for ci, hdr in enumerate(cols_):
         c = htbl.cell(0, ci)
         _set_cell_bg(c, '1B3A6B')
         _set_cell_border(c, '1B3A6B')
         p_ = c.paragraphs[0]
         p_.alignment = WD_ALIGN_PARAGRAPH.CENTER
         _add_run(p_, hdr, bold=True, size=9, color=WHITE)
-    for ri in range(1, 5):
-        for ci in range(5):
+    for ri, row_vals in enumerate(hist_rows, start=1):
+        for ci, val in enumerate(row_vals):
             c = htbl.cell(ri, ci)
             _set_cell_border(c, 'CCCCCC')
-            c.paragraphs[0].add_run(' ')
+            _add_run(c.paragraphs[0], val, size=9)
     sp(6)
 
     # ── Section 4 ─────────────────────────────────────────────────────
@@ -12344,15 +12370,29 @@ def _build_pcc_docx(doc, reviewer_index=0):
         for cell in row.cells:
             for b in cell._tc.iter(qn('w:tcBorders')):
                 b.getparent().remove(b)
-    for p_, label_ in [
-        (stbl.cell(0,0).paragraphs[0], 'Employee Signature'),
-        (stbl.cell(0,1).paragraphs[0], 'Date'),
-        (stbl.cell(1,0).paragraphs[0], 'Employee Full Name (Print)'),
-        (stbl.cell(1,1).paragraphs[0], ''),
-    ]:
-        if label_:
-            _add_run(p_, label_ + '  ', bold=True, size=9.5)
-            _add_run(p_, '_' * 32, size=9.5, color=GRAY)
+
+    # Employee Signature cell — embed image if available
+    sig_cell = stbl.cell(0, 0)
+    _add_run(sig_cell.paragraphs[0], 'Employee Signature  ', bold=True, size=9.5)
+    if sig_bytes:
+        try:
+            from docx.shared import Inches as _Inches
+            import io as _sig_io
+            sig_p = sig_cell.add_paragraph()
+            sig_run = sig_p.add_run()
+            sig_run.add_picture(_sig_io.BytesIO(sig_bytes), width=_Inches(1.5))
+        except Exception:
+            _add_run(sig_cell.paragraphs[0], '_' * 32, size=9.5, color=GRAY)
+    else:
+        _add_run(sig_cell.paragraphs[0], '_' * 32, size=9.5, color=GRAY)
+
+    # Date cell
+    _add_run(stbl.cell(0,1).paragraphs[0], 'Date  ', bold=True, size=9.5)
+    _add_run(stbl.cell(0,1).paragraphs[0], '_' * 32, size=9.5, color=GRAY)
+
+    # Employee Full Name (Print) — use full_name from Section 1
+    _add_run(stbl.cell(1,0).paragraphs[0], 'Employee Full Name (Print)  ', bold=True, size=9.5)
+    _add_run(stbl.cell(1,0).paragraphs[0], full_name, size=9.5)
     sp(6)
 
     # ── For Office Use Only ────────────────────────────────────────────
@@ -12387,8 +12427,8 @@ def _build_pcc_docx(doc, reviewer_index=0):
         _add_run(vc.paragraphs[0], val_, size=9.5)
     sp(4)
 
-    body_text('Compliance Decision:', )
-    checkbox_item('Acceptable — pending PCC submission')
+    body_text('Compliance Decision:')
+    checkbox_item('Acceptable — pending PCC submission', checked=True)
     checkbox_item('Further Information Required')
     checkbox_item('Escalated for Risk Review')
     checkbox_item('Not Accepted')
