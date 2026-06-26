@@ -7232,6 +7232,20 @@ def live_staff_cron_sync_passport():
         dl_headers = {k: v for k, v in api_headers.items()
                       if k != 'Content-Type'}
         img_resp = _req.get(passport_url, headers=dl_headers, timeout=60)
+
+        if img_resp.status_code == 404:
+            _mark_done({"passport_extracted": "[404 — document URL not found]"})
+            return jsonify({
+                "success":         True,
+                "email":           email,
+                "staff_name":      full_name,
+                "passport_found":  True,
+                "skipped":         True,
+                "reason":          "Document URL returned 404",
+                "remaining_count": max(0, remaining_total - 1),
+                "message":         f"Skipped {full_name} ({email}) — passport URL 404",
+            })
+
         img_resp.raise_for_status()
         raw_bytes    = img_resp.content
         content_type = img_resp.headers.get('Content-Type', '').lower()
@@ -7627,6 +7641,21 @@ def live_staff_cron_sync_qualification():
     try:
         dl_headers = {k: v for k, v in api_headers.items() if k != 'Content-Type'}
         dl_resp    = _req.get(doc_url, headers=dl_headers, timeout=60)
+
+        # 404 = document missing/expired URL — mark done and skip
+        if dl_resp.status_code == 404:
+            _mark_done({"qualification_note": f"document URL returned 404 — skipped"})
+            return jsonify({
+                "success":         True,
+                "email":           email,
+                "staff_name":      full_name,
+                "doc_found":       True,
+                "skipped":         True,
+                "reason":          "Document URL returned 404 (missing or expired)",
+                "remaining_count": max(0, remaining_total - 1),
+                "message":         f"Skipped {full_name} ({email}) — document URL returned 404",
+            })
+
         dl_resp.raise_for_status()
         raw_bytes    = dl_resp.content
         content_type = dl_resp.headers.get('Content-Type', '').lower()
@@ -8061,6 +8090,20 @@ def live_staff_cron_sync_cpr_certificate():
     try:
         dl_headers = {k: v for k, v in api_headers.items() if k != 'Content-Type'}
         dl_resp    = _req.get(doc_url, headers=dl_headers, timeout=60)
+
+        if dl_resp.status_code == 404:
+            _mark_done({"cpr_note": "document URL returned 404 — skipped"})
+            return jsonify({
+                "success":         True,
+                "email":           email,
+                "staff_name":      full_name,
+                "doc_found":       True,
+                "skipped":         True,
+                "reason":          "Document URL returned 404",
+                "remaining_count": max(0, remaining_total - 1),
+                "message":         f"Skipped {full_name} ({email}) — CPR doc URL 404",
+            })
+
         dl_resp.raise_for_status()
         raw_bytes    = dl_resp.content
         content_type = dl_resp.headers.get('Content-Type', '').lower()
