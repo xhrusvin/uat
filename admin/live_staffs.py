@@ -7088,14 +7088,27 @@ def live_staff_cron_sync_passport():
 
     col = _staffs_col()
 
-    # ── Find next staff where passport not yet fetched ────────────────
-    # passport_fetched is set to True after every attempt (success or skip)
-    # so the cron always moves forward and never re-processes
+    # ── Find next staff to process ────────────────────────────────────
+    # Picks up:
+    #   1. Never fetched (passport_fetched missing/False)
+    #   2. Fetched but passport_id is still empty — retry with passport_id_card doc type
     pending_query = {
         "$or": [
             {"passport_fetched": {"$exists": False}},
             {"passport_fetched": False},
             {"passport_fetched": None},
+            # Re-run if fetched but no passport_id extracted
+            {"$and": [
+                {"passport_fetched": True},
+                {"$or": [
+                    {"passport_id": {"$exists": False}},
+                    {"passport_id": None},
+                    {"passport_id": ""},
+                ]},
+                # Don't retry 404s or known-unreadable docs
+                {"passport_doc_404":  {"$ne": True}},
+                {"passport_id_retry": {"$ne": True}},  # already retried once
+            ]},
         ]
     }
 
@@ -7198,14 +7211,21 @@ def live_staff_cron_sync_passport():
             "remaining_count": max(0, remaining_total - 1),
         })
 
-    # ── Find Passport/id card document ────────────────────────────────
+    # ── Find Passport document — try all known type names ───────────────
+    # Includes: "Passport/id card", "passport_id_card", "Passport", "Id Card"
+    is_retry = (staff.get('passport_fetched') is True and
+                not _v(staff.get('passport_id') or ''))
+
     passport_doc = None
+    PASSPORT_TYPES = {
+        'passport/id card', 'passport/id', 'passport', 'id card',
+        'passport_id_card', 'passport id card', 'passport id',
+    }
     for d in documents:
         doc_name = (d.get('document_type_name') or '').strip().lower()
-        if doc_name in ('passport/id card', 'passport', 'id card', 'passport/id'):
-            if d.get('url'):
-                passport_doc = d
-                break
+        if doc_name in PASSPORT_TYPES and d.get('url'):
+            passport_doc = d
+            break
 
     if not passport_doc:
         col.update_one(
@@ -7214,6 +7234,7 @@ def live_staff_cron_sync_passport():
                 "passport_extracted":    "No passport doc found",
                 "passport_extracted_at": datetime.utcnow(),
                 "passport_fetched":      True,
+                "passport_id_retry":     True,  # mark so we don't retry infinitely
             }}
         )
         return jsonify({
@@ -7393,7 +7414,8 @@ TEXT:
                 "passport_id":           passport_id,
                 "passport_url":          passport_url,
                 "passport_extracted_at": datetime.utcnow(),
-                "passport_fetched":      True,    # always mark fetched regardless of ID readability
+                "passport_fetched":      True,
+                "passport_id_retry":     True,  # prevent infinite re-runs
             }}
         )
 
