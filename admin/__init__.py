@@ -34,7 +34,6 @@ from . import whatsapp_conversations
 from . import cert_reminders
 from . import transcriptions_reminder
 from . import live_staff_stage1
-
-
+from . import live_staff_sub
 
 
