@@ -12613,12 +12613,14 @@ def live_staff_ai_pcc_generate():
         else:
             rec_id = str(col.insert_one(rec).inserted_id)
 
+        download_url = _gcs_signed_url(gcs_blob) or ''
         return jsonify({
             "success":      True,
             "pcc_id":       rec_id,
             "staff_name":   full_name,
             "filename":     filename,
             "gcs_blob":     gcs_blob,
+            "download_url": download_url,
             "reviewer":     _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)],
             "generated_at": datetime.utcnow().isoformat(),
         })
@@ -14751,7 +14753,12 @@ def live_staff_cron_generate_pcc():
         else:
             rec_id = str(pcc_col.insert_one(rec).inserted_id)
 
-        _mark_done({"pcc_gcs_blob": gcs_blob, "pcc_filename": filename})
+        download_url = _gcs_signed_url(gcs_blob) or ''
+        _mark_done({
+            "pcc_gcs_blob":    gcs_blob,
+            "pcc_filename":    filename,
+            "pcc_download_url": download_url,
+        })
 
         return jsonify({
             "success":         True,
@@ -14760,6 +14767,7 @@ def live_staff_cron_generate_pcc():
             "pcc_id":          rec_id,
             "filename":        filename,
             "gcs_blob":        gcs_blob,
+            "download_url":    download_url,
             "reviewer":        _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)],
             "remaining_count": max(0, remaining_total - 1),
             "message": (
