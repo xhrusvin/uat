@@ -11943,7 +11943,7 @@ If a field is not visible, set it to null.
 
 @admin_bp.route('/live-staffs/export/open-disclosure-xlsx')
 @admin_required
-def live_staff_export_open_disclosure_xlsx():
+def live_staff_export_open_disclosure_xlsx_new():
     """Export Open Disclosure certificate details to Excel."""
     try:
         from openpyxl import Workbook
