@@ -10078,6 +10078,130 @@ def live_staff_cron_push_passport_number():
         })
 
 
+
+@admin_bp.route('/live-staffs/export/safeguarding-xlsx')
+@admin_required
+def live_staff_export_safeguarding_xlsx():
+    """Export Safeguarding Adults At Risk certificate details to Excel."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1,
+             "sg_certificate_name": 1, "sg_staff_name": 1,
+             "sg_expiry_date": 1, "sg_issue_date": 1,
+             "sg_issuing_body": 1, "sg_fetched": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
+        ALT  = 'EFF6FF'; WARN  = 'FFF3CD'; RED   = 'FFDDDD'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Arial', size=10)
+        l_align = Alignment(horizontal='left',   vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        green_b = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Safeguarding Certificates'
+
+        headers    = ['Sno', 'Staff Name', 'Email', 'Certificate Name',
+                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Status']
+        col_widths = [5, 28, 36, 35, 28, 16, 16, 30, 14]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = green_b
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
+
+        from datetime import date as _date
+        today = _date.today()
+
+        def _is_expired(expiry_str):
+            if not expiry_str:
+                return None
+            for fmt in ('%d/%m/%Y', '%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%B %Y', '%b %Y'):
+                try:
+                    from datetime import datetime as _dt
+                    d = _dt.strptime(expiry_str.strip(), fmt).date()
+                    return d < today
+                except Exception:
+                    continue
+            return None
+
+        for ri, doc in enumerate(docs, start=2):
+            s1       = doc.get('section_1_personal_details') or {}
+            name     = _v(s1.get('full_name') or '')
+            email    = _v(doc.get('email') or '')
+            cert_n   = _v(doc.get('sg_certificate_name') or '')
+            cert_s   = _v(doc.get('sg_staff_name') or '')
+            expiry   = _v(doc.get('sg_expiry_date') or '')
+            issue    = _v(doc.get('sg_issue_date') or '')
+            issuer   = _v(doc.get('sg_issuing_body') or '')
+            fetched  = doc.get('sg_fetched', False)
+            expired  = _is_expired(expiry)
+
+            if not fetched:
+                status   = 'Not Checked'
+                row_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
+            elif not cert_n:
+                status   = 'No Cert Found'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+            elif expired is True:
+                status   = 'EXPIRED'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+            elif expired is False:
+                status   = 'Valid'
+                row_fill = None
+            else:
+                status   = 'Found'
+                row_fill = None
+
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) \
+                       if ri % 2 == 0 and not row_fill else None
+
+            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, status]
+            aligns   = [c_align, l_align, l_align, l_align, l_align,
+                        c_align, c_align, l_align, c_align]
+
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border
+                cell.fill = row_fill or alt_fill or PatternFill()
+
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(docs)+2, column=1,
+                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="safeguarding_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
