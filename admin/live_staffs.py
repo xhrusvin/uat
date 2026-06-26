@@ -7601,15 +7601,15 @@ def live_staff_cron_sync_qualification():
     doc_url = qual_doc.get('url', '')
 
     # ── Download document ─────────────────────────────────────────────
+    import json as _json, re as _re, base64
+    from google import genai as google_genai
+
     try:
         dl_headers = {k: v for k, v in api_headers.items() if k != 'Content-Type'}
         dl_resp    = _req.get(doc_url, headers=dl_headers, timeout=60)
         dl_resp.raise_for_status()
         raw_bytes    = dl_resp.content
         content_type = dl_resp.headers.get('Content-Type', '').lower()
-
-        from google import genai as google_genai
-        import json as _json, re as _re, base64
 
         client = google_genai.Client(api_key=gemini_key)
 
