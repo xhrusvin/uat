@@ -12412,8 +12412,11 @@ CV TEXT:
     while len(hist_rows) < 4:
         hist_rows.append(('', '', '', '', ''))
 
-    cols_ = ['Country', 'City / Region', 'From (MM/YYYY)', 'To (MM/YYYY)', 'Reason for Stay']
-    htbl  = document.add_table(rows=len(hist_rows) + 1, cols=5)
+    # 4 columns — City/Region removed
+    cols_   = ['Country', 'From (MM/YYYY)', 'To (MM/YYYY)', 'Reason for Stay']
+    # Strip city_region (index 1) from each row
+    hist_rows_4 = [(r[0], r[2], r[3], r[4]) for r in hist_rows]
+    htbl  = document.add_table(rows=len(hist_rows_4) + 1, cols=4)
     htbl.style = 'Table Grid'
     for ci, hdr in enumerate(cols_):
         c  = htbl.cell(0, ci)
@@ -12422,7 +12425,7 @@ CV TEXT:
         p_ = c.paragraphs[0]
         p_.alignment = WD_ALIGN_PARAGRAPH.CENTER
         _add_run(p_, hdr, bold=True, size=9, color=WHITE)
-    for ri, row_vals in enumerate(hist_rows, start=1):
+    for ri, row_vals in enumerate(hist_rows_4, start=1):
         for ci, val in enumerate(row_vals):
             c = htbl.cell(ri, ci)
             _set_cell_border(c, 'CCCCCC')
@@ -14665,6 +14668,115 @@ def live_staff_export_health_declaration_xlsx():
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+# ── Cron: Generate PCC Self-Declaration form one staff at a time ──────
+
+@admin_bp.route('/live-staffs/cron/generate-pcc', methods=['GET', 'POST'])
+def live_staff_cron_generate_pcc():
+    """
+    Cron job — generates PCC Self-Declaration form for ONE staff member per call.
+
+    Finds staff where pcc_generated is not True.
+    Generates DOCX, uploads to GCS, saves to live_staff_ai_pcc collection.
+    Reviewer rotates through _PCC_REVIEWERS alternately.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    col     = _staffs_col()
+    pcc_col = _ai_pcc_col()
+
+    pending_query = {
+        "$or": [
+            {"pcc_generated": {"$exists": False}},
+            {"pcc_generated": False},
+            {"pcc_generated": None},
+        ]
+    }
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff PCC forms already generated.",
+            "remaining_count": 0,
+        })
+
+    staff_id  = str(staff['_id'])
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or s1.get('email_address') or '')
+    emp_code  = _v(staff.get('employee_code') or '')
+
+    def _mark_done(fields):
+        fields["pcc_generated"]    = True
+        fields["pcc_generated_at"] = datetime.utcnow()
+        col.update_one({"_id": staff['_id']}, {"$set": fields})
+
+    try:
+        # Rotate reviewer based on total generated so far
+        total_generated    = pcc_col.count_documents({})
+        reviewer_index     = total_generated % len(_PCC_REVIEWERS)
+
+        docx_bytes = _build_pcc_docx(staff, reviewer_index=reviewer_index)
+
+        safe_name  = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        filename   = f"PCC_{safe_name}.docx"
+        gcs_blob   = f"pcc/{filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        existing = pcc_col.find_one({"staff_id": staff_id})
+        rec = {
+            "staff_id":      staff_id,
+            "staff_name":    full_name,
+            "employee_code": emp_code,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "reviewer":      _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)],
+            "generated_at":  datetime.utcnow(),
+        }
+        if existing:
+            pcc_col.update_one({"_id": existing["_id"]}, {"$set": rec})
+            rec_id = str(existing["_id"])
+        else:
+            rec_id = str(pcc_col.insert_one(rec).inserted_id)
+
+        _mark_done({"pcc_gcs_blob": gcs_blob, "pcc_filename": filename})
+
+        return jsonify({
+            "success":         True,
+            "staff_name":      full_name,
+            "email":           email,
+            "pcc_id":          rec_id,
+            "filename":        filename,
+            "gcs_blob":        gcs_blob,
+            "reviewer":        _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)],
+            "remaining_count": max(0, remaining_total - 1),
+            "message": (
+                f"PCC generated for {full_name} — "
+                f"{max(0, remaining_total - 1)} remaining."
+            ),
+        })
+
+    except Exception as e:
+        _mark_done({"pcc_note": f"error: {e}"})
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "staff_name":      full_name,
+            "error":           str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
 
 
 def _export_json(items):
