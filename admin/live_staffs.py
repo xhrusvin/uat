@@ -9881,6 +9881,195 @@ def live_staff_export_children_first_xlsx():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+
+# ── Cron: Push passport number to DOC API one staff at a time ─────────
+
+@admin_bp.route('/live-staffs/cron/push-passport-number', methods=['GET', 'POST'])
+def live_staff_cron_push_passport_number():
+    """
+    Cron job — processes ONE staff member per call.
+
+    Finds staff where:
+      - passport_id is set (already extracted by sync-passport cron)
+      - staff_id (XN Portal staff ID) exists
+      - passport_number_pushed is not True (not yet pushed to DOC API)
+
+    Calls:
+      POST {DOC_BASE_URL}/api/staff/passport-number-update
+      Headers: Api-Key, X-App-Country
+      Form:    staff_id, passport_number
+
+    Sets passport_number_pushed = True on success.
+    Stores passport_push_email in live_staffs for reference.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    import requests as _req
+
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    doc_base_url = os.environ.get('DOC_BASE_URL', '').rstrip('/')
+    doc_api_key  = os.environ.get('DOC_API_KEY', '')
+    app_country  = os.environ.get('XN_APP_COUNTRY', 'ie')
+
+    if not doc_base_url:
+        return jsonify({"success": False, "error": "DOC_BASE_URL not set"}), 500
+    if not doc_api_key:
+        return jsonify({"success": False, "error": "DOC_API_KEY not set"}), 500
+
+    col = _staffs_col()
+
+    # Only process staff that:
+    # 1. Have a passport_id extracted
+    # 2. Have a staff_id (XN Portal)
+    # 3. Have not been pushed yet
+    pending_query = {
+        "$and": [
+            {"passport_id": {"$exists": True}},
+            {"passport_id": {"$ne": None}},
+            {"passport_id": {"$ne": ""}},
+            {"$or": [
+                {"staff_id": {"$exists": True}},
+                {"xn_staff_id": {"$exists": True}},
+            ]},
+            {"$or": [
+                {"passport_number_pushed": {"$exists": False}},
+                {"passport_number_pushed": False},
+                {"passport_number_pushed": None},
+            ]},
+        ]
+    }
+
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All passport numbers already pushed — nothing to do.",
+            "remaining_count": 0,
+        })
+
+    s1          = staff.get('section_1_personal_details') or {}
+    full_name   = _v(s1.get('full_name') or '')
+    email       = _v(staff.get('email') or s1.get('email_address') or '')
+    passport_id = _v(staff.get('passport_id') or '')
+    xn_staff_id = _v(staff.get('staff_id') or staff.get('xn_staff_id') or '')
+
+    def _mark_done(fields):
+        fields["passport_push_attempted_at"] = datetime.utcnow()
+        fields["passport_push_email"]        = email
+        col.update_one({"_id": staff['_id']}, {"$set": fields})
+
+    if not xn_staff_id:
+        _mark_done({
+            "passport_number_pushed": False,
+            "passport_push_note":     "skipped — no staff_id found",
+        })
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "skipped":         True,
+            "reason":          "No staff_id / xn_staff_id found",
+            "remaining_count": max(0, remaining_total - 1),
+            "message":         f"Skipped {full_name} ({email}) — no staff_id",
+        })
+
+    if not passport_id:
+        _mark_done({
+            "passport_number_pushed": False,
+            "passport_push_note":     "skipped — passport_id is empty",
+        })
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "staff_name":      full_name,
+            "skipped":         True,
+            "reason":          "passport_id is empty",
+            "remaining_count": max(0, remaining_total - 1),
+            "message":         f"Skipped {full_name} ({email}) — passport_id empty",
+        })
+
+    # ── Call DOC API ──────────────────────────────────────────────────
+    url     = f"{doc_base_url}/api/staff/passport-number-update"
+    headers = {
+        "Api-Key":       doc_api_key,
+        "X-App-Country": app_country,
+    }
+    form_data = {
+        "staff_id":        xn_staff_id,
+        "passport_number": passport_id,
+    }
+
+    try:
+        resp = _req.post(url, headers=headers, data=form_data, timeout=30)
+
+        if resp.status_code in (200, 201):
+            try:
+                resp_data = resp.json()
+            except Exception:
+                resp_data = {"raw": resp.text[:200]}
+
+            _mark_done({
+                "passport_number_pushed":      True,
+                "passport_push_note":          "pushed successfully",
+                "passport_push_response":      resp_data,
+            })
+
+            return jsonify({
+                "success":         True,
+                "email":           email,
+                "staff_name":      full_name,
+                "staff_id":        xn_staff_id,
+                "passport_number": passport_id,
+                "pushed":          True,
+                "api_response":    resp_data,
+                "remaining_count": max(0, remaining_total - 1),
+                "message": (
+                    f"Passport number pushed for {full_name} ({email}) "
+                    f"[{passport_id}] — {max(0, remaining_total - 1)} remaining."
+                ),
+            })
+
+        else:
+            # Non-200 — mark as failed but don't block (retry manually)
+            _mark_done({
+                "passport_number_pushed": False,
+                "passport_push_note":     f"API returned {resp.status_code}: {resp.text[:200]}",
+            })
+            return jsonify({
+                "success":         False,
+                "email":           email,
+                "staff_name":      full_name,
+                "staff_id":        xn_staff_id,
+                "passport_number": passport_id,
+                "pushed":          False,
+                "http_status":     resp.status_code,
+                "api_error":       resp.text[:300],
+                "remaining_count": max(0, remaining_total - 1),
+                "message":         f"API error {resp.status_code} for {full_name} ({email})",
+            })
+
+    except Exception as e:
+        _mark_done({
+            "passport_number_pushed": False,
+            "passport_push_note":     f"request error: {e}",
+        })
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "staff_name":      full_name,
+            "error":           str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
