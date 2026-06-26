@@ -14787,6 +14787,757 @@ def live_staff_cron_generate_pcc():
         })
 
 
+
+# ── Export: Profile Check (matching Profile_check.xlsx format) ────────
+
+@admin_bp.route('/live-staffs/export/profile-check-xlsx')
+@admin_required
+def live_staff_export_profile_check_xlsx():
+    """
+    Export staff certificate profile check to Excel.
+    Sheets: Passport, CPR, IPC, Handhygiene, Safeguard, Garda, Children
+    Matches the structure of Profile_check.xlsx.
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import (Font, PatternFill, Alignment,
+                                     Border, Side, numbers)
+        import io as _io
+        from datetime import date as _date
+        today = _date.today()
+
+        NAVY   = '1B3A6B'; GREEN  = '2E9E44'; WHITE  = 'FFFFFF'
+        ALT    = 'EFF6FF'; RED    = 'FFDDDD'; WARN   = 'FFF3CD'
+        MISMATCH_RED = 'FFE0E0'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        b_font  = Font(name='Arial', size=9)
+        l_align = Alignment(horizontal='left',   vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        green_b = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        def _name_match(staff_name, cert_name):
+            """Check if staff name matches cert name (simple fuzzy)."""
+            if not staff_name or not cert_name:
+                return True
+            s = staff_name.strip().lower()
+            c = cert_name.strip().lower()
+            if s == c:
+                return True
+            # Check if all parts of cert name appear in staff name or vice versa
+            s_parts = set(s.split())
+            c_parts = set(c.split())
+            return len(s_parts & c_parts) >= min(2, len(c_parts))
+
+        def _fmt_date(val):
+            if not val:
+                return ''
+            if hasattr(val, 'strftime'):
+                return val.strftime('%d/%m/%Y')
+            return str(val)
+
+        def _is_expired(expiry):
+            if not expiry:
+                return None
+            if hasattr(expiry, 'date'):
+                return expiry.date() < today
+            if hasattr(expiry, 'year'):
+                return expiry < today
+            # string
+            for fmt in ('%d/%m/%Y','%m/%Y','%Y-%m-%d','%d-%m-%Y','%B %Y','%b %Y',
+                        '%d %B, %Y','%d %b, %Y'):
+                try:
+                    from datetime import datetime as _dt2
+                    d = _dt2.strptime(str(expiry).strip().rstrip(','), fmt).date()
+                    return d < today
+                except Exception:
+                    continue
+            return None
+
+        def _write_sheet(ws, headers, rows, col_widths):
+            for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+                cell = ws.cell(row=1, column=ci, value=hdr)
+                cell.font      = h_font
+                cell.fill      = h_fill
+                cell.alignment = h_align
+                cell.border    = green_b
+                ws.column_dimensions[
+                    cell.column_letter].width = width
+            ws.row_dimensions[1].height = 28
+            ws.freeze_panes = 'A2'
+            ws.auto_filter.ref = (
+                f'A1:{ws.cell(row=1, column=len(headers)).column_letter}1'
+            )
+            for ri, row_data in enumerate(rows, start=2):
+                is_mismatch = row_data.get('_mismatch', False)
+                is_expired  = row_data.get('_expired', False)
+                row_fill = (PatternFill('solid', start_color=RED,  end_color=RED)
+                            if is_expired else
+                            PatternFill('solid', start_color=WARN, end_color=WARN)
+                            if is_mismatch else
+                            PatternFill('solid', start_color=ALT,  end_color=ALT)
+                            if ri % 2 == 0 else None)
+                for ci, key in enumerate(row_data.get('_keys', []), start=1):
+                    val  = row_data.get(key, '')
+                    cell = ws.cell(row=ri, column=ci, value=val)
+                    cell.font      = b_font
+                    cell.alignment = c_align if ci == 1 else l_align
+                    cell.border    = border
+                    if row_fill:
+                        cell.fill = row_fill
+                ws.row_dimensions[ri].height = 16
+
+        docs = list(_staffs_col().find({}, {
+            'section_1_personal_details': 1, 'email': 1,
+            'passport_id': 1, 'passport_data': 1, 'passport_fetched': 1,
+            'cpr_certificate_name':1,'cpr_staff_name':1,'cpr_expiry_date':1,
+            'cpr_issue_date':1,'cpr_issuing_body':1,'cpr_fetched':1,
+            'ipc_certificate_name':1,'ipc_staff_name':1,'ipc_expiry_date':1,
+            'ipc_issue_date':1,'ipc_issuing_body':1,'ipc_fetched':1,
+            'hh_certificate_name':1,'hh_staff_name':1,'hh_expiry_date':1,
+            'hh_issue_date':1,'hh_issuing_body':1,'hh_fetched':1,
+            'sg_certificate_name':1,'sg_staff_name':1,'sg_expiry_date':1,
+            'sg_issue_date':1,'sg_issuing_body':1,'sg_fetched':1,
+            'garda_cert_name':1,'garda_staff_name':1,'garda_issue_date':1,
+            'garda_reference':1,'garda_issuing_body':1,'garda_fetched':1,
+            'cf_certificate_name':1,'cf_staff_name':1,'cf_expiry_date':1,
+            'cf_issue_date':1,'cf_issuing_body':1,'cf_fetched':1,
+        }))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        wb = Workbook()
+        wb.remove(wb.active)  # remove default sheet
+
+        # ── Helper to build a row dict ────────────────────────────────
+        def _row(sno, name, email, cert_n, cert_s, expiry_raw, issue_raw,
+                 issuer, status, extra=None):
+            mismatch     = not _name_match(name, cert_s)
+            mismatch_lbl = 'Mismatch' if mismatch else 'Match'
+            expired      = _is_expired(expiry_raw) is True
+            d = {
+                'sno':      sno,
+                'name':     name,
+                'email':    email,
+                'cert_n':   cert_n,
+                'cert_s':   cert_s,
+                'expiry':   _fmt_date(expiry_raw),
+                'issue':    _fmt_date(issue_raw),
+                'issuer':   issuer,
+                'status':   status if status else ('Found' if cert_n else 'No Cert Found'),
+                'mismatch': mismatch_lbl,
+                '_mismatch': mismatch,
+                '_expired':  expired,
+            }
+            if extra:
+                d.update(extra)
+            return d
+
+        # ── Passport ──────────────────────────────────────────────────
+        ws_p = wb.create_sheet('Passport')
+        hdrs_p = ['Sno','Staff Name','Email','Passport ID','Nationality',
+                  'Date of Birth','Expiry Date','Country','Status','Name Match']
+        wids_p = [5,28,36,16,18,14,14,16,14,12]
+        rows_p = []
+        for i, doc in enumerate(docs, start=1):
+            s1    = doc.get('section_1_personal_details') or {}
+            name  = _v(s1.get('full_name') or '')
+            email = _v(doc.get('email') or '')
+            pid   = _v(doc.get('passport_id') or '')
+            pd_   = doc.get('passport_data') or {}
+            nat   = _v(pd_.get('nationality') or '')
+            dob   = _v(pd_.get('date_of_birth') or '')
+            exp   = _v(pd_.get('expiry_date') or '')
+            ctry  = _v(pd_.get('country') or '')
+            st    = 'Found' if pid else ('Not Checked' if not doc.get('passport_fetched') else 'No ID Found')
+            rows_p.append({
+                '_keys': ['sno','name','email','pid','nat','dob','exp','ctry','st','match'],
+                'sno': i, 'name': name, 'email': email, 'pid': pid,
+                'nat': nat, 'dob': dob, 'exp': exp, 'ctry': ctry, 'st': st,
+                'match': 'Match', '_mismatch': False, '_expired': False,
+            })
+        _write_sheet(ws_p, hdrs_p, rows_p, wids_p)
+
+        # ── CPR ───────────────────────────────────────────────────────
+        ws_c = wb.create_sheet('CPR')
+        hdrs_c = ['Sno','Staff Name','Email','Certificate Name','Name on Cert',
+                  'Expiry Date','Issue Date','Issuing Body','Status','Staff Name Mismatch']
+        wids_c = [5,28,36,32,28,14,14,28,14,14]
+        rows_c = []
+        for i, doc in enumerate(docs, start=1):
+            s1   = doc.get('section_1_personal_details') or {}
+            name = _v(s1.get('full_name') or '')
+            email= _v(doc.get('email') or '')
+            r    = _row(i,name,email,
+                        _v(doc.get('cpr_certificate_name') or ''),
+                        _v(doc.get('cpr_staff_name') or ''),
+                        doc.get('cpr_expiry_date'),
+                        doc.get('cpr_issue_date'),
+                        _v(doc.get('cpr_issuing_body') or ''),
+                        None if doc.get('cpr_fetched') else 'Not Checked')
+            r['_keys'] = ['sno','name','email','cert_n','cert_s',
+                          'expiry','issue','issuer','status','mismatch']
+            rows_c.append(r)
+        _write_sheet(ws_c, hdrs_c, rows_c, wids_c)
+
+        # ── IPC ───────────────────────────────────────────────────────
+        ws_i = wb.create_sheet('IPC')
+        hdrs_i = ['Sno','Staff Name','Email','Certificate Name','Name on Cert',
+                  'Expiry Date','Issue Date','Issuing Body','Status',
+                  'Staff Name Mismatch','Reason for Mismatch']
+        wids_i = [5,28,36,35,28,14,14,28,14,14,28]
+        rows_i = []
+        for i, doc in enumerate(docs, start=1):
+            s1   = doc.get('section_1_personal_details') or {}
+            name = _v(s1.get('full_name') or '')
+            email= _v(doc.get('email') or '')
+            cert_s = _v(doc.get('ipc_staff_name') or '')
+            mismatch = not _name_match(name, cert_s)
+            reason = (f'mismatch - {cert_s}' if mismatch and cert_s else '')
+            r = _row(i,name,email,
+                     _v(doc.get('ipc_certificate_name') or ''),
+                     cert_s,
+                     doc.get('ipc_expiry_date'),
+                     doc.get('ipc_issue_date'),
+                     _v(doc.get('ipc_issuing_body') or ''),
+                     None if doc.get('ipc_fetched') else 'Not Checked')
+            r['reason'] = reason
+            r['_keys'] = ['sno','name','email','cert_n','cert_s',
+                          'expiry','issue','issuer','status','mismatch','reason']
+            rows_i.append(r)
+        _write_sheet(ws_i, hdrs_i, rows_i, wids_i)
+
+        # ── Hand Hygiene ──────────────────────────────────────────────
+        ws_h = wb.create_sheet('Handhygiene')
+        hdrs_h = ['Sno','Staff Name','Email','Certificate Name','Name on Cert',
+                  'Expiry Date','Issue Date','Issuing Body','Status',
+                  'Staff Name Mismatch','Reason for Mismatch']
+        wids_h = [5,28,36,32,28,14,14,28,14,14,28]
+        rows_h = []
+        for i, doc in enumerate(docs, start=1):
+            s1    = doc.get('section_1_personal_details') or {}
+            name  = _v(s1.get('full_name') or '')
+            email = _v(doc.get('email') or '')
+            cert_s= _v(doc.get('hh_staff_name') or '')
+            mismatch = not _name_match(name, cert_s)
+            reason = (f'mismatch - {cert_s}' if mismatch and cert_s else '')
+            r = _row(i,name,email,
+                     _v(doc.get('hh_certificate_name') or ''),
+                     cert_s,
+                     doc.get('hh_expiry_date'),
+                     doc.get('hh_issue_date'),
+                     _v(doc.get('hh_issuing_body') or ''),
+                     None if doc.get('hh_fetched') else 'Not Checked')
+            r['reason'] = reason
+            r['_keys'] = ['sno','name','email','cert_n','cert_s',
+                          'expiry','issue','issuer','status','mismatch','reason']
+            rows_h.append(r)
+        _write_sheet(ws_h, hdrs_h, rows_h, wids_h)
+
+        # ── Safeguard ─────────────────────────────────────────────────
+        ws_s = wb.create_sheet('Safeguard')
+        hdrs_s = ['Sno','Staff Name','Email','Certificate Name','Name on Cert',
+                  'Expiry Date','Issue Date','Issuing Body','Status',
+                  'Staff Name Mismatch','Reason for Mismatch']
+        wids_s = [5,28,36,38,28,14,14,28,14,14,28]
+        rows_sg = []
+        for i, doc in enumerate(docs, start=1):
+            s1    = doc.get('section_1_personal_details') or {}
+            name  = _v(s1.get('full_name') or '')
+            email = _v(doc.get('email') or '')
+            cert_s= _v(doc.get('sg_staff_name') or '')
+            mismatch = not _name_match(name, cert_s)
+            reason = (f'mismatch - {cert_s}' if mismatch and cert_s else '')
+            r = _row(i,name,email,
+                     _v(doc.get('sg_certificate_name') or ''),
+                     cert_s,
+                     doc.get('sg_expiry_date'),
+                     doc.get('sg_issue_date'),
+                     _v(doc.get('sg_issuing_body') or ''),
+                     None if doc.get('sg_fetched') else 'Not Checked')
+            r['reason'] = reason
+            r['_keys'] = ['sno','name','email','cert_n','cert_s',
+                          'expiry','issue','issuer','status','mismatch','reason']
+            rows_sg.append(r)
+        _write_sheet(ws_s, hdrs_s, rows_sg, wids_s)
+
+        # ── Garda ─────────────────────────────────────────────────────
+        ws_g = wb.create_sheet('Garda')
+        hdrs_g = ['Sno','Staff Name','Email','Document Name','Name on Doc',
+                  'Issue Date','Reference No','Issuing Body','Status',
+                  'Staff Name Mismatch','Reason for Mismatch']
+        wids_g = [5,28,36,32,28,14,24,28,14,14,28]
+        rows_g = []
+        for i, doc in enumerate(docs, start=1):
+            s1    = doc.get('section_1_personal_details') or {}
+            name  = _v(s1.get('full_name') or '')
+            email = _v(doc.get('email') or '')
+            cert_s= _v(doc.get('garda_staff_name') or '')
+            mismatch = not _name_match(name, cert_s)
+            reason = (f'mismatch - {cert_s}' if mismatch and cert_s else '')
+            cert_n= _v(doc.get('garda_cert_name') or '')
+            r = {
+                '_keys': ['sno','name','email','cert_n','cert_s',
+                          'issue','ref_n','issuer','status','mismatch','reason'],
+                'sno': i, 'name': name, 'email': email,
+                'cert_n': cert_n, 'cert_s': cert_s,
+                'issue': _fmt_date(doc.get('garda_issue_date')),
+                'ref_n': _v(doc.get('garda_reference') or ''),
+                'issuer': _v(doc.get('garda_issuing_body') or ''),
+                'status': 'Found' if cert_n else ('Not Checked' if not doc.get('garda_fetched') else 'No Doc Found'),
+                'mismatch': 'Mismatch' if mismatch else 'Match',
+                'reason': reason,
+                '_mismatch': mismatch, '_expired': False,
+            }
+            rows_g.append(r)
+        _write_sheet(ws_g, hdrs_g, rows_g, wids_g)
+
+        # ── Children First ────────────────────────────────────────────
+        ws_ch = wb.create_sheet('Children')
+        hdrs_ch = ['Sno','Staff Name','Email','Certificate Name','Name on Cert',
+                   'Expiry Date','Issue Date','Issuing Body','Status',
+                   'Staff Name Mismatch','Expiry Date Exceeded']
+        wids_ch = [5,28,36,38,28,14,14,28,14,14,16]
+        rows_ch = []
+        for i, doc in enumerate(docs, start=1):
+            s1    = doc.get('section_1_personal_details') or {}
+            name  = _v(s1.get('full_name') or '')
+            email = _v(doc.get('email') or '')
+            cert_s= _v(doc.get('cf_staff_name') or '')
+            mismatch = not _name_match(name, cert_s)
+            exp_raw  = doc.get('cf_expiry_date')
+            expired  = _is_expired(exp_raw) is True
+            r = _row(i,name,email,
+                     _v(doc.get('cf_certificate_name') or ''),
+                     cert_s,
+                     exp_raw,
+                     doc.get('cf_issue_date'),
+                     _v(doc.get('cf_issuing_body') or ''),
+                     None if doc.get('cf_fetched') else 'Not Checked')
+            r['expired_lbl'] = 'Expired' if expired else ''
+            r['_keys'] = ['sno','name','email','cert_n','cert_s',
+                          'expiry','issue','issuer','status','mismatch','expired_lbl']
+            rows_ch.append(r)
+        _write_sheet(ws_ch, hdrs_ch, rows_ch, wids_ch)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="Profile_check_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+# ── Cron: Extract Code Of Conduct Certificate ─────────────────────────
+
+@admin_bp.route('/live-staffs/cron/sync-code-of-conduct', methods=['GET', 'POST'])
+def live_staff_cron_sync_code_of_conduct():
+    """
+    Cron job — processes ONE staff member per call.
+    Finds "Code Of Conduct" document, extracts details via Gemini AI.
+    Saves: coc_certificate_name, coc_staff_name, coc_expiry_date,
+           coc_issue_date, coc_issuing_body, coc_fetched = True
+    """
+    import requests as _req
+    import json as _json, re as _re, base64
+    from google import genai as google_genai
+
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+    gemini_key  = os.environ.get('GEMINI_API_KEY', '')
+
+    if not base_url:
+        return jsonify({"success": False, "error": "LIVE_STAFF_URL not set"}), 500
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+    col = _staffs_col()
+
+    pending_query = {
+        "$or": [
+            {"coc_fetched": {"$exists": False}},
+            {"coc_fetched": False},
+            {"coc_fetched": None},
+        ]
+    }
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff Code Of Conduct certificates already extracted.",
+            "remaining_count": 0,
+        })
+
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or s1.get('email_address') or '')
+
+    def _mark_done(fields):
+        fields["coc_fetched"]    = True
+        fields["coc_fetched_at"] = datetime.utcnow()
+        col.update_one({"_id": staff['_id']}, {"$set": fields})
+
+    if not email:
+        _mark_done({"coc_note": "skipped — no email"})
+        return jsonify({
+            "success":         True,
+            "message":         "Skipped — no email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    endpoint    = f"{base_url}/ai/recruitments/user-document-list"
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.post(endpoint, json={"email": email},
+                         headers=api_headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.get(endpoint, params={"email": email},
+                            headers=api_headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        _mark_done({"coc_note": f"API error: {e}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": f"API error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not data.get('success'):
+        _mark_done({"coc_note": f"API error: {data.get('message')}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": data.get('message', 'API error'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    api_data  = data.get('data')
+    documents = api_data if isinstance(api_data, list) else                 (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+
+    if not documents:
+        _mark_done({"coc_note": "no documents returned"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": False,
+            "message": f"No documents returned for {email}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    coc_doc = None
+    for d in documents:
+        doc_name = (d.get('document_type_name') or '').strip().lower()
+        if any(t in doc_name for t in (
+            'code of conduct', 'codeofconduct',
+            'code of conduct certificate', 'code of conduct training',
+            'staff code of conduct',
+        )) and d.get('url'):
+            coc_doc = d
+            break
+
+    if not coc_doc:
+        _mark_done({"coc_note": "no Code Of Conduct document found"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": False,
+            "message": f"No Code Of Conduct certificate found for {full_name}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    doc_url = (coc_doc.get('url') or '').strip()
+
+    if not doc_url:
+        _mark_done({"coc_note": "document found but URL is empty — skipped"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": True, "skipped": True,
+            "reason": "Document URL is empty",
+            "remaining_count": max(0, remaining_total - 1),
+            "message": f"Skipped {full_name} ({email}) — Code Of Conduct doc has no URL",
+        })
+
+    try:
+        dl_headers = {k: v for k, v in api_headers.items() if k != 'Content-Type'}
+        dl_resp    = _req.get(doc_url, headers=dl_headers, timeout=60)
+
+        if dl_resp.status_code == 404:
+            _mark_done({"coc_note": "document URL 404 — skipped", "coc_doc_404": True})
+            return jsonify({
+                "success": True, "email": email, "staff_name": full_name,
+                "doc_found": True, "skipped": True,
+                "reason": "Document URL returned 404",
+                "remaining_count": max(0, remaining_total - 1),
+                "message": f"Skipped {full_name} ({email}) — Code Of Conduct doc URL 404",
+            })
+
+        dl_resp.raise_for_status()
+        raw_bytes    = dl_resp.content
+        content_type = dl_resp.headers.get('Content-Type', '').lower()
+
+        client = google_genai.Client(api_key=gemini_key)
+
+        prompt_text = """You are a certificate data extractor.
+
+Extract the following details from this Code Of Conduct certificate or signed document:
+1. Certificate / document name (e.g. "Code Of Conduct", "Staff Code of Conduct", "Code of Conduct Agreement")
+2. Staff name as printed on the document
+3. Expiry date or renewal date (if shown)
+4. Issue / completion / signing date
+5. Issuing body or organisation
+
+Return ONLY a JSON object — no markdown, no explanation:
+{
+  "certificate_name": "<exact document title as printed>",
+  "staff_name_on_cert": "<name as printed on document>",
+  "expiry_date": "<expiry or renewal date as printed, e.g. 01/06/2027 or June 2027>",
+  "issue_date": "<issue, signing or completion date as printed>",
+  "issuing_body": "<organization that issued the document>"
+}
+
+If a field is not visible, set it to null.
+"""
+
+        is_image = any(t in content_type for t in ('image/', 'jpeg', 'jpg', 'png', 'webp'))
+        is_pdf   = 'pdf' in content_type or doc_url.lower().split('?')[0].endswith('.pdf')
+
+        if is_image:
+            ext   = 'jpeg' if any(t in content_type for t in ('jpeg', 'jpg')) else                     'png'  if 'png'  in content_type else                     'webp' if 'webp' in content_type else 'jpeg'
+            parts = [
+                {"inline_data": {"mime_type": f"image/{ext}",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash', contents=[{"parts": parts}]
+            )
+        elif is_pdf:
+            parts = [
+                {"inline_data": {"mime_type": "application/pdf",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash', contents=[{"parts": parts}]
+            )
+        else:
+            try:
+                import io as _io, pdfplumber
+                with pdfplumber.open(_io.BytesIO(raw_bytes)) as pdf:
+                    raw_text = chr(10).join(p.extract_text() or '' for p in pdf.pages).strip()
+            except Exception:
+                raw_text = raw_bytes.decode('utf-8', errors='replace').strip()
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt_text + "\n\nDOCUMENT TEXT:\n" + raw_text[:5000]
+            )
+
+        raw_out = (response.text or '').strip()
+        raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
+        raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
+
+        result       = _json.loads(raw_out)
+        cert_name    = _v(result.get('certificate_name') or '')
+        cert_staff   = _v(result.get('staff_name_on_cert') or '')
+        expiry_date  = _v(result.get('expiry_date') or '')
+        issue_date   = _v(result.get('issue_date') or '')
+        issuing_body = _v(result.get('issuing_body') or '')
+
+        _mark_done({
+            "coc_certificate_name": cert_name,
+            "coc_staff_name":       cert_staff,
+            "coc_expiry_date":      expiry_date,
+            "coc_issue_date":       issue_date,
+            "coc_issuing_body":     issuing_body,
+            "coc_doc_url":          doc_url,
+            "coc_doc_type":         coc_doc.get('document_type_name', ''),
+            "coc_note":             "extracted successfully",
+        })
+
+        return jsonify({
+            "success":            True,
+            "email":              email,
+            "staff_name":         full_name,
+            "doc_found":          True,
+            "certificate_name":   cert_name,
+            "staff_name_on_cert": cert_staff,
+            "expiry_date":        expiry_date,
+            "issue_date":         issue_date,
+            "issuing_body":       issuing_body,
+            "remaining_count":    max(0, remaining_total - 1),
+            "message": (
+                f"Code Of Conduct extracted for {full_name} "
+                f"(expires: {expiry_date or 'unknown'}) — "
+                f"{max(0, remaining_total - 1)} remaining."
+            ),
+        })
+
+    except _json.JSONDecodeError:
+        _mark_done({"coc_note": "Gemini JSON parse error"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": "Gemini returned non-JSON",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+    except Exception as e:
+        _mark_done({"coc_note": f"error: {e}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+
+# ── Export: Code Of Conduct to Excel ─────────────────────────────────
+
+@admin_bp.route('/live-staffs/export/code-of-conduct-xlsx')
+@admin_required
+def live_staff_export_code_of_conduct_xlsx():
+    """Export Code Of Conduct certificate details to Excel."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1,
+             "coc_certificate_name": 1, "coc_staff_name": 1,
+             "coc_expiry_date": 1, "coc_issue_date": 1,
+             "coc_issuing_body": 1, "coc_fetched": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
+        ALT  = 'EFF6FF'; WARN  = 'FFF3CD'; RED   = 'FFDDDD'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Arial', size=10)
+        l_align = Alignment(horizontal='left',   vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        green_b = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Code Of Conduct'
+
+        headers    = ['Sno', 'Staff Name', 'Email', 'Certificate Name',
+                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Status']
+        col_widths = [5, 28, 36, 32, 28, 16, 16, 28, 14]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = green_b
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
+
+        from datetime import date as _date
+        today = _date.today()
+
+        def _is_expired(expiry_str):
+            if not expiry_str:
+                return None
+            for fmt in ('%d/%m/%Y','%m/%Y','%Y-%m-%d','%d-%m-%Y','%B %Y','%b %Y'):
+                try:
+                    from datetime import datetime as _dt
+                    d = _dt.strptime(expiry_str.strip(), fmt).date()
+                    return d < today
+                except Exception:
+                    continue
+            return None
+
+        for ri, doc in enumerate(docs, start=2):
+            s1       = doc.get('section_1_personal_details') or {}
+            name     = _v(s1.get('full_name') or '')
+            email    = _v(doc.get('email') or '')
+            cert_n   = _v(doc.get('coc_certificate_name') or '')
+            cert_s   = _v(doc.get('coc_staff_name') or '')
+            expiry   = _v(doc.get('coc_expiry_date') or '')
+            issue    = _v(doc.get('coc_issue_date') or '')
+            issuer   = _v(doc.get('coc_issuing_body') or '')
+            fetched  = doc.get('coc_fetched', False)
+            expired  = _is_expired(expiry)
+
+            if not fetched:
+                status   = 'Not Checked'
+                row_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
+            elif not cert_n:
+                status   = 'No Cert Found'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+            elif expired is True:
+                status   = 'EXPIRED'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+            elif expired is False:
+                status   = 'Valid'
+                row_fill = None
+            else:
+                status   = 'Found'
+                row_fill = None
+
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT)                        if ri % 2 == 0 and not row_fill else None
+
+            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, status]
+            aligns   = [c_align, l_align, l_align, l_align, l_align,
+                        c_align, c_align, l_align, c_align]
+
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border
+                cell.fill = row_fill or alt_fill or PatternFill()
+
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(docs)+2, column=1,
+                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="code_of_conduct_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
