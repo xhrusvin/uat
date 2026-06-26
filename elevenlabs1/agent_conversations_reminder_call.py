@@ -103,8 +103,8 @@ def is_call_status_value(value):
 
 
 # ==================== ROUTE ====================
-@bp.route("/api/elevenlabs/agent/conversations_intro_call", methods=["GET", "POST"])
-def sync_agent_conversations_intro_call():
+@bp.route("/api/elevenlabs/agent/conversations_reminder_call", methods=["GET", "POST"])
+def sync_agent_conversations_reminder_call():
     key = request.args.get("key")
     agent_id = request.args.get("agent_id")
     limit = int(request.args.get("limit", 20))
