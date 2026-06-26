@@ -12331,6 +12331,19 @@ def _build_pcc_docx(doc, reviewer_index=0):
     has_cv_ = (extracted_cv_ and not extracted_cv_.startswith('[')
                and extracted_cv_ != 'No doc found')
 
+    IRELAND_TERMS = {
+        'ireland', 'irish', 'republic of ireland', 'eire', 'éire',
+        'ie', 'northern ireland', 'dublin', 'cork', 'galway', 'limerick',
+        'waterford', 'kilkenny', 'wexford', 'wicklow', 'kildare', 'meath',
+        'louth', 'monaghan', 'cavan', 'donegal', 'sligo', 'leitrim', 'roscommon',
+        'mayo', 'galway', 'clare', 'tipperary', 'kilkenny', 'carlow', 'laois',
+        'offaly', 'westmeath', 'longford', 'louth', 'kerry', 'cork', 'hse',
+    }
+
+    def _is_ireland(country, city_region=''):
+        text = (country + ' ' + city_region).lower()
+        return any(t in text for t in IRELAND_TERMS)
+
     if has_cv_:
         try:
             import json as _json2, re as _re2
@@ -12364,10 +12377,15 @@ CV TEXT:
                 _raw2 = _re2.sub(r'^```(?:json)?\s*', '', _raw2, flags=_re2.MULTILINE)
                 _raw2 = _re2.sub(r'```\s*$', '', _raw2, flags=_re2.MULTILINE).strip()
                 _parsed2 = _json2.loads(_raw2)
-                for _e in _parsed2[:10]:
+                for _e in _parsed2[:20]:
+                    country_    = _v(_e.get('country') or '')
+                    city_region = _v(_e.get('city_region') or '')
+                    # Skip Ireland entries
+                    if _is_ireland(country_, city_region):
+                        continue
                     hist_rows.append((
-                        _v(_e.get('country') or ''),
-                        _v(_e.get('city_region') or ''),
+                        country_,
+                        city_region,
                         _v(_e.get('from_date') or ''),
                         _v(_e.get('to_date') or 'Present'),
                         _v(_e.get('reason') or ''),
@@ -12375,18 +12393,22 @@ CV TEXT:
         except Exception:
             pass
 
-    # Fallback to section_5 entries if Gemini failed
+    # Fallback to section_5 entries if Gemini failed — also filter Ireland
     if not hist_rows:
         for e in emp_entries[:8]:
+            country_    = _v(e.get('country') or '')
+            city_region = _v(e.get('employer') or '')
+            if _is_ireland(country_, city_region):
+                continue
             hist_rows.append((
-                _v(e.get('country') or ''),
-                _v(e.get('employer') or ''),
+                country_,
+                city_region,
                 _v(e.get('from') or ''),
                 _v(e.get('to') or 'Present'),
                 _v(e.get('position') or ''),
             ))
 
-    # Ensure at least 4 rows
+    # Always show at least 4 blank rows (even if all entries were Ireland)
     while len(hist_rows) < 4:
         hist_rows.append(('', '', '', '', ''))
 
@@ -12491,8 +12513,8 @@ CV TEXT:
     office_rows = [
         ('Reviewed By:', reviewer),
         ('Date Reviewed:', date_reviewed),
-        ('Compliance Officer:', _PCC_COMPLIANCE_OFFICER),
-        ('Compliance Officer Date:', date_reviewed),
+        ('Approved By (Compliance Officer):', _PCC_COMPLIANCE_OFFICER),
+        ('Approval On:', date_reviewed),
     ]
     for ri, (label_, val_) in enumerate(office_rows):
         lc = otbl.cell(ri, 0)
