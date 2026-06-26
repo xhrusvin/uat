@@ -8255,6 +8255,176 @@ def live_staff_export_cpr_xlsx():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+
+@admin_bp.route('/live-staffs/export/missing-nmbi-xlsx')
+@admin_required
+def live_staff_export_missing_nmbi_xlsx():
+    """Export Nurses with missing NMBI registration number."""
+    try:
+        import io as _io
+        docs = list(_staffs_col().find(
+            {"$and": [
+                {"$or": [
+                    {"user_type": {"$regex": "nurse", "$options": "i"}},
+                    {"user_type": {"$regex": "nursing", "$options": "i"}},
+                ]},
+                {"$or": [
+                    {"nmbi_number": {"$exists": False}},
+                    {"nmbi_number": None},
+                    {"nmbi_number": ""},
+                ]},
+            ]},
+            {"section_1_personal_details": 1, "email": 1,
+             "user_type": 1, "nmbi_number": 1, "qualification_fetched": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        wb, ws = _build_qual_xlsx(docs, 'Missing NMBI Numbers', 'nmbi_number', 'NMBI Number')
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="missing_nmbi_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/export/missing-qqi-xlsx')
+@admin_required
+def live_staff_export_missing_qqi_xlsx():
+    """Export Healthcare Assistants with missing QQI number."""
+    try:
+        import io as _io
+        docs = list(_staffs_col().find(
+            {"$and": [
+                {"$or": [
+                    {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
+                    {"user_type": {"$regex": "\bhca\b", "$options": "i"}},
+                ]},
+                {"$or": [
+                    {"qqi_number": {"$exists": False}},
+                    {"qqi_number": None},
+                    {"qqi_number": ""},
+                ]},
+            ]},
+            {"section_1_personal_details": 1, "email": 1,
+             "user_type": 1, "qqi_number": 1, "qualification_fetched": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        wb, ws = _build_qual_xlsx(docs, 'Missing QQI Numbers', 'qqi_number', 'QQI Number')
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="missing_qqi_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+@admin_bp.route('/live-staffs/export/passport-xlsx')
+@admin_required
+def live_staff_export_passport_xlsx():
+    """Export staff with saved passport IDs to Excel."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {"passport_fetched": True},
+            {"section_1_personal_details": 1, "email": 1,
+             "passport_id": 1, "passport_data": 1, "passport_fetched": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        NAVY  = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
+        ALT   = 'EFF6FF'; RED   = 'FFDDDD'; WARN  = 'FFF3CD'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Arial', size=10)
+        l_align = Alignment(horizontal='left', vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        green_b = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Passport IDs'
+
+        headers    = ['Sno', 'Name', 'Email', 'Passport ID',
+                      'Nationality', 'DOB', 'Expiry Date', 'Status']
+        col_widths = [5, 30, 36, 18, 18, 14, 14, 14]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = green_b
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:H{len(docs)+1}'
+
+        for ri, doc in enumerate(docs, start=2):
+            s1          = doc.get('section_1_personal_details') or {}
+            name        = _v(s1.get('full_name') or '')
+            email       = _v(doc.get('email') or '')
+            passport_id = _v(doc.get('passport_id') or '')
+            pdata       = doc.get('passport_data') or {}
+            nationality = _v(pdata.get('nationality') or '')
+            dob         = _v(pdata.get('date_of_birth') or '')
+            expiry      = _v(pdata.get('expiry_date') or '')
+
+            if passport_id:
+                status   = 'Found'
+                row_fill = None
+            else:
+                status   = 'Not Readable'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT)                        if ri % 2 == 0 and not row_fill else None
+
+            row_vals = [ri-1, name, email, passport_id,
+                        nationality, dob, expiry, status]
+            aligns   = [c_align, l_align, l_align, c_align,
+                        l_align, c_align, c_align, c_align]
+
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border
+                cell.fill = row_fill or alt_fill or PatternFill()
+
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(docs)+2, column=1,
+                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="passport_ids_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)

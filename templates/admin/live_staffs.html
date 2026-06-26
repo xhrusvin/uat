@@ -47,13 +47,28 @@
                         </a>
                     </li>
                     <li>
+                        <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_missing_nmbi_xlsx') }}">
+                            <i class="bi bi-patch-exclamation me-2 text-danger"></i>Nurses — Missing NMBI (Excel)
+                        </a>
+                    </li>
+                    <li>
                         <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_qqi_xlsx') }}">
                             <i class="bi bi-award me-2 text-success"></i>HCA — QQI Numbers (Excel)
                         </a>
                     </li>
                     <li>
+                        <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_missing_qqi_xlsx') }}">
+                            <i class="bi bi-exclamation-triangle me-2 text-danger"></i>HCA — Missing QQI (Excel)
+                        </a>
+                    </li>
+                    <li>
                         <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_cpr_xlsx') }}">
                             <i class="bi bi-heart-pulse me-2 text-danger"></i>CPR/BLS Certificates (Excel)
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('admin.live_staff_export_passport_xlsx') }}">
+                            <i class="bi bi-passport me-2 text-secondary"></i>Passport IDs (Excel)
                         </a>
                     </li>
                     <li><hr class="dropdown-divider"></li>
