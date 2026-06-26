@@ -9914,13 +9914,13 @@ def live_staff_cron_push_passport_number():
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
     doc_base_url = os.environ.get('DOC_BASE_URL', '').rstrip('/')
-    doc_api_key  = os.environ.get('DOC_API_KEY', '')
+    doc_api_key  = os.environ.get('PASSPORT_API_KEY', '') or os.environ.get('DOC_API_KEY', '')
     app_country  = os.environ.get('XN_APP_COUNTRY', 'ie')
 
     if not doc_base_url:
         return jsonify({"success": False, "error": "DOC_BASE_URL not set"}), 500
     if not doc_api_key:
-        return jsonify({"success": False, "error": "DOC_API_KEY not set"}), 500
+        return jsonify({"success": False, "error": "PASSPORT_API_KEY not set in .env"}), 500
 
     col = _staffs_col()
 
