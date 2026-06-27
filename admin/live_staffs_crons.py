@@ -87,10 +87,10 @@ def _get_compliance_officer():
     return _PCC_COMPLIANCE_OFFICER
 
 def _push_hse_document_background(staff_id_str, doc_type_key,
-                                   gcs_blob, filename,
-                                   user_type=None):
+                                   docx_bytes, staff_name='',
+                                   mongo_id=None, email=''):
     from admin.live_staffs import _push_hse_document_background as _f
-    return _f(staff_id_str, doc_type_key, gcs_blob, filename, user_type)
+    return _f(staff_id_str, doc_type_key, docx_bytes, staff_name, mongo_id, email)
 
 
 @admin_bp.route('/live-staffs/cron/sync-documents', methods=['GET', 'POST'])
@@ -857,14 +857,15 @@ Output the CV text only. No markdown, no asterisks, no preamble.
                 "generated_at":  datetime.utcnow(),
             })
 
-            # HSE push
+            # HSE push — same as AI CV Generator
             try:
                 _push_hse_document_background(
                     staff_id_str=staff_id,
                     doc_type_key='cv',
-                    gcs_blob=_blob,
-                    filename=_fname,
-                    user_type=full_doc.get('user_type'),
+                    docx_bytes=_docx,
+                    staff_name=full_name,
+                    mongo_id=staff_id,
+                    email=email,
                 )
             except Exception:
                 pass
