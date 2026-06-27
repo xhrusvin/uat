@@ -819,7 +819,7 @@ Return ONLY a JSON object — nothing else, no markdown:
             "cached":       False,
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         return jsonify({
             "success": False,
             "error":   "Gemini returned non-JSON response",
@@ -1035,7 +1035,7 @@ Return ONLY a JSON object — nothing else, no markdown:
             "source":       source,
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         return jsonify({"success": False, "error": "Gemini returned non-JSON response", "raw": raw[:300]}), 500
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -7404,7 +7404,7 @@ TEXT:
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        passport_data = _json.loads(raw_out)
+        passport_data = _cjson.loads(raw_out)
         passport_id   = _v(passport_data.get('passport_id') or '')
 
         col.update_one(
@@ -7437,7 +7437,7 @@ TEXT:
             "synced_at": datetime.utcnow().isoformat(),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         col.update_one(
             {"_id": staff["_id"]},
             {"$set": {
@@ -7789,7 +7789,7 @@ If after thorough examination no registration/certificate number is found, set "
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result    = _json.loads(raw_out)
+        result    = _cjson.loads(raw_out)
         reg_num   = _v(result.get('registration_number') or '')
         raw_text_ = _v(result.get('raw_text') or '')
 
@@ -7851,7 +7851,7 @@ If after thorough examination no registration/certificate number is found, set "
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"qualification_note": "Gemini JSON parse error"})
         return jsonify({
             "success":         False,
@@ -8034,7 +8034,7 @@ def live_staff_cron_sync_cpr_certificate():
     Protect with ?cron_key=<CRON_SECRET> env var.
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -8259,7 +8259,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -8294,7 +8294,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"cpr_note": "Gemini JSON parse error"})
         return jsonify({
             "success":         False,
@@ -8696,7 +8696,7 @@ def live_staff_cron_sync_ipc_certificate():
     Protect with ?cron_key=<CRON_SECRET> env var.
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -8929,7 +8929,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -8965,7 +8965,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"ipc_note": "Gemini JSON parse error"})
         return jsonify({
             "success":         False,
@@ -9120,7 +9120,7 @@ def live_staff_cron_sync_hand_hygiene():
            hh_issue_date, hh_issuing_body, hh_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -9330,7 +9330,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -9366,7 +9366,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"hh_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -9518,7 +9518,7 @@ def live_staff_cron_sync_children_first():
            cf_issue_date, cf_issuing_body, cf_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -9728,7 +9728,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -9764,7 +9764,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"cf_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -10256,7 +10256,7 @@ def live_staff_cron_sync_safeguarding():
     Sets sg_fetched = True on every outcome (success, skip, error).
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -10476,7 +10476,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -10512,7 +10512,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"sg_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -10542,7 +10542,7 @@ def live_staff_cron_sync_garda_vetting():
            garda_reference_number, garda_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -10757,7 +10757,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result     = _json.loads(raw_out)
+        result     = _cjson.loads(raw_out)
         cert_name  = _v(result.get('certificate_name') or '')
         cert_staff = _v(result.get('staff_name_on_cert') or '')
         issue_date = _v(result.get('issue_date') or '')
@@ -10792,7 +10792,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"garda_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -10923,7 +10923,7 @@ def live_staff_cron_sync_cpi_mapa():
            cpi_issue_date, cpi_issuing_body, cpi_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -11136,7 +11136,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -11172,7 +11172,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"cpi_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -11325,7 +11325,7 @@ def live_staff_cron_sync_employment_contract():
            ec_employer_name, ec_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -11537,7 +11537,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result        = _json.loads(raw_out)
+        result        = _cjson.loads(raw_out)
         contract_name = _v(result.get('contract_name') or '')
         staff_on_doc  = _v(result.get('staff_name_on_doc') or '')
         signed_date   = _v(result.get('signed_date') or '')
@@ -11569,7 +11569,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"ec_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -11698,7 +11698,7 @@ def live_staff_cron_sync_open_disclosure_new():
            od_issue_date, od_issuing_body, od_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -11910,7 +11910,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -11946,7 +11946,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"od_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -12347,7 +12347,7 @@ def _build_pcc_docx(doc, reviewer_index=0):
 
     if has_cv_:
         try:
-            import json as _json2, re as _re2
+            import json as _cjson2, re as _re2
             from google import genai as _genai2
             _gemini_key2 = __import__('os').environ.get('GEMINI_API_KEY', '')
             if _gemini_key2:
@@ -12377,7 +12377,7 @@ CV TEXT:
                 _raw2 = (_resp2.text or '').strip()
                 _raw2 = _re2.sub(r'^```(?:json)?\s*', '', _raw2, flags=_re2.MULTILINE)
                 _raw2 = _re2.sub(r'```\s*$', '', _raw2, flags=_re2.MULTILINE).strip()
-                _parsed2 = _json2.loads(_raw2)
+                _parsed2 = _cjson2.loads(_raw2)
                 for _e in _parsed2[:20]:
                     country_    = _v(_e.get('country') or '')
                     city_region = _v(_e.get('city_region') or '')
@@ -12712,7 +12712,7 @@ def live_staff_cron_sync_gdpr():
            gdpr_issue_date, gdpr_issuing_body, gdpr_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -12922,7 +12922,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -12958,7 +12958,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"gdpr_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -13111,7 +13111,7 @@ def live_staff_cron_sync_dignity_at_work():
            daw_issue_date, daw_issuing_body, daw_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -13324,7 +13324,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -13360,7 +13360,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"daw_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -13513,7 +13513,7 @@ def live_staff_cron_sync_haccp():
            haccp_issue_date, haccp_issuing_body, haccp_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -13724,7 +13724,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -13760,7 +13760,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"haccp_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -13913,7 +13913,7 @@ def live_staff_cron_sync_cyber_security():
            cs_issue_date, cs_issuing_body, cs_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -14124,7 +14124,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -14160,7 +14160,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"cs_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -14313,7 +14313,7 @@ def live_staff_cron_sync_health_declaration():
            hdf_issuing_body, hdf_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -14524,7 +14524,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         signed_date  = _v(result.get('signed_date') or '')
@@ -14556,7 +14556,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"hdf_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -15151,7 +15151,7 @@ def live_staff_cron_sync_code_of_conduct():
            coc_issue_date, coc_issuing_body, coc_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -15362,7 +15362,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -15398,7 +15398,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"coc_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -15551,7 +15551,7 @@ def live_staff_cron_sync_references():
            ref_issuing_body, ref_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -15759,7 +15759,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         doc_name     = _v(result.get('document_name') or '')
         staff_on_doc = _v(result.get('staff_name_on_doc') or '')
         signed_date  = _v(result.get('signed_date') or '')
@@ -15791,7 +15791,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"ref_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -15921,7 +15921,7 @@ def live_staff_cron_sync_police_clearance():
     Note: pcc2_ prefix used to avoid conflict with PCC Self-Declaration (pcc_).
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -16138,7 +16138,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         country      = _v(result.get('country') or '')
@@ -16177,7 +16177,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"pcc2_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -16333,7 +16333,7 @@ def live_staff_cron_sync_fire_safety():
            fs_issue_date, fs_issuing_body, fs_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -16544,7 +16544,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         expiry_date  = _v(result.get('expiry_date') or '')
@@ -16580,7 +16580,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"fs_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -16733,7 +16733,7 @@ def live_staff_cron_sync_qqi_level5():
            qqi5_issue_date, qqi5_issuing_body, qqi5_award_level, qqi5_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -16948,7 +16948,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         award_level  = _v(result.get('award_level') or '')
@@ -16987,7 +16987,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"qqi5_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -17143,7 +17143,7 @@ def live_staff_cron_sync_hse_clearance():
            hcp_expiry_date, hcp_issuing_body, hcp_pass_number, hcp_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -17357,7 +17357,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         cert_name    = _v(result.get('certificate_name') or '')
         cert_staff   = _v(result.get('staff_name_on_cert') or '')
         pass_number  = _v(result.get('pass_number') or '')
@@ -17395,7 +17395,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"hcp_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -17551,7 +17551,7 @@ def live_staff_cron_sync_driving_licence():
            dl_issue_date, dl_country, dl_categories, dl_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -17766,7 +17766,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result         = _json.loads(raw_out)
+        result         = _cjson.loads(raw_out)
         staff_on_doc   = _v(result.get('staff_name_on_doc') or '')
         licence_number = _v(result.get('licence_number') or '')
         dob            = _v(result.get('date_of_birth') or '')
@@ -17806,7 +17806,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"dl_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -17963,7 +17963,7 @@ def live_staff_cron_sync_point_scale():
            psd_point_scale, psd_issuing_body, psd_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -18174,7 +18174,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         doc_name     = _v(result.get('document_name') or '')
         staff_on_doc = _v(result.get('staff_name_on_doc') or '')
         point_scale  = _v(result.get('point_scale') or '')
@@ -18209,7 +18209,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"psd_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -18340,7 +18340,7 @@ def live_staff_cron_sync_application_form():
            af_position_applied, af_issuing_body, af_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -18550,7 +18550,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result           = _json.loads(raw_out)
+        result           = _cjson.loads(raw_out)
         doc_name         = _v(result.get('document_name') or '')
         staff_on_doc     = _v(result.get('staff_name_on_doc') or '')
         position_applied = _v(result.get('position_applied') or '')
@@ -18585,7 +18585,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"af_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -18717,7 +18717,7 @@ def live_staff_cron_sync_interview_notes():
            in_interviewer, in_outcome, in_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -18928,7 +18928,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result         = _json.loads(raw_out)
+        result         = _cjson.loads(raw_out)
         doc_name       = _v(result.get('document_name') or '')
         staff_on_doc   = _v(result.get('staff_name_on_doc') or '')
         interview_date = _v(result.get('interview_date') or '')
@@ -18963,7 +18963,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"in_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -19096,7 +19096,7 @@ def live_staff_cron_sync_visa():
            visa_issue_date, visa_expiry_date, visa_country, visa_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -19309,7 +19309,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result          = _json.loads(raw_out)
+        result          = _cjson.loads(raw_out)
         doc_name        = _v(result.get('document_name') or '')
         staff_on_doc    = _v(result.get('staff_name_on_doc') or '')
         visa_type       = _v(result.get('visa_type') or '')
@@ -19348,7 +19348,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"visa_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
@@ -19504,7 +19504,7 @@ def live_staff_cron_sync_address_proof():
            ap_issuing_body, ap_fetched = True
     """
     import requests as _req
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -19715,7 +19715,7 @@ If a field is not visible, set it to null.
         raw_out = _re.sub(r'^```(?:json)?\s*', '', raw_out, flags=_re.MULTILINE)
         raw_out = _re.sub(r'```\s*$', '', raw_out, flags=_re.MULTILINE).strip()
 
-        result       = _json.loads(raw_out)
+        result       = _cjson.loads(raw_out)
         doc_name     = _v(result.get('document_name') or '')
         staff_on_doc = _v(result.get('staff_name_on_doc') or '')
         address      = _v(result.get('address') or '')
@@ -19750,7 +19750,7 @@ If a field is not visible, set it to null.
             ),
         })
 
-    except _json.JSONDecodeError:
+    except _cjson.JSONDecodeError:
         _mark_done({"ap_note": "Gemini JSON parse error"})
         return jsonify({
             "success": False, "email": email,
