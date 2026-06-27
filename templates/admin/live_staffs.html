@@ -250,7 +250,7 @@
                     </li>
                 </ul>
             </div>
-            <a href="{{ url_for('admin.live_staffs') }}" class="btn btn-outline-secondary">
+            <a href="{{ '/admin/live-staffs' }}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-repeat"></i> Refresh
             </a>
             <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">
@@ -268,7 +268,7 @@
                    value="{{ search }}" autofocus>
             <button class="btn btn-primary px-4" type="submit">Search</button>
             {% if search %}
-            <a href="{{ url_for('admin.live_staffs') }}" class="btn btn-outline-secondary">Clear</a>
+            <a href="{{ '/admin/live-staffs' }}" class="btn btn-outline-secondary">Clear</a>
             {% endif %}
         </div>
     </form>
@@ -370,7 +370,7 @@
                                     <i class="bi bi-file-text"></i>
                                 </button>
                                 <a class="btn btn-outline-success btn-sm rounded-pill px-3 me-1"
-                                   href="{{ url_for('admin.live_staff_cv', staff_id=s._id) }}"
+                                   href="{{ '/admin/live-staffs/cv/' + s._id }}"
                                    title="Download Standard CV as PDF" target="_blank">
                                     <i class="bi bi-file-earmark-person"></i>
                                 </a>
@@ -1063,10 +1063,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-const FETCH_URL = "{{ url_for('admin.live_staff_get') }}";
-const ADD_URL   = "{{ url_for('admin.live_staff_add') }}";
-const EDIT_URL  = "{{ url_for('admin.live_staff_edit') }}";
-const DEL_URL   = "{{ url_for('admin.live_staff_delete') }}";
+const FETCH_URL = "{{ '/admin/live-staffs/get' }}";
+const ADD_URL   = "{{ '/admin/live-staffs/add' }}";
+const EDIT_URL  = "{{ '/admin/live-staffs/edit' }}";
+const DEL_URL   = "{{ '/admin/live-staffs/delete' }}";
 
 // ── Fetch one record from server ──────────────────────────────────────
 async function fetchRecord(id) {
@@ -1430,7 +1430,7 @@ $('importFile').addEventListener('change', async function () {
     fd.append('file', file);
 
     try {
-        const res    = await fetch("{{ url_for('admin.live_staff_import') }}", {
+        const res    = await fetch("{{ '/admin/live-staffs/import' }}", {
             method:'POST', body:fd
         });
         const result = await res.json();
@@ -1454,9 +1454,9 @@ $('importFile').addEventListener('change', async function () {
 });
 
 // ── AI CV buttons ─────────────────────────────────────────────────────
-const AI_GEN_URL   = "{{ url_for('admin.live_staff_ai_cv_generate') }}";
-const AI_SAVED_BASE = "{{ url_for('admin.live_staff_ai_cv_saved', staff_id='__ID__') }}";
-const AI_DL_BASE    = "{{ url_for('admin.live_staff_ai_cv_download', ai_cv_id='__ID__') }}";
+const AI_GEN_URL   = "{{ '/admin/live-staffs/ai-cv/generate' }}";
+const AI_SAVED_BASE = "{{ '/admin/live-staffs/ai-cv/saved/__ID__' }}";
+const AI_DL_BASE    = "{{ '/admin/live-staffs/ai-cv/download/__ID__' }}";
 
 function aiSavedUrl(staffId)  { return AI_SAVED_BASE.replace('__ID__', staffId); }
 function aiDownloadUrl(cvId)  { return AI_DL_BASE.replace('__ID__', cvId); }
@@ -1531,9 +1531,9 @@ document.getElementById('aiCvGenerateBtn').addEventListener('click', async () =>
 
 
 // ── AI Interview buttons ──────────────────────────────────────────────
-const AI_INT_GEN_URL   = "{{ url_for('admin.live_staff_ai_interview_generate') }}";
-const AI_INT_SAVED_BASE = "{{ url_for('admin.live_staff_ai_interview_saved', staff_id='__ID__') }}";
-const AI_INT_DL_BASE    = "{{ url_for('admin.live_staff_ai_interview_download', interview_id='__ID__') }}";
+const AI_INT_GEN_URL   = "{{ '/admin/live-staffs/ai-interview/generate' }}";
+const AI_INT_SAVED_BASE = "{{ '/admin/live-staffs/ai-interview/saved/__ID__' }}";
+const AI_INT_DL_BASE    = "{{ '/admin/live-staffs/ai-interview/download/__ID__' }}";
 
 function aiIntSavedUrl(staffId)   { return AI_INT_SAVED_BASE.replace('__ID__', staffId); }
 function aiIntDownloadUrl(recId)  { return AI_INT_DL_BASE.replace('__ID__', recId); }
@@ -1609,7 +1609,7 @@ document.getElementById('aiIntGenerateBtn').addEventListener('click', async () =
 
 
 // ── AI CV Upload ──────────────────────────────────────────────────────
-const AI_UPLOAD_BASE = "{{ url_for('admin.live_staff_ai_cv_upload', staff_id='__ID__') }}";
+const AI_UPLOAD_BASE = "{{ '/admin/live-staffs/ai-cv/upload/__ID__' }}";
 function aiUploadUrl(staffId) { return AI_UPLOAD_BASE.replace('__ID__', staffId); }
 
 // Show upload section when a saved CV exists
@@ -1680,7 +1680,7 @@ document.getElementById('aiCvUploadBtn').addEventListener('click', async () => {
 
 
 // ── AI Interview Upload ───────────────────────────────────────────────
-const AI_INT_UPLOAD_BASE = "{{ url_for('admin.live_staff_ai_interview_upload', staff_id='__ID__') }}";
+const AI_INT_UPLOAD_BASE = "{{ '/admin/live-staffs/ai-interview/upload/__ID__' }}";
 function aiIntUploadUrl(staffId) { return AI_INT_UPLOAD_BASE.replace('__ID__', staffId); }
 
 document.getElementById('aiIntUploadBtn').addEventListener('click', async () => {
@@ -1730,10 +1730,10 @@ document.getElementById('aiIntUploadBtn').addEventListener('click', async () => 
 
 
 // ── Application Form ──────────────────────────────────────────────────
-const AI_APP_GEN_URL    = "{{ url_for('admin.live_staff_ai_appform_generate') }}";
-const AI_APP_SAVED_BASE = "{{ url_for('admin.live_staff_ai_appform_saved', staff_id='__ID__') }}";
-const AI_APP_DL_BASE    = "{{ url_for('admin.live_staff_ai_appform_download', appform_id='__ID__') }}";
-const AI_APP_UL_BASE    = "{{ url_for('admin.live_staff_ai_appform_upload', staff_id='__ID__') }}";
+const AI_APP_GEN_URL    = "{{ '/admin/live-staffs/ai-appform/generate' }}";
+const AI_APP_SAVED_BASE = "{{ '/admin/live-staffs/ai-appform/saved/__ID__' }}";
+const AI_APP_DL_BASE    = "{{ '/admin/live-staffs/ai-appform/download/__ID__' }}";
+const AI_APP_UL_BASE    = "{{ '/admin/live-staffs/ai-appform/upload/__ID__' }}";
 
 function aiAppSavedUrl(id)  { return AI_APP_SAVED_BASE.replace('__ID__', id); }
 function aiAppDownloadUrl(id){ return AI_APP_DL_BASE.replace('__ID__', id); }
@@ -1839,8 +1839,8 @@ document.getElementById('aiAppUploadBtn').addEventListener('click', async () => 
 
 
 // ── Edit Extracted CV ─────────────────────────────────────────────────
-const EDIT_CV_GET_URL  = "{{ url_for('admin.live_staff_get') }}";
-const EDIT_CV_SAVE_URL = "{{ url_for('admin.live_staff_edit_extracted_cv') }}";
+const EDIT_CV_GET_URL  = "{{ '/admin/live-staffs/get' }}";
+const EDIT_CV_SAVE_URL = "{{ '/admin/live-staffs/edit-extracted-cv' }}";
 
 let currentEditCvStaffId = null;
 
@@ -1915,10 +1915,10 @@ document.getElementById('editCvSaveBtn').addEventListener('click', async () => {
 
 
 // ── PCC Self-Declaration ──────────────────────────────────────────────
-const PCC_GEN_URL    = "{{ url_for('admin.live_staff_ai_pcc_generate') }}";
-const PCC_SAVED_URL  = "{{ url_for('admin.live_staff_ai_pcc_saved', staff_id='STAFF_ID') }}";
-const PCC_DL_URL     = "{{ url_for('admin.live_staff_ai_pcc_download', pcc_id='PCC_ID') }}";
-const PCC_UPL_URL    = "{{ url_for('admin.live_staff_ai_pcc_upload', staff_id='STAFF_ID') }}";
+const PCC_GEN_URL    = "{{ '/admin/live-staffs/ai-pcc/generate' }}";
+const PCC_SAVED_URL  = "{{ '/admin/live-staffs/ai-pcc/saved/__ID__' }}";
+const PCC_DL_URL     = "{{ '/admin/live-staffs/ai-pcc/download/__ID__' }}";
+const PCC_UPL_URL    = "{{ '/admin/live-staffs/ai-pcc/upload/__ID__' }}";
 
 let currentPccStaffId = null;
 
