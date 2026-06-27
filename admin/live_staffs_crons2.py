@@ -4322,6 +4322,19 @@ def live_staff_cron_generate_pcc():
             "pcc_download_url": download_url,
         })
 
+        # ── Push to outreach API (others_2) ──────────────────────────
+        try:
+            _push_hse_document_background(
+                staff_id_str=staff_id,
+                doc_type_key='pcc',
+                docx_bytes=docx_bytes,
+                staff_name=full_name,
+                mongo_id=staff_id,
+                email=email,
+            )
+        except Exception:
+            pass
+
         return jsonify({
             "success":         True,
             "staff_name":      full_name,

@@ -166,6 +166,7 @@ HSE_DOC_TYPES = {
     'cv':          'hse_cv',
     'interview':   'interview_notes',
     'appform':     'application_form',
+    'pcc':         'others_2',
 }
 
 
