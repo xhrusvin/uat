@@ -2054,12 +2054,81 @@ Output the structured CV text only. No markdown, no asterisks, no preamble.
             "staff_id":     staff_id,
             "staff_name":   full_name,
             "cv_id":        ai_id,
+            "ai_cv_id":     ai_id,
             "cv_filename":  cv_filename,
             "gcs_blob":     gcs_blob,
             "download_url": download_url,
             "generated_at": datetime.utcnow().isoformat(),
         })
 
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-cv/saved/<staff_id>')
+@admin_required
+def live_staff_ai_cv_saved(staff_id):
+    """Check if a saved AI CV exists for this staff member."""
+    rec = _ai_cvs_col().find_one({"staff_id": staff_id})
+    if rec:
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "ai_cv_id":     str(rec["_id"]),
+            "cv_id":        str(rec["_id"]),
+            "cv_filename":  rec.get("cv_filename", ""),
+            "gcs_blob":     rec.get("gcs_blob", ""),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M")
+                            if rec.get("generated_at") else "",
+        })
+    return jsonify({"success": True, "found": False})
+
+
+@admin_bp.route('/live-staffs/ai-cv/download/<ai_cv_id>')
+@admin_required
+def live_staff_ai_cv_download(ai_cv_id):
+    """Download saved AI CV DOCX from GCS."""
+    try:
+        rec = _ai_cvs_col().find_one({"_id": ObjectId(ai_cv_id)})
+        if not rec or not rec.get('gcs_blob'):
+            return jsonify({"success": False, "error": "CV not found"}), 404
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        filename   = rec.get('cv_filename') or 'cv.docx'
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-cv/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_ai_cv_upload(staff_id):
+    """Upload an edited CV DOCX to replace the saved version in GCS."""
+    f = request.files.get('file')
+    if not f:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        safe_name = full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"CV_{safe_name}.docx"
+        gcs_blob  = f"cv/{filename}"
+        docx_bytes = f.read()
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        _ai_cvs_col().update_one(
+            {"staff_id": staff_id},
+            {"$set": {"gcs_blob": gcs_blob, "cv_filename": filename,
+                      "generated_at": datetime.utcnow()}},
+            upsert=True
+        )
+        return jsonify({"success": True, "gcs_blob": gcs_blob, "cv_filename": filename})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -2224,6 +2293,7 @@ Output the structured CV text only. No markdown, no preamble.
             "staff_id":     staff_id,
             "staff_name":   full_name,
             "cv_id":        ai_id,
+            "ai_cv_id":     ai_id,
             "cv_filename":  cv_filename,
             "gcs_blob":     gcs_blob,
             "generated_at": datetime.utcnow().isoformat(),
