@@ -44,118 +44,72 @@ def _v(val):
     return str(val).strip()
 
 
-def _fresh_signed_url(gcs_blob_path: str, expiry_minutes: int = 15) -> str:
+def _gcs_client():
     """
-    Generate a fresh V4 signed URL for a GCS blob.
-
-    Works in all three environments:
-      1. Service account JSON key file  — GOOGLE_APPLICATION_CREDENTIALS or GCS_SA_JSON env var
-      2. Compute Engine / Cloud Run     — uses IAM credentials.sign_bytes via
-                                          google.auth.iam.Signer (no private key needed)
-      3. Impersonation fallback         — GCS_SA_EMAIL overrides the signer identity
+    Identical to live_staffs.py — reuse same env vars and priority order:
+      1. GCS_CREDENTIALS_JSON  (full SA JSON as string)
+      2. GCS_KEY_FILE          (path to SA JSON file)
+      3. Application Default Credentials (ADC)
     """
-    import google.auth
-    import google.auth.transport.requests
-    from google.auth import iam as _iam
-    from google.auth import credentials as _creds
-    from google.oauth2 import service_account as _sa
-    from google.cloud import storage
+    from google.cloud import storage as _gcs
 
+    creds_json = os.environ.get('GCS_CREDENTIALS_JSON', '').strip()
+    if creds_json:
+        from google.oauth2 import service_account
+        info  = _json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(
+            info,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+        return _gcs.Client(credentials=creds, project=info.get('project_id'))
+
+    key_path = os.environ.get('GCS_KEY_FILE', '').strip()
+    if key_path and os.path.exists(key_path):
+        return _gcs.Client.from_service_account_json(key_path)
+
+    return _gcs.Client()
+
+
+def _gcs_download(blob_name: str) -> bytes:
+    """Direct byte download from GCS — no signed URL, no IAM signing needed."""
     bucket_name = os.environ.get('GCS_BUCKET_NAME', '')
     if not bucket_name:
         raise ValueError("GCS_BUCKET_NAME env var is not set")
-
-    # ── Option 1: explicit SA JSON (highest priority) ─────────────────────
-    sa_json_str = os.environ.get('GCS_SA_JSON', '')
-    if sa_json_str:
-        sa_info     = _json.loads(sa_json_str)
-        credentials = _sa.Credentials.from_service_account_info(
-            sa_info,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"],
-        )
-        client = storage.Client(credentials=credentials,
-                                project=sa_info.get('project_id'))
-        blob   = client.bucket(bucket_name).blob(gcs_blob_path)
-        return blob.generate_signed_url(
-            expiration=_dt.timedelta(minutes=expiry_minutes),
-            method='GET',
-            version='v4',
-        )
-
-    # ── Option 2: Compute Engine / Cloud Run — use IAM signBlob ──────────
-    # ADC gives us a token-only credential; we wrap it with an IAM signer
-    # so generate_signed_url can work without a local private key.
-    auth_req    = google.auth.transport.requests.Request()
-    credentials, project = google.auth.default(
-        scopes=["https://www.googleapis.com/auth/cloud-platform"]
-    )
-    credentials.refresh(auth_req)
-
-    # Determine the service account email to sign as
-    sa_email = os.environ.get('GCS_SA_EMAIL', '')
-    if not sa_email:
-        # Compute Engine metadata — fetch the default SA email
-        try:
-            meta = _req.get(
-                "http://metadata.google.internal/computeMetadata/v1"
-                "/instance/service-accounts/default/email",
-                headers={"Metadata-Flavor": "Google"},
-                timeout=5,
-            )
-            sa_email = meta.text.strip()
-        except Exception:
-            pass
-
-    if not sa_email:
-        raise ValueError(
-            "Cannot determine service account email. "
-            "Set GCS_SA_EMAIL env var or run on Compute Engine."
-        )
-
-    # Wrap credentials with IAM signer
-    signer      = _iam.Signer(auth_req, credentials, sa_email)
-    signing_creds = _sa.Credentials(
-        signer=signer,
-        service_account_email=sa_email,
-        token_uri="https://oauth2.googleapis.com/token",
-        scopes=["https://www.googleapis.com/auth/cloud-platform"],
-    )
-
-    client = storage.Client(credentials=signing_creds, project=project)
-    blob   = client.bucket(bucket_name).blob(gcs_blob_path)
-    return blob.generate_signed_url(
-        expiration=_dt.timedelta(minutes=expiry_minutes),
-        method='GET',
-        version='v4',
-    )
+    bucket = _gcs_client().bucket(bucket_name)
+    return bucket.blob(blob_name).download_as_bytes()
 
 
 def _download_signature(staff: dict) -> tuple:
     """
-    Returns (raw_bytes, content_type) or raises an Exception.
-    Prefers signature_gcs_blob (generates a fresh signed URL);
-    falls back to signature_url if no blob path is stored.
+    Returns (raw_bytes, content_type).
+    Uses _gcs_download(blob_name) — same pattern as live_staffs.py line ~4896.
+    No signed URLs, no IAM scopes needed.
+    Falls back to HTTP fetch of signature_url only if no GCS blob is stored.
     """
     gcs_blob = _v(staff.get('signature_gcs_blob') or '')
 
     if gcs_blob:
-        url = _fresh_signed_url(gcs_blob)
-    else:
-        url = _v(staff.get('signature_url') or '')
-        if not url:
-            raise ValueError("No signature_gcs_blob or signature_url on record")
+        raw_bytes = _gcs_download(gcs_blob)
+        # Infer content type from file extension
+        ext = gcs_blob.rsplit('.', 1)[-1].lower() if '.' in gcs_blob else 'png'
+        mime_map = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+                    'png': 'image/png',  'gif': 'image/gif', 'webp': 'image/webp'}
+        content_type = mime_map.get(ext, 'image/png')
+        return raw_bytes, content_type
+
+    # Fallback: HTTP fetch from signature_url (may be expired for old records)
+    url = _v(staff.get('signature_url') or '')
+    if not url:
+        raise ValueError("No signature_gcs_blob or signature_url on record")
 
     resp = _req.get(url, timeout=30)
-
     if resp.status_code == 404:
-        raise FileNotFoundError("Signature file returned 404")
-
+        raise FileNotFoundError("Signature URL returned 404")
     resp.raise_for_status()
 
     content_type = resp.headers.get('Content-Type', 'image/png').lower().split(';')[0].strip()
     if not content_type.startswith('image/'):
         content_type = 'image/png'
-
     return resp.content, content_type
 
 
