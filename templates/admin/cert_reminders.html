@@ -619,7 +619,21 @@ async function triggerOne(id) {
     try {
         const res = await fetch(callUrl(r), { method: 'GET' });
         if (res.ok) { await markStatus(id, 'triggered'); return true; }
-        await markStatus(id, 'failed', `${res.status} ${res.statusText}`);
+
+        // Read the full response body so trigger_error contains real detail,
+        // not just the bare status code ("500 ").
+        let errorDetail = `HTTP ${res.status}`;
+        try {
+            const bodyText = await res.text();
+            let bodyJson = null;
+            try { bodyJson = JSON.parse(bodyText); } catch { /* not JSON */ }
+            errorDetail = JSON.stringify({
+                status:   res.status,
+                body:     bodyJson ?? bodyText,
+            });
+        } catch { /* body unreadable — keep status only */ }
+
+        await markStatus(id, 'failed', errorDetail);
         return false;
     } catch (err) {
         await markStatus(id, 'failed', err.message);
