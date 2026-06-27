@@ -663,6 +663,34 @@ def live_staff_cron_generate_cv():
 
     _edu_block_str = chr(10).join(_edu_lines)
 
+    # ── Pre-extract Professional Experience from extracted_cv ─────────
+    _exp_lines = []
+    if extracted_cv:
+        _in_exp = False
+        _exp_stop = {
+            'education', 'qualifications', 'training', 'certifications',
+            'key skills', 'skills', 'references', 'declaration',
+            'additional information', 'employment eligibility',
+            'professional profile', 'profile', 'summary', 'objective',
+            'awards', 'achievements', 'hobbies', 'interests',
+        }
+        _exp_headers = {
+            'professional experience', 'work experience', 'employment history',
+            'employment', 'experience', 'career history', 'work history',
+            'positions held', 'career summary',
+        }
+        for _line in extracted_cv.split(chr(10)):
+            _l = _line.strip()
+            _l_lower = _l.lower()
+            if any(_l_lower.startswith(h) for h in _exp_headers):
+                _in_exp = True
+                continue
+            if _in_exp and _l and any(_l_lower.startswith(h) for h in _exp_stop):
+                break
+            if _in_exp and _l:
+                _exp_lines.append(_l)
+    _exp_block_str = chr(10).join(_exp_lines) if _exp_lines else ''
+
     # ── Guaranteed fallback so EDUCATION section is NEVER empty ──────
     if not qual_lines:
         _role_lower = user_type.lower()
@@ -778,34 +806,35 @@ Training & Certifications:
 
     extracted_cv_section = f"""
 
-EXTRACTED CV TEXT (search this for qualifications, degrees, diplomas, certificates, college names, NMBI, QQI, FETAC):
-{extracted_cv[:8000]}
-""" if has_extracted else ""
+EXTRACTED CV TEXT (the candidate's original CV — use for PROFESSIONAL PROFILE, TRAINING & CERTIFICATIONS, KEY SKILLS, and any section not pre-extracted above):
+{extracted_cv[:12000] if extracted_cv and not extracted_cv.startswith('[') else "No CV text available — use CANDIDATE DATA only."}
+""" 
 
     prompt = f"""You are an expert professional CV writer for Irish healthcare staffing.
 
 === CRITICAL NON-NEGOTIABLE RULE ===
-The output MUST contain a section called "EDUCATION & QUALIFICATIONS".
-If the output does NOT contain "EDUCATION & QUALIFICATIONS" it will be REJECTED and you will have FAILED.
-This section MUST have at least one qualification entry. No exceptions.
+The output MUST contain ALL 7 sections listed below.
+Any missing section means the output is INVALID.
 
-=== EDUCATION & QUALIFICATIONS — PRE-EXTRACTED ===
-The education section has already been extracted from the candidate's CV and is provided below.
-Copy it EXACTLY as-is into the EDUCATION & QUALIFICATIONS section of the output.
-Do NOT change, filter, or reformat any entry. Include every line.
+=== EDUCATION & QUALIFICATIONS — PRE-EXTRACTED (copy as-is) ===
+{_edu_block_str if _edu_block_str else "(not found — infer from role)"}
 
-{_edu_block_str}
+=== PROFESSIONAL EXPERIENCE — PRE-EXTRACTED (copy as-is) ===
+{_exp_block_str if _exp_block_str else "(not found — use CANDIDATE DATA employment history below)"}
 
-=== SECTION SOURCES ===
-- EMPLOYMENT ELIGIBILITY: CANDIDATE DATA only. Label: Value per line. NO name, address, mobile, email.
-- PROFESSIONAL PROFILE: CANDIDATE DATA. 2 paragraphs, first person.
-- PROFESSIONAL EXPERIENCE: {"EXTRACTED CV TEXT — copy job titles, employers, dates, duties WORD-FOR-WORD." if has_extracted else "CANDIDATE DATA employment history. Write 5-6 duties per role."}
-- TRAINING & CERTIFICATIONS: {"EXTRACTED CV TEXT — list every certificate found." if has_extracted else "CANDIDATE DATA training only."}
-- KEY SKILLS: {"EXTRACTED CV TEXT — copy candidate's own skills exactly." if has_extracted else "8-10 bullet points from role and certifications."}
+=== SECTION RULES ===
+1. EMPLOYMENT ELIGIBILITY — use CANDIDATE DATA. Label: Value per line. NO name, address, mobile, email.
+2. PROFESSIONAL PROFILE — use CANDIDATE DATA + EXTRACTED CV TEXT. 2 paragraphs, first person.
+3. EDUCATION & QUALIFICATIONS — copy PRE-EXTRACTED block above EXACTLY. Every line, no filtering.
+4. PROFESSIONAL EXPERIENCE — copy PRE-EXTRACTED block above EXACTLY. Every role, every duty, every date.
+   If pre-extracted is empty, use CANDIDATE DATA employment history and write 5-6 duties per role.
+5. TRAINING & CERTIFICATIONS — use EXTRACTED CV TEXT. List every certificate, course, training found.
+6. KEY SKILLS — use EXTRACTED CV TEXT. Copy candidate's own skills list exactly.
+7. ADDITIONAL INFORMATION — write ONLY these two lines:
+   Driving Licence: No
+   Own Transport: No
 
-=== OUTPUT STRUCTURE ===
-Write these EXACT headings in UPPERCASE on their own line:
-
+=== OUTPUT STRUCTURE (EXACT UPPERCASE HEADINGS) ===
 EMPLOYMENT ELIGIBILITY
 PROFESSIONAL PROFILE
 EDUCATION & QUALIFICATIONS
@@ -814,20 +843,17 @@ TRAINING & CERTIFICATIONS
 KEY SKILLS
 ADDITIONAL INFORMATION
 
-ADDITIONAL INFORMATION must contain ONLY:
-Driving Licence: No
-Own Transport: No
-
-=== BEFORE YOU FINISH ===
-CHECK: Does your output contain "EDUCATION & QUALIFICATIONS" with at least one entry?
-If NO → go back and add it using Step 1/2/3 above. Do not output without it.
+=== BEFORE OUTPUTTING — VERIFY ===
+[ ] All 7 headings present? If any missing — add it now.
+[ ] EDUCATION & QUALIFICATIONS has at least one entry? If not — add inferred entry.
+[ ] PROFESSIONAL EXPERIENCE has at least one role? If not — add from CANDIDATE DATA.
 
 ---
 CANDIDATE DATA:
 {data_summary}
 {extracted_cv_section}
 ---
-Output the CV text only. No markdown, no asterisks, no preamble.
+Output CV text only. No markdown, no asterisks, no preamble.
 """
     # ── Run generation in background thread to avoid 504 ─────────────
     def _do_generate():
