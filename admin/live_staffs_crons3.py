@@ -98,6 +98,16 @@ def _get_compliance_officer():
     from admin.live_staffs import _PCC_COMPLIANCE_OFFICER
     return _PCC_COMPLIANCE_OFFICER
 
+def _push_hse_document_background(staff_id_str, doc_type_key,
+                                   gcs_blob, filename,
+                                   user_type=None):
+    from admin.live_staffs import _push_hse_document_background as _f
+    return _f(staff_id_str, doc_type_key, gcs_blob, filename, user_type)
+
+def _serialize(obj):
+    from admin.live_staffs import _serialize as _f
+    return _f(obj)
+
 
 @admin_bp.route('/live-staffs/cron/sync-fire-safety', methods=['GET', 'POST'])
 def live_staff_cron_sync_fire_safety():
