@@ -601,8 +601,58 @@ def live_staff_cron_generate_cv():
         has_extracted = (
             extracted_cv and
             not extracted_cv.startswith('[') and
-            extracted_cv != 'No doc found'
+            extracted_cv not in ('No doc found', '[no CV document found]', '')
         )
+
+        # ── Background CV extraction (non-blocking) ───────────────────
+        # If no extracted_cv, try to fetch it now in a quick attempt (10s timeout)
+        # so we don't block the cron response past the 60s gateway timeout
+        if not has_extracted:
+            _base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+            _api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+            _app_country = os.environ.get('XN_APP_COUNTRY', '')
+            _staff_email = _v(full_doc.get('email') or s1_f.get('email_address') or '')
+            if _base_url and _staff_email:
+                try:
+                    import requests as _rq2
+                    _hdrs = {"Api-Key": _api_key, "X-App-Country": _app_country,
+                             "Content-Type": "application/json", "Accept": "application/json"}
+                    _r2 = _rq2.post(f"{_base_url}/ai/recruitments/user-document-list",
+                                    json={"email": _staff_email}, headers=_hdrs, timeout=15)
+                    if _r2.status_code == 405:
+                        _r2 = _rq2.get(f"{_base_url}/ai/recruitments/user-document-list",
+                                       params={"email": _staff_email}, headers=_hdrs, timeout=15)
+                    if _r2.status_code == 200:
+                        _pd    = _r2.json()
+                        _dlist = _pd.get('data') or []
+                        if isinstance(_dlist, dict):
+                            _dlist = _dlist.get('documents') or []
+                        _cv_url = next(
+                            (_d['url'] for _d in _dlist
+                             if (_d.get('document_type_name') or '').strip() == 'Cv'
+                             and _d.get('url')), None
+                        )
+                        if _cv_url:
+                            try:
+                                _et = _extract_text_from_url(
+                                    _cv_url,
+                                    {k: v for k, v in _hdrs.items() if k != 'Content-Type'}
+                                )
+                                if _et and not _et.startswith('['):
+                                    extracted_cv  = _et
+                                    has_extracted = True
+                                    _staffs_col().update_one(
+                                        {"_id": full_doc['_id']},
+                                        {"$set": {
+                                            "extracted_cv":        _et,
+                                            "extracted_cv_at":     datetime.utcnow(),
+                                            "extracted_cv_source": "auto_on_cron_cv_generate",
+                                        }}
+                                    )
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
 
         data_summary = f"""
 Name: {full_name}
@@ -642,11 +692,14 @@ Use ONLY the exact facts in CANDIDATE DATA. Do not invent anything.
 
 SECTION SOURCE RULES:
 - EMPLOYMENT ELIGIBILITY, PROFESSIONAL PROFILE: use CANDIDATE DATA.
-- EDUCATION & QUALIFICATIONS: MANDATORY — ALWAYS include this section. Use qualifications from CANDIDATE DATA.
-  If Qualifications says "None recorded", infer from their role:
-    * Nurse → "Bachelor of Nursing Science | [University based on nationality] | [estimated year]"
-    * Healthcare Assistant → "QQI Level 5 in Healthcare Support | [College of Further Education] | [estimated year]"
-  Include NMBI PIN or QQI certificate number as a separate line if provided.
+- EDUCATION & QUALIFICATIONS: *** MANDATORY — YOU MUST ALWAYS INCLUDE THIS SECTION ***
+  NEVER omit this section under any circumstances.
+  Use qualifications from CANDIDATE DATA if available.
+  If Qualifications says "None recorded" or is empty, you MUST infer from their role:
+    * Nurse / RGN / Midwife → "Bachelor of Nursing Science (or equivalent) | [University based on nationality] | [estimated year based on experience]"
+    * Healthcare Assistant / HCA / Support Worker → "QQI Level 5 in Healthcare Support | [College of Further Education] | [estimated year]"
+    * Any other role → write the most likely relevant qualification for that role
+  Include NMBI PIN or QQI certificate number on a separate line if provided in CANDIDATE DATA.
 - PROFESSIONAL EXPERIENCE: {"Extract directly from EXTRACTED CV TEXT — copy job titles, employers, dates, and duties word-for-word." if has_extracted else "Use Employment History from CANDIDATE DATA. Write 5-6 appropriate duties per role."}
 - TRAINING & CERTIFICATIONS: {"Extract directly from EXTRACTED CV TEXT." if has_extracted else "Use Training & Certifications from CANDIDATE DATA only."}
 - KEY SKILLS: {"Extract directly from EXTRACTED CV TEXT." if has_extracted else "Write 8-10 bullet points from their role and certifications."}
@@ -663,7 +716,8 @@ ADDITIONAL INFORMATION
 Rules:
 - EMPLOYMENT ELIGIBILITY: "Label: Value" per line. Skip blank fields. Do NOT include candidate name, address, mobile or email.
 - PROFESSIONAL PROFILE: 2 paragraphs, FIRST PERSON. Genuine personal statement.
-- EDUCATION & QUALIFICATIONS: ALWAYS write at least one entry. Format: Qualification Name | Institution | Year
+- EDUCATION & QUALIFICATIONS: *** ALWAYS write at least one entry — NEVER skip this section ***
+  Format: Qualification Name | Institution | Year
   Include registration numbers (NMBI PIN, QQI Certificate No) on a separate line if available.
 - PROFESSIONAL EXPERIENCE: Job Title: / Employer: / Dates: / Duties: / - duty
 - TRAINING & CERTIFICATIONS: Bullet list only.

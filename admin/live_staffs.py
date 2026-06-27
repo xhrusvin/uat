@@ -1793,10 +1793,13 @@ If a field is empty or says "None recorded", skip it.
 
 SECTION SOURCE RULES:
 - EMPLOYMENT ELIGIBILITY, PROFESSIONAL PROFILE: use CANDIDATE DATA.
-- EDUCATION & QUALIFICATIONS: MANDATORY — ALWAYS include this section. Use qualifications from CANDIDATE DATA.
-  If Qualifications section says "None recorded", infer from their role:
-    * Nurse → "Bachelor of Nursing Science (or equivalent) | [University based on nationality/location] | [estimated year based on experience]"
-    * Healthcare Assistant → "QQI Level 5 in Healthcare Support | [College of Further Education] | [estimated year]"
+- EDUCATION & QUALIFICATIONS: *** MANDATORY — YOU MUST ALWAYS INCLUDE THIS SECTION ***
+  NEVER omit this section under any circumstances.
+  Use qualifications from CANDIDATE DATA if available.
+  If Qualifications says "None recorded" or is empty, you MUST infer from their role:
+    * Nurse / RGN / Midwife → "Bachelor of Nursing Science (or equivalent) | [University based on nationality] | [estimated year based on experience]"
+    * Healthcare Assistant / HCA / Support Worker → "QQI Level 5 in Healthcare Support | [College of Further Education] | [estimated year]"
+    * Any other role → write the most likely relevant qualification for that role
   Include NMBI PIN or QQI certificate number if provided in CANDIDATE DATA.
 - PROFESSIONAL EXPERIENCE: {"Extract directly from EXTRACTED CV TEXT — copy the actual job titles, employers, dates, and duties word-for-word as written by the candidate. Do not rewrite or invent." if has_extracted_cv else "Use Employment History from CANDIDATE DATA. Write 5-6 appropriate duties per role."}
 - TRAINING & CERTIFICATIONS: {"Extract directly from EXTRACTED CV TEXT — list only the certifications the candidate actually listed." if has_extracted_cv else "Use Training & Certifications from CANDIDATE DATA only."}
