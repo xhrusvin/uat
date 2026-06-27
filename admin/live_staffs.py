@@ -1640,12 +1640,9 @@ def live_staff_ai_cv_generate():
         )
 
         data_summary = f"""
-Candidate: {full_name}
+Name: {full_name}
 Role / User Type: {user_type}
 Employee Code: {emp_code}
-Address: {address}
-Mobile: {mobile}
-Email: {email}
 Nationality: {nationality}
 Total Experience: {total_exp}
 Divisions / Speciality: {divisions}
@@ -1682,7 +1679,7 @@ Do NOT invent, assume, or add any information that is not explicitly stated.
 If a field is empty or says "None recorded", skip it.
 
 SECTION SOURCE RULES:
-- PERSONAL DETAILS, PROFESSIONAL PROFILE: use CANDIDATE DATA.
+- EMPLOYMENT ELIGIBILITY, PROFESSIONAL PROFILE: use CANDIDATE DATA.
 - EDUCATION & QUALIFICATIONS: MANDATORY — ALWAYS include this section. Use qualifications from CANDIDATE DATA.
   If Qualifications section says "None recorded", infer from their role:
     * Nurse → "Bachelor of Nursing Science (or equivalent) | [University based on nationality/location] | [estimated year based on experience]"
@@ -1694,7 +1691,7 @@ SECTION SOURCE RULES:
 
 Structure the CV exactly as follows (EXACT section headings in UPPERCASE on their own line):
 
-PERSONAL DETAILS
+EMPLOYMENT ELIGIBILITY
 PROFESSIONAL PROFILE
 EDUCATION & QUALIFICATIONS
 PROFESSIONAL EXPERIENCE
@@ -1703,7 +1700,7 @@ KEY SKILLS
 ADDITIONAL INFORMATION
 
 Section format rules:
-- PERSONAL DETAILS: "Label: Value" per line. Skip blank fields.
+- EMPLOYMENT ELIGIBILITY: "Label: Value" per line. Skip blank fields. Do NOT include candidate name, address, mobile or email.
 - PROFESSIONAL PROFILE: 2 paragraphs, FIRST PERSON ("I am", "I have", "I bring"). Genuine personal statement.
 - EDUCATION & QUALIFICATIONS: ALWAYS write at least one entry. Format: Qualification Name | Institution | Year
   Include registration numbers (NMBI PIN, QQI Certificate No) as a separate line if available.
@@ -4251,12 +4248,9 @@ def api_generate_cv():
         )
 
         data_summary = f"""
-Candidate: {full_name}
+Name: {full_name}
 Role / User Type: {user_type}
 Employee Code: {emp_code}
-Address: {address}
-Mobile: {mobile}
-Email: {email}
 Nationality: {nationality}
 Total Experience: {total_exp}
 Divisions / Speciality: {divisions}
@@ -4288,7 +4282,7 @@ EXTRACTED CV TEXT (use as PRIMARY source for PROFESSIONAL EXPERIENCE, TRAINING &
 STRICT RULE — NO HALLUCINATION: Use ONLY the exact facts in CANDIDATE DATA.
 
 Structure (EXACT UPPERCASE headings on their own line):
-PERSONAL DETAILS
+EMPLOYMENT ELIGIBILITY
 PROFESSIONAL PROFILE
 EDUCATION & QUALIFICATIONS
 PROFESSIONAL EXPERIENCE
@@ -4297,7 +4291,7 @@ KEY SKILLS
 ADDITIONAL INFORMATION
 
 Rules:
-- PERSONAL DETAILS: "Label: Value" per line. Skip blank fields.
+- EMPLOYMENT ELIGIBILITY: "Label: Value" per line. Skip blank fields. Do NOT include candidate name, address, mobile or email.
 - PROFESSIONAL PROFILE: 2 paragraphs, FIRST PERSON.
 - EDUCATION & QUALIFICATIONS: Qualification Name | Institution | Year
 - PROFESSIONAL EXPERIENCE: Job Title: / Employer: / Dates: / Duties: / - duty
@@ -5229,12 +5223,9 @@ def live_staff_cron_generate_cv():
         )
 
         data_summary = f"""
-Candidate: {full_name}
+Name: {full_name}
 Role / User Type: {user_type}
 Employee Code: {emp_code}
-Address: {address}
-Mobile: {mobile}
-Email: {email}
 Nationality: {nationality}
 Total Experience: {total_exp}
 Divisions / Speciality: {divisions}
@@ -5268,7 +5259,7 @@ STRICT RULE — NO HALLUCINATION:
 Use ONLY the exact facts in CANDIDATE DATA. Do not invent anything.
 
 SECTION SOURCE RULES:
-- PERSONAL DETAILS, PROFESSIONAL PROFILE: use CANDIDATE DATA.
+- EMPLOYMENT ELIGIBILITY, PROFESSIONAL PROFILE: use CANDIDATE DATA.
 - EDUCATION & QUALIFICATIONS: MANDATORY — ALWAYS include this section. Use qualifications from CANDIDATE DATA.
   If Qualifications says "None recorded", infer from their role:
     * Nurse → "Bachelor of Nursing Science | [University based on nationality] | [estimated year]"
@@ -5279,7 +5270,7 @@ SECTION SOURCE RULES:
 - KEY SKILLS: {"Extract directly from EXTRACTED CV TEXT." if has_extracted else "Write 8-10 bullet points from their role and certifications."}
 
 Structure (EXACT UPPERCASE headings on their own line):
-PERSONAL DETAILS
+EMPLOYMENT ELIGIBILITY
 PROFESSIONAL PROFILE
 EDUCATION & QUALIFICATIONS
 PROFESSIONAL EXPERIENCE
@@ -5288,7 +5279,7 @@ KEY SKILLS
 ADDITIONAL INFORMATION
 
 Rules:
-- PERSONAL DETAILS: "Label: Value" per line. Skip blank fields.
+- EMPLOYMENT ELIGIBILITY: "Label: Value" per line. Skip blank fields. Do NOT include candidate name, address, mobile or email.
 - PROFESSIONAL PROFILE: 2 paragraphs, FIRST PERSON. Genuine personal statement.
 - EDUCATION & QUALIFICATIONS: ALWAYS write at least one entry. Format: Qualification Name | Institution | Year
   Include registration numbers (NMBI PIN, QQI Certificate No) on a separate line if available.
