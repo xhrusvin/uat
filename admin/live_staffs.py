@@ -2,6 +2,8 @@ from flask import render_template, request, jsonify, Response
 from bson import ObjectId
 from datetime import datetime
 import json
+import json as _cjson
+import json as _cjson2
 import csv
 import io
 import re
@@ -775,7 +777,6 @@ Return ONLY a JSON object — nothing else, no markdown:
         raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
         raw = _re.sub(r'```\s*$', '', raw, flags=_re.MULTILINE).strip()
 
-        import json as _cjson
         result = _json.loads(raw)
 
         years        = int(result.get('years', 0) or 0)
@@ -6743,6 +6744,7 @@ def live_staff_cron_extract_experience_list():
 
     Protect with ?cron_key=<CRON_SECRET>
     """
+    import requests as _req
     cron_secret = os.environ.get('CRON_SECRET', '')
     if cron_secret:
         provided = (request.args.get('cron_key') or
@@ -6816,7 +6818,6 @@ def live_staff_cron_extract_experience_list():
     )
 
     def _run(staff_id_str, user_type_, extracted_cv_, gemini_key_):
-        import json as _cjson, re as _re
         from google import genai as google_genai
 
         _col = _staffs_col()
@@ -7286,7 +7287,6 @@ def live_staff_cron_sync_passport():
         content_type = img_resp.headers.get('Content-Type', '').lower()
 
         from google import genai as google_genai
-        import json as _cjson, re as _re
 
         client = google_genai.Client(api_key=gemini_key)
 
@@ -7698,7 +7698,6 @@ def live_staff_cron_sync_qualification():
         })
 
     # ── Download document ─────────────────────────────────────────────
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     try:
@@ -8034,7 +8033,6 @@ def live_staff_cron_sync_cpr_certificate():
     Protect with ?cron_key=<CRON_SECRET> env var.
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -8696,7 +8694,6 @@ def live_staff_cron_sync_ipc_certificate():
     Protect with ?cron_key=<CRON_SECRET> env var.
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -9120,7 +9117,6 @@ def live_staff_cron_sync_hand_hygiene():
            hh_issue_date, hh_issuing_body, hh_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -9518,7 +9514,6 @@ def live_staff_cron_sync_children_first():
            cf_issue_date, cf_issuing_body, cf_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -10256,7 +10251,6 @@ def live_staff_cron_sync_safeguarding():
     Sets sg_fetched = True on every outcome (success, skip, error).
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -10542,7 +10536,6 @@ def live_staff_cron_sync_garda_vetting():
            garda_reference_number, garda_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -10923,7 +10916,6 @@ def live_staff_cron_sync_cpi_mapa():
            cpi_issue_date, cpi_issuing_body, cpi_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -11325,7 +11317,6 @@ def live_staff_cron_sync_employment_contract():
            ec_employer_name, ec_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -11698,7 +11689,6 @@ def live_staff_cron_sync_open_disclosure_new():
            od_issue_date, od_issuing_body, od_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -12347,7 +12337,7 @@ def _build_pcc_docx(doc, reviewer_index=0):
 
     if has_cv_:
         try:
-            import json as _cjson2, re as _re2
+
             from google import genai as _genai2
             _gemini_key2 = __import__('os').environ.get('GEMINI_API_KEY', '')
             if _gemini_key2:
@@ -12712,7 +12702,6 @@ def live_staff_cron_sync_gdpr():
            gdpr_issue_date, gdpr_issuing_body, gdpr_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -13111,7 +13100,6 @@ def live_staff_cron_sync_dignity_at_work():
            daw_issue_date, daw_issuing_body, daw_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -13513,7 +13501,6 @@ def live_staff_cron_sync_haccp():
            haccp_issue_date, haccp_issuing_body, haccp_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -13913,7 +13900,6 @@ def live_staff_cron_sync_cyber_security():
            cs_issue_date, cs_issuing_body, cs_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -14313,7 +14299,6 @@ def live_staff_cron_sync_health_declaration():
            hdf_issuing_body, hdf_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -15151,7 +15136,6 @@ def live_staff_cron_sync_code_of_conduct():
            coc_issue_date, coc_issuing_body, coc_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -15551,7 +15535,6 @@ def live_staff_cron_sync_references():
            ref_issuing_body, ref_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -15921,7 +15904,6 @@ def live_staff_cron_sync_police_clearance():
     Note: pcc2_ prefix used to avoid conflict with PCC Self-Declaration (pcc_).
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -16333,7 +16315,6 @@ def live_staff_cron_sync_fire_safety():
            fs_issue_date, fs_issuing_body, fs_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -16733,7 +16714,6 @@ def live_staff_cron_sync_qqi_level5():
            qqi5_issue_date, qqi5_issuing_body, qqi5_award_level, qqi5_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -17143,7 +17123,6 @@ def live_staff_cron_sync_hse_clearance():
            hcp_expiry_date, hcp_issuing_body, hcp_pass_number, hcp_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -17551,7 +17530,6 @@ def live_staff_cron_sync_driving_licence():
            dl_issue_date, dl_country, dl_categories, dl_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -17963,7 +17941,6 @@ def live_staff_cron_sync_point_scale():
            psd_point_scale, psd_issuing_body, psd_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -18340,7 +18317,6 @@ def live_staff_cron_sync_application_form():
            af_position_applied, af_issuing_body, af_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -18717,7 +18693,6 @@ def live_staff_cron_sync_interview_notes():
            in_interviewer, in_outcome, in_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -19096,7 +19071,6 @@ def live_staff_cron_sync_visa():
            visa_issue_date, visa_expiry_date, visa_country, visa_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -19504,7 +19478,6 @@ def live_staff_cron_sync_address_proof():
            ap_issuing_body, ap_fetched = True
     """
     import requests as _req
-    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     cron_secret = os.environ.get('CRON_SECRET', '')
