@@ -7130,6 +7130,11 @@ def live_staff_cron_sync_passport():
     s1        = staff.get('section_1_personal_details') or {}
     full_name = _v(s1.get('full_name') or '')
 
+    def _mark_done(fields):
+        fields["passport_fetched"]    = True
+        fields["passport_fetched_at"] = datetime.utcnow()
+        col.update_one({"_id": staff['_id']}, {"$set": fields})
+
     if not email:
         col.update_one(
             {"_id": staff["_id"]},
