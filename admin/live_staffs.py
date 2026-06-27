@@ -1912,6 +1912,7 @@ def live_staff_api_generate_cv():
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
     body     = request.get_json(silent=True) or {}
+    def _v(val): return '' if val is None else str(val).strip()
     staff_id = _v(body.get('staff_id') or '')
     email    = _v(body.get('email') or '').lower()
 
