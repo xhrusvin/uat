@@ -37,6 +37,8 @@ from . import live_staff_stage1
 from . import live_staff_sub
 from . import live_staffs_crons
 from . import live_staffs_signature
+from . import live_staffs_crons2
+from . import live_staffs_crons3
 
 
 
