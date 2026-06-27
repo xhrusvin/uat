@@ -2213,16 +2213,34 @@ def live_staff_api_generate_cv():
 
     try:
         col = _staffs_col()
+        doc = None
+
         if staff_id:
-            doc = col.find_one({"_id": ObjectId(staff_id)})
-        else:
+            # Try ObjectId first, then string match on staff_id field
+            try:
+                doc = col.find_one({"_id": ObjectId(staff_id)})
+            except Exception:
+                pass
+            if not doc:
+                doc = col.find_one({"staff_id": staff_id})
+            if not doc:
+                # Try matching string _id stored as string in some records
+                doc = col.find_one({"$or": [
+                    {"employee_code": staff_id},
+                    {"section_1_personal_details.email_address": staff_id},
+                ]})
+
+        if not doc and email:
             doc = col.find_one({"$or": [
                 {"email": email},
                 {"section_1_personal_details.email_address": email},
             ]})
 
         if not doc:
-            return jsonify({"success": False, "error": "Staff not found"}), 404
+            return jsonify({
+                "success": False,
+                "error": f"Staff not found (staff_id={staff_id or 'n/a'}, email={email or 'n/a'})"
+            }), 404
 
         staff_id  = str(doc['_id'])
         s1        = doc.get('section_1_personal_details') or {}
