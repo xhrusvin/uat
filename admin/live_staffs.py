@@ -1897,6 +1897,175 @@ Output the structured CV text only. No markdown, no asterisks, no preamble.
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@admin_bp.route('/live-staffs/api/generate-cv', methods=['POST'])
+def live_staff_api_generate_cv():
+    """
+    External API — generate AI CV for a staff member.
+    Headers: X-API-Key: <LIVE_STAFF_API_KEY>
+    Body:    {"staff_id": "..."}  or  {"email": "..."}
+    """
+    api_key = os.environ.get('LIVE_STAFF_API_KEY', '')
+    if api_key:
+        provided = (request.headers.get('X-API-Key') or
+                    request.headers.get('X-Api-Key') or '')
+        if provided != api_key:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    body     = request.get_json(silent=True) or {}
+    staff_id = _v(body.get('staff_id') or '')
+    email    = _v(body.get('email') or '').lower()
+
+    if not staff_id and not email:
+        return jsonify({"success": False, "error": "staff_id or email required"}), 400
+
+    try:
+        col = _staffs_col()
+        if staff_id:
+            doc = col.find_one({"_id": ObjectId(staff_id)})
+        else:
+            doc = col.find_one({"$or": [
+                {"email": email},
+                {"section_1_personal_details.email_address": email},
+            ]})
+
+        if not doc:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+
+        staff_id  = str(doc['_id'])
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or '')
+        email     = _v(doc.get('email') or s1.get('email_address') or '')
+        emp_code  = _v(doc.get('employee_code') or '')
+        user_type = _v(doc.get('user_type') or '')
+
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        if not gemini_key:
+            return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+        # Build candidate data summary
+        s3 = doc.get('section_3_professional_registration') or {}
+        s4 = doc.get('section_4_qualifications') or {}
+        s5 = doc.get('section_5_employment_history') or {}
+        def _vv(v): return '' if v is None else str(v).strip()
+        nationality = _vv(s1.get('nationality'))
+        reg_pin     = _vv(s3.get('registration_number_pin'))
+        total_exp   = _vv(s5.get('total_experience'))
+        nmbi_num    = _vv(doc.get('nmbi_number') or reg_pin or '')
+        qqi_num     = _vv(doc.get('qqi_number') or '')
+
+        qual_lines = []
+        for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
+            q = s4.get(qk) or {}
+            if q.get('qualification') or q.get('institution'):
+                qual_lines.append(f"  - {_vv(q.get('qualification'))} | {_vv(q.get('institution'))} | {_vv(q.get('year_completed'))}")
+        if nmbi_num:
+            qual_lines.append(f"  - NMBI Registration PIN: {nmbi_num}")
+        if qqi_num:
+            qual_lines.append(f"  - QQI Level 5 Certificate No: {qqi_num}")
+
+        # Fallback qualification
+        if not qual_lines:
+            _rl = user_type.lower()
+            if any(t in _rl for t in ('nurse','rgn','midwife')):
+                qual_lines.append('  - Bachelor of Nursing Science (or equivalent) | University College | [year estimated]')
+            elif any(t in _rl for t in ('hca','healthcare assistant','care worker','support worker')):
+                qual_lines.append('  - QQI Level 5 in Healthcare Support | College of Further Education | [year estimated]')
+            else:
+                qual_lines.append(f'  - Relevant Professional Qualification | Training Institute | [year estimated]')
+
+        entries = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+        exp_lines = [f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} ({_vv(e.get('from'))} - {_vv(e.get('to') or 'Present')})" for e in entries]
+
+        extracted_cv = _v(doc.get('extracted_cv') or '')
+        has_cv = extracted_cv and not extracted_cv.startswith('[') and extracted_cv not in ('No doc found','')
+
+        data_summary = f"""Name: {full_name}
+Role: {user_type}
+Nationality: {nationality}
+Total Experience: {total_exp}
+Registration PIN: {reg_pin}
+Qualifications:
+{chr(10).join(qual_lines) if qual_lines else '  None recorded'}
+Employment History:
+{chr(10).join(exp_lines) if exp_lines else '  None recorded'}""".strip()
+
+        prompt = f"""You are a professional CV writer for Irish healthcare staffing.
+
+Rewrite the candidate's CV below into a clean, professional CV using this exact structure:
+
+EMPLOYMENT ELIGIBILITY
+PROFESSIONAL PROFILE
+EDUCATION & QUALIFICATIONS
+PROFESSIONAL EXPERIENCE
+TRAINING & CERTIFICATIONS
+KEY SKILLS
+ADDITIONAL INFORMATION
+
+Rules:
+- Use ONLY the information provided — do not invent anything.
+- EMPLOYMENT ELIGIBILITY: Label: Value per line. Do NOT include name, address, mobile or email.
+- EDUCATION & QUALIFICATIONS: copy ALL education exactly as written.
+- PROFESSIONAL EXPERIENCE: copy ALL jobs exactly — employer, title, dates, duties.
+- ADDITIONAL INFORMATION: write only: Driving Licence: No / Own Transport: No
+
+CANDIDATE DATA:
+{data_summary}
+
+CANDIDATE'S ORIGINAL CV:
+{extracted_cv[:15000] if has_cv else "No CV available — build from CANDIDATE DATA above."}
+
+Output the structured CV text only. No markdown, no preamble.
+"""
+
+        from google import genai as google_genai
+        client   = google_genai.Client(api_key=gemini_key)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        cv_text  = response.text.strip()
+
+        docx_bytes  = _build_ai_cv_docx(doc, cv_text)
+        safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        cv_filename = f"{safe_name}.docx"
+        gcs_blob    = f"cv/{cv_filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        col2     = _ai_cvs_col()
+        existing = col2.find_one({"staff_id": staff_id})
+        ai_doc   = {
+            "staff_id":      staff_id,
+            "staff_name":    full_name,
+            "employee_code": emp_code,
+            "cv_text":       cv_text,
+            "cv_filename":   cv_filename,
+            "gcs_blob":      gcs_blob,
+            "generated_at":  datetime.utcnow(),
+        }
+        if existing:
+            col2.update_one({"_id": existing["_id"]}, {"$set": ai_doc})
+            ai_id = str(existing["_id"])
+        else:
+            ai_id = str(col2.insert_one(ai_doc).inserted_id)
+
+        _push_hse_document_background(
+            staff_id_str=staff_id, doc_type_key='cv',
+            docx_bytes=docx_bytes, staff_name=full_name,
+            mongo_id=staff_id, email=email,
+        )
+
+        return jsonify({
+            "success":      True,
+            "staff_id":     staff_id,
+            "staff_name":   full_name,
+            "cv_id":        ai_id,
+            "cv_filename":  cv_filename,
+            "gcs_blob":     gcs_blob,
+            "generated_at": datetime.utcnow().isoformat(),
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @admin_bp.route('/live-staffs/api/generate-interview', methods=['POST'])
 def api_generate_interview():
     """
