@@ -18,6 +18,18 @@ def _v(val):
     if val is None: return ''
     return str(val).strip()
 
+def _validate_api_key():
+    """Validate X-API-Key header against LIVE_STAFF_API_KEY env var.
+    Returns (True, None) if valid or no key configured, else (False, response)."""
+    api_key = os.environ.get('LIVE_STAFF_API_KEY', '')
+    if not api_key:
+        return True, None
+    provided = (request.headers.get('X-API-Key') or
+                request.headers.get('X-Api-Key') or '')
+    if provided != api_key:
+        return False, (jsonify({"success": False, "error": "Unauthorised"}), 401)
+    return True, None
+
 
 # ── PCC constants ─────────────────────────────────────────────────────
 _PCC_REVIEWERS = [
