@@ -1631,12 +1631,125 @@ def live_staff_ai_cv_generate():
         }
         certs = [label for k, label in TLABELS.items() if s10.get(k)][:6]
 
-        # Pull extracted_cv text from DB if available
+        # ── Always re-extract CV from XN Portal on every generate ────────
         extracted_cv = _v(doc.get('extracted_cv') or '')
+
+        if True:  # always attempt fresh extraction
+            _base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+            _api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+            _app_country = os.environ.get('XN_APP_COUNTRY', '')
+            _gemini_key  = os.environ.get('GEMINI_API_KEY', '')
+            _staff_email = _v(doc.get('email') or
+                              (doc.get('section_1_personal_details') or {}).get('email_address') or '')
+
+            if _base_url and _staff_email:
+                try:
+                    import requests as _req_cv
+                    _endpoint   = f"{_base_url}/ai/recruitments/user-document-list"
+                    _api_hdrs   = {
+                        "Api-Key":       _api_key,
+                        "X-App-Country": _app_country,
+                        "Content-Type":  "application/json",
+                        "Accept":        "application/json",
+                    }
+                    _r = _req_cv.post(_endpoint, json={"email": _staff_email},
+                                      headers=_api_hdrs, timeout=30)
+                    if _r.status_code == 405:
+                        _r = _req_cv.get(_endpoint, params={"email": _staff_email},
+                                         headers=_api_hdrs, timeout=30)
+                    _r.raise_for_status()
+                    _portal_data = _r.json()
+
+                    _api_data  = _portal_data.get('data')
+                    _docs      = _api_data if isinstance(_api_data, list) else \
+                                 (_api_data.get('documents') or []
+                                  if isinstance(_api_data, dict) else [])
+
+                    _cv_url = None
+                    for _d in _docs:
+                        _dn = (_d.get('document_type_name') or '').strip()
+                        if _dn == 'Cv' and _d.get('url'):
+                            _cv_url = _d['url']
+                            break
+
+                    if _cv_url and _gemini_key:
+                        # Download and extract CV text using Gemini
+                        import io as _cv_io
+                        _dl_hdrs = {k: v for k, v in _api_hdrs.items()
+                                    if k != 'Content-Type'}
+                        _dl = _req_cv.get(_cv_url, headers=_dl_hdrs, timeout=60)
+                        _dl.raise_for_status()
+                        _raw    = _dl.content
+                        _ct     = _dl.headers.get('Content-Type', '').lower()
+                        _ul     = _cv_url.lower().split('?')[0]
+                        _rtxt   = ''
+
+                        # Extract raw text
+                        if 'pdf' in _ct or _ul.endswith('.pdf'):
+                            try:
+                                import pdfplumber as _plmb
+                                with _plmb.open(_cv_io.BytesIO(_raw)) as _pdf:
+                                    _rtxt = '\n'.join(p.extract_text() or ''
+                                                      for p in _pdf.pages).strip()
+                            except Exception:
+                                pass
+                        if not _rtxt and ('wordprocessingml' in _ct or
+                                          _ul.endswith('.docx') or _ul.endswith('.doc')):
+                            try:
+                                from docx import Document as _DDoc
+                                _ddoc = _DDoc(_cv_io.BytesIO(_raw))
+                                _rtxt = '\n'.join(p.text for p in _ddoc.paragraphs).strip()
+                            except Exception:
+                                pass
+                        if not _rtxt:
+                            try:
+                                import pdfplumber as _plmb2
+                                with _plmb2.open(_cv_io.BytesIO(_raw)) as _pdf2:
+                                    _rtxt = '\n'.join(p.extract_text() or ''
+                                                      for p in _pdf2.pages).strip()
+                            except Exception:
+                                pass
+                        if not _rtxt:
+                            _rtxt = _raw.decode('utf-8', errors='replace').strip()
+
+                        if _rtxt:
+                            # Gemini clean & structure
+                            from google import genai as _gai_cv
+                            _gclient = _gai_cv.Client(api_key=_gemini_key)
+                            _prompt  = f"""You are a professional CV parser.
+
+Extract and structure all CV content into clean, readable plain text.
+Preserve ALL factual information exactly — do NOT add, invent, or change any facts.
+Format with clear section headings where content exists.
+Return ONLY the clean structured CV text — no preamble, no commentary.
+
+RAW EXTRACTED TEXT:
+{_rtxt[:12000]}
+"""
+                            _gr = _gclient.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=_prompt
+                            )
+                            _extracted = (_gr.text or '').strip()
+                            if _extracted:
+                                extracted_cv = _extracted
+                                # Save to DB so future generations skip this step
+                                _staffs_col().update_one(
+                                    {"_id": doc['_id']},
+                                    {"$set": {
+                                        "extracted_cv":    _extracted,
+                                        "extracted_cv_at": datetime.utcnow(),
+                                        "extracted_cv_source": "auto_on_cv_generate",
+                                    }}
+                                )
+                except Exception as _cv_ex:
+                    # Non-fatal — CV generation continues without extracted text
+                    pass
+
         has_extracted_cv = (
             extracted_cv and
             not extracted_cv.startswith('[') and
-            extracted_cv != '[no CV document found]'
+            extracted_cv not in ('[no CV document found]', 'No doc found', '')
         )
 
         data_summary = f"""
