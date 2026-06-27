@@ -42,6 +42,18 @@ def _ai_pcc_col():
     from flask import current_app
     return current_app.db.live_staff_ai_pcc
 
+def _ai_cvs_col():
+    from flask import current_app
+    return current_app.db.live_staff_ai_cvs
+
+def _ai_interviews_col():
+    from flask import current_app
+    return current_app.db.live_staff_ai_interviews
+
+def _ai_appforms_col():
+    from flask import current_app
+    return current_app.db.live_staff_ai_appforms
+
 def _build_pcc_docx(doc, reviewer_index=0):
     from admin.live_staffs import _build_pcc_docx as _f
     return _f(doc, reviewer_index)
@@ -7903,10 +7915,6 @@ CV TEXT:
     document.save(buf)
     return buf.getvalue()
 
-
-def _ai_pcc_col():
-    from flask import current_app
-    return current_app.db.live_staff_ai_pcc
 
 
 # ── PCC Generate ──────────────────────────────────────────────────────
