@@ -2575,7 +2575,7 @@ CANDIDATE DATA:
         response       = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         interview_text = response.text.strip().strip('-').strip()
 
-        docx_bytes = _build_interview_docx(doc, interview_text)
+        docx_bytes = _build_ai_interview_docx(doc, interview_text)
         safe_name  = (full_name or 'staff').replace(' ', '_').replace('/', '_')
         filename   = f"Interview_{safe_name}_{staff_id}.docx"
         gcs_blob   = f"interviews/{filename}"
