@@ -602,6 +602,59 @@ def live_staff_cron_generate_cv():
     if qqi_num and not any('qqi' in l.lower() for l in qual_lines):
         qual_lines.append(f"  - QQI Level 5 Certificate No: {qqi_num}")
 
+    # ── Pre-extract Education section from extracted_cv in Python ───────
+    # This guarantees education is always in the prompt regardless of Gemini
+    _edu_lines = []
+    if extracted_cv:
+        # Find education section by looking for common headers
+        _edu_lines_raw = []
+        _in_edu = False
+        _stop_headers = {
+            'employment', 'work experience', 'professional experience',
+            'experience', 'training', 'certifications', 'skills', 'key skills',
+            'references', 'declaration', 'profile', 'summary', 'objective',
+            'employment eligibility', 'professional profile', 'personal statement',
+        }
+        for _line in extracted_cv.split('\n'):
+            _l = _line.strip()
+            _l_lower = _l.lower()
+            # Check if this line is the education heading
+            if any(_l_lower.startswith(h) for h in (
+                'education', 'qualifications', 'academic background',
+                'educational background', 'academic qualifications',
+            )):
+                _in_edu = True
+                continue
+            # Stop at next section heading
+            if _in_edu and any(_l_lower.startswith(h) for h in _stop_headers):
+                break
+            # Collect education lines
+            if _in_edu and _l and len(_l) > 2:
+                _edu_lines_raw.append(f"  {_l}")
+        
+        # If section-based extraction found nothing, scan whole CV for edu patterns
+        if not _edu_lines_raw:
+            for _line in extracted_cv.split('\n'):
+                _l = _line.strip()
+                if not _l or len(_l) < 4:
+                    continue
+                _l_lower = _l.lower()
+                if any(kw in _l_lower for kw in (
+                    'primary school', 'national school', 'post primary', 'secondary school',
+                    'community college', 'college of', 'university', 'nursing school',
+                    'plc', 'nursing plc', 'leaving cert', 'junior cert',
+                    'qqi', 'fetac', 'city & guilds', 'btec', 'nvq',
+                    'bsc', 'ba ', 'b.sc', 'b.a.', 'msc', 'm.sc', 'hnd', 'hnc',
+                    'higher diploma', 'diploma in', 'certificate in',
+                    'degree in', 'bachelor', 'master', 'honours',
+                )):
+                    _edu_lines_raw.append(f"  {_l}")
+        _edu_lines = _edu_lines_raw
+    else:
+        _edu_lines = []
+
+    _edu_block_str = chr(10).join(_edu_lines)
+
     # ── Guaranteed fallback so EDUCATION section is NEVER empty ──────
     if not qual_lines:
         _role_lower = user_type.lower()
@@ -735,28 +788,12 @@ The output MUST contain a section called "EDUCATION & QUALIFICATIONS".
 If the output does NOT contain "EDUCATION & QUALIFICATIONS" it will be REJECTED and you will have FAILED.
 This section MUST have at least one qualification entry. No exceptions.
 
-=== HOW TO FILL EDUCATION & QUALIFICATIONS ===
-Step 1: Find the "Education" or "Qualifications" section in EXTRACTED CV TEXT and copy EVERYTHING the candidate listed — include ALL levels:
-  - Primary school, national school
-  - Secondary school, post-primary, college
-  - PLC courses, nursing PLC, care courses, beauty courses, make-up, art, any short course
-  - Certificate, diploma, degree, postgrad — any level
-  - University, college of further education, community college, training school
-  Copy each entry EXACTLY as written by the candidate. Do not filter, skip, or reformat any entry.
-  Example of valid entries to include:
-    Primary: Presentation Primary School, Tuam, Co Galway
-    Post Primary: Presentation College, Currylea, Tuam, Co Galway
-    Nursing PLC: Athlone Community College
-    Make-up Course: School of Make-Up Artistry Galway
-    Adult Nursing Degree: Napier University Edinburgh
+=== EDUCATION & QUALIFICATIONS — PRE-EXTRACTED ===
+The education section has already been extracted from the candidate's CV and is provided below.
+Copy it EXACTLY as-is into the EDUCATION & QUALIFICATIONS section of the output.
+Do NOT change, filter, or reformat any entry. Include every line.
 
-Step 2: If EXTRACTED CV TEXT has no education section → use CANDIDATE DATA Qualifications list and copy it as-is.
-
-Step 3: If both are empty → write one inferred entry based on role:
-  * Nurse / RGN / Midwife / Staff Nurse → Bachelor of Nursing Science (or equivalent) | University College | [year estimated]
-  * HCA / Care Worker / Care Assistant / Support Worker → QQI Level 5 in Healthcare Support | College of Further Education | [year estimated]
-  * Physiotherapist / OT / Speech Therapist → BSc in Allied Health Sciences | Health Sciences University | [year estimated]
-  * Any other role → Professional Qualification in {user_type} | Training Institute | [year estimated]
+{_edu_block_str}
 
 === SECTION SOURCES ===
 - EMPLOYMENT ELIGIBILITY: CANDIDATE DATA only. Label: Value per line. NO name, address, mobile, email.
