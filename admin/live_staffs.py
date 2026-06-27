@@ -22216,6 +22216,76 @@ def live_staff_export_inews_xlsx():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+
+# ── External API: Get staff details by email ─────────────────────────
+
+@admin_bp.route('/live-staffs/api/staff-details', methods=['POST'])
+def live_staff_api_get_staff_details():
+    """
+    External API — returns full staff details from live_staffs collection.
+
+    Auth: X-API-Key header (LIVE_STAFF_API_KEY env var)
+
+    Request:
+        POST /admin/live-staffs/api/staff-details
+        Headers: X-API-Key: <key>
+        Body:    {"email": "staff@example.com"}
+
+    Response:
+        {
+          "success": true,
+          "data": { ...full staff document... }
+        }
+    """
+    # ── Auth ──────────────────────────────────────────────────────────
+    api_key = os.environ.get('LIVE_STAFF_API_KEY', '')
+    if api_key:
+        provided = (request.headers.get('X-API-Key') or
+                    request.headers.get('X-Api-Key') or '')
+        if provided != api_key:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    # ── Input ─────────────────────────────────────────────────────────
+    body  = request.get_json(silent=True) or {}
+    email = _v(body.get('email') or '').lower()
+
+    if not email:
+        return jsonify({"success": False, "error": "email is required"}), 400
+
+    # ── Lookup ────────────────────────────────────────────────────────
+    col   = _staffs_col()
+    staff = col.find_one({
+        "$or": [
+            {"email":                                         email},
+            {"section_1_personal_details.email_address":     email},
+        ]
+    })
+
+    if not staff:
+        return jsonify({"success": False, "error": "Staff not found"}), 404
+
+    # ── Serialise (convert ObjectId / datetime to str) ────────────────
+    def _serialise(obj):
+        if isinstance(obj, dict):
+            return {k: _serialise(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_serialise(i) for i in obj]
+        if hasattr(obj, 'isoformat'):          # datetime
+            return obj.isoformat()
+        if hasattr(obj, '__str__') and type(obj).__name__ in ('ObjectId', 'Decimal128'):
+            return str(obj)
+        return obj
+
+    data = _serialise(dict(staff))
+    data['_id'] = str(staff['_id'])
+
+    return jsonify({
+        "success": True,
+        "email":   email,
+        "data":    data,
+    })
+
+
 def _export_json(items):
     serialized = _serialize(items)
     payload    = json.dumps({"records": serialized}, indent=2, ensure_ascii=False)
