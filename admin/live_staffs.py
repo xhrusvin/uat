@@ -1822,14 +1822,15 @@ If a field is empty or says "None recorded", skip it.
 
 SECTION SOURCE RULES:
 - EMPLOYMENT ELIGIBILITY, PROFESSIONAL PROFILE: use CANDIDATE DATA.
-- EDUCATION & QUALIFICATIONS: *** MANDATORY — YOU MUST ALWAYS INCLUDE THIS SECTION ***
-  NEVER omit this section under any circumstances.
-  Use qualifications from CANDIDATE DATA if available.
-  If Qualifications says "None recorded" or is empty, you MUST infer from their role:
-    * Nurse / RGN / Midwife → "Bachelor of Nursing Science (or equivalent) | [University based on nationality] | [estimated year based on experience]"
-    * Healthcare Assistant / HCA / Support Worker → "QQI Level 5 in Healthcare Support | [College of Further Education] | [estimated year]"
-    * Any other role → write the most likely relevant qualification for that role
-  Include NMBI PIN or QQI certificate number if provided in CANDIDATE DATA.
+- EDUCATION & QUALIFICATIONS: *** MANDATORY — ALWAYS PRESENT — NEVER SKIP ***
+  STEP 1: Look in EXTRACTED CV TEXT for the section headed "Education", "Qualifications", "Education & Qualifications", "Academic Background", or similar. Copy the entire list exactly as the candidate wrote it — every course, school, college, year. Do not filter or reformat.
+  STEP 2: If EXTRACTED CV TEXT has no education section → use CANDIDATE DATA Qualifications and copy as-is.
+  STEP 3: If both empty → write one inferred entry based on role:
+    * Nurse / RGN / Midwife / Staff Nurse → Bachelor of Nursing Science (or equivalent) | University College | [year estimated]
+    * HCA / Care Worker / Care Assistant / Support Worker → QQI Level 5 in Healthcare Support | College of Further Education | [year estimated]
+    * Physiotherapist / OT / Speech Therapist → BSc in Allied Health Sciences | Health Sciences University | [year estimated]
+    * Any other role → Professional Qualification in [role] | Training Institute | [year estimated]
+  *** BEFORE OUTPUTTING: confirm "EDUCATION & QUALIFICATIONS" appears with at least one entry. If missing — add it. ***
 - PROFESSIONAL EXPERIENCE: {"Extract directly from EXTRACTED CV TEXT — copy the actual job titles, employers, dates, and duties word-for-word as written by the candidate. Do not rewrite or invent." if has_extracted_cv else "Use Employment History from CANDIDATE DATA. Write 5-6 appropriate duties per role."}
 - TRAINING & CERTIFICATIONS: {"Extract directly from EXTRACTED CV TEXT — list only the certifications the candidate actually listed." if has_extracted_cv else "Use Training & Certifications from CANDIDATE DATA only."}
 - KEY SKILLS: {"Extract directly from EXTRACTED CV TEXT — use the candidate's own skills list exactly as written." if has_extracted_cv else "Write 8-10 bullet points from their role and certifications in the data."}

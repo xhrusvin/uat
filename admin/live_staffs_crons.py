@@ -724,30 +724,38 @@ Training & Certifications:
 
     extracted_cv_section = f"""
 
-EXTRACTED CV TEXT (use as PRIMARY source for PROFESSIONAL EXPERIENCE, TRAINING & CERTIFICATIONS and KEY SKILLS):
+EXTRACTED CV TEXT (search this for qualifications, degrees, diplomas, certificates, college names, NMBI, QQI, FETAC):
 {extracted_cv[:8000]}
 """ if has_extracted else ""
 
-    prompt = f"""You are an expert professional CV writer specialising in Irish healthcare staffing.
+    prompt = f"""You are an expert professional CV writer for Irish healthcare staffing.
 
-STRICT RULE — NO HALLUCINATION:
-Use ONLY the exact facts in CANDIDATE DATA. Do not invent anything.
+=== CRITICAL NON-NEGOTIABLE RULE ===
+The output MUST contain a section called "EDUCATION & QUALIFICATIONS".
+If the output does NOT contain "EDUCATION & QUALIFICATIONS" it will be REJECTED and you will have FAILED.
+This section MUST have at least one qualification entry. No exceptions.
 
-SECTION SOURCE RULES:
-- EMPLOYMENT ELIGIBILITY, PROFESSIONAL PROFILE: use CANDIDATE DATA.
-- EDUCATION & QUALIFICATIONS: *** MANDATORY — YOU MUST ALWAYS INCLUDE THIS SECTION ***
-  NEVER omit this section under any circumstances.
-  Use qualifications from CANDIDATE DATA if available.
-  If Qualifications says "None recorded" or is empty, you MUST infer from their role:
-    * Nurse / RGN / Midwife → "Bachelor of Nursing Science (or equivalent) | [University based on nationality] | [estimated year based on experience]"
-    * Healthcare Assistant / HCA / Support Worker → "QQI Level 5 in Healthcare Support | [College of Further Education] | [estimated year]"
-    * Any other role → write the most likely relevant qualification for that role
-  Include NMBI PIN or QQI certificate number on a separate line if provided in CANDIDATE DATA.
-- PROFESSIONAL EXPERIENCE: {"Extract directly from EXTRACTED CV TEXT — copy job titles, employers, dates, and duties word-for-word." if has_extracted else "Use Employment History from CANDIDATE DATA. Write 5-6 appropriate duties per role."}
-- TRAINING & CERTIFICATIONS: {"Extract directly from EXTRACTED CV TEXT." if has_extracted else "Use Training & Certifications from CANDIDATE DATA only."}
-- KEY SKILLS: {"Extract directly from EXTRACTED CV TEXT." if has_extracted else "Write 8-10 bullet points from their role and certifications."}
+=== HOW TO FILL EDUCATION & QUALIFICATIONS ===
+Step 1: Look in EXTRACTED CV TEXT for the section headed "Education", "Qualifications", "Education & Qualifications", "Academic Background", or similar. Copy the entire list exactly as the candidate wrote it — every course, school, college, year. Do not filter or reformat.
 
-Structure (EXACT UPPERCASE headings on their own line):
+Step 2: If EXTRACTED CV TEXT has no education section → use CANDIDATE DATA Qualifications list and copy it as-is.
+
+Step 3: If both are empty → write one inferred entry based on role:
+  * Nurse / RGN / Midwife / Staff Nurse → Bachelor of Nursing Science (or equivalent) | University College | [year estimated]
+  * HCA / Care Worker / Care Assistant / Support Worker → QQI Level 5 in Healthcare Support | College of Further Education | [year estimated]
+  * Physiotherapist / OT / Speech Therapist → BSc in Allied Health Sciences | Health Sciences University | [year estimated]
+  * Any other role → Professional Qualification in {user_type} | Training Institute | [year estimated]
+
+=== SECTION SOURCES ===
+- EMPLOYMENT ELIGIBILITY: CANDIDATE DATA only. Label: Value per line. NO name, address, mobile, email.
+- PROFESSIONAL PROFILE: CANDIDATE DATA. 2 paragraphs, first person.
+- PROFESSIONAL EXPERIENCE: {"EXTRACTED CV TEXT — copy job titles, employers, dates, duties WORD-FOR-WORD." if has_extracted else "CANDIDATE DATA employment history. Write 5-6 duties per role."}
+- TRAINING & CERTIFICATIONS: {"EXTRACTED CV TEXT — list every certificate found." if has_extracted else "CANDIDATE DATA training only."}
+- KEY SKILLS: {"EXTRACTED CV TEXT — copy candidate's own skills exactly." if has_extracted else "8-10 bullet points from role and certifications."}
+
+=== OUTPUT STRUCTURE ===
+Write these EXACT headings in UPPERCASE on their own line:
+
 EMPLOYMENT ELIGIBILITY
 PROFESSIONAL PROFILE
 EDUCATION & QUALIFICATIONS
@@ -756,28 +764,21 @@ TRAINING & CERTIFICATIONS
 KEY SKILLS
 ADDITIONAL INFORMATION
 
-Rules:
-- EMPLOYMENT ELIGIBILITY: "Label: Value" per line. Skip blank fields. Do NOT include candidate name, address, mobile or email.
-- PROFESSIONAL PROFILE: 2 paragraphs, FIRST PERSON. Genuine personal statement.
-- EDUCATION & QUALIFICATIONS: *** ALWAYS write at least one entry — NEVER skip this section ***
-  Format: Qualification Name | Institution | Year
-  Include registration numbers (NMBI PIN, QQI Certificate No) on a separate line if available.
-- PROFESSIONAL EXPERIENCE: Job Title: / Employer: / Dates: / Duties: / - duty
-- TRAINING & CERTIFICATIONS: Bullet list only.
-- KEY SKILLS: 8-10 bullets.
-- ADDITIONAL INFORMATION: Include ONLY these two lines, nothing else:
+ADDITIONAL INFORMATION must contain ONLY:
 Driving Licence: No
 Own Transport: No
+
+=== BEFORE YOU FINISH ===
+CHECK: Does your output contain "EDUCATION & QUALIFICATIONS" with at least one entry?
+If NO → go back and add it using Step 1/2/3 above. Do not output without it.
 
 ---
 CANDIDATE DATA:
 {data_summary}
 {extracted_cv_section}
 ---
-
-Output CV text only. No preamble, no markdown symbols.
+Output the CV text only. No markdown, no asterisks, no preamble.
 """
-
     # ── Run generation in background thread to avoid 504 ─────────────
     def _do_generate():
         try:
