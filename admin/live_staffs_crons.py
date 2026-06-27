@@ -556,6 +556,7 @@ def live_staff_cron_generate_cv():
         return jsonify({"success": False, "error": "Staff record disappeared"}), 500
 
     # ── Build prompt ─────────────────────────────────────────────────
+    s1_f = full_doc.get('section_1_personal_details') or {}
     s3   = full_doc.get('section_3_professional_registration') or {}
     s4   = full_doc.get('section_4_qualifications') or {}
     s5   = full_doc.get('section_5_employment_history') or {}
