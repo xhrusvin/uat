@@ -1823,7 +1823,17 @@ If a field is empty or says "None recorded", skip it.
 SECTION SOURCE RULES:
 - EMPLOYMENT ELIGIBILITY, PROFESSIONAL PROFILE: use CANDIDATE DATA.
 - EDUCATION & QUALIFICATIONS: *** MANDATORY — ALWAYS PRESENT — NEVER SKIP ***
-  STEP 1: Look in EXTRACTED CV TEXT for the section headed "Education", "Qualifications", "Education & Qualifications", "Academic Background", or similar. Copy the entire list exactly as the candidate wrote it — every course, school, college, year. Do not filter or reformat.
+  STEP 1: Find the "Education" or "Qualifications" section in EXTRACTED CV TEXT and copy EVERYTHING — include ALL levels without filtering:
+    - Primary school, national school, secondary, post-primary
+    - PLC courses, nursing PLC, care courses, beauty, make-up, art, any short course
+    - Certificate, diploma, degree, postgrad — any level
+    - University, college, community college, training school
+    Copy each entry EXACTLY as the candidate wrote it. Example of valid entries:
+      Primary: Presentation Primary School, Tuam, Co Galway
+      Post Primary: Presentation College, Currylea, Tuam
+      Nursing PLC: Athlone Community College
+      Make-up Course: School of Make-Up Artistry Galway
+      Adult Nursing Degree: Napier University Edinburgh
   STEP 2: If EXTRACTED CV TEXT has no education section → use CANDIDATE DATA Qualifications and copy as-is.
   STEP 3: If both empty → write one inferred entry based on role:
     * Nurse / RGN / Midwife / Staff Nurse → Bachelor of Nursing Science (or equivalent) | University College | [year estimated]

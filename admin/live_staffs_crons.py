@@ -736,7 +736,19 @@ If the output does NOT contain "EDUCATION & QUALIFICATIONS" it will be REJECTED 
 This section MUST have at least one qualification entry. No exceptions.
 
 === HOW TO FILL EDUCATION & QUALIFICATIONS ===
-Step 1: Look in EXTRACTED CV TEXT for the section headed "Education", "Qualifications", "Education & Qualifications", "Academic Background", or similar. Copy the entire list exactly as the candidate wrote it — every course, school, college, year. Do not filter or reformat.
+Step 1: Find the "Education" or "Qualifications" section in EXTRACTED CV TEXT and copy EVERYTHING the candidate listed — include ALL levels:
+  - Primary school, national school
+  - Secondary school, post-primary, college
+  - PLC courses, nursing PLC, care courses, beauty courses, make-up, art, any short course
+  - Certificate, diploma, degree, postgrad — any level
+  - University, college of further education, community college, training school
+  Copy each entry EXACTLY as written by the candidate. Do not filter, skip, or reformat any entry.
+  Example of valid entries to include:
+    Primary: Presentation Primary School, Tuam, Co Galway
+    Post Primary: Presentation College, Currylea, Tuam, Co Galway
+    Nursing PLC: Athlone Community College
+    Make-up Course: School of Make-Up Artistry Galway
+    Adult Nursing Degree: Napier University Edinburgh
 
 Step 2: If EXTRACTED CV TEXT has no education section → use CANDIDATE DATA Qualifications list and copy it as-is.
 
