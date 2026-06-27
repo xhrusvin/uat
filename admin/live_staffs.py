@@ -2246,4 +2246,53 @@ def api_generate_appform():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@admin_bp.route('/live-staffs/export')
+@admin_required
+def live_staff_export():
+    """Export live_staffs as JSON or CSV (format=json or format=csv)."""
+    fmt  = request.args.get('format', 'json').lower()
+    docs = list(_staffs_col().find({}))
+
+    def _ser(obj):
+        if isinstance(obj, dict):  return {k: _ser(v) for k, v in obj.items()}
+        if isinstance(obj, list):  return [_ser(i) for i in obj]
+        if hasattr(obj, 'isoformat'): return obj.isoformat()
+        if type(obj).__name__ in ('ObjectId', 'Decimal128'): return str(obj)
+        return obj
+
+    if fmt == 'csv':
+        import csv, io as _io
+        out  = _io.StringIO()
+        flat = []
+        for d in docs:
+            s = _ser(d)
+            s1 = s.get('section_1_personal_details') or {}
+            flat.append({
+                '_id':           str(d.get('_id','')),
+                'full_name':     s1.get('full_name',''),
+                'email':         s.get('email',''),
+                'user_type':     s.get('user_type',''),
+                'employee_code': s.get('employee_code',''),
+                'nationality':   s1.get('nationality',''),
+                'nmbi_number':   s.get('nmbi_number',''),
+                'qqi_number':    s.get('qqi_number',''),
+            })
+        if flat:
+            writer = csv.DictWriter(out, fieldnames=flat[0].keys())
+            writer.writeheader()
+            writer.writerows(flat)
+        return Response(
+            out.getvalue(), mimetype='text/csv',
+            headers={"Content-Disposition": "attachment; filename=live_staffs.csv"}
+        )
+
+    data = [dict(_ser(d), **{'_id': str(d['_id'])}) for d in docs]
+    return Response(
+        __import__('json').dumps(data, default=str, ensure_ascii=False),
+        mimetype='application/json',
+        headers={"Content-Disposition": "attachment; filename=live_staffs.json"}
+    )
+
+
+
 # ── Cron: Sync document list from XN Portal ───────────────────────────
