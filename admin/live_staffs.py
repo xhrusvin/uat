@@ -1119,20 +1119,16 @@ def _ai_pcc_col():
 
 def _build_ai_cv_docx(doc, cv_text):
     """
-    Build a professional DOCX from AI-generated CV text.
-    Parses section headings and formats with python-docx.
+    Build an ATS-friendly, clean CV DOCX from AI-generated text.
+    No colours, no tables, no images — plain text with simple formatting
+    that passes all ATS parsers.
     """
     import io as _io
     from docx import Document as _Doc
-    from docx.shared import Pt, RGBColor, Cm
+    from docx.shared import Pt, Cm
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
-
-    NAVY  = RGBColor(0x1B, 0x3A, 0x6B)
-    GREEN = RGBColor(0x2E, 0x9E, 0x44)
-    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-    GRAY  = RGBColor(0x64, 0x74, 0x8B)
 
     SECTION_HEADINGS = {
         'EMPLOYMENT ELIGIBILITY', 'PROFESSIONAL PROFILE',
@@ -1141,75 +1137,123 @@ def _build_ai_cv_docx(doc, cv_text):
     }
 
     document = _Doc()
-    for section in document.sections:
-        section.top_margin    = Cm(1.8)
-        section.bottom_margin = Cm(1.8)
-        section.left_margin   = Cm(2.2)
-        section.right_margin  = Cm(2.2)
+    for sec in document.sections:
+        sec.top_margin    = Cm(2.0)
+        sec.bottom_margin = Cm(2.0)
+        sec.left_margin   = Cm(2.5)
+        sec.right_margin  = Cm(2.5)
 
-    document.styles['Normal'].font.name = 'Arial'
-    document.styles['Normal'].font.size = Pt(10)
+    # Use Calibri — best ATS font
+    style = document.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
 
-    s1        = (doc.get('section_1_personal_details') or {})
+    s1        = doc.get('section_1_personal_details') or {}
     full_name = _v(s1.get('full_name') or '')
     user_type = _v(doc.get('user_type') or '')
     email     = _v(doc.get('email') or s1.get('email_address') or '')
     phone     = _v(s1.get('mobile_number') or s1.get('phone_number') or '')
-    address   = _v(s1.get('address') or '')
 
-    # ── Header ────────────────────────────────────────────────────────
+    # ── Name header — large, bold, left-aligned ───────────────────────
     p = document.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run(full_name.upper() if full_name else 'CURRICULUM VITAE')
-    run.bold = True; run.font.size = Pt(18); run.font.color.rgb = NAVY; run.font.name = 'Arial'
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after  = Pt(0)
+    run = p.add_run(full_name if full_name else 'Curriculum Vitae')
+    run.bold = True
+    run.font.name = 'Calibri'
+    run.font.size = Pt(22)
+
+    # Role title
     if user_type:
         p2 = document.add_paragraph()
-        p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p2.paragraph_format.space_before = Pt(2)
+        p2.paragraph_format.space_after  = Pt(2)
         r2 = p2.add_run(user_type)
-        r2.font.size = Pt(11); r2.font.color.rgb = GREEN; r2.font.name = 'Arial'
+        r2.font.name = 'Calibri'
+        r2.font.size = Pt(12)
+        r2.italic    = True
 
-    # Contact details row
-    contact_parts = [x for x in [phone, email, address] if x]
+    # Contact line
+    contact_parts = [x for x in [phone, email] if x]
     if contact_parts:
         pc = document.add_paragraph()
-        pc.alignment = WD_ALIGN_PARAGRAPH.CENTER
         pc.paragraph_format.space_before = Pt(2)
         pc.paragraph_format.space_after  = Pt(6)
         rc = pc.add_run('  |  '.join(contact_parts))
-        rc.font.size = Pt(9.5); rc.font.color.rgb = GRAY; rc.font.name = 'Arial'
+        rc.font.name = 'Calibri'
+        rc.font.size = Pt(10)
 
-    def _add_section_heading(text):
+    # Horizontal rule after header
+    p_rule = document.add_paragraph()
+    p_rule.paragraph_format.space_before = Pt(2)
+    p_rule.paragraph_format.space_after  = Pt(8)
+    pPr = p_rule._p.get_or_add_pPr()
+    pBdr = OxmlElement('w:pBdr')
+    bot = OxmlElement('w:bottom')
+    bot.set(qn('w:val'), 'single')
+    bot.set(qn('w:sz'), '12')
+    bot.set(qn('w:color'), '000000')
+    pBdr.append(bot)
+    pPr.append(pBdr)
+
+    # ── Section heading — bold uppercase with bottom border ───────────
+    def _heading(text):
         p = document.add_paragraph()
-        p.paragraph_format.space_before = Pt(10)
+        p.paragraph_format.space_before = Pt(12)
         p.paragraph_format.space_after  = Pt(4)
+        run = p.add_run(text.upper())
+        run.bold      = True
+        run.font.name = 'Calibri'
+        run.font.size = Pt(11)
+        # Simple bottom border — ATS safe
         pPr = p._p.get_or_add_pPr()
         pBdr = OxmlElement('w:pBdr')
         bot = OxmlElement('w:bottom')
-        bot.set(qn('w:val'), 'single'); bot.set(qn('w:sz'), '6'); bot.set(qn('w:color'), '1B3A6B')
-        pBdr.append(bot); pPr.append(pBdr)
-        run = p.add_run('  ' + text + '  ')
-        run.bold = True; run.font.size = Pt(11); run.font.name = 'Arial'; run.font.color.rgb = WHITE
-        rPr = run._r.get_or_add_rPr()
-        shd = OxmlElement('w:shd')
-        shd.set(qn('w:val'), 'clear'); shd.set(qn('w:color'), 'auto'); shd.set(qn('w:fill'), '1B3A6B')
-        rPr.append(shd)
+        bot.set(qn('w:val'), 'single')
+        bot.set(qn('w:sz'), '6')
+        bot.set(qn('w:color'), '000000')
+        pBdr.append(bot)
+        pPr.append(pBdr)
 
-    def _add_body_line(text):
+    # ── Body line ─────────────────────────────────────────────────────
+    def _body(text, bold=False, indent=False):
         p = document.add_paragraph()
         p.paragraph_format.space_before = Pt(1)
         p.paragraph_format.space_after  = Pt(1)
+        if indent:
+            p.paragraph_format.left_indent = Cm(0.5)
         run = p.add_run(text)
-        run.font.size = Pt(10); run.font.name = 'Arial'
+        run.bold      = bold
+        run.font.name = 'Calibri'
+        run.font.size = Pt(11)
 
-    # ── Parse and render sections ─────────────────────────────────────
+    # ── Parse and render cv_text ──────────────────────────────────────
     for line in cv_text.split('\n'):
         stripped = line.strip()
         if not stripped:
+            # Small gap between entries
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(2)
+            p.paragraph_format.space_after  = Pt(2)
             continue
+
         if stripped.upper() in SECTION_HEADINGS:
-            _add_section_heading(stripped.upper())
+            _heading(stripped)
+        elif stripped.startswith('- ') or stripped.startswith('• '):
+            # Bullet point — use simple dash for ATS
+            _body('- ' + stripped[2:].strip(), indent=True)
+        elif ':' in stripped and stripped.split(':')[0].isupper() and len(stripped.split(':')[0]) < 30:
+            # Label: Value line (e.g. "Job Title: Staff Nurse")
+            label, _, value = stripped.partition(':')
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(1)
+            p.paragraph_format.space_after  = Pt(1)
+            r1 = p.add_run(label.strip() + ': ')
+            r1.bold = True; r1.font.name = 'Calibri'; r1.font.size = Pt(11)
+            r2 = p.add_run(value.strip())
+            r2.font.name = 'Calibri'; r2.font.size = Pt(11)
         else:
-            _add_body_line(stripped)
+            _body(stripped)
 
     buf = _io.BytesIO()
     document.save(buf)
