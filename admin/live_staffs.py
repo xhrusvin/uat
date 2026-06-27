@@ -1153,6 +1153,9 @@ def _build_ai_cv_docx(doc, cv_text):
     s1        = (doc.get('section_1_personal_details') or {})
     full_name = _v(s1.get('full_name') or '')
     user_type = _v(doc.get('user_type') or '')
+    email     = _v(doc.get('email') or s1.get('email_address') or '')
+    phone     = _v(s1.get('mobile_number') or s1.get('phone_number') or '')
+    address   = _v(s1.get('address') or '')
 
     # ── Header ────────────────────────────────────────────────────────
     p = document.add_paragraph()
@@ -1164,6 +1167,16 @@ def _build_ai_cv_docx(doc, cv_text):
         p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
         r2 = p2.add_run(user_type)
         r2.font.size = Pt(11); r2.font.color.rgb = GREEN; r2.font.name = 'Arial'
+
+    # Contact details row
+    contact_parts = [x for x in [phone, email, address] if x]
+    if contact_parts:
+        pc = document.add_paragraph()
+        pc.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pc.paragraph_format.space_before = Pt(2)
+        pc.paragraph_format.space_after  = Pt(6)
+        rc = pc.add_run('  |  '.join(contact_parts))
+        rc.font.size = Pt(9.5); rc.font.color.rgb = GRAY; rc.font.name = 'Arial'
 
     def _add_section_heading(text):
         p = document.add_paragraph()
