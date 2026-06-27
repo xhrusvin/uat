@@ -775,7 +775,7 @@ Return ONLY a JSON object — nothing else, no markdown:
         raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
         raw = _re.sub(r'```\s*$', '', raw, flags=_re.MULTILINE).strip()
 
-        import json as _json
+        import json as _cjson
         result = _json.loads(raw)
 
         years        = int(result.get('years', 0) or 0)
@@ -6816,7 +6816,7 @@ def live_staff_cron_extract_experience_list():
     )
 
     def _run(staff_id_str, user_type_, extracted_cv_, gemini_key_):
-        import json as _json, re as _re
+        import json as _cjson, re as _re
         from google import genai as google_genai
 
         _col = _staffs_col()
@@ -6879,7 +6879,7 @@ CV TEXT:
             raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
             raw = _re.sub(r'```\s*$', '', raw, flags=_re.MULTILINE).strip()
 
-            result = _json.loads(raw)
+            result = _cjson.loads(raw)
             if not isinstance(result, list):
                 result = []
             # Clean each entry
@@ -7286,7 +7286,7 @@ def live_staff_cron_sync_passport():
         content_type = img_resp.headers.get('Content-Type', '').lower()
 
         from google import genai as google_genai
-        import json as _json, re as _re
+        import json as _cjson, re as _re
 
         client = google_genai.Client(api_key=gemini_key)
 
@@ -7698,7 +7698,7 @@ def live_staff_cron_sync_qualification():
         })
 
     # ── Download document ─────────────────────────────────────────────
-    import json as _json, re as _re, base64
+    import json as _cjson, re as _re, base64
     from google import genai as google_genai
 
     try:
