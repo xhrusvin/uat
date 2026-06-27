@@ -58,6 +58,26 @@ def _build_pcc_docx(doc, reviewer_index=0):
     from admin.live_staffs import _build_pcc_docx as _f
     return _f(doc, reviewer_index)
 
+def _build_ai_cv_docx(doc, cv_text):
+    from admin.live_staffs import _build_ai_cv_docx as _f
+    return _f(doc, cv_text)
+
+def _build_ai_interview_docx(doc, interview_text):
+    from admin.live_staffs import _build_ai_interview_docx as _f
+    return _f(doc, interview_text)
+
+def _build_ai_appform_docx(doc, appform_text):
+    from admin.live_staffs import _build_ai_appform_docx as _f
+    return _f(doc, appform_text)
+
+def _build_appform_docx(doc):
+    from admin.live_staffs import _build_appform_docx as _f
+    return _f(doc)
+
+def _build_interview_docx(doc, interview_text):
+    from admin.live_staffs import _build_interview_docx as _f
+    return _f(doc, interview_text)
+
 def _get_pcc_reviewers():
     from admin.live_staffs import _PCC_REVIEWERS
     return _PCC_REVIEWERS
