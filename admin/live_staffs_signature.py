@@ -7,14 +7,23 @@ Routes:
     GET/POST  /live-staffs/cron/sync-signature-validation
     GET       /live-staffs/export/signature-validation-xlsx
 
+Env vars required:
+    GEMINI_API_KEY          — Google AI / Gemini API key
+    GCS_BUCKET_NAME         — GCS bucket where signatures are stored
+                              (e.g. "xpress-health-prod")
+    GOOGLE_APPLICATION_CREDENTIALS — path to GCS service account JSON key file
+                              OR set GCS_SA_JSON with the JSON content as a string
+    CRON_SECRET             — (optional) guards the cron endpoint
+
 Register in your app factory alongside the other admin blueprint files.
 """
 
 import os
 import re
+import json as _json
 import base64
+import datetime as _dt
 import requests as _req
-from datetime import datetime
 
 from flask import request, jsonify, Response
 
@@ -35,22 +44,90 @@ def _v(val):
     return str(val).strip()
 
 
+def _get_gcs_client():
+    """
+    Return a google.cloud.storage.Client.
+    Supports two auth methods:
+      1. GOOGLE_APPLICATION_CREDENTIALS env var pointing to a SA key file (standard)
+      2. GCS_SA_JSON env var containing the raw JSON of the service account key
+    """
+    from google.cloud import storage
+    from google.oauth2 import service_account
+
+    sa_json_str = os.environ.get('GCS_SA_JSON', '')
+    if sa_json_str:
+        sa_info      = _json.loads(sa_json_str)
+        credentials  = service_account.Credentials.from_service_account_info(sa_info)
+        return storage.Client(credentials=credentials, project=sa_info.get('project_id'))
+
+    # Falls back to GOOGLE_APPLICATION_CREDENTIALS automatically
+    return storage.Client()
+
+
+def _fresh_signed_url(gcs_blob_path: str, expiry_minutes: int = 15) -> str:
+    """
+    Generate a fresh signed URL for a GCS blob path.
+    gcs_blob_path — e.g. "signatures/Sandra_Joshy_abc123.png"
+    """
+    bucket_name = os.environ.get('GCS_BUCKET_NAME', '')
+    if not bucket_name:
+        raise ValueError("GCS_BUCKET_NAME env var is not set")
+
+    client    = _get_gcs_client()
+    bucket    = client.bucket(bucket_name)
+    blob      = bucket.blob(gcs_blob_path)
+    signed_url = blob.generate_signed_url(
+        expiration=_dt.timedelta(minutes=expiry_minutes),
+        method='GET',
+        version='v4',
+    )
+    return signed_url
+
+
+def _download_signature(staff: dict) -> tuple:
+    """
+    Returns (raw_bytes, content_type) or raises an Exception.
+    Prefers signature_gcs_blob (generates a fresh signed URL);
+    falls back to signature_url if no blob path is stored.
+    """
+    gcs_blob = _v(staff.get('signature_gcs_blob') or '')
+
+    if gcs_blob:
+        url = _fresh_signed_url(gcs_blob)
+    else:
+        url = _v(staff.get('signature_url') or '')
+        if not url:
+            raise ValueError("No signature_gcs_blob or signature_url on record")
+
+    resp = _req.get(url, timeout=30)
+
+    if resp.status_code == 404:
+        raise FileNotFoundError("Signature file returned 404")
+
+    resp.raise_for_status()
+
+    content_type = resp.headers.get('Content-Type', 'image/png').lower().split(';')[0].strip()
+    if not content_type.startswith('image/'):
+        content_type = 'image/png'
+
+    return resp.content, content_type
+
+
 # ── Cron: Validate signature handwriting via Gemini ────────────────────────────
 
 @admin_bp.route('/live-staffs/cron/sync-signature-validation', methods=['GET', 'POST'])
 def live_staff_cron_sync_signature_validation():
     """
     Cron job — processes ONE staff member per call.
-    Downloads the staff's signature image from signature_url,
+    Downloads the staff's signature from GCS (fresh signed URL via signature_gcs_blob),
     sends it to Gemini Vision to determine if it is a genuine handwritten signature.
 
     Saves to MongoDB:
-        sig_valid         : bool
-        sig_validation_note : str  (Gemini's reason)
-        sig_fetched       : True
-        sig_fetched_at    : datetime
+        sig_valid              : bool
+        sig_validation_note    : str   (Gemini's reason)
+        sig_fetched            : True
+        sig_fetched_at         : datetime
     """
-    import json as _json
     from google import genai as google_genai
 
     # ── auth ──────────────────────────────────────────────────────────────
@@ -67,14 +144,19 @@ def live_staff_cron_sync_signature_validation():
 
     col = _staffs_col()
 
-    # ── find next unprocessed staff with a signature URL ──────────────────
+    # ── find next unprocessed staff that has a signature ──────────────────
     pending_query = {
-        "signature_url": {"$exists": True, "$ne": None, "$ne": ""},
         "$or": [
-            {"sig_fetched": {"$exists": False}},
-            {"sig_fetched": False},
-            {"sig_fetched": None},
+            {"signature_gcs_blob": {"$exists": True, "$ne": None, "$ne": ""}},
+            {"signature_url":      {"$exists": True, "$ne": None, "$ne": ""}},
         ],
+        "$and": [{
+            "$or": [
+                {"sig_fetched": {"$exists": False}},
+                {"sig_fetched": False},
+                {"sig_fetched": None},
+            ]
+        }],
     }
     remaining_total = col.count_documents(pending_query)
     staff           = col.find_one(pending_query)
@@ -90,49 +172,26 @@ def live_staff_cron_sync_signature_validation():
     full_name = _v(s1.get('full_name') or '')
     email     = _v(staff.get('email') or s1.get('email_address') or '')
     emp_code  = _v(staff.get('employee_code') or '')
-    sig_url   = _v(staff.get('signature_url') or '')
 
     def _mark_done(fields):
         fields["sig_fetched"]    = True
-        fields["sig_fetched_at"] = datetime.utcnow()
+        fields["sig_fetched_at"] = _dt.datetime.utcnow()
         col.update_one({"_id": staff['_id']}, {"$set": fields})
 
-    # ── skip if no URL (shouldn't happen given query, but guard anyway) ───
-    if not sig_url:
-        _mark_done({"sig_valid": False, "sig_validation_note": "skipped — no signature URL"})
+    # ── download signature (fresh signed URL from GCS blob) ───────────────
+    try:
+        raw_bytes, content_type = _download_signature(staff)
+    except FileNotFoundError as e:
+        _mark_done({"sig_valid": False, "sig_validation_note": str(e)})
         return jsonify({
-            "success":         True,
-            "skipped":         True,
-            "reason":          "No signature URL",
-            "staff_name":      full_name,
-            "email":           email,
+            "success": True, "skipped": True, "email": email,
+            "staff_name": full_name,
+            "reason": str(e),
             "remaining_count": max(0, remaining_total - 1),
         })
-
-    # ── download signature image ──────────────────────────────────────────
-    try:
-        dl_resp = _req.get(sig_url, timeout=30)
-
-        if dl_resp.status_code == 404:
-            _mark_done({"sig_valid": False,
-                        "sig_validation_note": "signature URL returned 404"})
-            return jsonify({
-                "success":         True,
-                "skipped":         True,
-                "reason":          "Signature URL returned 404",
-                "staff_name":      full_name,
-                "email":           email,
-                "remaining_count": max(0, remaining_total - 1),
-            })
-
-        dl_resp.raise_for_status()
-        raw_bytes    = dl_resp.content
-        content_type = dl_resp.headers.get('Content-Type', 'image/png').lower().split(';')[0].strip()
-        if not content_type.startswith('image/'):
-            content_type = 'image/png'
-
     except Exception as e:
-        _mark_done({"sig_valid": False, "sig_validation_note": f"download error: {e}"})
+        _mark_done({"sig_valid": False,
+                    "sig_validation_note": f"download error: {e}"})
         return jsonify({
             "success": False, "email": email, "staff_name": full_name,
             "error":   f"Failed to download signature: {e}",
@@ -162,10 +221,9 @@ or
 {"valid": false, "reason": "brief one-sentence explanation"}"""
 
     try:
-        client = google_genai.Client(api_key=gemini_key)
-
+        client   = google_genai.Client(api_key=gemini_key)
         b64_data = base64.standard_b64encode(raw_bytes).decode('utf-8')
-        parts = [
+        parts    = [
             {"inline_data": {"mime_type": content_type, "data": b64_data}},
             {"text": prompt_text},
         ]
@@ -178,9 +236,9 @@ or
         raw_out = re.sub(r'^```(?:json)?\s*', '', raw_out, flags=re.MULTILINE)
         raw_out = re.sub(r'```\s*$',          '', raw_out, flags=re.MULTILINE).strip()
 
-        result    = _json.loads(raw_out)
-        is_valid  = bool(result.get('valid', False))
-        reason    = _v(result.get('reason') or '')
+        result   = _json.loads(raw_out)
+        is_valid = bool(result.get('valid', False))
+        reason   = _v(result.get('reason') or '')
 
     except _json.JSONDecodeError:
         _mark_done({"sig_valid": False,
@@ -246,23 +304,22 @@ def live_staff_export_signature_validation_xlsx():
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
         ).lower())
 
-        # ── palette (matches existing files) ──────────────────────────────
-        NAVY  = '1B3A6B'
-        WHITE = 'FFFFFF'
-        ALT   = 'EFF6FF'
+        NAVY     = '1B3A6B'
+        WHITE    = 'FFFFFF'
+        ALT      = 'EFF6FF'
         GREEN_BG = 'E2EFDA'
         RED_BG   = 'FFDDDD'
         WARN_BG  = 'FFF3CD'
 
-        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
-        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
-        h_align = Alignment(horizontal='center', vertical='center')
-        b_font  = Font(name='Arial', size=10)
-        l_align = Alignment(horizontal='left',   vertical='center', wrap_text=True)
-        c_align = Alignment(horizontal='center', vertical='center')
-        thin    = Side(style='thin',   color='CCCCCC')
-        med_grn = Side(style='medium', color='2E9E44')
-        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        h_font   = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill   = PatternFill('solid', start_color=NAVY,  end_color=NAVY)
+        h_align  = Alignment(horizontal='center', vertical='center')
+        b_font   = Font(name='Arial', size=10)
+        l_align  = Alignment(horizontal='left',   vertical='center', wrap_text=True)
+        c_align  = Alignment(horizontal='center', vertical='center')
+        thin     = Side(style='thin',   color='CCCCCC')
+        med_grn  = Side(style='medium', color='2E9E44')
+        border   = Border(left=thin, right=thin, top=thin, bottom=thin)
         h_border = Border(left=thin, right=thin, top=thin, bottom=med_grn)
 
         wb = Workbook()
@@ -274,11 +331,11 @@ def live_staff_export_signature_validation_xlsx():
         col_widths = [5, 28, 36, 18, 16, 55, 14]
 
         for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
-            cell = ws.cell(row=1, column=ci, value=hdr)
-            cell.font      = h_font
-            cell.fill      = h_fill
-            cell.alignment = h_align
-            cell.border    = h_border
+            cell            = ws.cell(row=1, column=ci, value=hdr)
+            cell.font       = h_font
+            cell.fill       = h_fill
+            cell.alignment  = h_align
+            cell.border     = h_border
             ws.column_dimensions[cell.column_letter].width = width
         ws.row_dimensions[1].height = 24
         ws.freeze_panes             = 'A2'
@@ -286,29 +343,25 @@ def live_staff_export_signature_validation_xlsx():
 
         for ri, doc in enumerate(docs, start=2):
             s1       = doc.get('section_1_personal_details') or {}
-            name     = _v(s1.get('full_name')      or '')
-            email    = _v(doc.get('email')          or '')
-            emp_code = _v(doc.get('employee_code')  or '')
-            valid    = doc.get('sig_valid')               # True / False / None
+            name     = _v(s1.get('full_name')          or '')
+            email    = _v(doc.get('email')              or '')
+            emp_code = _v(doc.get('employee_code')      or '')
+            valid    = doc.get('sig_valid')
             note     = _v(doc.get('sig_validation_note') or '')
             fetched  = doc.get('sig_fetched', False)
 
             if not fetched:
-                status   = 'Not Checked'
+                status, valid_label = 'Not Checked', '—'
                 row_fill = PatternFill('solid', start_color=WARN_BG,  end_color=WARN_BG)
-                valid_label = '—'
             elif valid is True:
-                status   = 'Valid'
+                status, valid_label = 'Valid',   '✔  Valid'
                 row_fill = PatternFill('solid', start_color=GREEN_BG, end_color=GREEN_BG)
-                valid_label = '✔  Valid'
             elif valid is False:
-                status   = 'Invalid'
+                status, valid_label = 'Invalid', '✘  Invalid'
                 row_fill = PatternFill('solid', start_color=RED_BG,   end_color=RED_BG)
-                valid_label = '✘  Invalid'
             else:
-                status   = 'Unknown'
+                status, valid_label = 'Unknown', '?'
                 row_fill = PatternFill('solid', start_color=ALT, end_color=ALT)
-                valid_label = '?'
 
             alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) \
                        if ri % 2 == 0 else None
@@ -317,15 +370,14 @@ def live_staff_export_signature_validation_xlsx():
             aligns   = [c_align, l_align, l_align, c_align, c_align, l_align, c_align]
 
             for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
-                cell            = ws.cell(row=ri, column=ci, value=val)
-                cell.font       = b_font
-                cell.alignment  = align
-                cell.border     = border
-                cell.fill       = row_fill or alt_fill or PatternFill()
+                cell           = ws.cell(row=ri, column=ci, value=val)
+                cell.font      = b_font
+                cell.alignment = align
+                cell.border    = border
+                cell.fill      = row_fill or alt_fill or PatternFill()
 
             ws.row_dimensions[ri].height = 17
 
-        # ── summary footer ─────────────────────────────────────────────────
         total   = len(docs)
         valid_c = sum(1 for d in docs if d.get('sig_valid') is True)
         inv_c   = sum(1 for d in docs if d.get('sig_valid') is False)
@@ -344,7 +396,7 @@ def live_staff_export_signature_validation_xlsx():
             headers={
                 "Content-Disposition":
                     f'attachment; filename="signature_validation_'
-                    f'{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'
+                    f'{_dt.datetime.utcnow().strftime("%Y%m%d")}.xlsx"'
             },
         )
 
