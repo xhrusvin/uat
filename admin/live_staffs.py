@@ -2633,7 +2633,7 @@ def _build_ai_cv_docx(doc, cv_text):
 
     # ── Parse sections ────────────────────────────────────────────────
     HEADINGS = [
-        'PERSONAL DETAILS', 'PROFESSIONAL PROFILE',
+        'EMPLOYMENT ELIGIBILITY', 'PROFESSIONAL PROFILE',
         'EDUCATION & QUALIFICATIONS', 'PROFESSIONAL EXPERIENCE',
         'TRAINING & CERTIFICATIONS', 'KEY SKILLS', 'ADDITIONAL INFORMATION',
     ]
@@ -2658,7 +2658,7 @@ def _build_ai_cv_docx(doc, cv_text):
 
         add_section_heading(heading)
 
-        if heading == 'PERSONAL DETAILS':
+        if heading == 'EMPLOYMENT ELIGIBILITY':
             for line in lines:
                 if ':' in line:
                     parts = line.split(':', 1)
@@ -2865,7 +2865,7 @@ def _build_ai_cv_pdf(doc, cv_text):
         return Paragraph(f'\u2022\u2003{clean}', S['bullet']) if clean else None
 
     HEADINGS = [
-        'PERSONAL DETAILS','PROFESSIONAL PROFILE','EDUCATION & QUALIFICATIONS',
+        'EMPLOYMENT ELIGIBILITY','PROFESSIONAL PROFILE','EDUCATION & QUALIFICATIONS',
         'PROFESSIONAL EXPERIENCE','TRAINING & CERTIFICATIONS','KEY SKILLS',
         'ADDITIONAL INFORMATION',
     ]
@@ -2942,7 +2942,7 @@ def _build_ai_cv_pdf(doc, cv_text):
         story += sec_heading(heading)
         story.append(sp(2))
 
-        if heading == 'PERSONAL DETAILS':
+        if heading == 'EMPLOYMENT ELIGIBILITY':
             for line in lines:
                 if ':' in line:
                     parts = line.split(':', 1)
@@ -3314,9 +3314,9 @@ def _build_cv_pdf(doc):
     story += [banner, sp(5)]
 
     # ════════════════════════════════════════════════════════════════
-    # 1. PERSONAL DETAILS
+    # 1. EMPLOYMENT ELIGIBILITY
     # ════════════════════════════════════════════════════════════════
-    story += [sec('PERSONAL DETAILS'), sp(3)]
+    story += [sec('EMPLOYMENT ELIGIBILITY'), sp(3)]
     for label, value in [
         ('Full Name:',     full_name),
         ('Address:',       address),
@@ -5038,7 +5038,7 @@ Your task:
 1. Read the raw extracted text carefully.
 2. Identify and structure all CV content into clean, readable plain text.
 3. Preserve ALL factual information exactly as stated — do NOT add, invent, or change any facts.
-4. Format it with clear section headings (PERSONAL DETAILS, PROFESSIONAL PROFILE, EDUCATION & QUALIFICATIONS, PROFESSIONAL EXPERIENCE, TRAINING & CERTIFICATIONS, KEY SKILLS, ADDITIONAL INFORMATION) where the content exists.
+4. Format it with clear section headings (EMPLOYMENT ELIGIBILITY, PROFESSIONAL PROFILE, EDUCATION & QUALIFICATIONS, PROFESSIONAL EXPERIENCE, TRAINING & CERTIFICATIONS, KEY SKILLS, ADDITIONAL INFORMATION) where the content exists.
 5. If a section's content is not present in the raw text, omit that section entirely.
 6. Return ONLY the clean structured CV text — no preamble, no commentary.
 
