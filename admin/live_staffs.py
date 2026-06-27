@@ -12,6 +12,13 @@ import re as _re
 import os
 import threading
 
+# ── Module-level helpers ─────────────────────────────────────────────
+def _v(val):
+    """Strip and stringify — safe for None."""
+    if val is None: return ''
+    return str(val).strip()
+
+
 # ── PCC constants ─────────────────────────────────────────────────────
 _PCC_REVIEWERS = [
     'Letty Mathew',
@@ -1912,7 +1919,6 @@ def live_staff_api_generate_cv():
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
     body     = request.get_json(silent=True) or {}
-    def _v(val): return '' if val is None else str(val).strip()
     staff_id = _v(body.get('staff_id') or '')
     email    = _v(body.get('email') or '').lower()
 
