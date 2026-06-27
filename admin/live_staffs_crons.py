@@ -357,22 +357,22 @@ def _extract_text_from_url(url, headers=None):
         except Exception:
             pass
 
-    if not raw_text:
-        raise RuntimeError(
-            f"Could not extract any text from document (content-type: {content_type})"
-        )
-
     # ── Step 2: Gemini AI extraction & structuring ────────────────────
     gemini_key = os.environ.get('GEMINI_API_KEY', '')
     if not gemini_key:
-        # No Gemini key — return raw text as-is
+        if not raw_text:
+            raise RuntimeError(
+                f"Could not extract any text from document (content-type: {content_type})"
+            )
         return raw_text
 
     try:
         from google import genai as _genai
         client = _genai.Client(api_key=gemini_key)
 
-        prompt = f"""You are a professional CV parser.
+        if raw_text:
+            # Text-based PDF/DOCX — use text prompt
+            prompt = f"""You are a professional CV parser.
 
 The text below was extracted from a candidate's CV document (PDF or DOCX).
 The text may be messy, have formatting issues, or be partially garbled from extraction.
@@ -388,6 +388,33 @@ Your task:
 RAW EXTRACTED TEXT:
 {raw_text[:12000]}
 """
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+        else:
+            # Scanned/image-based PDF — send raw bytes to Gemini vision
+            import base64 as _b64_cv
+            vision_prompt = """You are a professional CV parser.
+This is a scanned or image-based PDF CV document.
+Extract ALL CV content visible in the document and structure it into clean, readable plain text.
+Preserve ALL factual information exactly — do NOT add, invent, or change any facts.
+Extract ONLY CV/resume content — ignore any other documents (bills, utility letters etc).
+Format with clear section headings (EMPLOYMENT ELIGIBILITY, PROFESSIONAL PROFILE, EDUCATION & QUALIFICATIONS, PROFESSIONAL EXPERIENCE, TRAINING & CERTIFICATIONS, KEY SKILLS, ADDITIONAL INFORMATION) where content exists.
+Return ONLY the clean structured CV text — no preamble, no commentary."""
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[{
+                    "parts": [
+                        {"inline_data": {
+                            "mime_type": "application/pdf",
+                            "data": _b64_cv.b64encode(raw).decode()
+                        }},
+                        {"text": vision_prompt}
+                    ]
+                }]
+            )
+            return (response.text or '').strip() or '[no CV text extracted from scanned document]'
 
         response   = client.models.generate_content(
             model='gemini-2.5-flash',

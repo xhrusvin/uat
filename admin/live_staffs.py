@@ -4432,10 +4432,12 @@ def api_generate_cv():
                         if not _rtxt:
                             _rtxt = _raw.decode('utf-8', errors='replace').strip()
 
+                        from google import genai as _gai_cv
+                        _gclient = _gai_cv.Client(api_key=_gemini_key)
+
                         if _rtxt:
-                            from google import genai as _gai_cv
-                            _gclient = _gai_cv.Client(api_key=_gemini_key)
-                            _prompt  = f"""You are a professional CV parser.
+                            # Text-based PDF — use text prompt
+                            _prompt = f"""You are a professional CV parser.
 
 Extract and structure all CV content into clean, readable plain text.
 Preserve ALL factual information exactly — do NOT add, invent, or change any facts.
@@ -4449,17 +4451,39 @@ RAW EXTRACTED TEXT:
                                 model='gemini-2.5-flash',
                                 contents=_prompt
                             )
-                            _extracted = (_gr.text or '').strip()
-                            if _extracted:
-                                extracted_cv = _extracted
-                                _staffs_col().update_one(
-                                    {"_id": doc['_id']},
-                                    {"$set": {
-                                        "extracted_cv":          _extracted,
-                                        "extracted_cv_at":       datetime.utcnow(),
-                                        "extracted_cv_source":   "auto_on_cv_generate",
-                                    }}
-                                )
+                        else:
+                            # Scanned/image-based PDF — send raw bytes to Gemini vision
+                            _vision_prompt = """You are a professional CV parser.
+This document may be a scanned PDF or image-based CV.
+Extract ALL CV content you can see and structure it into clean, readable plain text.
+Preserve ALL factual information exactly — do NOT add, invent, or change any facts.
+Extract ONLY CV/resume content from this document — ignore any other documents (bills, letters etc).
+Format with clear section headings where content exists.
+Return ONLY the clean structured CV text — no preamble, no commentary."""
+                            _gr = _gclient.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=[{
+                                    "parts": [
+                                        {"inline_data": {
+                                            "mime_type": "application/pdf",
+                                            "data": base64.b64encode(_raw).decode()
+                                        }},
+                                        {"text": _vision_prompt}
+                                    ]
+                                }]
+                            )
+
+                        _extracted = (_gr.text or '').strip()
+                        if _extracted:
+                            extracted_cv = _extracted
+                            _staffs_col().update_one(
+                                {"_id": doc['_id']},
+                                {"$set": {
+                                    "extracted_cv":          _extracted,
+                                    "extracted_cv_at":       datetime.utcnow(),
+                                    "extracted_cv_source":   "auto_on_cv_generate",
+                                }}
+                            )
                 except Exception:
                     pass
 
