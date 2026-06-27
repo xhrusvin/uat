@@ -12483,14 +12483,7 @@ CV TEXT:
     _add_run(stbl.cell(1,0).paragraphs[0], full_name, size=9.5)
     sp(6)
 
-    body_text('Compliance Decision:')
-    checkbox_item('Acceptable — pending PCC submission', checked=True)
-    checkbox_item('Further Information Required')
-    checkbox_item('Escalated for Risk Review')
-    checkbox_item('Not Accepted')
-    sp(6)
-
-    # ── For Office Use Only — just above footer text ──────────────────
+    # ── For Office Use Only — before Compliance Decision ─────────────
     p = document.add_paragraph()
     p.paragraph_format.space_before = Pt(4)
     p.paragraph_format.space_after  = Pt(4)
@@ -12529,6 +12522,13 @@ CV TEXT:
             _set_cell_bg(lc, 'EFF6FF')
         _add_run(lc.paragraphs[0], label_, bold=True, size=9.5)
         _add_run(vc.paragraphs[0], val_, size=9.5)
+    sp(6)
+
+    body_text('Compliance Decision:')
+    checkbox_item('Acceptable — pending PCC submission', checked=True)
+    checkbox_item('Further Information Required')
+    checkbox_item('Escalated for Risk Review')
+    checkbox_item('Not Accepted')
     sp(6)
 
     p = document.add_paragraph()
