@@ -5,8 +5,10 @@ from dotenv import load_dotenv
 import os
 import re
 import threading
+import traceback
 from threading import Thread
 import requests
+from requests.exceptions import HTTPError
 import urllib
 from datetime import datetime, time
 import pytz
@@ -137,7 +139,44 @@ def make_certificate_reminder_call(app, phone: str, reminder_doc: dict, reminder
                     "StatusCallback": f"{BASE_URL}/call/completed",
                 },
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except HTTPError as http_err:
+                # ── Capture the full Telnyx error response ────────────────
+                status_code = response.status_code
+                raw_body    = response.text          # always available
+                try:
+                    telnyx_detail = response.json()  # structured if JSON
+                except Exception:
+                    telnyx_detail = None
+
+                error_detail = {
+                    "type":          "http_error",
+                    "status_code":   status_code,
+                    "exception":     str(http_err),
+                    "response_body": raw_body,
+                    "telnyx_detail": telnyx_detail,
+                    "request_to":    e164_phone,
+                    "request_from":  caller_id,
+                }
+                print(
+                    f"[CERT REMINDER] HTTP {status_code} for {e164_phone}: "
+                    f"{raw_body[:500]}"
+                )
+                try:
+                    with app.app_context():
+                        app.db.certificate_reminder_calls.update_one(
+                            {"_id": reminder_object_id},
+                            {"$set": {
+                                "call_status": "failed",
+                                "call_error":  error_detail,
+                                "updated_at":  datetime.utcnow(),
+                            }}
+                        )
+                except Exception:
+                    pass
+                return
+
             data = response.json()
             print(f"[CERT REMINDER] Call initiated: {data.get('call_sid')} → {e164_phone}")
 
@@ -152,15 +191,21 @@ def make_certificate_reminder_call(app, phone: str, reminder_doc: dict, reminder
             )
 
     except Exception as e:
-        print(f"[CERT REMINDER] Call failed for {e164_phone}: {e}")
-        # Mark as failed so it can be retried
+        # ── Non-HTTP failures (connection error, missing env var, etc.) ──
+        tb = traceback.format_exc()
+        print(f"[CERT REMINDER] Call failed for {e164_phone}: {e}\n{tb}")
+        error_detail = {
+            "type":      "exception",
+            "exception": str(e),
+            "traceback": tb,
+        }
         try:
             with app.app_context():
                 app.db.certificate_reminder_calls.update_one(
                     {"_id": reminder_object_id},
                     {"$set": {
                         "call_status": "failed",
-                        "call_error":  str(e),
+                        "call_error":  error_detail,
                         "updated_at":  datetime.utcnow(),
                     }}
                 )
