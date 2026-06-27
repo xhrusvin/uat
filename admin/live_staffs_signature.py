@@ -44,44 +44,90 @@ def _v(val):
     return str(val).strip()
 
 
-def _get_gcs_client():
-    """
-    Return a google.cloud.storage.Client.
-    Supports two auth methods:
-      1. GOOGLE_APPLICATION_CREDENTIALS env var pointing to a SA key file (standard)
-      2. GCS_SA_JSON env var containing the raw JSON of the service account key
-    """
-    from google.cloud import storage
-    from google.oauth2 import service_account
-
-    sa_json_str = os.environ.get('GCS_SA_JSON', '')
-    if sa_json_str:
-        sa_info      = _json.loads(sa_json_str)
-        credentials  = service_account.Credentials.from_service_account_info(sa_info)
-        return storage.Client(credentials=credentials, project=sa_info.get('project_id'))
-
-    # Falls back to GOOGLE_APPLICATION_CREDENTIALS automatically
-    return storage.Client()
-
-
 def _fresh_signed_url(gcs_blob_path: str, expiry_minutes: int = 15) -> str:
     """
-    Generate a fresh signed URL for a GCS blob path.
-    gcs_blob_path — e.g. "signatures/Sandra_Joshy_abc123.png"
+    Generate a fresh V4 signed URL for a GCS blob.
+
+    Works in all three environments:
+      1. Service account JSON key file  — GOOGLE_APPLICATION_CREDENTIALS or GCS_SA_JSON env var
+      2. Compute Engine / Cloud Run     — uses IAM credentials.sign_bytes via
+                                          google.auth.iam.Signer (no private key needed)
+      3. Impersonation fallback         — GCS_SA_EMAIL overrides the signer identity
     """
+    import google.auth
+    import google.auth.transport.requests
+    from google.auth import iam as _iam
+    from google.auth import credentials as _creds
+    from google.oauth2 import service_account as _sa
+    from google.cloud import storage
+
     bucket_name = os.environ.get('GCS_BUCKET_NAME', '')
     if not bucket_name:
         raise ValueError("GCS_BUCKET_NAME env var is not set")
 
-    client    = _get_gcs_client()
-    bucket    = client.bucket(bucket_name)
-    blob      = bucket.blob(gcs_blob_path)
-    signed_url = blob.generate_signed_url(
+    # ── Option 1: explicit SA JSON (highest priority) ─────────────────────
+    sa_json_str = os.environ.get('GCS_SA_JSON', '')
+    if sa_json_str:
+        sa_info     = _json.loads(sa_json_str)
+        credentials = _sa.Credentials.from_service_account_info(
+            sa_info,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+        client = storage.Client(credentials=credentials,
+                                project=sa_info.get('project_id'))
+        blob   = client.bucket(bucket_name).blob(gcs_blob_path)
+        return blob.generate_signed_url(
+            expiration=_dt.timedelta(minutes=expiry_minutes),
+            method='GET',
+            version='v4',
+        )
+
+    # ── Option 2: Compute Engine / Cloud Run — use IAM signBlob ──────────
+    # ADC gives us a token-only credential; we wrap it with an IAM signer
+    # so generate_signed_url can work without a local private key.
+    auth_req    = google.auth.transport.requests.Request()
+    credentials, project = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    credentials.refresh(auth_req)
+
+    # Determine the service account email to sign as
+    sa_email = os.environ.get('GCS_SA_EMAIL', '')
+    if not sa_email:
+        # Compute Engine metadata — fetch the default SA email
+        try:
+            meta = _req.get(
+                "http://metadata.google.internal/computeMetadata/v1"
+                "/instance/service-accounts/default/email",
+                headers={"Metadata-Flavor": "Google"},
+                timeout=5,
+            )
+            sa_email = meta.text.strip()
+        except Exception:
+            pass
+
+    if not sa_email:
+        raise ValueError(
+            "Cannot determine service account email. "
+            "Set GCS_SA_EMAIL env var or run on Compute Engine."
+        )
+
+    # Wrap credentials with IAM signer
+    signer      = _iam.Signer(auth_req, credentials, sa_email)
+    signing_creds = _sa.Credentials(
+        signer=signer,
+        service_account_email=sa_email,
+        token_uri="https://oauth2.googleapis.com/token",
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+    )
+
+    client = storage.Client(credentials=signing_creds, project=project)
+    blob   = client.bucket(bucket_name).blob(gcs_blob_path)
+    return blob.generate_signed_url(
         expiration=_dt.timedelta(minutes=expiry_minutes),
         method='GET',
         version='v4',
     )
-    return signed_url
 
 
 def _download_signature(staff: dict) -> tuple:
