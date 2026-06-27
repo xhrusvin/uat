@@ -22279,10 +22279,49 @@ def live_staff_api_get_staff_details():
     data = _serialise(dict(staff))
     data['_id'] = str(staff['_id'])
 
+    # ── Fetch document list from XN Portal ───────────────────────────
+    documents     = []
+    doc_url_map   = {}
+    xn_base_url   = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    xn_api_key    = os.environ.get('XN_PORTAL_API_KEY', '')
+    xn_country    = os.environ.get('XN_APP_COUNTRY', '')
+
+    if xn_base_url and xn_api_key:
+        try:
+            import requests as _req2
+            endpoint    = f"{xn_base_url}/ai/recruitments/user-document-list"
+            api_headers = {
+                "Api-Key":       xn_api_key,
+                "X-App-Country": xn_country,
+                "Content-Type":  "application/json",
+                "Accept":        "application/json",
+            }
+            resp = _req2.post(endpoint, json={"email": email},
+                              headers=api_headers, timeout=30)
+            if resp.status_code == 405:
+                resp = _req2.get(endpoint, params={"email": email},
+                                 headers=api_headers, timeout=30)
+            if resp.status_code == 200:
+                xn_data   = resp.json()
+                api_data  = xn_data.get('data')
+                documents = api_data if isinstance(api_data, list) else                             (api_data.get('documents') or []
+                             if isinstance(api_data, dict) else [])
+                # Build a map: document_type_name -> url
+                for d in documents:
+                    dtype = _v(d.get('document_type_name') or '')
+                    url   = _v(d.get('url') or '')
+                    if dtype and url:
+                        doc_url_map[dtype] = url
+        except Exception as _e:
+            documents   = []
+            doc_url_map = {}
+
     return jsonify({
-        "success": True,
-        "email":   email,
-        "data":    data,
+        "success":       True,
+        "email":         email,
+        "data":          data,
+        "documents":     documents,
+        "document_urls": doc_url_map,
     })
 
 
