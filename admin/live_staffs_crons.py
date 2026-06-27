@@ -16,15 +16,43 @@ from database import db
 from . import admin_bp
 from admin.views import admin_required
 
-# ── Shared helpers (imported from live_staffs.py) ─────────────────────
-# This file imports helpers defined in live_staffs.py via the same blueprint.
-# Both files register routes on admin_bp — Flask merges them automatically.
-# To use helpers: from admin.live_staffs import _v, _staffs_col, _gcs_upload, _gcs_download, _gcs_signed_url
+# ── Helpers — lazy wrappers to avoid circular imports ────────────────
 
-from admin.live_staffs import (
-    _v, _staffs_col, _gcs_upload, _gcs_download, _gcs_signed_url,
-    _PCC_REVIEWERS, _PCC_COMPLIANCE_OFFICER, _build_pcc_docx, _ai_pcc_col,
-)
+def _v(val):
+    if val is None: return ''
+    return str(val).strip()
+
+def _staffs_col():
+    from flask import current_app
+    return current_app.db.live_staffs
+
+def _gcs_upload(blob_name, data_bytes, content_type='application/octet-stream'):
+    from admin.live_staffs import _gcs_upload as _f
+    return _f(blob_name, data_bytes, content_type)
+
+def _gcs_download(blob_name):
+    from admin.live_staffs import _gcs_download as _f
+    return _f(blob_name)
+
+def _gcs_signed_url(blob_name, expiry_minutes=60):
+    from admin.live_staffs import _gcs_signed_url as _f
+    return _f(blob_name, expiry_minutes)
+
+def _ai_pcc_col():
+    from flask import current_app
+    return current_app.db.live_staff_ai_pcc
+
+def _build_pcc_docx(doc, reviewer_index=0):
+    from admin.live_staffs import _build_pcc_docx as _f
+    return _f(doc, reviewer_index)
+
+def _get_pcc_reviewers():
+    from admin.live_staffs import _PCC_REVIEWERS
+    return _PCC_REVIEWERS
+
+def _get_compliance_officer():
+    from admin.live_staffs import _PCC_COMPLIANCE_OFFICER
+    return _PCC_COMPLIANCE_OFFICER
 
 
 @admin_bp.route('/live-staffs/cron/sync-documents', methods=['GET', 'POST'])
@@ -7424,7 +7452,7 @@ def _build_pcc_docx(doc, reviewer_index=0):
             sig_bytes = None
 
     # Reviewer rotation
-    reviewer = _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)]
+    reviewer = _get_pcc_reviewers()[reviewer_index % len(_get_pcc_reviewers())]
 
     # Parse first_shift date
     first_shift_formatted = ''
@@ -7825,7 +7853,7 @@ CV TEXT:
     office_rows = [
         ('Reviewed By:', reviewer),
         ('Date Reviewed:', date_reviewed),
-        ('Approved By (Compliance Officer):', _PCC_COMPLIANCE_OFFICER),
+        ('Approved By (Compliance Officer):', _get_compliance_officer()),
         ('Approval On:', approval_on),
     ]
     for ri, (label_, val_) in enumerate(office_rows):
@@ -7876,7 +7904,7 @@ def live_staff_ai_pcc_generate():
 
         # Rotate reviewer based on total docs count
         total = _ai_pcc_col().count_documents({})
-        reviewer_index = total % len(_PCC_REVIEWERS)
+        reviewer_index = total % len(_get_pcc_reviewers())
 
         docx_bytes = _build_pcc_docx(doc, reviewer_index=reviewer_index)
         safe_name  = full_name.replace(' ', '_').replace('/', '_')
@@ -7893,7 +7921,7 @@ def live_staff_ai_pcc_generate():
             "employee_code": emp_code,
             "filename":      filename,
             "gcs_blob":      gcs_blob,
-            "reviewer":      _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)],
+            "reviewer":      _get_pcc_reviewers()[reviewer_index % len(_get_pcc_reviewers())],
             "generated_at":  datetime.utcnow(),
         }
         if existing:
@@ -7910,7 +7938,7 @@ def live_staff_ai_pcc_generate():
             "filename":     filename,
             "gcs_blob":     gcs_blob,
             "download_url": download_url,
-            "reviewer":     _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)],
+            "reviewer":     _get_pcc_reviewers()[reviewer_index % len(_get_pcc_reviewers())],
             "generated_at": datetime.utcnow().isoformat(),
         })
     except Exception as e:
@@ -10011,7 +10039,7 @@ def live_staff_cron_generate_pcc():
     try:
         # Rotate reviewer based on total generated so far
         total_generated    = pcc_col.count_documents({})
-        reviewer_index     = total_generated % len(_PCC_REVIEWERS)
+        reviewer_index     = total_generated % len(_get_pcc_reviewers())
 
         docx_bytes = _build_pcc_docx(staff, reviewer_index=reviewer_index)
 
@@ -10028,7 +10056,7 @@ def live_staff_cron_generate_pcc():
             "employee_code": emp_code,
             "filename":      filename,
             "gcs_blob":      gcs_blob,
-            "reviewer":      _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)],
+            "reviewer":      _get_pcc_reviewers()[reviewer_index % len(_get_pcc_reviewers())],
             "generated_at":  datetime.utcnow(),
         }
         if existing:
@@ -10052,7 +10080,7 @@ def live_staff_cron_generate_pcc():
             "filename":        filename,
             "gcs_blob":        gcs_blob,
             "download_url":    download_url,
-            "reviewer":        _PCC_REVIEWERS[reviewer_index % len(_PCC_REVIEWERS)],
+            "reviewer":        _get_pcc_reviewers()[reviewer_index % len(_get_pcc_reviewers())],
             "remaining_count": max(0, remaining_total - 1),
             "message": (
                 f"PCC generated for {full_name} — "
