@@ -1853,6 +1853,10 @@ CANDIDATE'S ORIGINAL CV:
 Output the structured CV text only. No markdown, no asterisks, no preamble.
 """
 
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        if not gemini_key:
+            return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
         from google import genai as google_genai
         client   = google_genai.Client(api_key=gemini_key)
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
