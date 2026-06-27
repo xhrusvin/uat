@@ -4,9 +4,11 @@ from datetime import datetime
 import json
 import json as _cjson
 import json as _cjson2
+import base64
 import csv
 import io
 import re
+import re as _re
 import os
 import threading
 
@@ -773,7 +775,6 @@ Return ONLY a JSON object — nothing else, no markdown:
         raw = (response.text or '').strip()
 
         # Strip markdown code fences if Gemini wraps it
-        import re as _re
         raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
         raw = _re.sub(r'```\s*$', '', raw, flags=_re.MULTILINE).strip()
 
@@ -932,7 +933,6 @@ def api_experience():
 
     try:
         from google import genai as google_genai
-        import re as _re, json as _json
 
         # Determine role filter based on user_type
         ut_lower = (user_type or '').lower()
@@ -6600,7 +6600,6 @@ def live_staff_cron_analyse_experience():
 
     def _run_gemini(staff_id_str, user_type_, has_cv_, extracted_cv_,
                     total_exp_db_, gemini_key_):
-        import re as _re, json as _json
         from google import genai as google_genai
 
         _col = _staffs_col()
@@ -7288,7 +7287,6 @@ def live_staff_cron_sync_passport():
         is_pdf   = 'pdf' in content_type or passport_url.lower().endswith('.pdf')
 
         if is_image:
-            import base64
             ext = 'jpeg' if 'jpeg' in content_type or 'jpg' in content_type else                   'png'  if 'png'  in content_type else                   'webp' if 'webp' in content_type else 'jpeg'
             b64_data = base64.b64encode(raw_bytes).decode('utf-8')
             parts = [
@@ -7324,7 +7322,6 @@ If a field is not visible or readable, set it to null.
                 contents=[{"parts": parts}]
             )
         elif is_pdf:
-            import base64
             b64_data = base64.b64encode(raw_bytes).decode('utf-8')
             parts = [
                 {
