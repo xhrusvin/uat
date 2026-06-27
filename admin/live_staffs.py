@@ -1108,9 +1108,165 @@ def _ai_cvs_col():
 def _ai_interviews_col():
     return db.live_staff_ai_interviews
 
-
 def _ai_appforms_col():
     return db.live_staff_ai_appforms
+
+def _ai_pcc_col():
+    return db.live_staff_ai_pcc
+
+
+# ── AI CV DOCX builder ────────────────────────────────────────────────
+
+def _build_ai_cv_docx(doc, cv_text):
+    """
+    Build a professional DOCX from AI-generated CV text.
+    Parses section headings and formats with python-docx.
+    """
+    import io as _io
+    from docx import Document as _Doc
+    from docx.shared import Pt, RGBColor, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    NAVY  = RGBColor(0x1B, 0x3A, 0x6B)
+    GREEN = RGBColor(0x2E, 0x9E, 0x44)
+    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+    GRAY  = RGBColor(0x64, 0x74, 0x8B)
+
+    SECTION_HEADINGS = {
+        'EMPLOYMENT ELIGIBILITY', 'PROFESSIONAL PROFILE',
+        'EDUCATION & QUALIFICATIONS', 'PROFESSIONAL EXPERIENCE',
+        'TRAINING & CERTIFICATIONS', 'KEY SKILLS', 'ADDITIONAL INFORMATION',
+    }
+
+    document = _Doc()
+    for section in document.sections:
+        section.top_margin    = Cm(1.8)
+        section.bottom_margin = Cm(1.8)
+        section.left_margin   = Cm(2.2)
+        section.right_margin  = Cm(2.2)
+
+    document.styles['Normal'].font.name = 'Arial'
+    document.styles['Normal'].font.size = Pt(10)
+
+    s1        = (doc.get('section_1_personal_details') or {})
+    full_name = _v(s1.get('full_name') or '')
+    user_type = _v(doc.get('user_type') or '')
+
+    # ── Header ────────────────────────────────────────────────────────
+    p = document.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run(full_name.upper() if full_name else 'CURRICULUM VITAE')
+    run.bold = True; run.font.size = Pt(18); run.font.color.rgb = NAVY; run.font.name = 'Arial'
+    if user_type:
+        p2 = document.add_paragraph()
+        p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r2 = p2.add_run(user_type)
+        r2.font.size = Pt(11); r2.font.color.rgb = GREEN; r2.font.name = 'Arial'
+
+    def _add_section_heading(text):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(10)
+        p.paragraph_format.space_after  = Pt(4)
+        pPr = p._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bot = OxmlElement('w:bottom')
+        bot.set(qn('w:val'), 'single'); bot.set(qn('w:sz'), '6'); bot.set(qn('w:color'), '1B3A6B')
+        pBdr.append(bot); pPr.append(pBdr)
+        run = p.add_run('  ' + text + '  ')
+        run.bold = True; run.font.size = Pt(11); run.font.name = 'Arial'; run.font.color.rgb = WHITE
+        rPr = run._r.get_or_add_rPr()
+        shd = OxmlElement('w:shd')
+        shd.set(qn('w:val'), 'clear'); shd.set(qn('w:color'), 'auto'); shd.set(qn('w:fill'), '1B3A6B')
+        rPr.append(shd)
+
+    def _add_body_line(text):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after  = Pt(1)
+        run = p.add_run(text)
+        run.font.size = Pt(10); run.font.name = 'Arial'
+
+    # ── Parse and render sections ─────────────────────────────────────
+    for line in cv_text.split('\n'):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.upper() in SECTION_HEADINGS:
+            _add_section_heading(stripped.upper())
+        else:
+            _add_body_line(stripped)
+
+    buf = _io.BytesIO()
+    document.save(buf)
+    return buf.getvalue()
+
+
+# ── AI Interview DOCX builder ─────────────────────────────────────────
+
+def _build_ai_interview_docx(doc, interview_text):
+    """Build interview notes DOCX from AI-generated text."""
+    import io as _io
+    from docx import Document as _Doc
+    from docx.shared import Pt, RGBColor, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    NAVY  = RGBColor(0x1B, 0x3A, 0x6B)
+    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+
+    document = _Doc()
+    for section in document.sections:
+        section.top_margin = Cm(1.8); section.bottom_margin = Cm(1.8)
+        section.left_margin = Cm(2.2); section.right_margin = Cm(2.2)
+    document.styles['Normal'].font.name = 'Arial'
+    document.styles['Normal'].font.size = Pt(10)
+
+    s1        = doc.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+
+    p = document.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run('INTERVIEW NOTES — ' + full_name.upper())
+    run.bold = True; run.font.size = Pt(16); run.font.color.rgb = NAVY; run.font.name = 'Arial'
+
+    HEADINGS = {
+        'CANDIDATE OVERVIEW', 'EMPLOYMENT HISTORY SUMMARY', 'CLINICAL EXPERIENCE',
+        'KEY COMPETENCIES', 'PROFESSIONAL STRENGTHS', 'AREAS FOR DEVELOPMENT',
+        'INTERVIEW RECOMMENDATION', 'COMPLIANCE & ELIGIBILITY', 'ADDITIONAL NOTES',
+    }
+
+    for line in interview_text.split('\n'):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after  = Pt(1)
+        if stripped.upper() in HEADINGS or (stripped.isupper() and len(stripped) > 5):
+            run = p.add_run('  ' + stripped + '  ')
+            run.bold = True; run.font.size = Pt(11); run.font.color.rgb = WHITE; run.font.name = 'Arial'
+            rPr = run._r.get_or_add_rPr()
+            shd = OxmlElement('w:shd')
+            shd.set(qn('w:val'), 'clear'); shd.set(qn('w:color'), 'auto'); shd.set(qn('w:fill'), '1B3A6B')
+            rPr.append(shd)
+        else:
+            run = p.add_run(stripped)
+            run.font.size = Pt(10); run.font.name = 'Arial'
+
+    buf = _io.BytesIO()
+    document.save(buf)
+    return buf.getvalue()
+
+
+# ── AI Appform DOCX builder ───────────────────────────────────────────
+
+def _build_ai_appform_docx(doc, appform_text):
+    """Build application form DOCX from AI-generated text."""
+    # Reuse same pattern as interview docx
+    return _build_ai_interview_docx(doc, appform_text)
 
 
 @admin_bp.route('/live-staffs/ai-appform/reset-all', methods=['POST'])
