@@ -7098,18 +7098,6 @@ def live_staff_cron_sync_passport():
             {"passport_fetched": {"$exists": False}},
             {"passport_fetched": False},
             {"passport_fetched": None},
-            # Re-run if fetched but no passport_id extracted
-            {"$and": [
-                {"passport_fetched": True},
-                {"$or": [
-                    {"passport_id": {"$exists": False}},
-                    {"passport_id": None},
-                    {"passport_id": ""},
-                ]},
-                # Don't retry 404s or known-unreadable docs
-                {"passport_doc_404":  {"$ne": True}},
-                {"passport_id_retry": {"$ne": True}},  # already retried once
-            ]},
         ]
     }
 
