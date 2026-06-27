@@ -570,8 +570,8 @@ def live_staff_cron_generate_cv():
                     f"{_vv(q.get('year_completed'))}"
                 )
         # Also include NMBI/QQI numbers as qualification context
-        nmbi_num = _vv(doc.get('nmbi_number') or s3.get('registration_number_pin') or '')
-        qqi_num  = _vv(doc.get('qqi_number') or '')
+        nmbi_num = _vv(full_doc.get('nmbi_number') or s3.get('registration_number_pin') or '')
+        qqi_num  = _vv(full_doc.get('qqi_number') or '')
         if nmbi_num and not any('nmbi' in l.lower() or 'registration' in l.lower() for l in qual_lines):
             qual_lines.append(f"  - NMBI Registration PIN: {nmbi_num}")
         if qqi_num and not any('qqi' in l.lower() for l in qual_lines):
