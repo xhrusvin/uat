@@ -555,132 +555,130 @@ def live_staff_cron_generate_cv():
     if not full_doc:
         return jsonify({"success": False, "error": "Staff record disappeared"}), 500
 
-    # ── Call Gemini ───────────────────────────────────────────────────
-    try:
-        s1_f = full_doc.get('section_1_personal_details') or {}
-        s3   = full_doc.get('section_3_professional_registration') or {}
-        s4   = full_doc.get('section_4_qualifications') or {}
-        s5   = full_doc.get('section_5_employment_history') or {}
-        s8   = full_doc.get('section_8_garda_vetting_police_clearance') or {}
-        s9   = full_doc.get('section_9_occupational_health') or {}
-        s10  = full_doc.get('section_10_mandatory_training') or {}
-        visa = s1_f.get('work_permit_visa_status') or {}
+    # ── Build prompt ─────────────────────────────────────────────────
+    s3   = full_doc.get('section_3_professional_registration') or {}
+    s4   = full_doc.get('section_4_qualifications') or {}
+    s5   = full_doc.get('section_5_employment_history') or {}
+    s8   = full_doc.get('section_8_garda_vetting_police_clearance') or {}
+    s9   = full_doc.get('section_9_occupational_health') or {}
+    s10  = full_doc.get('section_10_mandatory_training') or {}
+    visa = s1_f.get('work_permit_visa_status') or {}
 
-        def _vv(val):
-            if val is None: return ''
-            return str(val).strip()
+    def _vv(val):
+        if val is None: return ''
+        return str(val).strip()
 
-        user_type   = _vv(full_doc.get('user_type'))
-        emp_code    = _vv(full_doc.get('employee_code'))
-        address     = _vv(s1_f.get('address'))
-        mobile      = _vv(s1_f.get('mobile_number'))
-        nationality = _vv(s1_f.get('nationality'))
-        total_exp   = _vv(s5.get('total_experience'))
-        divisions   = ', '.join(s3.get('divisions_registered_in') or [])
-        reg_pin     = _vv(s3.get('registration_number_pin'))
-        reg_exp     = _vv(s3.get('registration_expiry_date'))
-        nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
-        visa_type   = _vv(visa.get('visa_type'))
-        perm_work   = _vv(visa.get('permission_to_work'))
-        garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
-        fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
-        dob         = _vv(s1_f.get('date_of_birth'))
+    user_type   = _vv(full_doc.get('user_type'))
+    emp_code    = _vv(full_doc.get('employee_code'))
+    address     = _vv(s1_f.get('address'))
+    mobile      = _vv(s1_f.get('mobile_number'))
+    nationality = _vv(s1_f.get('nationality'))
+    total_exp   = _vv(s5.get('total_experience'))
+    divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+    reg_pin     = _vv(s3.get('registration_number_pin'))
+    reg_exp     = _vv(s3.get('registration_expiry_date'))
+    nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+    visa_type   = _vv(visa.get('visa_type'))
+    perm_work   = _vv(visa.get('permission_to_work'))
+    garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
+    fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
+    dob         = _vv(s1_f.get('date_of_birth'))
 
-        qual_lines = []
-        for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
-            q = s4.get(qk) or {}
-            if q.get('qualification') or q.get('institution'):
-                qual_lines.append(
-                    f"  - {_vv(q.get('qualification'))} | "
-                    f"{_vv(q.get('institution'))} | "
-                    f"{_vv(q.get('year_completed'))}"
-                )
-        # Also include NMBI/QQI numbers as qualification context
-        nmbi_num = _vv(full_doc.get('nmbi_number') or s3.get('registration_number_pin') or '')
-        qqi_num  = _vv(full_doc.get('qqi_number') or '')
-        if nmbi_num and not any('nmbi' in l.lower() or 'registration' in l.lower() for l in qual_lines):
-            qual_lines.append(f"  - NMBI Registration PIN: {nmbi_num}")
-        if qqi_num and not any('qqi' in l.lower() for l in qual_lines):
-            qual_lines.append(f"  - QQI Level 5 Certificate No: {qqi_num}")
-
-        entries = [e for e in (s5.get('entries') or [])
-                   if e.get('employer') or e.get('position')]
-        exp_lines = []
-        for e in entries:
-            exp_lines.append(
-                f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} "
-                f"({_vv(e.get('from'))} - {_vv(e.get('to') or 'Present')})"
+    qual_lines = []
+    for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
+        q = s4.get(qk) or {}
+        if q.get('qualification') or q.get('institution'):
+            qual_lines.append(
+                f"  - {_vv(q.get('qualification'))} | "
+                f"{_vv(q.get('institution'))} | "
+                f"{_vv(q.get('year_completed'))}"
             )
+    # Also include NMBI/QQI numbers as qualification context
+    nmbi_num = _vv(full_doc.get('nmbi_number') or s3.get('registration_number_pin') or '')
+    qqi_num  = _vv(full_doc.get('qqi_number') or '')
+    if nmbi_num and not any('nmbi' in l.lower() or 'registration' in l.lower() for l in qual_lines):
+        qual_lines.append(f"  - NMBI Registration PIN: {nmbi_num}")
+    if qqi_num and not any('qqi' in l.lower() for l in qual_lines):
+        qual_lines.append(f"  - QQI Level 5 Certificate No: {qqi_num}")
 
-        TLABELS = {
-            'manual_handling': 'Manual Handling', 'cpr_bls': 'CPR / BLS',
-            'fire_safety': 'Fire Safety',
-            'infection_prevention_control': 'Infection Prevention & Control',
-            'hand_hygiene': 'Hand Hygiene', 'safeguarding': 'Safeguarding',
-            'children_first': 'Children First', 'cyber_security': 'Cyber Security',
-            'dignity_at_work': 'Dignity at Work', 'open_disclosure': 'Open Disclosure',
-            'mapa_pmav': 'MAPA / PMAV',
-        }
-        certs = [label for k, label in TLABELS.items() if s10.get(k)][:6]
-
-        extracted_cv = _v(full_doc.get('extracted_cv') or '')
-        has_extracted = (
-            extracted_cv and
-            not extracted_cv.startswith('[') and
-            extracted_cv not in ('No doc found', '[no CV document found]', '')
+    entries = [e for e in (s5.get('entries') or [])
+               if e.get('employer') or e.get('position')]
+    exp_lines = []
+    for e in entries:
+        exp_lines.append(
+            f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} "
+            f"({_vv(e.get('from'))} - {_vv(e.get('to') or 'Present')})"
         )
 
-        # ── Background CV extraction (non-blocking) ───────────────────
-        # If no extracted_cv, try to fetch it now in a quick attempt (10s timeout)
-        # so we don't block the cron response past the 60s gateway timeout
-        if not has_extracted:
-            _base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
-            _api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
-            _app_country = os.environ.get('XN_APP_COUNTRY', '')
-            _staff_email = _v(full_doc.get('email') or s1_f.get('email_address') or '')
-            if _base_url and _staff_email:
-                try:
-                    import requests as _rq2
-                    _hdrs = {"Api-Key": _api_key, "X-App-Country": _app_country,
-                             "Content-Type": "application/json", "Accept": "application/json"}
-                    _r2 = _rq2.post(f"{_base_url}/ai/recruitments/user-document-list",
-                                    json={"email": _staff_email}, headers=_hdrs, timeout=15)
-                    if _r2.status_code == 405:
-                        _r2 = _rq2.get(f"{_base_url}/ai/recruitments/user-document-list",
-                                       params={"email": _staff_email}, headers=_hdrs, timeout=15)
-                    if _r2.status_code == 200:
-                        _pd    = _r2.json()
-                        _dlist = _pd.get('data') or []
-                        if isinstance(_dlist, dict):
-                            _dlist = _dlist.get('documents') or []
-                        _cv_url = next(
-                            (_d['url'] for _d in _dlist
-                             if (_d.get('document_type_name') or '').strip() == 'Cv'
-                             and _d.get('url')), None
-                        )
-                        if _cv_url:
-                            try:
-                                _et = _extract_text_from_url(
-                                    _cv_url,
-                                    {k: v for k, v in _hdrs.items() if k != 'Content-Type'}
-                                )
-                                if _et and not _et.startswith('['):
-                                    extracted_cv  = _et
-                                    has_extracted = True
-                                    _staffs_col().update_one(
-                                        {"_id": full_doc['_id']},
-                                        {"$set": {
-                                            "extracted_cv":        _et,
-                                            "extracted_cv_at":     datetime.utcnow(),
-                                            "extracted_cv_source": "auto_on_cron_cv_generate",
-                                        }}
-                                    )
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
+    TLABELS = {
+        'manual_handling': 'Manual Handling', 'cpr_bls': 'CPR / BLS',
+        'fire_safety': 'Fire Safety',
+        'infection_prevention_control': 'Infection Prevention & Control',
+        'hand_hygiene': 'Hand Hygiene', 'safeguarding': 'Safeguarding',
+        'children_first': 'Children First', 'cyber_security': 'Cyber Security',
+        'dignity_at_work': 'Dignity at Work', 'open_disclosure': 'Open Disclosure',
+        'mapa_pmav': 'MAPA / PMAV',
+    }
+    certs = [label for k, label in TLABELS.items() if s10.get(k)][:6]
 
-        data_summary = f"""
+    extracted_cv = _v(full_doc.get('extracted_cv') or '')
+    has_extracted = (
+        extracted_cv and
+        not extracted_cv.startswith('[') and
+        extracted_cv not in ('No doc found', '[no CV document found]', '')
+    )
+
+    # ── Background CV extraction (non-blocking) ───────────────────
+    # If no extracted_cv, try to fetch it now in a quick attempt (10s timeout)
+    # so we don't block the cron response past the 60s gateway timeout
+    if not has_extracted:
+        _base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+        _api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+        _app_country = os.environ.get('XN_APP_COUNTRY', '')
+        _staff_email = _v(full_doc.get('email') or s1_f.get('email_address') or '')
+        if _base_url and _staff_email:
+            try:
+                import requests as _rq2
+                _hdrs = {"Api-Key": _api_key, "X-App-Country": _app_country,
+                         "Content-Type": "application/json", "Accept": "application/json"}
+                _r2 = _rq2.post(f"{_base_url}/ai/recruitments/user-document-list",
+                                json={"email": _staff_email}, headers=_hdrs, timeout=15)
+                if _r2.status_code == 405:
+                    _r2 = _rq2.get(f"{_base_url}/ai/recruitments/user-document-list",
+                                   params={"email": _staff_email}, headers=_hdrs, timeout=15)
+                if _r2.status_code == 200:
+                    _pd    = _r2.json()
+                    _dlist = _pd.get('data') or []
+                    if isinstance(_dlist, dict):
+                        _dlist = _dlist.get('documents') or []
+                    _cv_url = next(
+                        (_d['url'] for _d in _dlist
+                         if (_d.get('document_type_name') or '').strip() == 'Cv'
+                         and _d.get('url')), None
+                    )
+                    if _cv_url:
+                        try:
+                            _et = _extract_text_from_url(
+                                _cv_url,
+                                {k: v for k, v in _hdrs.items() if k != 'Content-Type'}
+                            )
+                            if _et and not _et.startswith('['):
+                                extracted_cv  = _et
+                                has_extracted = True
+                                _staffs_col().update_one(
+                                    {"_id": full_doc['_id']},
+                                    {"$set": {
+                                        "extracted_cv":        _et,
+                                        "extracted_cv_at":     datetime.utcnow(),
+                                        "extracted_cv_source": "auto_on_cron_cv_generate",
+                                    }}
+                                )
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+    data_summary = f"""
 Name: {full_name}
 Role / User Type: {user_type}
 Employee Code: {emp_code}
@@ -705,13 +703,13 @@ Training & Certifications:
 {chr(10).join('  - ' + c for c in certs) if certs else '  None recorded'}
 """.strip()
 
-        extracted_cv_section = f"""
+    extracted_cv_section = f"""
 
 EXTRACTED CV TEXT (use as PRIMARY source for PROFESSIONAL EXPERIENCE, TRAINING & CERTIFICATIONS and KEY SKILLS):
 {extracted_cv[:8000]}
 """ if has_extracted else ""
 
-        prompt = f"""You are an expert professional CV writer specialising in Irish healthcare staffing.
+    prompt = f"""You are an expert professional CV writer specialising in Irish healthcare staffing.
 
 STRICT RULE — NO HALLUCINATION:
 Use ONLY the exact facts in CANDIDATE DATA. Do not invent anything.
@@ -761,84 +759,66 @@ CANDIDATE DATA:
 Output CV text only. No preamble, no markdown symbols.
 """
 
-        from google import genai as google_genai
-        client   = google_genai.Client(api_key=gemini_key)
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
-        cv_text = response.text.strip()
+    # ── Run generation in background thread to avoid 504 ─────────────
+    def _do_generate():
+        try:
+            from google import genai as google_genai
+            _client  = google_genai.Client(api_key=gemini_key)
+            _resp    = _client.models.generate_content(
+                model='gemini-2.5-flash', contents=prompt
+            )
+            _cv_text = _resp.text.strip()
 
-    except Exception as e:
-        # Mark as attempted so cron moves on
-        ai_cvs_col.insert_one({
-            "staff_id":     staff_id,
-            "staff_name":   full_name,
-            "cv_text":      f"[Gemini error: {e}]",
-            "gcs_blob":     '',
-            "generated_at": datetime.utcnow(),
-        })
-        return jsonify({
-            "success":         False,
-            "email":           email,
-            "error":           f"Gemini error: {e}",
-            "remaining_count": max(0, remaining_total - 1),
-        })
+            # Build DOCX + upload GCS
+            _docx    = _build_ai_cv_docx(full_doc, _cv_text)
+            _sname   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+            _fname   = f"{_sname}.docx"
+            _blob    = f"cv/{_fname}"
+            _gcs_upload(_blob, _docx,
+                        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
 
-    # ── Build DOCX and upload to GCS ─────────────────────────────────
-    try:
-        docx_bytes  = _build_ai_cv_docx(full_doc, cv_text)
-        safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
-        cv_filename = f"{safe_name}.docx"
-        gcs_blob    = f"cv/{cv_filename}"
-        _gcs_upload(
-            gcs_blob, docx_bytes,
-            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        )
-    except Exception as e:
-        ai_cvs_col.insert_one({
-            "staff_id":     staff_id,
-            "staff_name":   full_name,
-            "cv_text":      cv_text,
-            "gcs_blob":     '',
-            "generated_at": datetime.utcnow(),
-        })
-        return jsonify({
-            "success":         False,
-            "email":           email,
-            "error":           f"DOCX/GCS error: {e}",
-            "remaining_count": max(0, remaining_total - 1),
-        })
+            ai_cvs_col.insert_one({
+                "staff_id":      staff_id,
+                "staff_name":    full_name,
+                "employee_code": emp_code,
+                "cv_text":       _cv_text,
+                "cv_filename":   _fname,
+                "gcs_blob":      _blob,
+                "generated_at":  datetime.utcnow(),
+            })
 
-    # ── Save to MongoDB ───────────────────────────────────────────────
-    ai_cvs_col.insert_one({
-        "staff_id":      staff_id,
-        "staff_name":    full_name,
-        "employee_code": emp_code,
-        "cv_text":       cv_text,
-        "cv_filename":   cv_filename,
-        "gcs_blob":      gcs_blob,
-        "generated_at":  datetime.utcnow(),
-    })
+            # HSE push
+            try:
+                _push_hse_document_background(
+                    staff_id_str=staff_id,
+                    doc_type_key='cv',
+                    gcs_blob=_blob,
+                    filename=_fname,
+                    user_type=full_doc.get('user_type'),
+                )
+            except Exception:
+                pass
 
-    # ── Background HSE document push ─────────────────────────────────
-    _push_hse_document_background(
-        staff_id_str=staff_id,
-        doc_type_key='cv',
-        docx_bytes=docx_bytes,
-        staff_name=full_name,
-        mongo_id=staff_id,
-        email=email,
-    )
+        except Exception as _bg_err:
+            # Mark as attempted so cron moves on next call
+            ai_cvs_col.insert_one({
+                "staff_id":     staff_id,
+                "staff_name":   full_name,
+                "cv_text":      f"[bg error: {_bg_err}]",
+                "gcs_blob":     '',
+                "generated_at": datetime.utcnow(),
+            })
+
+    threading.Thread(target=_do_generate, daemon=True).start()
 
     return jsonify({
         "success":         True,
         "email":           email,
         "staff_name":      full_name,
-        "cv_filename":     cv_filename,
+        "cv_filename":     f"{(full_name or 'staff').replace(' ', '_').replace('/', '_')}.docx",
         "remaining_count": max(0, remaining_total - 1),
         "message": (
-            f"CV generated for {full_name} — "
+            f"CV generation started for {full_name} — "
             f"{max(0, remaining_total - 1)} staff still need a CV."
         ),
         "generated_at": datetime.utcnow().isoformat(),
