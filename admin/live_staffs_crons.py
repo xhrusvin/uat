@@ -565,6 +565,14 @@ def live_staff_cron_generate_cv():
     s10  = full_doc.get('section_10_mandatory_training') or {}
     visa = s1_f.get('work_permit_visa_status') or {}
 
+    # ── extracted_cv — always defined here ───────────────────────────
+    extracted_cv = _v(full_doc.get('extracted_cv') or '')
+    has_extracted = (
+        extracted_cv and
+        not extracted_cv.startswith('[') and
+        extracted_cv not in ('No doc found', '[no CV document found]', '')
+    )
+
     def _vv(val):
         if val is None: return ''
         return str(val).strip()
@@ -692,13 +700,6 @@ def live_staff_cron_generate_cv():
         'mapa_pmav': 'MAPA / PMAV',
     }
     certs = [label for k, label in TLABELS.items() if s10.get(k)][:6]
-
-    extracted_cv = _v(full_doc.get('extracted_cv') or '')
-    has_extracted = (
-        extracted_cv and
-        not extracted_cv.startswith('[') and
-        extracted_cv not in ('No doc found', '[no CV document found]', '')
-    )
 
     # ── Background CV extraction (non-blocking) ───────────────────
     # If no extracted_cv, try to fetch it now in a quick attempt (10s timeout)
