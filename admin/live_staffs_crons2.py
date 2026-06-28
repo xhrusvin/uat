@@ -1835,11 +1835,20 @@ def _build_pcc_docx(doc, reviewer_index=0):
         p = document.add_paragraph()
         p.paragraph_format.space_before = Pt(2)
         p.paragraph_format.space_after  = Pt(2)
-        # Use Segoe UI Symbol for reliable checkbox rendering in Word
-        tick_run = p.add_run('☑' if checked else '☐')
-        tick_run.font.name = 'Segoe UI Symbol'
+        # ☑ U+2611 / ☐ U+2610 — use font chain for cross-platform rendering
+        tick_run = p.add_run('☑ ' if checked else '☐ ')
         tick_run.font.size = Pt(11)
-        _add_run(p, '  ' + text, size=9.5)
+        # Try Segoe UI Symbol (Windows), fallback to Arial Unicode MS, then DejaVu Sans
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+        rPr = tick_run._r.get_or_add_rPr()
+        rFonts = OxmlElement('w:rFonts')
+        rFonts.set(qn('w:ascii'),    'Segoe UI Symbol')
+        rFonts.set(qn('w:hAnsi'),    'Segoe UI Symbol')
+        rFonts.set(qn('w:cs'),       'Segoe UI Symbol')
+        rFonts.set(qn('w:eastAsia'), 'Segoe UI Symbol')
+        rPr.insert(0, rFonts)
+        _add_run(p, text, size=9.5)
         return p
 
     def blank_line(label):
@@ -2090,9 +2099,9 @@ CV TEXT:
     # ── Compliance Decision ── 2nd ────────────────────────────────────
     body_text('Compliance Decision:')
     checkbox_item('Acceptable — pending PCC submission', checked=True)
-    checkbox_item('Further Information Required')
-    checkbox_item('Escalated for Risk Review')
-    checkbox_item('Not Accepted')
+    checkbox_item('Further Information Required', checked=False)
+    checkbox_item('Escalated for Risk Review', checked=False)
+    checkbox_item('Not Accepted', checked=False)
     sp(6)
 
     # ── Office Use Table ── 3rd (last before footer) ──────────────────
