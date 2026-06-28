@@ -2,75 +2,60 @@ from datetime import datetime
 import pandas as pd
 from pymongo import MongoClient
 
-# ==========================
-# CONFIGURATION
-# ==========================
-MONGO_URI = "mongodb://localhost:27017/"  # Change if needed
+MONGO_URI = "mongodb://localhost:27017/"
 DB_NAME = "xpress_health_uat"
-COLLECTION_NAME = "live_staffs"
+COLLECTION = "live_staffs"
 
-EXCEL_FILE = "merged_output.xlsx"
-
-# ==========================
-# CONNECT TO MONGODB
-# ==========================
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
-collection = db[COLLECTION_NAME]
+collection = db[COLLECTION]
 
-# ==========================
-# READ EXCEL
-# ==========================
-df = pd.read_excel(EXCEL_FILE)
+df = pd.read_excel("merged_output.xlsx")
+
+# Remove leading/trailing spaces from column names
+df.columns = df.columns.str.strip()
 
 updated = 0
 not_found = 0
-errors = 0
 
 for _, row in df.iterrows():
-    try:
-        email = str(row["email"]).strip().lower()
+    email = str(row["Email"]).strip().lower()
 
-        interview_url = row.get("interview_form_url")
-        consent_url = row.get("consent_form_url")
+    consent_name = row["Consent Form"]
+    consent_url = row["Consent Form URL"]
 
-        update = {
+    interview_name = row["Interview Form"]
+    interview_url = row["Interview Form URL"]
+
+    result = collection.update_one(
+        {"email": email},
+        {
             "$set": {
-                # Interview Form
-                "if_doc_type": "Interview Form",
-                "if_doc_url": interview_url,
-                "if_document_name": "Interview Form",
-                "if_fetched": pd.notna(interview_url),
-                "if_fetched_at": datetime.utcnow(),
-                "if_note": "uploaded successfully",
-
                 # Consent Form
                 "consent_doc_type": "Consent Form",
+                "consent_document_name": consent_name,
                 "consent_doc_url": consent_url,
-                "consent_document_name": "Consent Form",
-                "consent_fetched": pd.notna(consent_url),
+                "consent_fetched": True,
                 "consent_fetched_at": datetime.utcnow(),
                 "consent_note": "uploaded successfully",
+
+                # Interview Form
+                "intf_doc_type": "Interview Form",
+                "intf_document_name": interview_name,
+                "intf_doc_url": interview_url,
+                "intf_fetched": True,
+                "intf_fetched_at": datetime.utcnow(),
+                "intf_note": "uploaded successfully",
             }
         }
+    )
 
-        result = collection.update_one(
-            {"email": email},
-            update
-        )
+    if result.matched_count:
+        updated += 1
+        print(f"✓ Updated {email}")
+    else:
+        not_found += 1
+        print(f"✗ Not found: {email}")
 
-        if result.matched_count:
-            updated += 1
-            print(f"✓ Updated {email}")
-        else:
-            not_found += 1
-            print(f"✗ User not found: {email}")
-
-    except Exception as e:
-        errors += 1
-        print(f"Error processing {row.get('email')}: {e}")
-
-print("\n========== SUMMARY ==========")
-print(f"Updated    : {updated}")
-print(f"Not Found  : {not_found}")
-print(f"Errors     : {errors}")
+print(f"\nUpdated: {updated}")
+print(f"Not Found: {not_found}")
