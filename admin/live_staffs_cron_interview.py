@@ -5,13 +5,13 @@ Cron route — uploads interview documents to the HSE Document Upload API
 as hse_document_type=others_3.
 
 Processes ONE staff member per call.
-Only staff with interview_fetched=True but interview_uploaded≠True are picked up.
+Only staff with intf_fetched=True but interview_uploaded≠True are picked up.
 
 Imported by admin/__init__.py — routes are registered on admin_bp automatically.
 
 To re-upload ALL interview docs, run in MongoDB first:
     db.live_staffs.updateMany(
-        {interview_fetched: true},
+        {intf_fetched: true},
         {$set: {interview_uploaded: false}}
     )
 """
@@ -55,7 +55,7 @@ def live_staff_cron_upload_interview():
     """
     Cron job — uploads interview doc to HSE API for ONE staff member per call.
 
-    Finds staff where interview_fetched=True but interview_uploaded is not True.
+    Finds staff where intf_fetched=True but interview_uploaded is not True.
     Downloads DOCX from GCS via interview_gcs_blob, converts to PDF inline,
     and POSTs to the HSE Document Upload API as hse_document_type=others_3.
 
@@ -72,7 +72,7 @@ def live_staff_cron_upload_interview():
     col = _staffs_col()
 
     pending_query = {
-        "interview_fetched": True,
+        "intf_fetched": True,
         "$or": [
             {"interview_uploaded": {"$exists": False}},
             {"interview_uploaded": False},
