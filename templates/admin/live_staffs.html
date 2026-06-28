@@ -411,6 +411,14 @@
                                     <i class="bi bi-patch-check"></i>
                                 </button>
                                 {% endif %}
+                                {% if s.user_type and ('nurse' in (s.user_type or '') | lower or 'rgn' in (s.user_type or '') | lower or 'rnm' in (s.user_type or '') | lower or 'midwife' in (s.user_type or '') | lower) %}
+                                <button class="btn btn-primary btn-sm rounded-pill px-3 me-1 btn-vos-nurse"
+                                        data-id="{{ s._id }}"
+                                        data-name="{{ p.full_name | default('Staff') | e }}"
+                                        title="Generate Verification of Service (Nurse)">
+                                    <i class="bi bi-patch-check-fill"></i>
+                                </button>
+                                {% endif %}
                             </td>
                         </tr>
                         {% else %}
@@ -1137,6 +1145,64 @@
                     <div class="alert alert-danger py-2 small" id="vosErrorMsg"></div>
                 </div>
 
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── VOS Nurse Modal ─────────────────────────────────────────── -->
+<div class="modal fade" id="vosNurseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title">
+                    <i class="bi bi-patch-check-fill me-2 text-primary"></i>Verification of Service (Nurse) — <span id="vosNurseModalName"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div id="vosNurseIdle">
+                    <p class="text-muted small mb-3">
+                        Generate a <strong>Verification of Service – Agency Staff</strong> document for nurse staff with Ireland employment history.
+                    </p>
+                    <button class="btn btn-primary w-100" id="vosNurseGenerateBtn">
+                        <i class="bi bi-patch-check-fill me-1"></i> Generate Verification of Service
+                    </button>
+                </div>
+                <div id="vosNurseGenerating" class="d-none text-center py-3">
+                    <div class="spinner-border text-primary mb-3" role="status"></div>
+                    <p class="text-muted">Generating document...</p>
+                </div>
+                <div id="vosNurseResult" class="d-none">
+                    <div class="alert alert-success py-2 mb-3">
+                        <i class="bi bi-check-circle me-1"></i> Document generated successfully!
+                    </div>
+                    <div class="text-muted small mb-2" id="vosNurseTotal"></div>
+                    <a href="#" id="vosNurseDownloadBtn" target="_blank"
+                       class="btn btn-outline-primary w-100 mb-3">
+                        <i class="bi bi-download me-1"></i> Download Verification of Service
+                    </a>
+                    <div class="border-top pt-3 mt-1">
+                        <p class="text-muted small mb-2">
+                            <i class="bi bi-upload me-1"></i>
+                            Upload an edited <code>.docx</code> to replace the saved version.
+                        </p>
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <input type="file" id="vosNurseUploadInput" accept=".docx"
+                                   class="form-control form-control-sm" style="max-width:260px;">
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="vosNurseUploadBtn">
+                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
+                            </button>
+                        </div>
+                        <div id="vosNurseUploadMsg" class="mt-2 small d-none"></div>
+                    </div>
+                </div>
+                <div id="vosNurseError" class="d-none">
+                    <div class="alert alert-danger py-2 small" id="vosNurseErrorMsg"></div>
+                </div>
             </div>
             <div class="modal-footer border-0 pt-0">
                 <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
@@ -2239,6 +2305,100 @@ document.getElementById('vosUploadBtn').addEventListener('click', async () => {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
     }
+});
+
+// ── VOS Nurse ─────────────────────────────────────────────────────────
+const VOS_NURSE_GEN_URL    = '/admin/live-staffs/vos-nurse/generate/__ID__';
+const VOS_NURSE_DL_URL     = '/admin/live-staffs/vos-nurse/download/__ID__';
+const VOS_NURSE_SAVED_URL  = '/admin/live-staffs/api/vos-nurse-saved/__ID__';
+const VOS_NURSE_UPLOAD_URL = '/admin/live-staffs/vos-nurse/upload/__ID__';
+
+let currentVosNurseStaffId = null;
+
+document.querySelectorAll('.btn-vos-nurse').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentVosNurseStaffId = btn.dataset.id;
+        const name = btn.dataset.name || 'Staff';
+        document.getElementById('vosNurseModalName').textContent = name;
+        document.getElementById('vosNurseIdle').classList.remove('d-none');
+        document.getElementById('vosNurseGenerating').classList.add('d-none');
+        document.getElementById('vosNurseResult').classList.add('d-none');
+        document.getElementById('vosNurseError').classList.add('d-none');
+        document.getElementById('vosNurseGenerateBtn').disabled = false;
+        document.getElementById('vosNurseGenerateBtn').innerHTML = '<i class="bi bi-patch-check-fill me-1"></i> Generate Verification of Service';
+
+        try {
+            const r = await fetch(VOS_NURSE_SAVED_URL.replace('__ID__', currentVosNurseStaffId));
+            const d = await r.json();
+            if (d.success && d.found) {
+                document.getElementById('vosNurseIdle').classList.add('d-none');
+                document.getElementById('vosNurseResult').classList.remove('d-none');
+                document.getElementById('vosNurseDownloadBtn').href = VOS_NURSE_DL_URL.replace('__ID__', currentVosNurseStaffId);
+                if (d.total) document.getElementById('vosNurseTotal').textContent = 'Total Eligible Service: ' + d.total;
+                document.getElementById('vosNurseTotal').insertAdjacentHTML('afterend',
+                    `<div class="text-muted small mt-1">Generated on ${d.generated_at || ''} — <a href="#" class="text-muted" id="vosNurseRegenLink">Regenerate</a></div>`);
+                document.getElementById('vosNurseRegenLink')?.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    document.getElementById('vosNurseResult').classList.add('d-none');
+                    document.getElementById('vosNurseIdle').classList.remove('d-none');
+                });
+            }
+        } catch(e) {}
+
+        new bootstrap.Modal(document.getElementById('vosNurseModal')).show();
+    });
+});
+
+document.getElementById('vosNurseGenerateBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('vosNurseGenerateBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Generating...';
+    document.getElementById('vosNurseIdle').classList.add('d-none');
+    document.getElementById('vosNurseGenerating').classList.remove('d-none');
+    document.getElementById('vosNurseResult').classList.add('d-none');
+    document.getElementById('vosNurseError').classList.add('d-none');
+    try {
+        const r = await fetch(VOS_NURSE_GEN_URL.replace('__ID__', currentVosNurseStaffId), {method:'POST', headers:{'Content-Type':'application/json'}});
+        const text = await r.text();
+        let d; try { d = JSON.parse(text); } catch(_) {
+            document.getElementById('vosNurseGenerating').classList.add('d-none');
+            document.getElementById('vosNurseError').classList.remove('d-none');
+            document.getElementById('vosNurseErrorMsg').textContent = `Error ${r.status}: ${text.slice(0,150)}`;
+            return;
+        }
+        document.getElementById('vosNurseGenerating').classList.add('d-none');
+        if (d.success) {
+            document.getElementById('vosNurseResult').classList.remove('d-none');
+            document.getElementById('vosNurseDownloadBtn').href = VOS_NURSE_DL_URL.replace('__ID__', currentVosNurseStaffId);
+            if (d.total) document.getElementById('vosNurseTotal').textContent = 'Total Eligible Service: ' + d.total;
+        } else {
+            document.getElementById('vosNurseError').classList.remove('d-none');
+            document.getElementById('vosNurseErrorMsg').textContent = d.error || 'Generation failed';
+        }
+    } catch(e) {
+        document.getElementById('vosNurseGenerating').classList.add('d-none');
+        document.getElementById('vosNurseError').classList.remove('d-none');
+        document.getElementById('vosNurseErrorMsg').textContent = 'Network error: ' + e.message;
+    }
+});
+
+document.getElementById('vosNurseUploadBtn').addEventListener('click', async () => {
+    const file = document.getElementById('vosNurseUploadInput').files[0];
+    const msg  = document.getElementById('vosNurseUploadMsg');
+    if (!file) { msg.className='mt-2 small text-danger'; msg.textContent='Select a .docx file first.'; msg.classList.remove('d-none'); return; }
+    const btn = document.getElementById('vosNurseUploadBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading...';
+    msg.classList.add('d-none');
+    const formData = new FormData(); formData.append('file', file);
+    try {
+        const r = await fetch(VOS_NURSE_UPLOAD_URL.replace('__ID__', currentVosNurseStaffId), {method:'POST', body:formData});
+        const d = await r.json();
+        msg.className = d.success ? 'mt-2 small text-success' : 'mt-2 small text-danger';
+        msg.textContent = d.success ? '✅ Uploaded — download link updated.' : '❌ ' + (d.error || 'Upload failed');
+        if (d.success) document.getElementById('vosNurseDownloadBtn').href = VOS_NURSE_DL_URL.replace('__ID__', currentVosNurseStaffId) + '?t=' + Date.now();
+        msg.classList.remove('d-none');
+    } catch(e) { msg.className='mt-2 small text-danger'; msg.textContent='❌ '+e.message; msg.classList.remove('d-none'); }
+    finally { btn.disabled=false; btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace'; }
 });
 
 </script>
