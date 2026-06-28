@@ -2346,15 +2346,20 @@ def api_generate_interview():
     try:
         doc = None
         if staff_id:
-            # Search by staff_id (XN Portal ID), xn_staff_id, then MongoDB _id
+            # 1. live_staffs.staff_id (XN Portal ID) — primary
             doc = _staffs_col().find_one({"staff_id": staff_id})
+            # 2. xn_staff_id
             if not doc:
                 doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+            # 3. MongoDB _id
             if not doc:
                 try:
                     doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
                 except Exception:
                     pass
+            # 4. employee_code
+            if not doc:
+                doc = _staffs_col().find_one({"employee_code": staff_id})
         if not doc and email:
             doc = _staffs_col().find_one({"$or": [
                 {"email": email},
@@ -2363,7 +2368,7 @@ def api_generate_interview():
         if not doc:
             identifier = staff_id or email
             return jsonify({"success": False,
-                            "error": f"Staff not found: {identifier}"}), 404
+                            "error": f"Staff not found (staff_id={staff_id or 'n/a'}, email={email or 'n/a'})"}), 404
 
         s1        = doc.get('section_1_personal_details') or {}
         s3        = doc.get('section_3_professional_registration') or {}
@@ -2841,17 +2846,32 @@ def live_staff_api_generate_cv():
         col = _staffs_col()
         doc = None
         if staff_id:
-            try:
-                doc = col.find_one({"_id": ObjectId(staff_id)})
-            except Exception:
-                pass
+            # 1. Match live_staffs.staff_id (XN Portal staff ID) — primary
+            doc = col.find_one({"staff_id": staff_id})
+            # 2. Match live_staffs.xn_staff_id
+            if not doc:
+                doc = col.find_one({"xn_staff_id": staff_id})
+            # 3. Match MongoDB _id
+            if not doc:
+                try:
+                    doc = col.find_one({"_id": ObjectId(staff_id)})
+                except Exception:
+                    pass
+            # 4. Match employee_code
+            if not doc:
+                doc = col.find_one({"employee_code": staff_id})
+
         if not doc and email:
             doc = col.find_one({"$or": [
                 {"email": email},
                 {"section_1_personal_details.email_address": email},
             ]})
+
         if not doc:
-            return jsonify({"success": False, "error": "Staff not found"}), 404
+            return jsonify({
+                "success": False,
+                "error": f"Staff not found (staff_id={staff_id or 'n/a'}, email={email or 'n/a'})"
+            }), 404
 
         staff_id  = str(doc['_id'])
         s1        = doc.get('section_1_personal_details') or {}
