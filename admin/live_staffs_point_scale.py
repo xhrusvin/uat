@@ -395,11 +395,87 @@ def _is_ireland_employer(employer_str, location_str=''):
     return True
 
 
-def _get_employment_rows(staff_doc, gemini_key=os.environ.get('GEMINI_API_KEY','')):
+def _parse_employment_regex(extracted_cv, user_type=''):
+    """Regex-based fallback parser — handles both multi-line and label formats."""
+    if not extracted_cv:
+        return []
+
+    lines = extracted_cv.split('\n')
+    exp_lines = []; in_exp = False
+    exp_stop    = {'education','qualifications','training','certifications','key skills','skills','references','additional information','profile','summary'}
+    exp_headers = {'professional experience','work experience','employment history','employment','experience','career history','positions held'}
+    for line in lines:
+        l = line.strip(); ll = l.lower()
+        if any(ll.startswith(h) for h in exp_headers): in_exp = True; continue
+        if in_exp and l and any(ll.startswith(h) for h in exp_stop): break
+        if in_exp: exp_lines.append(l)
+    if not exp_lines:
+        exp_lines = [l.strip() for l in lines if l.strip()]
+
+    entries = []
+
+    # Format B: Job Title: / Employer: / Location: / Dates:
+    label_re = re.compile(r'^(?:job\s+title|title)\s*[:\-]\s*(.+)', re.I)
+    emp_re   = re.compile(r'^employer\s*[:\-]\s*(.+)', re.I)
+    loc_re   = re.compile(r'^location\s*[:\-]\s*(.+)', re.I)
+    date_re2 = re.compile(r'^dates?\s*[:\-]\s*(.+)', re.I)
+    date_split = re.compile(r'(.+?)\s*(?:to|-|–|—)\s*(present|current|ongoing|\w+\s+\d{4}|\d{4})', re.I)
+
+    cur = {}
+    for l in exp_lines:
+        ml=label_re.match(l); me=emp_re.match(l); mlo=loc_re.match(l); md=date_re2.match(l)
+        if ml:
+            if cur.get('employer') and cur.get('dates'): entries.append(cur); cur={}
+            cur['post'] = ml.group(1).strip()
+        elif me:  cur['employer']  = me.group(1).strip()
+        elif mlo: cur['location']  = mlo.group(1).strip()
+        elif md:  cur['dates']     = md.group(1).strip()
+    if cur.get('employer') and cur.get('dates'): entries.append(cur)
+
+    if entries:
+        result = []
+        for e in entries:
+            if not _is_ireland_employer(e.get('employer',''), e.get('location','')):
+                continue
+            ds = date_split.search(e.get('dates',''))
+            result.append({
+                'post':     e.get('post') or user_type,
+                'employer': e.get('employer',''),
+                'from_str': ds.group(1).strip() if ds else e.get('dates',''),
+                'to_str':   ds.group(2).strip()  if ds else 'Present',
+            })
+        if result: return result
+
+    # Format A: multi-line Title / Employer / Dates
+    date_re = re.compile(
+        r'^(\d{1,2}/\d{1,2}/\d{4}|\w+\s+\d{4}|\d{4})\s*(?:to|-|–|—)\s*'
+        r'(\d{1,2}/\d{1,2}/\d{4}|\w+\s+\d{4}|\d{4}|present|current|ongoing)', re.I)
+    result = []; i = 0
+    while i < len(exp_lines):
+        dm = date_re.match(exp_lines[i].strip())
+        if dm:
+            post_text=''; employer_text=''
+            for back in range(1,4):
+                prev = exp_lines[i-back].strip() if i-back>=0 else ''
+                if not prev or date_re.match(prev): break
+                if not employer_text: employer_text=prev
+                elif not post_text:   post_text=prev
+                else: break
+            if _is_ireland_employer(employer_text):
+                result.append({'post': post_text or user_type, 'employer': employer_text,
+                                'from_str': dm.group(1).strip(), 'to_str': dm.group(2).strip()})
+        i += 1
+    return result
+
+
+def _get_employment_rows(staff_doc, gemini_key=None):
     """
     Get Ireland-only employment rows from live_staffs document.
-    Priority: section_5 entries → Gemini extraction from extracted_cv.
+    Priority: section_5 entries → Gemini extraction → regex fallback.
     """
+    if gemini_key is None:
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+
     user_type = _v(staff_doc.get('user_type') or 'Healthcare Assistant')
     rows = []
 
@@ -428,21 +504,31 @@ def _get_employment_rows(staff_doc, gemini_key=os.environ.get('GEMINI_API_KEY','
         if rows:
             return rows
 
-    # 2. Gemini extraction from extracted_cv
+    # 2. Extract from extracted_cv — Gemini first, regex fallback
     extracted_cv = _v(staff_doc.get('extracted_cv') or '')
-    if extracted_cv and gemini_key:
+    if not extracted_cv:
+        return rows
+
+    # 2a. Try Gemini
+    parsed = []
+    if gemini_key:
         parsed = _parse_employment_from_cv(extracted_cv, user_type, gemini_key)
-        for e in parsed:
-            from_d  = _parse_date_flex(_v(e.get('from_str') or ''))
-            to_d    = _parse_date_flex(_v(e.get('to_str') or ''))
-            y, m, dys = _calc_duration(from_d, to_d)
-            rows.append({
-                'post':     _v(e.get('post') or user_type),
-                'employer': _v(e.get('employer') or ''),
-                'from_str': from_d.strftime('%d/%m/%Y') if from_d else _v(e.get('from_str') or ''),
-                'to_str':   to_d.strftime('%d/%m/%Y') if to_d else 'Present',
-                'years':    y, 'months': m, 'days': dys,
-            })
+
+    # 2b. Regex fallback if Gemini returned nothing
+    if not parsed:
+        parsed = _parse_employment_regex(extracted_cv, user_type)
+
+    for e in parsed:
+        from_d  = _parse_date_flex(_v(e.get('from_str') or ''))
+        to_d    = _parse_date_flex(_v(e.get('to_str') or ''))
+        y, m, dys = _calc_duration(from_d, to_d)
+        rows.append({
+            'post':     _v(e.get('post') or user_type),
+            'employer': _v(e.get('employer') or ''),
+            'from_str': from_d.strftime('%d/%m/%Y') if from_d else _v(e.get('from_str') or ''),
+            'to_str':   to_d.strftime('%d/%m/%Y') if to_d else 'Present',
+            'years':    y, 'months': m, 'days': dys,
+        })
 
     return rows
 
