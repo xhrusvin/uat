@@ -2,7 +2,7 @@
 live_staffs_cron_interview.py
 ────────────────────────────
 Cron route — uploads interview documents to the HSE Document Upload API
-as hse_document_type=interview_notes.
+as hse_document_type=others_3.
 
 Processes ONE staff member per call.
 Only staff with interview_fetched=True but interview_uploaded≠True are picked up.
@@ -57,7 +57,7 @@ def live_staff_cron_upload_interview():
 
     Finds staff where interview_fetched=True but interview_uploaded is not True.
     Downloads DOCX from GCS via interview_gcs_blob, converts to PDF inline,
-    and POSTs to the HSE Document Upload API as hse_document_type=interview_notes.
+    and POSTs to the HSE Document Upload API as hse_document_type=others_3.
 
     Uses DOC_API_KEY + DOC_BASE_URL env vars (same as _push_hse_document_background).
     Protect with ?cron_key=<CRON_SECRET> env var.
@@ -182,10 +182,10 @@ def live_staff_cron_upload_interview():
             endpoint,
             data={
                 "staff_id":          resolved_staff_id,
-                "hse_document_type": "interview_notes",
+                "hse_document_type": "others_3",
             },
             files={
-                "file": ("interview_notes.pdf", pdf_bytes, "application/pdf"),
+                "file": ("others_3.pdf", pdf_bytes, "application/pdf"),
             },
             headers={
                 "Api-Key":       api_key,
