@@ -872,14 +872,10 @@ ADDITIONAL INFORMATION
 Rules:
 - Use ONLY the information provided — do not invent anything.
 - EMPLOYMENT ELIGIBILITY: Label: Value per line. Do NOT include name, address, mobile or email.
-  For blank fields, analyse the CANDIDATE'S ORIGINAL CV:
-  * Nationality: look for "Nationality:" or infer from education/work locations.
-  * Total Experience: if blank, calculate from employment dates in the CV (earliest start to today).
-  * Skip any field not available from either source.
-  IMPORTANT — for any blank fields in CANDIDATE DATA, analyse the CANDIDATE'S ORIGINAL CV and fill them:
-  * Nationality: if blank, look for nationality, country of origin, or infer from education/work history in the CV.
-  * Total Experience: if blank, calculate from the employment history (earliest job start date to today). Format as "X years Y months".
-  * Skip fields that are truly not available anywhere.
+  For any blank fields in CANDIDATE DATA, analyse the CANDIDATE'S ORIGINAL CV and fill them:
+  * Nationality: look for "Nationality:", country of origin, or infer from education/work locations in the CV.
+  * Total Experience: if blank, calculate from employment dates (earliest start to today). Format as "X years Y months".
+  * Skip any field not found in either source.
 - EDUCATION & QUALIFICATIONS: copy ALL education exactly as written — every school, college, course, degree. Do not skip any entry.
 - PROFESSIONAL EXPERIENCE: copy ALL jobs exactly — employer, title, dates, duties.
 - TRAINING & CERTIFICATIONS: list all certificates and training from the CV.
