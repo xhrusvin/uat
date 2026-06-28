@@ -2825,15 +2825,10 @@ def live_staff_api_all_emails():
 
 @admin_bp.route('/live-staffs/api/generate-cv', methods=['POST'])
 def live_staff_api_generate_cv():
-    """External API — generate AI CV. Auth: cron_key."""
-    cron_secret = os.environ.get('CRON_SECRET', '')
-    if cron_secret:
-        body_tmp = request.get_json(silent=True) or {}
-        provided = (request.args.get('cron_key') or
-                    request.headers.get('X-Cron-Key', '') or
-                    body_tmp.get('cron_key', ''))
-        if provided != cron_secret:
-            return jsonify({"success": False, "error": "Unauthorised"}), 401
+    """External API — generate AI CV. Auth: X-API-Key header."""
+    ok, err = _validate_api_key()
+    if not ok:
+        return err
 
     body     = request.get_json(silent=True) or {}
     staff_id = _v(body.get('staff_id') or '')
