@@ -13,8 +13,8 @@ from google.cloud import storage
 ROOT_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT_DIR / ".env")
 
-API_KEY = os.getenv("API_KEY")
-COUNTRY = os.getenv("X_APP_COUNTRY", "ie")
+API_KEY = os.getenv("XN_PORTAL_API_KEY")
+COUNTRY = os.getenv("XN_APP_COUNTRY", "ie")
 
 UPLOAD_URL = "https://admin.xpresshealthapp.com/api/admin/staff/hse-document-upload"
 
