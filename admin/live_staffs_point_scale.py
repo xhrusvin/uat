@@ -254,30 +254,29 @@ def _build_point_scale_docx(staff_doc, rows):
         return run
 
     # ── Logo ─────────────────────────────────────────────────────────
-    try:
-        logo_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'img', 'xpress_logo.png')
-        if not os.path.exists(logo_path):
-            # Try alternate paths
-            for p in ['static/img/logo.png', 'static/logo.png', 'static/img/xpress_logo.png']:
-                if os.path.exists(p):
-                    logo_path = p
-                    break
-            else:
-                logo_path = None
-        if logo_path and os.path.exists(logo_path):
-            p_logo = d.add_paragraph()
-            p_logo.paragraph_format.space_before = Pt(0)
-            p_logo.paragraph_format.space_after  = Pt(4)
-            run_logo = p_logo.add_run()
-            run_logo.add_picture(logo_path, width=Inches(1.5))
-    except Exception:
-        # Logo not available — write text logo
+    # Logo — try static/image/logo.png (as served by /static/image/logo.png)
+    logo_loaded = False
+    for logo_candidate in [
+        'static/image/logo.png',
+        'static/img/logo.png',
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'image', 'logo.png'),
+        os.path.join(os.path.dirname(__file__), '..', 'static', 'img',   'logo.png'),
+    ]:
+        if os.path.exists(logo_candidate):
+            try:
+                p_logo = d.add_paragraph()
+                p_logo.paragraph_format.space_before = Pt(0)
+                p_logo.paragraph_format.space_after  = Pt(4)
+                p_logo.add_run().add_picture(logo_candidate, width=Inches(1.8))
+                logo_loaded = True
+                break
+            except Exception:
+                continue
+    if not logo_loaded:
         p_logo = d.add_paragraph()
         r_logo = p_logo.add_run('XPRESS HEALTH')
-        r_logo.bold = True
-        r_logo.font.size = Pt(14)
-        r_logo.font.color.rgb = NAVY
-        r_logo.font.name = 'Calibri'
+        r_logo.bold = True; r_logo.font.size = Pt(14)
+        r_logo.font.color.rgb = NAVY; r_logo.font.name = 'Calibri'
 
     sp(8)
 
@@ -313,7 +312,7 @@ def _build_point_scale_docx(staff_doc, rows):
 
     field_line('Full Name',       full_name)
     field_line('Role / Designation', user_type)
-    field_line('Contact Email',   email)
+    # Contact Email removed from document
 
     sp(12)
 
@@ -367,18 +366,6 @@ def _build_point_scale_docx(staff_doc, rows):
 
     sp(12)
 
-    # ── Total Eligible Service ────────────────────────────────────────
-    tot_y, tot_m, tot_d = _total_service(rows)
-    p_tot = d.add_paragraph()
-    p_tot.paragraph_format.space_before = Pt(4)
-    p_tot.paragraph_format.space_after  = Pt(12)
-    _add_run(p_tot,
-             f'Total Eligible Service for Incremental Credit: '
-             f'{tot_y} Year{"s" if tot_y!=1 else ""}, '
-             f'{tot_m} Month{"s" if tot_m!=1 else ""}, '
-             f'{tot_d} Day{"s" if tot_d!=1 else ""}',
-             bold=False, size=11)
-
     # ── Declaration ───────────────────────────────────────────────────
     p_decl = d.add_paragraph()
     p_decl.paragraph_format.space_before = Pt(4)
@@ -398,10 +385,28 @@ def _build_point_scale_docx(staff_doc, rows):
 
 # ── Extract employment rows from staff doc ────────────────────────────
 
+def _is_ireland_employer(employer_str, location_str=''):
+    """Return True if the employer/location is in Ireland."""
+    text = (employer_str + ' ' + location_str).lower()
+    ireland_keywords = [
+        'ireland', 'irish', 'éire', 'co.', 'county',
+        'dublin', 'cork', 'galway', 'limerick', 'waterford',
+        'kilkenny', 'wexford', 'wicklow', 'meath', 'louth',
+        'kildare', 'laois', 'offaly', 'westmeath', 'longford',
+        'roscommon', 'mayo', 'sligo', 'leitrim', 'donegal',
+        'cavan', 'monaghan', 'tipperary', 'clare', 'kerry',
+        'hse', 'tusla', 'hiqa', 'nchd', 'inmo', 'nmbi',
+        'nursing home', 'nursing home,', 'hospital', 'hospice',
+        'health service executive',
+    ]
+    return any(kw in text for kw in ireland_keywords)
+
+
 def _get_employment_rows(staff_doc):
     """
-    Get employment rows from live_staffs document.
+    Get Ireland-only employment rows from live_staffs document.
     Priority: section_5 entries → extracted_cv parsing.
+    Only includes roles based in Ireland.
     """
     user_type = _v(staff_doc.get('user_type') or 'Healthcare Assistant')
     rows = []
@@ -412,6 +417,11 @@ def _get_employment_rows(staff_doc):
 
     if entries:
         for e in entries:
+            employer = _v(e.get('employer') or '')
+            location = _v(e.get('location') or e.get('city') or e.get('country') or '')
+            # Skip non-Ireland roles
+            if not _is_ireland_employer(employer, location):
+                continue
             from_str = _v(e.get('from') or '')
             to_str   = _v(e.get('to') or 'Present')
             from_d   = _parse_date_flex(from_str)
@@ -419,20 +429,24 @@ def _get_employment_rows(staff_doc):
             y, m, dys = _calc_duration(from_d, to_d)
             rows.append({
                 'post':     _v(e.get('position') or user_type),
-                'employer': _v(e.get('employer') or ''),
+                'employer': employer,
                 'from_str': from_d.strftime('%d/%m/%Y') if from_d else from_str,
                 'to_str':   to_d.strftime('%d/%m/%Y') if to_d else 'Present',
                 'years':    y,
                 'months':   m,
                 'days':     dys,
             })
-        return rows
+        if rows:
+            return rows
 
     # 2. Fall back to extracted_cv parsing
     extracted_cv = _v(staff_doc.get('extracted_cv') or '')
     if extracted_cv:
         parsed = _parse_employment_from_cv(extracted_cv, user_type)
         for e in parsed:
+            # Skip non-Ireland roles
+            if not _is_ireland_employer(e['employer']):
+                continue
             from_d  = _parse_date_flex(e['from_str'])
             to_d    = _parse_date_flex(e['to_str'])
             y, m, dys = _calc_duration(from_d, to_d)
