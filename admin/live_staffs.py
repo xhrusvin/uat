@@ -3090,33 +3090,20 @@ def api_generate_appform():
 # ── API: Return document URLs for a staff member ──────────────────────
 
 @admin_bp.route('/live-staffs/api/staff-documents', methods=['POST'])
-@admin_required
 def live_staff_api_staff_documents():
     """
     Return all document URLs for one staff member from XN Portal.
-    Local scripts call this, then download the files themselves.
-
-    POST body:
-        {"email": "staff@example.com"}
-        {"staff_id": "ObjectId string"}
-
-    Response:
-        {
-          "success": true,
-          "email": "...",
-          "staff_name": "...",
-          "documents": [
-            {
-              "document_type_name": "Cv",
-              "url": "https://cdn.../file.pdf",
-              "filename": "Cv.pdf",
-              "extension": ".pdf"
-            },
-            ...
-          ]
-        }
+    Auth: cron_key param or X-Cron-Key header (same as cron endpoints).
     """
     import requests as _req
+
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', '') or
+                    (request.get_json(silent=True) or {}).get('cron_key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
 
     body     = request.get_json(silent=True) or {}
     staff_id = _v(body.get('staff_id') or '')
@@ -3212,12 +3199,18 @@ def live_staff_api_staff_documents():
 
 
 @admin_bp.route('/live-staffs/api/all-staff-emails', methods=['GET'])
-@admin_required
 def live_staff_api_all_emails():
     """
     Return list of all staff with email — for the local downloader
     to iterate and call /api/staff-documents for each.
     """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
     staff = list(_staffs_col().find(
         {"$or": [
             {"email": {"$exists": True, "$ne": ""}},
