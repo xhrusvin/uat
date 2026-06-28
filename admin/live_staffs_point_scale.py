@@ -908,24 +908,32 @@ def live_staff_api_vos_docs():
     """One staff per call. Auth: cron_key."""
     cron_secret = os.environ.get('CRON_SECRET', '')
     if cron_secret:
-        provided = request.args.get('cron_key') or request.headers.get('X-Cron-Key','')
+        provided = request.args.get('cron_key') or request.headers.get('X-Cron-Key', '')
         if provided != cron_secret:
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
-    doc = _ps_col().find_one_and_update(
+    col = _ps_col()
+
+    # Ensure index exists for fast lookup (no-op if already exists)
+    try:
+        col.create_index([("status", 1), ("downloaded", 1)], background=True)
+    except Exception:
+        pass
+
+    doc = col.find_one_and_update(
         {"status": "generated", "downloaded": {"$ne": True}},
         {"$set": {"downloaded": True}},
         projection={"staff_id": 1, "staff_name": 1},
     )
 
     if not doc:
-        return jsonify({"success": True, "done": True})
+        return jsonify({"success": True, "done": True, "message": "All documents downloaded"})
 
     return jsonify({
         "success":      True,
         "done":         False,
         "staff_name":   doc.get('staff_name', ''),
-        "download_url": f"{request.host_url.rstrip('/')}/admin/live-staffs/vos/download/{doc.get('staff_id','')}",
+        "download_url": f"{request.host_url.rstrip('/')}/admin/live-staffs/vos/download/{doc.get('staff_id', '')}",
     })
 
 @admin_bp.route('/live-staffs/export/vos-xlsx')
