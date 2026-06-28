@@ -4,7 +4,6 @@ import os
 
 import requests
 from dotenv import load_dotenv
-from google.cloud import storage
 
 # ----------------------------------------------------
 # Load .env
@@ -22,35 +21,28 @@ UPLOAD_URL = "https://admin.xpresshealthapp.com/api/admin/staff/hse-document-upl
 # Test values
 # ----------------------------------------------------
 
-BUCKET_NAME = "xpresshealthcdn"
-
 STAFF_ID = "685aa791129a31f06a04ef90"
 
-BLOB_NAME = "consent_form/sandrakjoshy@gmail.com_consent_form.docx"
+DOCUMENT_URL = "https://storage.googleapis.com/xpresshealthcdn/consent_form/sandrakjoshy%40gmail.com_consent_form.docx?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=659491062075-compute%40developer.gserviceaccount.com%2F20260627%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20260627T171831Z&X-Goog-Expires=3600&X-Goog-SignedHeaders=host&X-Goog-Signature=726c83888eab47dca5c3328899ca4afe9095ac4cf62c9ecf19aff7e28eb26b39382ffd6f4e0629fd5b5b7ae92f50ef892aa03a17351c86b99a92e9d930d7e63e110291a2a63fbcf83883ff685cc4982dc09a8c5f674213949f3c42aa4c15316eb95f28f221171ff07aa010ed1e05ab8205efa2d035549a4d1fbd9ff6dd53c38f591bd3ce18f7f420f8e9618d5ac48c44a39a5dc4794a4f522f267cdc2432f73e9541d44a6c649fabcb3102fae9c5121b2c4fd95aa3bcd9d16e072dd178c77bb336ed1ded1c55479fce561c123d22b8fff1a1c605c3f0de91a0bfc197574180b70d1cf3e1f9d0ba915a0a5058967e76334f166b6e850d2f75836d0af8771a9e35"
 
 DOCUMENT_NAME = "sandrakjoshy@gmail.com_consent_form.docx"
 
 HSE_DOCUMENT_TYPE = "others_1"
 
 
-def upload_gcs_file(
-    bucket_name: str,
-    blob_name: str,
+def upload_document(
+    document_url: str,
     filename: str,
     staff_id: str,
     document_type: str,
 ):
-    storage_client = storage.Client()
+    print(f"Downloading: {document_url}")
 
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-
-    print(f"Downloading from GCS: {blob_name}")
-
-    file_bytes = blob.download_as_bytes()
+    download = requests.get(document_url, timeout=120)
+    download.raise_for_status()
 
     content_type = (
-        blob.content_type
+        download.headers.get("Content-Type")
         or mimetypes.guess_type(filename)[0]
         or "application/octet-stream"
     )
@@ -58,7 +50,7 @@ def upload_gcs_file(
     files = {
         "file": (
             filename,
-            file_bytes,
+            download.content,
             content_type,
         )
     }
@@ -96,9 +88,8 @@ def upload_gcs_file(
 
 
 if __name__ == "__main__":
-    upload_gcs_file(
-        bucket_name=BUCKET_NAME,
-        blob_name=BLOB_NAME,
+    upload_document(
+        document_url=DOCUMENT_URL,
         filename=DOCUMENT_NAME,
         staff_id=STAFF_ID,
         document_type=HSE_DOCUMENT_TYPE,
