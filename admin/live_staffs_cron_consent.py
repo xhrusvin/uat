@@ -7,9 +7,7 @@ as hse_document_type=others_1.
 Processes ONE staff member per call.
 Only staff with consent_fetched=True but consent_uploaded≠True are picked up.
 
-Register this blueprint in your app factory alongside the other cron files:
-    from admin.live_staffs_cron_consent import consent_cron_bp
-    app.register_blueprint(consent_cron_bp)
+Imported by admin/__init__.py — routes are registered on admin_bp automatically.
 
 To re-upload ALL consent docs, run in MongoDB first:
     db.live_staffs.updateMany(
@@ -18,12 +16,12 @@ To re-upload ALL consent docs, run in MongoDB first:
     )
 """
 
-from flask import Blueprint, request, jsonify
+from flask import request, jsonify
 from datetime import datetime
 import os
 import requests as _req
 
-consent_cron_bp = Blueprint('consent_cron', __name__)
+from . import admin_bp
 
 
 # ── Helpers — lazy wrappers to avoid circular imports ─────────────────
@@ -41,7 +39,7 @@ def _staffs_col():
 
 # ── Cron: Upload Consent Documents (others_1) ─────────────────────────
 
-@consent_cron_bp.route('/live-staffs/cron/upload-consent', methods=['GET', 'POST'])
+@admin_bp.route('/live-staffs/cron/upload-consent', methods=['GET', 'POST'])
 def live_staff_cron_upload_consent():
     """
     Cron job — uploads consent doc to HSE API for ONE staff member per call.
