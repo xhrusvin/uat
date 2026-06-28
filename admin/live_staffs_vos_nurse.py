@@ -519,10 +519,14 @@ def _build_vos_nurse_docx(staff_doc, rows):
         else:
             _run(p, value, size=11)
 
-    _sig_line('Authorised Signatory', 'Betsy D')
-    _sig_line('Designation', 'Head of Recruitment')
-    _sig_line('Agency Stamp & Signature', blank=True)
-    _sig_line('Date', blank=True)
+    import random as _rand
+    _signatories = [
+        ('Betsy Daniel',   'Head of Recruitment'),
+        ('Victor Cornel',  'Director of Nursing'),
+    ]
+    _sig_name, _sig_title = _rand.choice(_signatories)
+    _sig_line('Authorised Signatory', _sig_name)
+    _sig_line('Designation',          _sig_title)
 
     buf = io.BytesIO()
     d.save(buf)
