@@ -772,11 +772,7 @@ def live_staff_api_vos_nurse_docs():
     return jsonify({
         "success":      True,
         "done":         False,
-        "staff_id":     staff_id,
         "staff_name":   doc.get('staff_name', ''),
-        "email":        doc.get('email', ''),
-        "user_type":    doc.get('user_type', ''),
-        "filename":     doc.get('filename', ''),
         "download_url": f"{request.host_url.rstrip('/')}/admin/live-staffs/vos-nurse/download/{staff_id}",
         "remaining":    remaining,
     })
