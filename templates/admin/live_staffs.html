@@ -1492,7 +1492,7 @@ document.querySelectorAll('.btn-ai-cv').forEach(btn => {
                 document.getElementById('aiCvSavedDate').textContent = data.generated_at;
                 document.getElementById('aiCvDownloadSavedBtn').classList.remove('d-none');
                 document.getElementById('aiCvDownloadSavedBtn').onclick = () => {
-                    window.open(aiDownloadUrl(data.ai_cv_id), '_blank');
+                    window.open(aiDownloadUrl(data.ai_cv_id || data.cv_id), '_blank');
                 };
                 // Show upload section so user can replace with edited version
                 document.getElementById('aiCvUploadSection').classList.remove('d-none');
@@ -1515,7 +1515,7 @@ document.getElementById('aiCvGenerateBtn').addEventListener('click', async () =>
         const data = await res.json();
 
         if (data.success) {
-            document.getElementById('aiCvDownloadNewBtn').href = aiDownloadUrl(data.ai_cv_id);
+            document.getElementById('aiCvDownloadNewBtn').href = aiDownloadUrl(data.ai_cv_id || data.cv_id);
             setAiState('Done');
             // Show upload section in idle for future use
             document.getElementById('aiCvUploadSection').classList.remove('d-none');
@@ -1569,7 +1569,7 @@ document.querySelectorAll('.btn-ai-interview').forEach(btn => {
                 document.getElementById('aiIntSavedDate').textContent = data.generated_at;
                 document.getElementById('aiIntDownloadSavedBtn').classList.remove('d-none');
                 document.getElementById('aiIntDownloadSavedBtn').onclick = () => {
-                    window.open(aiIntDownloadUrl(data.interview_id), '_blank');
+                    window.open(aiIntDownloadUrl(data.interview_id || data.ai_id), '_blank');
                 };
                 // Show upload section
                 document.getElementById('aiIntUploadSection').classList.remove('d-none');
@@ -1593,7 +1593,7 @@ document.getElementById('aiIntGenerateBtn').addEventListener('click', async () =
 
         if (data.success) {
             document.getElementById('aiIntDownloadNewBtn').href =
-                aiIntDownloadUrl(data.interview_id);
+                aiIntDownloadUrl(data.interview_id || data.ai_id);
             setIntState('Done');
             document.getElementById('aiIntUploadSection').classList.remove('d-none');
         } else {
@@ -1625,7 +1625,7 @@ const _origCheckSaved = async (staffId) => {
             document.getElementById('aiCvSavedDate').textContent = data.generated_at;
             document.getElementById('aiCvDownloadSavedBtn').classList.remove('d-none');
             document.getElementById('aiCvDownloadSavedBtn').onclick = () => {
-                window.open(aiDownloadUrl(data.ai_cv_id), '_blank');
+                window.open(aiDownloadUrl(data.ai_cv_id || data.cv_id), '_blank');
             };
             // Show upload section
             document.getElementById('aiCvUploadSection').classList.remove('d-none');

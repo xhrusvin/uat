@@ -2321,6 +2321,7 @@ Output the interview notes text only. No markdown, no preamble.
         return jsonify({
             "success":       True,
             "ai_id":         ai_id,
+            "interview_id":  ai_id,
             "filename":      filename,
             "gcs_blob":      gcs_blob,
             "download_url":  signed_url,
