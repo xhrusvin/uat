@@ -411,7 +411,8 @@
                                     <i class="bi bi-patch-check"></i>
                                 </button>
                                 {% endif %}
-                                {% if s.user_type and ('nurse' in (s.user_type or '') | lower or 'rgn' in (s.user_type or '') | lower or 'rnm' in (s.user_type or '') | lower or 'midwife' in (s.user_type or '') | lower) %}
+                                {% set ut_lower = (s.user_type or '') | lower %}
+                                {% if 'nurse' in ut_lower or 'rgn' in ut_lower or 'rnm' in ut_lower or 'midwife' in ut_lower or 'nchd' in ut_lower or 'cns' in ut_lower or 'phn' in ut_lower %}
                                 <button class="btn btn-primary btn-sm rounded-pill px-3 me-1 btn-vos-nurse"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"

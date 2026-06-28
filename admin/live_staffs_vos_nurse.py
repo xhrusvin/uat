@@ -60,7 +60,11 @@ def _gcs_download(blob_name):
 
 def _is_nurse(user_type):
     ut = (user_type or '').lower()
-    return any(k in ut for k in ('nurse','rgn','rnm','midwife','nchd','rn '))
+    return any(k in ut for k in (
+        'nurse', 'nursing', 'rgn', 'rnm', 'rnid', 'midwife', 'midwifery',
+        'nchd', 'cns', 'cnm', 'phn', 'theatre nurse', 'icu nurse',
+        'clinical nurse', 'community nurse', 'staff nurse', 'general nurse',
+    ))
 
 # ── Date / Duration helpers ───────────────────────────────────────────
 
@@ -556,7 +560,7 @@ def live_staff_cron_generate_vos_nurse():
     # Nurse user types
     nurse_query = {
         "$and": [
-            {"user_type": {"$regex": "nurse|rgn|rnm|midwife|nchd", "$options": "i"}},
+            {"user_type": {"$regex": "nurse|rgn|rnm|midwife|nchd|staff nurse|clinical nurse|registered nurse|community nurse|public health nurse|theatre nurse|icu nurse|phn|cns|cnm|rnid", "$options": "i"}},
             {"_id": {"$nin": [ObjectId(i) for i in existing_ids if len(i)==24]}},
         ]
     }
