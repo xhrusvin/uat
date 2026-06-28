@@ -386,20 +386,29 @@ def _build_point_scale_docx(staff_doc, rows):
 # ── Extract employment rows from staff doc ────────────────────────────
 
 def _is_ireland_employer(employer_str, location_str=''):
-    """Return True if the employer/location is in Ireland."""
+    """
+    Return True if the employer/location is in Ireland or location unknown.
+    Excludes only when an explicit non-Ireland country/city is found.
+    """
     text = (employer_str + ' ' + location_str).lower()
-    ireland_keywords = [
-        'ireland', 'irish', 'éire', 'co.', 'county',
-        'dublin', 'cork', 'galway', 'limerick', 'waterford',
-        'kilkenny', 'wexford', 'wicklow', 'meath', 'louth',
-        'kildare', 'laois', 'offaly', 'westmeath', 'longford',
-        'roscommon', 'mayo', 'sligo', 'leitrim', 'donegal',
-        'cavan', 'monaghan', 'tipperary', 'clare', 'kerry',
-        'hse', 'tusla', 'hiqa', 'nchd', 'inmo', 'nmbi',
-        'nursing home', 'nursing home,', 'hospital', 'hospice',
-        'health service executive',
+
+    # Explicit non-Ireland locations — exclude these
+    non_ireland = [
+        'india', 'indian', 'bangalore', 'mumbai', 'delhi', 'chennai',
+        'hyderabad', 'kolkata', 'pune', 'kerala', 'karnataka',
+        'uk', 'united kingdom', 'england', 'scotland', 'wales',
+        'london', 'manchester', 'birmingham', 'leeds',
+        'usa', 'united states', 'america', 'australia', 'canada',
+        'nigeria', 'kenya', 'ghana', 'zimbabwe', 'south africa',
+        'philippines', 'pakistan', 'bangladesh', 'sri lanka',
+        'malaysia', 'singapore', 'uae', 'dubai', 'saudi',
     ]
-    return any(kw in text for kw in ireland_keywords)
+    if any(kw in text for kw in non_ireland):
+        return False
+
+    # If location explicitly says Ireland or Irish place — include
+    # If no location info at all — default INCLUDE (assume Ireland for HCA staff)
+    return True
 
 
 def _get_employment_rows(staff_doc):
@@ -419,7 +428,7 @@ def _get_employment_rows(staff_doc):
         for e in entries:
             employer = _v(e.get('employer') or '')
             location = _v(e.get('location') or e.get('city') or e.get('country') or '')
-            # Skip non-Ireland roles
+            # Skip explicit non-Ireland roles
             if not _is_ireland_employer(employer, location):
                 continue
             from_str = _v(e.get('from') or '')
@@ -438,6 +447,7 @@ def _get_employment_rows(staff_doc):
             })
         if rows:
             return rows
+        # All section_5 entries were non-Ireland — fall through to extracted_cv
 
     # 2. Fall back to extracted_cv parsing
     extracted_cv = _v(staff_doc.get('extracted_cv') or '')
