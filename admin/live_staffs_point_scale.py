@@ -918,45 +918,35 @@ def live_staff_api_vos_docs():
         if provided != cron_secret:
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
-    base_url    = (os.environ.get('LIVE_STAFF_URL') or '').rstrip('/')
-    col         = _ps_col()
+    col = _ps_col()
 
-    # Total count
-    total      = col.count_documents({"status": "generated"})
-    downloaded_count = col.count_documents({"status": "generated", "downloaded": True})
-    remaining  = total - downloaded_count
-
-    # Get next un-downloaded doc
-    doc = col.find_one({"status": "generated", "downloaded": {"$ne": True}})
+    # Get next un-downloaded doc and mark it atomically
+    doc = col.find_one_and_update(
+        {"status": "generated", "downloaded": {"$ne": True}},
+        {"$set": {"downloaded": True}},
+    )
 
     if not doc:
         return jsonify({
-            "success":    True,
-            "done":       True,
-            "message":    "All documents downloaded",
-            "total":      total,
-            "remaining":  0,
+            "success":   True,
+            "done":      True,
+            "message":   "All documents downloaded",
+            "remaining": 0,
         })
 
-    staff_id = doc.get('staff_id', '')
-    name     = doc.get('staff_name', '')
-    email    = doc.get('email', '')
-    dl_url   = f"{base_url}/admin/live-staffs/vos/download/{staff_id}"
-
-    # Mark as downloaded
-    col.update_one({"_id": doc["_id"]}, {"$set": {"downloaded": True}})
+    staff_id  = doc.get('staff_id', '')
+    remaining = col.count_documents({"status": "generated", "downloaded": {"$ne": True}})
 
     return jsonify({
         "success":      True,
         "done":         False,
         "staff_id":     staff_id,
-        "staff_name":   name,
-        "email":        email,
+        "staff_name":   doc.get('staff_name', ''),
+        "email":        doc.get('email', ''),
         "user_type":    doc.get('user_type', ''),
         "filename":     doc.get('filename', ''),
-        "download_url": dl_url,
-        "total":        total,
-        "remaining":    max(0, remaining - 1),
+        "download_url": f"{request.host_url.rstrip('/')}/admin/live-staffs/vos/download/{staff_id}",
+        "remaining":    remaining,
     })
 
 
