@@ -52,128 +52,57 @@ def _gcs_download(blob_name):
 
 # ── Employment entry parser ───────────────────────────────────────────
 
-def _parse_employment_from_cv(extracted_cv, user_type=''):
+def _parse_employment_from_cv(extracted_cv, user_type='', gemini_key=''):
     """
-    Parse employment history from extracted_cv text.
-    Handles two formats:
-      A) Multi-line:
-           Job Title
-           Employer - Location
-           Month Year to Month Year
-      B) Structured labels:
-           Job Title: Healthcare Assistant
-           Employer: Homes Instead Ireland
-           Location: Ireland
-           Dates: November 2023 - Present
+    Use Gemini to extract Ireland-only employment from extracted_cv.
     Returns list of dicts: {post, employer, from_str, to_str}
     """
-    if not extracted_cv:
+    if not extracted_cv or not gemini_key:
         return []
 
-    # ── Extract experience section ────────────────────────────────────
-    lines = extracted_cv.split('\n')
-    exp_lines = []
-    in_exp = False
-    exp_stop = {
-        'education', 'qualifications', 'training', 'certifications',
-        'key skills', 'skills', 'references', 'declaration',
-        'additional information', 'employment eligibility',
-        'professional profile', 'profile', 'summary',
-    }
-    exp_headers = {
-        'professional experience', 'work experience', 'employment history',
-        'employment', 'experience', 'career history', 'work history',
-        'positions held',
-    }
-    for line in lines:
-        l = line.strip(); ll = l.lower()
-        if any(ll.startswith(h) for h in exp_headers):
-            in_exp = True; continue
-        if in_exp and l and any(ll.startswith(h) for h in exp_stop):
-            break
-        if in_exp:
-            exp_lines.append(l)
-    if not exp_lines:
-        exp_lines = [l.strip() for l in lines if l.strip()]
+    try:
+        from google import genai as _gai
+        client = _gai.Client(api_key=gemini_key)
 
-    entries = []
+        prompt = f"""You are an employment history extractor for an Irish healthcare agency.
 
-    # ── Format B: structured label-based ─────────────────────────────
-    # Look for Job Title: / Employer: / Dates: blocks
-    label_re = re.compile(r'^(?:job\s+title|title)\s*[:\-]\s*(.+)', re.I)
-    emp_re   = re.compile(r'^employer\s*[:\-]\s*(.+)', re.I)
-    loc_re   = re.compile(r'^location\s*[:\-]\s*(.+)', re.I)
-    date_re2 = re.compile(r'^dates?\s*[:\-]\s*(.+)', re.I)
+Extract ONLY the roles where the candidate worked in IRELAND from the CV text below.
+Exclude ALL roles based in the UK, England, Scotland, Wales, India, Italy, USA, Australia, Nigeria, Philippines, or any country/city outside Ireland.
+Include roles where Location is "Ireland" or contains Irish counties/cities (Dublin, Cork, Galway, Kildare, Limerick, etc.) or where no location is given but employer sounds Irish.
 
-    cur = {}
-    for l in exp_lines:
-        ml = label_re.match(l)
-        me = emp_re.match(l)
-        mlo = loc_re.match(l)
-        md = date_re2.match(l)
-        if ml:
-            if cur.get('employer') and cur.get('dates'):
-                entries.append(cur); cur = {}
-            cur['post'] = ml.group(1).strip()
-        elif me:
-            cur['employer'] = me.group(1).strip()
-        elif mlo:
-            cur['location'] = mlo.group(1).strip()
-        elif md:
-            cur['dates'] = md.group(1).strip()
+For each Ireland-based role return:
+- post: job title
+- employer: employer name only (no location)
+- from_str: start date as written (e.g. "November 2023", "03/09/2021")
+- to_str: end date as written, or "Present" if current
 
-    if cur.get('employer') and cur.get('dates'):
-        entries.append(cur)
+Return ONLY a JSON array — no markdown, no explanation:
+[
+  {{"post": "Healthcare Assistant", "employer": "Homes Instead Ireland", "from_str": "November 2023", "to_str": "Present"}},
+  ...
+]
 
-    if entries:
-        result = []
-        date_split = re.compile(
-            r'(.+?)\s*(?:to|-|–|—)\s*(present|current|ongoing|\w+\s+\d{4}|\d{4})',
-            re.I
+If no Ireland roles found, return empty array: []
+
+CV TEXT:
+{extracted_cv}
+"""
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
         )
-        for e in entries:
-            dates_str = e.get('dates', '')
-            ds = date_split.search(dates_str)
-            employer = e.get('employer', '') + (' - ' + e.get('location','') if e.get('location') else '')
-            result.append({
-                'post':     e.get('post') or user_type or 'Healthcare Assistant',
-                'employer': e.get('employer',''),
-                'location': e.get('location',''),
-                'from_str': ds.group(1).strip() if ds else dates_str,
-                'to_str':   ds.group(2).strip()  if ds else 'Present',
-            })
-        return result
+        raw = (response.text or '').strip()
+        raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
+        raw = re.sub(r'```\s*$', '', raw, flags=re.MULTILINE).strip()
 
-    # ── Format A: multi-line (Title / Employer - Location / Dates) ────
-    date_re = re.compile(
-        r'^(\d{1,2}/\d{1,2}/\d{4}|\w+\s+\d{4}|\d{4})\s*(?:to|-|–|—)\s*'
-        r'(\d{1,2}/\d{1,2}/\d{4}|\w+\s+\d{4}|\d{4}|present|current|ongoing)',
-        re.I
-    )
-    i = 0
-    while i < len(exp_lines):
-        line = exp_lines[i]
-        dm = date_re.match(line.strip())
-        if dm:
-            from_str = dm.group(1).strip()
-            to_str   = dm.group(2).strip()
-            post_text = ''; employer_text = ''
-            for back in range(1, 4):
-                prev = exp_lines[i - back].strip() if i - back >= 0 else ''
-                if not prev or date_re.match(prev): break
-                if not employer_text: employer_text = prev
-                elif not post_text:   post_text = prev
-                else: break
-            entries.append({
-                'post':     post_text or user_type or 'Healthcare Assistant',
-                'employer': employer_text,
-                'location': '',
-                'from_str': from_str,
-                'to_str':   to_str,
-            })
-        i += 1
+        import json as _json
+        entries = _json.loads(raw)
+        if isinstance(entries, list):
+            return entries
+    except Exception:
+        pass
 
-    return entries
+    return []
 
 
 def _parse_date_flex(s):
@@ -466,11 +395,10 @@ def _is_ireland_employer(employer_str, location_str=''):
     return True
 
 
-def _get_employment_rows(staff_doc):
+def _get_employment_rows(staff_doc, gemini_key=os.environ.get('GEMINI_API_KEY','')):
     """
     Get Ireland-only employment rows from live_staffs document.
-    Priority: section_5 entries → extracted_cv parsing.
-    Only includes roles based in Ireland.
+    Priority: section_5 entries → Gemini extraction from extracted_cv.
     """
     user_type = _v(staff_doc.get('user_type') or 'Healthcare Assistant')
     rows = []
@@ -483,7 +411,6 @@ def _get_employment_rows(staff_doc):
         for e in entries:
             employer = _v(e.get('employer') or '')
             location = _v(e.get('location') or e.get('city') or e.get('country') or '')
-            # Skip explicit non-Ireland roles
             if not _is_ireland_employer(employer, location):
                 continue
             from_str = _v(e.get('from') or '')
@@ -496,34 +423,25 @@ def _get_employment_rows(staff_doc):
                 'employer': employer,
                 'from_str': from_d.strftime('%d/%m/%Y') if from_d else from_str,
                 'to_str':   to_d.strftime('%d/%m/%Y') if to_d else 'Present',
-                'years':    y,
-                'months':   m,
-                'days':     dys,
+                'years':    y, 'months': m, 'days': dys,
             })
         if rows:
             return rows
-        # All section_5 entries were non-Ireland — fall through to extracted_cv
 
-    # 2. Fall back to extracted_cv parsing
+    # 2. Gemini extraction from extracted_cv
     extracted_cv = _v(staff_doc.get('extracted_cv') or '')
-    if extracted_cv:
-        parsed = _parse_employment_from_cv(extracted_cv, user_type)
+    if extracted_cv and gemini_key:
+        parsed = _parse_employment_from_cv(extracted_cv, user_type, gemini_key)
         for e in parsed:
-            location = e.get('location', '')
-            # Skip non-Ireland roles
-            if not _is_ireland_employer(e['employer'], location):
-                continue
-            from_d  = _parse_date_flex(e['from_str'])
-            to_d    = _parse_date_flex(e['to_str'])
+            from_d  = _parse_date_flex(_v(e.get('from_str') or ''))
+            to_d    = _parse_date_flex(_v(e.get('to_str') or ''))
             y, m, dys = _calc_duration(from_d, to_d)
             rows.append({
-                'post':     e['post'],
-                'employer': e['employer'],
-                'from_str': from_d.strftime('%d/%m/%Y') if from_d else e['from_str'],
+                'post':     _v(e.get('post') or user_type),
+                'employer': _v(e.get('employer') or ''),
+                'from_str': from_d.strftime('%d/%m/%Y') if from_d else _v(e.get('from_str') or ''),
                 'to_str':   to_d.strftime('%d/%m/%Y') if to_d else 'Present',
-                'years':    y,
-                'months':   m,
-                'days':     dys,
+                'years':    y, 'months': m, 'days': dys,
             })
 
     return rows
@@ -586,9 +504,11 @@ def live_staff_cron_generate_point_scale():
         "created_at":  datetime.utcnow(),
     })
 
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+
     def _do_generate():
         try:
-            rows = _get_employment_rows(staff)
+            rows = _get_employment_rows(staff, gemini_key=gemini_key)
 
             if not rows:
                 ps_col.update_one(
@@ -682,7 +602,8 @@ def live_staff_vos_download(staff_id):
             staff_doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
             if not staff_doc:
                 return jsonify({"success": False, "error": "Staff not found"}), 404
-            rows = _get_employment_rows(staff_doc)
+            gemini_key = os.environ.get('GEMINI_API_KEY', '')
+            rows = _get_employment_rows(staff_doc, gemini_key=gemini_key)
             if not rows:
                 return jsonify({"success": False, "error": "No employment data"}), 404
             docx_bytes = _build_point_scale_docx(staff_doc, rows)
@@ -716,7 +637,8 @@ def live_staff_vos_generate(staff_id):
         if not staff_doc:
             return jsonify({"success": False, "error": "Staff not found"}), 404
 
-        rows = _get_employment_rows(staff_doc)
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        rows = _get_employment_rows(staff_doc, gemini_key=gemini_key)
         if not rows:
             return jsonify({"success": False, "error": "No employment data found"}), 400
 
