@@ -2663,7 +2663,7 @@ Output the structured CV text only. No markdown, no preamble.
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         cv_text  = response.text.strip()
 
-        docx_bytes  = _build_ai_cv_docx(doc, cv_text)
+        docx_bytes  = _build_ai_cv_docx(cv_text)
         safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
         cv_filename = f"{safe_name}.docx"
         gcs_blob    = f"cv/{cv_filename}"
