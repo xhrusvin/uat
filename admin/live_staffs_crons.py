@@ -70,9 +70,9 @@ def _build_ai_appform_docx(doc, appform_text):
     from admin.live_staffs import _build_ai_appform_docx as _f
     return _f(doc, appform_text)
 
-def _build_appform_docx(doc):
+def _build_appform_docx(doc, signature_bytes=None):
     from admin.live_staffs import _build_appform_docx as _f
-    return _f(doc)
+    return _f(doc, signature_bytes=signature_bytes)
 
 def _build_interview_docx(doc, interview_text):
     from admin.live_staffs import _build_interview_docx as _f
