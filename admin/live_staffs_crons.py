@@ -854,7 +854,7 @@ Training & Certifications:
     extracted_cv_section = f"""
 
 EXTRACTED CV TEXT (the candidate's original CV — use for PROFESSIONAL PROFILE, TRAINING & CERTIFICATIONS, KEY SKILLS, and any section not pre-extracted above):
-{extracted_cv[:12000] if extracted_cv and not extracted_cv.startswith('[') else "No CV text available — use CANDIDATE DATA only."}
+{extracted_cv if extracted_cv and not extracted_cv.startswith('[') else "No CV text available — use CANDIDATE DATA only."}
 """ 
 
     prompt = f"""You are a professional CV writer specializing in Irish healthcare recruitment.
@@ -929,7 +929,7 @@ CANDIDATE DATA:
 {data_summary}
 
 CANDIDATE'S ORIGINAL CV:
-{extracted_cv[:15000] if has_extracted else "No CV available — build from CANDIDATE DATA above."}
+{extracted_cv if has_extracted else "No CV available — build from CANDIDATE DATA above."}
 ---
 
 Output the structured CV text only. No markdown, no preamble.

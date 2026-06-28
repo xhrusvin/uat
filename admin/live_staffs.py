@@ -781,7 +781,7 @@ Calculation Rules:
   {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary of which roles were counted and why>"}}
 
 CV TEXT:
-{extracted_cv[:10000]}
+{extracted_cv}
 """
         else:
             source = 'section_5'
@@ -1008,7 +1008,7 @@ Calculation Rules:
   {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary of which roles were counted>"}}
 
 CV TEXT:
-{extracted_cv[:10000]}
+{extracted_cv}
 """
         else:
             source = 'section_5'
@@ -2153,7 +2153,7 @@ CANDIDATE DATA:
 {data_summary}
 
 CANDIDATE'S ORIGINAL CV:
-{extracted_cv[:15000] if has_extracted_cv else "No CV available — build from CANDIDATE DATA above."}
+{extracted_cv if has_extracted_cv else "No CV available — build from CANDIDATE DATA above."}
 
 Output the structured CV text only. No markdown, no asterisks, no preamble.
 """
@@ -2659,7 +2659,8 @@ Qualifications:
 Employment History:
 {chr(10).join(exp_lines) if exp_lines else '  None recorded'}""".strip()
 
-        prompt = f"""You are a professional CV writer for Irish healthcare staffing.
+        prompt = f"""You are a professional CV writer specializing in Irish healthcare recruitment.
+Your task is 
 
 Rewrite the candidate's CV below into a clean, professional CV using this exact structure:
 
@@ -2678,11 +2679,9 @@ Rules:
 - PROFESSIONAL EXPERIENCE: copy ALL jobs exactly — employer, title, dates, duties.
 - ADDITIONAL INFORMATION: write only: Driving Licence: No / Own Transport: No
 
-CANDIDATE DATA:
-{data_summary}
 
 CANDIDATE'S ORIGINAL CV:
-{extracted_cv[:15000] if has_cv else "No CV available — build from CANDIDATE DATA above."}
+{extracted_cv if has_cv else "No CV available — build from CANDIDATE DATA above."}
 
 Output the structured CV text only. No markdown, no preamble.
 """
