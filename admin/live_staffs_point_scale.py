@@ -567,12 +567,8 @@ def _fetch_hse_cv_text(email, gemini_key=''):
 
 def _get_employment_rows(staff_doc, gemini_key=None):
     """
-    Get Ireland-only employment rows.
-    Priority:
-      1. HSE CV from XN Portal (document_type_name: 'Hse Cv')
-      2. extracted_cv from MongoDB
-      3. section_5 entries
-    Extraction: Gemini first → regex fallback.
+    Get Ireland-only employment rows from HSE CV (document_type_name: 'Hse Cv')
+    fetched from XN Portal. No other data source used.
     """
     if gemini_key is None:
         gemini_key = os.environ.get('GEMINI_API_KEY', '')
@@ -580,56 +576,31 @@ def _get_employment_rows(staff_doc, gemini_key=None):
     user_type = _v(staff_doc.get('user_type') or 'Healthcare Assistant')
     s1        = staff_doc.get('section_1_personal_details') or {}
     email     = _v(staff_doc.get('email') or s1.get('email_address') or '')
-    rows      = []
 
-    # ── 1. Try HSE CV from portal ─────────────────────────────────────
-    cv_text = ''
-    if email:
-        cv_text = _fetch_hse_cv_text(email, gemini_key)
+    if not email:
+        return []
 
-    # ── 2. Fall back to extracted_cv from MongoDB ─────────────────────
+    # Fetch HSE CV text from XN Portal
+    cv_text = _fetch_hse_cv_text(email, gemini_key)
     if not cv_text:
-        cv_text = _v(staff_doc.get('extracted_cv') or '')
+        return []
 
-    # ── 3. Extract Ireland employment from CV text ────────────────────
-    if cv_text:
-        parsed = []
-        if gemini_key:
-            parsed = _parse_employment_from_cv(cv_text, user_type, gemini_key)
-        if not parsed:
-            parsed = _parse_employment_regex(cv_text, user_type)
+    # Extract Ireland-only employment — Gemini first, regex fallback
+    parsed = []
+    if gemini_key:
+        parsed = _parse_employment_from_cv(cv_text, user_type, gemini_key)
+    if not parsed:
+        parsed = _parse_employment_regex(cv_text, user_type)
 
-        for e in parsed:
-            from_d  = _parse_date_flex(_v(e.get('from_str') or ''))
-            to_d    = _parse_date_flex(_v(e.get('to_str') or ''))
-            y, m, dys = _calc_duration(from_d, to_d)
-            rows.append({
-                'post':     _v(e.get('post') or user_type),
-                'employer': _v(e.get('employer') or ''),
-                'from_str': from_d.strftime('%d/%m/%Y') if from_d else _v(e.get('from_str') or ''),
-                'to_str':   to_d.strftime('%d/%m/%Y') if to_d else 'Present',
-                'years':    y, 'months': m, 'days': dys,
-            })
-        if rows:
-            return rows
-
-    # ── 4. Last resort: section_5 entries ────────────────────────────
-    s5      = staff_doc.get('section_5_employment_history') or {}
-    entries = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
-    for e in entries:
-        employer = _v(e.get('employer') or '')
-        location = _v(e.get('location') or e.get('city') or e.get('country') or '')
-        if not _is_ireland_employer(employer, location):
-            continue
-        from_str = _v(e.get('from') or '')
-        to_str   = _v(e.get('to') or 'Present')
-        from_d   = _parse_date_flex(from_str)
-        to_d     = _parse_date_flex(to_str)
+    rows = []
+    for e in parsed:
+        from_d  = _parse_date_flex(_v(e.get('from_str') or ''))
+        to_d    = _parse_date_flex(_v(e.get('to_str') or ''))
         y, m, dys = _calc_duration(from_d, to_d)
         rows.append({
-            'post':     _v(e.get('position') or user_type),
-            'employer': employer,
-            'from_str': from_d.strftime('%d/%m/%Y') if from_d else from_str,
+            'post':     _v(e.get('post') or user_type),
+            'employer': _v(e.get('employer') or ''),
+            'from_str': from_d.strftime('%d/%m/%Y') if from_d else _v(e.get('from_str') or ''),
             'to_str':   to_d.strftime('%d/%m/%Y') if to_d else 'Present',
             'years':    y, 'months': m, 'days': dys,
         })
