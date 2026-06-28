@@ -1,6 +1,7 @@
 // ============================================================
-// Bulk update live_staffs collection from deleted_staff.json
+// Bulk upsert live_staffs collection from deleted_staff.json
 // Total records: 117
+// Update if email exists, INSERT if not (upsert: true)
 // ============================================================
 
 // --- ingrid.amoras@gmail.com ---
@@ -452,8 +453,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "ingrid.amoras@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- karamjosh@hotmail.com ---
@@ -927,8 +932,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "karamjosh@hotmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- ayodejiogundele776@hotmail.com ---
@@ -1369,8 +1378,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "ayodejiogundele776@hotmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- joetintean@gmail.com ---
@@ -1822,8 +1835,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "joetintean@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- antoniadanielahv@gmail.com ---
@@ -2275,8 +2292,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "antoniadanielahv@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- mikkyaina@yahoo.co.uk ---
@@ -2717,8 +2738,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "mikkyaina@yahoo.co.uk"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- maxwellosuji2@gmail.com ---
@@ -3159,8 +3184,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "maxwellosuji2@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- nadia06091990@gmail.com ---
@@ -3590,8 +3619,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "nadia06091990@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- jeff.farias@gmail.com ---
@@ -4032,8 +4065,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "jeff.farias@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- denas.venckus@gmail.com ---
@@ -4474,8 +4511,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "denas.venckus@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- killamatu@gmail.com ---
@@ -4916,8 +4957,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "killamatu@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- manuko27@gmail.com ---
@@ -5446,8 +5491,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "manuko27@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- lucaspriester@gmail.com ---
@@ -5899,8 +5948,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "lucaspriester@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- taqephn671@gmail.com ---
@@ -6341,8 +6394,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "taqephn671@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- myheartsgood@gmail.com ---
@@ -6783,8 +6840,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "myheartsgood@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- praveentharappan@gmail.com ---
@@ -7357,8 +7418,12 @@ db.live_staffs.updateOne(
         "submitted_date": "05-02-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "praveentharappan@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- laurenbrusi@gmail.com ---
@@ -7799,8 +7864,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "laurenbrusi@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- deepakjose777@gmail.com ---
@@ -8252,8 +8321,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "deepakjose777@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- clohertyann@gmail.com ---
@@ -8694,8 +8767,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "clohertyann@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- ogeodiri1998@gmail.com ---
@@ -9180,8 +9257,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "ogeodiri1998@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- malawia@o2.pl ---
@@ -9622,8 +9703,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "malawia@o2.pl"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- redute20062@gmail.com ---
@@ -10185,8 +10270,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "redute20062@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- shafqat342@gmail.com ---
@@ -10737,8 +10826,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "shafqat342@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- banjoismydog@outlook.com ---
@@ -11311,8 +11404,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "banjoismydog@outlook.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- merinsijo2018@gmail.com ---
@@ -11907,8 +12004,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "merinsijo2018@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- gertrudeviquykoukam07@gmail.com ---
@@ -12404,8 +12505,12 @@ db.live_staffs.updateOne(
         "submitted_date": "04-07-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "gertrudeviquykoukam07@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- nobuhletashie@gmail.com ---
@@ -12967,8 +13072,12 @@ db.live_staffs.updateOne(
         "submitted_date": "08-11-2023"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "nobuhletashie@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- deimantb@gmail.com ---
@@ -13552,8 +13661,12 @@ db.live_staffs.updateOne(
         "submitted_date": "24-11-2023"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "deimantb@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- ranyabunze@gmail.com ---
@@ -14137,8 +14250,12 @@ db.live_staffs.updateOne(
         "submitted_date": "07-12-2023"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "ranyabunze@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- sunnyjaison123@gmail.com ---
@@ -14447,8 +14564,12 @@ db.live_staffs.updateOne(
         "submitted_date": "11-07-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "sunnyjaison123@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- abinjohny2012@gmail.com ---
@@ -15043,8 +15164,12 @@ db.live_staffs.updateOne(
         "submitted_date": "05-04-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "abinjohny2012@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- gennypj@gmail.com ---
@@ -15628,8 +15753,12 @@ db.live_staffs.updateOne(
         "submitted_date": "25-04-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "gennypj@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- cissilima@hotmail.com ---
@@ -16191,8 +16320,12 @@ db.live_staffs.updateOne(
         "submitted_date": "29-08-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "cissilima@hotmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- mercytrawayo@gmail.com ---
@@ -16776,8 +16909,12 @@ db.live_staffs.updateOne(
         "submitted_date": "28-05-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "mercytrawayo@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- darren_oria@yahoo.ie ---
@@ -17350,8 +17487,12 @@ db.live_staffs.updateOne(
         "submitted_date": "20-12-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "darren_oria@yahoo.ie"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- munozyngoni@gmail.com ---
@@ -17913,8 +18054,12 @@ db.live_staffs.updateOne(
         "submitted_date": "19-03-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "munozyngoni@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- elinchauhan@gmail.com ---
@@ -18498,8 +18643,12 @@ db.live_staffs.updateOne(
         "submitted_date": "26-04-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "elinchauhan@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- daexalter@gmail.com ---
@@ -18742,8 +18891,12 @@ db.live_staffs.updateOne(
         "submitted_date": "13-04-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "daexalter@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- shibinsebas@gmail.com ---
@@ -19305,8 +19458,12 @@ db.live_staffs.updateOne(
         "submitted_date": "19-04-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "shibinsebas@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- tonyv8480@gmail.com ---
@@ -19868,8 +20025,12 @@ db.live_staffs.updateOne(
         "submitted_date": "29-05-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "tonyv8480@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- tanja.kasnar96@gmail.com ---
@@ -20420,8 +20581,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "tanja.kasnar96@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- kathrynthomaspleisch@gmail.com ---
@@ -20972,8 +21137,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "kathrynthomaspleisch@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- abigailndlovu.malinga@gmail.com ---
@@ -21469,8 +21638,12 @@ db.live_staffs.updateOne(
         "submitted_date": "25-11-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "abigailndlovu.malinga@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- ncubexolani80@yahoo.com ---
@@ -21779,8 +21952,12 @@ db.live_staffs.updateOne(
         "submitted_date": "15-06-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "ncubexolani80@yahoo.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- taiwoomolaoye39@yahoo.com ---
@@ -22342,8 +22519,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "taiwoomolaoye39@yahoo.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- erickngalya22@gmail.com ---
@@ -22641,8 +22822,12 @@ db.live_staffs.updateOne(
         "submitted_date": "02-10-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "erickngalya22@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- pascalemerah@gmail.com ---
@@ -22841,8 +23026,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "pascalemerah@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- nwaigwe.steph@gmail.com ---
@@ -23426,8 +23615,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "nwaigwe.steph@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- pratshuma@gmail.com ---
@@ -23989,8 +24182,12 @@ db.live_staffs.updateOne(
         "submitted_date": "10-07-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "pratshuma@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- niesiorek01@gmail.com ---
@@ -24563,8 +24760,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "niesiorek01@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- msamoosi@yahoo.com ---
@@ -25126,8 +25327,12 @@ db.live_staffs.updateOne(
         "submitted_date": "27-08-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "msamoosi@yahoo.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- oluyemi_olagbaju@yahoo.co.uk ---
@@ -25579,8 +25784,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "oluyemi_olagbaju@yahoo.co.uk"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- vijujose1989@gmail.com ---
@@ -26076,8 +26285,12 @@ db.live_staffs.updateOne(
         "submitted_date": "29-08-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "vijujose1989@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- masleeng@gmail.com ---
@@ -26661,8 +26874,12 @@ db.live_staffs.updateOne(
         "submitted_date": "08-08-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "masleeng@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- sugithamannalthodi@gmail.com ---
@@ -27235,8 +27452,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "sugithamannalthodi@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- holliemariemccrea@gmail.com ---
@@ -27809,8 +28030,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "holliemariemccrea@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- ajujoe68@gmail.com ---
@@ -28504,8 +28729,12 @@ db.live_staffs.updateOne(
         "submitted_date": "27-08-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "ajujoe68@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- thobogangjinglis8@gmail.com ---
@@ -29199,8 +29428,12 @@ db.live_staffs.updateOne(
         "submitted_date": "28-08-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "thobogangjinglis8@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- nithinjose88@gmail.com ---
@@ -29784,8 +30017,12 @@ db.live_staffs.updateOne(
         "submitted_date": "28-08-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "nithinjose88@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- angelabrennan92@gmail.com ---
@@ -30358,8 +30595,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "angelabrennan92@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- noellekeane90@yahoo.ie ---
@@ -30690,8 +30931,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "noellekeane90@yahoo.ie"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- avatynan18@gmail.com ---
@@ -31253,8 +31498,12 @@ db.live_staffs.updateOne(
         "submitted_date": "18-11-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "avatynan18@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- nashetynah@gmail.com ---
@@ -31816,8 +32065,12 @@ db.live_staffs.updateOne(
         "submitted_date": "04-11-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "nashetynah@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- chrissmarc@outlook.com ---
@@ -32401,8 +32654,12 @@ db.live_staffs.updateOne(
         "submitted_date": "24-10-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "chrissmarc@outlook.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- jincymchacko@gmail.com ---
@@ -32986,8 +33243,12 @@ db.live_staffs.updateOne(
         "submitted_date": "29-11-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "jincymchacko@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- tinujoy@gmail.com ---
@@ -33549,8 +33810,12 @@ db.live_staffs.updateOne(
         "submitted_date": "14-11-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "tinujoy@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- mmaobeyy@gmail.com ---
@@ -33782,8 +34047,12 @@ db.live_staffs.updateOne(
         "submitted_date": "20-12-2024"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "mmaobeyy@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- tintumartin14@gmail.com ---
@@ -34510,8 +34779,12 @@ db.live_staffs.updateOne(
         "submitted_date": "17-01-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "tintumartin14@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- hazelgargan99@gmail.com ---
@@ -35084,8 +35357,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "hazelgargan99@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- david95_david95@yahoo.com ---
@@ -35669,8 +35946,12 @@ db.live_staffs.updateOne(
         "submitted_date": "28-01-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "david95_david95@yahoo.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- bogdan.tone89@gmail.com ---
@@ -35913,8 +36194,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "bogdan.tone89@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- mikereid1986@hotmail.com ---
@@ -36278,8 +36563,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "mikereid1986@hotmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- emmasharpe30@gmail.com ---
@@ -36423,8 +36712,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "emmasharpe30@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- anuanuvihar54@gmail.com ---
@@ -36645,8 +36938,12 @@ db.live_staffs.updateOne(
         "submitted_date": "03-04-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "anuanuvihar54@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- azraboy.mk7+1@gmail.com ---
@@ -37186,8 +37483,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "azraboy.mk7+1@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- jiharak731@jazipo.com ---
@@ -37727,8 +38028,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "jiharak731@jazipo.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- kristina.delaneypetersen@gmail.com ---
@@ -38323,8 +38628,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "kristina.delaneypetersen@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- itssnehamerinsaji@gmail.com ---
@@ -38809,8 +39118,12 @@ db.live_staffs.updateOne(
         "submitted_date": "02-06-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "itssnehamerinsaji@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- rebeccaoneillhennessy@hotmail.com ---
@@ -39416,8 +39729,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "rebeccaoneillhennessy@hotmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- alexzanda28@gmail.com ---
@@ -39869,8 +40186,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "alexzanda28@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- jeenubabu27@gmail.com ---
@@ -40102,8 +40423,12 @@ db.live_staffs.updateOne(
         "submitted_date": "02-07-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "jeenubabu27@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- yvess1980@hotmail.com ---
@@ -40269,8 +40594,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "yvess1980@hotmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- bipinin7s@gmail.com ---
@@ -40766,8 +41095,12 @@ db.live_staffs.updateOne(
         "submitted_date": "19-01-2026"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "bipinin7s@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- tawandaraymond01@gmail.com ---
@@ -41230,8 +41563,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "tawandaraymond01@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- debashree543@gmail.com ---
@@ -41727,8 +42064,12 @@ db.live_staffs.updateOne(
         "submitted_date": "25-07-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "debashree543@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- crmdmary@gmail.com ---
@@ -42191,8 +42532,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "crmdmary@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- florasheejaf@gmail.com ---
@@ -42776,8 +43121,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "florasheejaf@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- denmark.mismanos@icloud.com ---
@@ -43394,8 +43743,12 @@ db.live_staffs.updateOne(
         "submitted_date": "24-07-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "denmark.mismanos@icloud.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- rafal.arkadas@gmail.com ---
@@ -43847,8 +44200,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "rafal.arkadas@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- anjusajith1995@gmail.com ---
@@ -44454,8 +44811,12 @@ db.live_staffs.updateOne(
         "submitted_date": "22-07-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "anjusajith1995@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- ntuthuen@gmail.com ---
@@ -45050,8 +45411,12 @@ db.live_staffs.updateOne(
         "submitted_date": "28-08-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "ntuthuen@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- nazirat2345@gmail.com ---
@@ -45349,8 +45714,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "nazirat2345@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- isiomaizegbune@yahoo.com ---
@@ -45802,8 +46171,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "isiomaizegbune@yahoo.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- akhil.ps@xpresshealth.ie ---
@@ -46255,8 +46628,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "akhil.ps@xpresshealth.ie"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- joyoucejoy25@gmail.com ---
@@ -46829,8 +47206,12 @@ db.live_staffs.updateOne(
         "submitted_date": "28-10-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "joyoucejoy25@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- rosebh2023@gmail.com ---
@@ -47304,8 +47685,12 @@ db.live_staffs.updateOne(
         "submitted_date": "11-10-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "rosebh2023@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- hilda.chithra@gmail.com ---
@@ -47801,8 +48186,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "hilda.chithra@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- egless464@gmail.com ---
@@ -48254,8 +48643,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "egless464@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- rutxkb@gmail.com ---
@@ -48751,8 +49144,12 @@ db.live_staffs.updateOne(
         "submitted_date": "22-12-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "rutxkb@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- ephyaadepa31@gmail.com ---
@@ -49226,8 +49623,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "ephyaadepa31@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- sulimanm89@yahoo.com ---
@@ -49404,8 +49805,12 @@ db.live_staffs.updateOne(
         "submitted_date": "10-09-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "sulimanm89@yahoo.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- jessicadunne72@gmail.com ---
@@ -49879,8 +50284,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "jessicadunne72@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- jiangbehlimov@gmail.com ---
@@ -50343,8 +50752,12 @@ db.live_staffs.updateOne(
         "submitted_date": "26-09-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "jiangbehlimov@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- tm8617548@gmail.com ---
@@ -50796,8 +51209,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "tm8617548@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- hemanthrkumar818@gmail.com ---
@@ -51260,8 +51677,12 @@ db.live_staffs.updateOne(
         "submitted_date": "16-09-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "hemanthrkumar818@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- mich.mccormack42@gmail.com ---
@@ -51449,8 +51870,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "mich.mccormack42@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- vaivavijeik@gmail.com ---
@@ -51616,8 +52041,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "vaivavijeik@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- paulconroy90@gmail.com ---
@@ -52179,8 +52608,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "paulconroy90@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- vumani30@yahoo.com ---
@@ -52643,8 +53076,12 @@ db.live_staffs.updateOne(
         "submitted_date": "06-10-2025"
     }
 ]
+    },
+    $setOnInsert: {
+      email: "vumani30@yahoo.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- rsrutaaa@gmail.com ---
@@ -52942,8 +53379,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "rsrutaaa@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- ajiljacob4422@gmail.com ---
@@ -53417,8 +53858,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "ajiljacob4422@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- vanessanegbenebor65@gmail.com ---
@@ -53705,8 +54150,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "vanessanegbenebor65@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- kateobrien1@gmail.com ---
@@ -54191,8 +54640,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "kateobrien1@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- amaka.ambrose@gmail.com ---
@@ -54666,8 +55119,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "amaka.ambrose@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- sowrirajananurekha@gmail.com ---
@@ -55174,8 +55631,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "sowrirajananurekha@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- kofori1109@gmail.com ---
@@ -55682,8 +56143,12 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "kofori1109@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
 
 // --- aislingmkeena@gmail.com ---
@@ -55860,6 +56325,10 @@ db.live_staffs.updateOne(
         "submitted_date": ""
     }
 ]
+    },
+    $setOnInsert: {
+      email: "aislingmkeena@gmail.com"
     }
-  }
+  },
+  { upsert: true }
 );
