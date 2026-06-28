@@ -722,6 +722,51 @@ def live_staff_vos_nurse_upload(staff_id):
 
 # ── Excel export ──────────────────────────────────────────────────────
 
+
+
+# ── API: Get all generated VOS nurse documents ───────────────────────
+
+@admin_bp.route('/live-staffs/api/vos-nurse-docs', methods=['GET'])
+def live_staff_api_vos_nurse_docs():
+    """
+    Return all generated VOS nurse documents with GCS download URLs.
+    Auth: cron_key
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    from admin.live_staffs import _gcs_signed_url as _sign
+    docs = list(_vos_nurse_col().find({"status": "generated"}))
+    result = []
+    for d in docs:
+        gcs_blob = d.get('gcs_blob', '')
+        url = ''
+        if gcs_blob:
+            try:
+                url = _sign(gcs_blob, expiry_minutes=1440) or ''
+            except Exception:
+                url = ''
+        result.append({
+            "staff_id":     d.get('staff_id', ''),
+            "staff_name":   d.get('staff_name', ''),
+            "email":        d.get('email', ''),
+            "user_type":    d.get('user_type', ''),
+            "filename":     d.get('filename', ''),
+            "gcs_blob":     gcs_blob,
+            "download_url": url,
+            "generated_at": d["generated_at"].isoformat() if d.get("generated_at") else "",
+            "doc_type":     "vos_nurse",
+        })
+
+    return jsonify({
+        "success": True,
+        "count":   len(result),
+        "docs":    result,
+    })
 @admin_bp.route('/live-staffs/export/vos-nurse-xlsx')
 @admin_required
 def live_staff_export_vos_nurse_xlsx():
