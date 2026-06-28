@@ -400,9 +400,6 @@ def _build_vos_nurse_docx(staff_doc, rows):
         else:
             _run(p, value, size=11)
 
-    _agency_line('Agency Name', 'Xpress Health')
-    _agency_line('HSE Site / Service', blank=True)
-
     sp(10)
 
     # ── Staff Details table (2 col) ────────────────────────────────────
@@ -414,7 +411,6 @@ def _build_vos_nurse_docx(staff_doc, rows):
     staff_rows = [
         ('Full Name',         full_name),
         ('Role / Designation', user_type),
-        ('PPS Number',        pps),
     ]
     staff_tbl = d.add_table(rows=len(staff_rows), cols=2)
     staff_tbl.style = 'Table Grid'
