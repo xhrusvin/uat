@@ -24,8 +24,6 @@ import requests as _req
 from . import admin_bp
 
 
-# ── Helpers — lazy wrappers to avoid circular imports ─────────────────
-
 def _v(val):
     if val is None:
         return ''
@@ -37,7 +35,15 @@ def _staffs_col():
     return current_app.db.live_staffs
 
 
-# ── Cron: Upload Consent Documents (others_1) ─────────────────────────
+def _gcs_signed_url(blob_name, expiry_minutes=60):
+    from admin.live_staffs import _gcs_signed_url as _f
+    return _f(blob_name, expiry_minutes)
+
+
+def _gcs_download(blob_name):
+    from admin.live_staffs import _gcs_download as _f
+    return _f(blob_name)
+
 
 @admin_bp.route('/live-staffs/cron/upload-consent', methods=['GET', 'POST'])
 def live_staff_cron_upload_consent():
@@ -45,7 +51,7 @@ def live_staff_cron_upload_consent():
     Cron job — uploads consent doc to HSE API for ONE staff member per call.
 
     Finds staff where consent_fetched=True but consent_uploaded is not True.
-    Downloads the DOCX from GCS (via consent_document_url signed URL),
+    Uses consent_gcs_blob to download the DOCX from GCS (same pattern as PCC),
     then POSTs it to the HSE Document Upload API as hse_document_type=others_1.
 
     Protect with ?cron_key=<CRON_SECRET> env var.
@@ -82,10 +88,8 @@ def live_staff_cron_upload_consent():
     full_name = _v(s1.get('full_name') or '')
     email     = _v(staff.get('email') or s1.get('email_address') or '')
 
-    consent_url  = _v(staff.get('consent_document_url') or
-                      staff.get('consent_form_url') or '')
+    gcs_blob     = _v(staff.get('consent_gcs_blob') or '')
     consent_name = _v(staff.get('consent_document_name') or
-                      staff.get('consent_form_name') or
                       f"{email}_consent_form.docx")
 
     def _mark_done(fields):
@@ -103,28 +107,28 @@ def live_staff_cron_upload_consent():
             }},
         )
 
-    if not consent_url:
-        _mark_failed("skipped — no consent_document_url")
+    if not gcs_blob:
+        _mark_failed("skipped — no consent_gcs_blob")
         return jsonify({
             "success":         False,
             "email":           email,
             "staff_name":      full_name,
-            "error":           "No consent_document_url on record",
+            "error":           "No consent_gcs_blob on record",
             "remaining_count": max(0, remaining_total - 1),
         })
 
-    # ── Download the DOCX from GCS ────────────────────────────────────
+    # ── Download the DOCX from GCS (same as PCC) ─────────────────────
     try:
-        dl_resp = _req.get(consent_url, timeout=60)
-        dl_resp.raise_for_status()
-        docx_bytes = dl_resp.content
+        docx_bytes = _gcs_download(gcs_blob)
+        if not docx_bytes:
+            raise ValueError("Empty response from GCS")
     except Exception as e:
         _mark_failed(f"download error: {e}")
         return jsonify({
             "success":         False,
             "email":           email,
             "staff_name":      full_name,
-            "error":           f"Failed to download consent doc: {e}",
+            "error":           f"Failed to download consent doc from GCS: {e}",
             "remaining_count": max(0, remaining_total - 1),
         })
 
@@ -184,6 +188,7 @@ def live_staff_cron_upload_consent():
         "staff_name":      full_name,
         "email":           email,
         "filename":        consent_name,
+        "gcs_blob":        gcs_blob,
         "remaining_count": max(0, remaining_total - 1),
         "message": (
             f"Consent doc uploaded for {full_name} — "
