@@ -75,9 +75,9 @@ def live_staff_cron_upload_interview():
         "intf_fetched": True,
         "$or": [
             {"interview_uploaded": {"$exists": False}},
-            {"interview_uploaded": False},
             {"interview_uploaded": None},
         ],
+        "interview_upload_note": {"$exists": False},
     }
     remaining_total = col.count_documents(pending_query)
     staff           = col.find_one(pending_query)

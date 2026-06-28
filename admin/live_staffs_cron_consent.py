@@ -75,9 +75,9 @@ def live_staff_cron_upload_consent():
         "consent_fetched": True,
         "$or": [
             {"consent_uploaded": {"$exists": False}},
-            {"consent_uploaded": False},
             {"consent_uploaded": None},
         ],
+        "consent_upload_note": {"$exists": False},
     }
     remaining_total = col.count_documents(pending_query)
     staff           = col.find_one(pending_query)
