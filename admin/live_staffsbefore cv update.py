@@ -31,64 +31,6 @@ def _validate_api_key():
     return True, None
 
 
-def _extract_missing_fields(nationality, total_exp, extracted_cv, entries):
-    """
-    Fill missing nationality and total_exp by analysing extracted_cv and employment entries.
-    Returns (nationality, total_exp) with best available values.
-    """
-    import re as _re_mf
-    from datetime import datetime as _dt_mf
-
-    cv = extracted_cv or ''
-
-    # ── Nationality from CV text ──────────────────────────────────────
-    if not nationality and cv:
-        _m = _re_mf.search(
-            r'(?i)\bnationality\s*[:\-]\s*([A-Za-z ]{2,40})',
-            cv
-        )
-        if _m:
-            nationality = _m.group(1).strip().title()
-
-    # ── Total Experience: calculate from employment entries ───────────
-    if not total_exp and entries:
-        try:
-            _now = _dt_mf.now()
-            _earliest = None
-            for _e in entries:
-                _from_str = str(_e.get('from') or '').strip()
-                for _fmt in ('%B %Y', '%b %Y', '%m/%Y', '%Y-%m',
-                              '%d/%m/%Y', '%Y-%m-%d', '%Y'):
-                    try:
-                        _d = _dt_mf.strptime(_from_str, _fmt)
-                        if _earliest is None or _d < _earliest:
-                            _earliest = _d
-                        break
-                    except Exception:
-                        pass
-            if _earliest:
-                _months = (_now.year - _earliest.year) * 12 +                           (_now.month - _earliest.month)
-                _yrs    = _months // 12
-                _mos    = _months % 12
-                total_exp = (
-                    f"{_yrs} year{'s' if _yrs != 1 else ''}" +
-                    (f" {_mos} month{'s' if _mos != 1 else ''}" if _mos else "")
-                )
-        except Exception:
-            pass
-
-    # ── Total Experience: scan CV text for "X years experience" ──────
-    if not total_exp and cv:
-        _m2 = _re_mf.search(
-            r'(?i)(\d+\.?\d*)\s*\+?\s*years?\s*(?:of\s+)?(?:experience|nursing|working)',
-            cv
-        )
-        if _m2:
-            total_exp = f"{_m2.group(1)} years"
-
-    return nationality, total_exp
-
-
 # ── PCC constants ─────────────────────────────────────────────────────
 _PCC_REVIEWERS = [
     'Letty Mathew',
@@ -1962,10 +1904,6 @@ def live_staff_ai_cv_generate():
         nationality = _vv(s1.get('nationality'))
         emp_code    = _vv(doc.get('employee_code'))
         total_exp   = _vv(s5.get('total_experience'))
-        # ── Fill missing nationality / total_exp from extracted_cv ────
-        extracted_cv_temp = _v(doc.get('extracted_cv') or '')
-        entries_temp = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
-        nationality, total_exp = _extract_missing_fields(nationality, total_exp, extracted_cv_temp, entries_temp)
         divisions   = ', '.join(s3.get('divisions_registered_in') or [])
         reg_pin     = _vv(s3.get('registration_number_pin'))
         reg_exp     = _vv(s3.get('registration_expiry_date'))
@@ -2201,11 +2139,7 @@ ADDITIONAL INFORMATION
 
 Rules:
 - Use ONLY the information provided — do not invent anything.
-- EMPLOYMENT ELIGIBILITY: Label: Value per line. Do NOT include name, address, mobile or email.
-  For fields left blank in CANDIDATE DATA, analyse the CANDIDATE'S ORIGINAL CV to fill them:
-  * Nationality: look for "Nationality:", country of origin, or infer from education/work locations.
-  * Total Experience: if blank, it has been pre-calculated from employment dates — use that value.
-  * Skip any field not available from either source.
+- EMPLOYMENT ELIGIBILITY: use CANDIDATE DATA. Label: Value per line. Do NOT include name, address, mobile or email.
 - PROFESSIONAL PROFILE: 2 short paragraphs, first person, based on the candidate's background.
 - EDUCATION & QUALIFICATIONS: copy ALL education from the CV exactly as written — every school, college, course, degree. Do not filter or skip any entry.
 - PROFESSIONAL EXPERIENCE: copy ALL jobs from the CV exactly — every employer, job title, dates and duties.
@@ -2387,10 +2321,6 @@ def live_staff_ai_interview_generate():
         visa_type   = _vv(visa.get('visa_type') or '')
         divisions   = ', '.join(s3.get('divisions_registered_in') or [])
         total_exp   = _vv(s5.get('total_experience'))
-        # ── Fill missing nationality / total_exp from extracted_cv ────
-        extracted_cv_temp = _v(doc.get('extracted_cv') or '')
-        entries_temp = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
-        nationality, total_exp = _extract_missing_fields(nationality, total_exp, extracted_cv_temp, entries_temp)
         nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
         garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
         bls         = 'Yes' if s10.get('cpr_bls') else 'No'
@@ -2690,10 +2620,6 @@ def live_staff_api_generate_cv():
         nationality = _vv(s1.get('nationality'))
         reg_pin     = _vv(s3.get('registration_number_pin'))
         total_exp   = _vv(s5.get('total_experience'))
-        # ── Fill missing nationality / total_exp from extracted_cv ────
-        extracted_cv_temp = _v(doc.get('extracted_cv') or '')
-        entries_temp = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
-        nationality, total_exp = _extract_missing_fields(nationality, total_exp, extracted_cv_temp, entries_temp)
         nmbi_num    = _vv(doc.get('nmbi_number') or reg_pin or '')
         qqi_num     = _vv(doc.get('qqi_number') or '')
 
@@ -2881,10 +2807,6 @@ def api_generate_interview():
         visa_type   = _vv(visa.get('visa_type'))
         divisions   = ', '.join(s3.get('divisions_registered_in') or [])
         total_exp   = _vv(s5.get('total_experience'))
-        # ── Fill missing nationality / total_exp from extracted_cv ────
-        extracted_cv_temp = _v(doc.get('extracted_cv') or '')
-        entries_temp = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
-        nationality, total_exp = _extract_missing_fields(nationality, total_exp, extracted_cv_temp, entries_temp)
         nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
         garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
         bls         = 'Yes' if s10.get('cpr_bls') else 'No'

@@ -583,6 +583,53 @@ def live_staff_cron_generate_cv():
     mobile      = _vv(s1_f.get('mobile_number'))
     nationality = _vv(s1_f.get('nationality'))
     total_exp   = _vv(s5.get('total_experience'))
+
+    # ── Extract missing fields from extracted_cv ──────────────────────
+    if extracted_cv:
+        import re as _re_cv
+
+        # Nationality — scan for "nationality: X" in CV text
+        if not nationality:
+            _nm = _re_cv.search(
+                r'(?i)\bnationality\s*[:\-]\s*([A-Za-z ]{2,40})',
+                extracted_cv
+            )
+            if _nm:
+                nationality = _nm.group(1).strip().title()
+
+        # Total Experience — calculate from employment history dates in CV
+        if not total_exp and entries:
+            try:
+                from datetime import datetime as _dt
+                _now = _dt.now()
+                _earliest = None
+                for _e in entries:
+                    _from_str = _vv(_e.get('from') or '')
+                    for _fmt in ('%B %Y', '%b %Y', '%m/%Y', '%Y-%m', '%Y'):
+                        try:
+                            _d = _dt.strptime(_from_str, _fmt)
+                            if _earliest is None or _d < _earliest:
+                                _earliest = _d
+                            break
+                        except Exception:
+                            pass
+                if _earliest:
+                    _months = (_now.year - _earliest.year) * 12 + (_now.month - _earliest.month)
+                    _yrs    = _months // 12
+                    _mos    = _months % 12
+                    total_exp = f"{_yrs} year{'s' if _yrs != 1 else ''}" + \
+                                (f" {_mos} month{'s' if _mos != 1 else ''}" if _mos else "")
+            except Exception:
+                pass
+
+        # Total Experience fallback — scan CV text for experience mentions
+        if not total_exp:
+            _em = _re_cv.search(
+                r'(?i)(\d+\.?\d*)\s*\+?\s*years?\s*(?:of\s+)?(?:experience|nursing|working)',
+                extracted_cv
+            )
+            if _em:
+                total_exp = f"{_em.group(1)} years"
     divisions   = ', '.join(s3.get('divisions_registered_in') or [])
     reg_pin     = _vv(s3.get('registration_number_pin'))
     reg_exp     = _vv(s3.get('registration_expiry_date'))
@@ -824,13 +871,20 @@ ADDITIONAL INFORMATION
 
 Rules:
 - Use ONLY the information provided — do not invent anything.
-- EMPLOYMENT ELIGIBILITY: use CANDIDATE DATA. Label: Value per line. Do NOT include name, address, mobile or email.
-- PROFESSIONAL PROFILE: 2 short paragraphs, first person, based on the candidate's background.
-- EDUCATION & QUALIFICATIONS: copy ALL education from the CV exactly as written — every school, college, course, degree. Do not filter or skip any entry.
-- PROFESSIONAL EXPERIENCE: copy ALL jobs from the CV exactly — every employer, job title, dates and duties.
+- EMPLOYMENT ELIGIBILITY: Label: Value per line. Do NOT include name, address, mobile or email.
+  For blank fields, analyse the CANDIDATE'S ORIGINAL CV:
+  * Nationality: look for "Nationality:" or infer from education/work locations.
+  * Total Experience: if blank, calculate from employment dates in the CV (earliest start to today).
+  * Skip any field not available from either source.
+  IMPORTANT — for any blank fields in CANDIDATE DATA, analyse the CANDIDATE'S ORIGINAL CV and fill them:
+  * Nationality: if blank, look for nationality, country of origin, or infer from education/work history in the CV.
+  * Total Experience: if blank, calculate from the employment history (earliest job start date to today). Format as "X years Y months".
+  * Skip fields that are truly not available anywhere.
+- EDUCATION & QUALIFICATIONS: copy ALL education exactly as written — every school, college, course, degree. Do not skip any entry.
+- PROFESSIONAL EXPERIENCE: copy ALL jobs exactly — employer, title, dates, duties.
 - TRAINING & CERTIFICATIONS: list all certificates and training from the CV.
 - KEY SKILLS: list skills from the CV.
-- ADDITIONAL INFORMATION: write only these two lines:
+- ADDITIONAL INFORMATION: write only:
   Driving Licence: No
   Own Transport: No
 
@@ -838,9 +892,9 @@ CANDIDATE DATA:
 {data_summary}
 
 CANDIDATE'S ORIGINAL CV:
-{extracted_cv[:15000] if extracted_cv and not extracted_cv.startswith('[') else "No CV available — build from CANDIDATE DATA above."}
+{extracted_cv[:15000] if has_extracted else "No CV available — build from CANDIDATE DATA above."}
 
-Output the structured CV text only. No markdown, no asterisks, no preamble.
+Output the structured CV text only. No markdown, no preamble.
 """
     # ── Run generation in background thread to avoid 504 ─────────────
     def _do_generate():
