@@ -1839,36 +1839,24 @@ def _build_pcc_docx(doc, reviewer_index=0):
         p.paragraph_format.space_before = Pt(2)
         p.paragraph_format.space_after  = Pt(2)
 
-        # Insert Word SYMBOL field for checkbox — works on all platforms
-        # Wingdings: char 254 = ☑ (ticked box), char 168 = ☐ (empty box)
-        r = p.add_run()
+        # Word SYMBOL field — Wingdings 254=☑ ticked, 168=☐ empty
+        r1 = p.add_run()
         fldChar1 = OxmlElement('w:fldChar')
         fldChar1.set(qn('w:fldCharType'), 'begin')
-        r._r.append(fldChar1)
+        r1._r.append(fldChar1)
 
         r2 = p.add_run()
         instrText = OxmlElement('w:instrText')
         instrText.set(qn('xml:space'), 'preserve')
-        if checked:
-            instrText.text = ' SYMBOL 254 \\f "Wingdings" \\s 11 '
-        else:
-            instrText.text = ' SYMBOL 168 \\f "Wingdings" \\s 11 '
+        instrText.text = (' SYMBOL 254 \\f "Wingdings" \\s 11 '
+                          if checked else
+                          ' SYMBOL 168 \\f "Wingdings" \\s 11 ')
         r2._r.append(instrText)
 
         r3 = p.add_run()
         fldChar2 = OxmlElement('w:fldChar')
-        fldChar2.set(qn('w:fldCharType'), 'separate')
+        fldChar2.set(qn('w:fldCharType'), 'end')
         r3._r.append(fldChar2)
-
-        # Fallback display text (shown before field updates)
-        r4 = p.add_run('þ' if checked else '¨')
-        r4.font.name = 'Wingdings'
-        r4.font.size = Pt(11)
-
-        r5 = p.add_run()
-        fldChar3 = OxmlElement('w:fldChar')
-        fldChar3.set(qn('w:fldCharType'), 'end')
-        r5._r.append(fldChar3)
 
         _add_run(p, '  ' + text, size=9.5)
         return p
