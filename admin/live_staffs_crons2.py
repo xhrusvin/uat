@@ -1832,23 +1832,45 @@ def _build_pcc_docx(doc, reviewer_index=0):
         return p
 
     def checkbox_item(text, checked=False):
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+
         p = document.add_paragraph()
         p.paragraph_format.space_before = Pt(2)
         p.paragraph_format.space_after  = Pt(2)
-        # ☑ U+2611 / ☐ U+2610 — use font chain for cross-platform rendering
-        tick_run = p.add_run('☑ ' if checked else '☐ ')
-        tick_run.font.size = Pt(11)
-        # Try Segoe UI Symbol (Windows), fallback to Arial Unicode MS, then DejaVu Sans
-        from docx.oxml.ns import qn
-        from docx.oxml import OxmlElement
-        rPr = tick_run._r.get_or_add_rPr()
-        rFonts = OxmlElement('w:rFonts')
-        rFonts.set(qn('w:ascii'),    'Segoe UI Symbol')
-        rFonts.set(qn('w:hAnsi'),    'Segoe UI Symbol')
-        rFonts.set(qn('w:cs'),       'Segoe UI Symbol')
-        rFonts.set(qn('w:eastAsia'), 'Segoe UI Symbol')
-        rPr.insert(0, rFonts)
-        _add_run(p, text, size=9.5)
+
+        # Insert Word SYMBOL field for checkbox — works on all platforms
+        # Wingdings: char 254 = ☑ (ticked box), char 168 = ☐ (empty box)
+        r = p.add_run()
+        fldChar1 = OxmlElement('w:fldChar')
+        fldChar1.set(qn('w:fldCharType'), 'begin')
+        r._r.append(fldChar1)
+
+        r2 = p.add_run()
+        instrText = OxmlElement('w:instrText')
+        instrText.set(qn('xml:space'), 'preserve')
+        if checked:
+            instrText.text = ' SYMBOL 254 \\f "Wingdings" \\s 11 '
+        else:
+            instrText.text = ' SYMBOL 168 \\f "Wingdings" \\s 11 '
+        r2._r.append(instrText)
+
+        r3 = p.add_run()
+        fldChar2 = OxmlElement('w:fldChar')
+        fldChar2.set(qn('w:fldCharType'), 'separate')
+        r3._r.append(fldChar2)
+
+        # Fallback display text (shown before field updates)
+        r4 = p.add_run('þ' if checked else '¨')
+        r4.font.name = 'Wingdings'
+        r4.font.size = Pt(11)
+
+        r5 = p.add_run()
+        fldChar3 = OxmlElement('w:fldChar')
+        fldChar3.set(qn('w:fldCharType'), 'end')
+        r5._r.append(fldChar3)
+
+        _add_run(p, '  ' + text, size=9.5)
         return p
 
     def blank_line(label):
