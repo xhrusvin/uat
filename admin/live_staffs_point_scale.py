@@ -574,6 +574,23 @@ def live_staff_cron_generate_point_scale():
 
 # ── Download generated document ───────────────────────────────────────
 
+@admin_bp.route('/live-staffs/api/vos-saved/<staff_id>')
+@admin_required
+def live_staff_api_vos_saved(staff_id):
+    """Check if a Verification of Service document exists for this staff member."""
+    rec = _ps_col().find_one({"staff_id": staff_id, "status": "generated"})
+    if rec:
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "gcs_blob":     rec.get("gcs_blob", ""),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M")
+                            if rec.get("generated_at") else "",
+            "total":        f"{rec.get('total_years',0)} Yrs, {rec.get('total_months',0)} Months",
+        })
+    return jsonify({"success": True, "found": False})
+
+
 @admin_bp.route('/live-staffs/vos/download/<staff_id>')
 @admin_required
 def live_staff_vos_download(staff_id):

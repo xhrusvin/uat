@@ -403,6 +403,14 @@
                                         data-name="{{ p.full_name | default('this record') | e }}">
                                     <i class="bi bi-trash"></i>
                                 </button>
+                                {% if 'healthcare assistant' in (s.user_type or '') | lower %}
+                                <button class="btn btn-success btn-sm rounded-pill px-3 me-1 btn-vos"
+                                        data-id="{{ s._id }}"
+                                        data-name="{{ p.full_name | default('Staff') | e }}"
+                                        title="Generate Verification of Service Document">
+                                    <i class="bi bi-patch-check"></i>
+                                </button>
+                                {% endif %}
                             </td>
                         </tr>
                         {% else %}
@@ -1056,6 +1064,67 @@
                     <div class="alert alert-danger rounded-3 mb-3" id="aiCvErrorMsg"></div>
                     <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── VOS Modal ─────────────────────────────────────────────────── -->
+<div class="modal fade" id="vosModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title">
+                    <i class="bi bi-patch-check me-2 text-success"></i>Verification of Service — <span id="vosModalName"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+
+                <!-- Idle state -->
+                <div id="vosIdle">
+                    <p class="text-muted small mb-3">
+                        Generate a <strong>Verification of Service – Agency Staff</strong> document
+                        with employment history and total eligible service for incremental credit.
+                    </p>
+                    <div id="vosSavedInfo" class="alert alert-success py-2 small mb-3 d-none">
+                        A saved document exists from <strong id="vosSavedDate"></strong>.
+                        <a href="#" id="vosExistingDownload" target="_blank" class="ms-2">
+                            <i class="bi bi-download me-1"></i>Download
+                        </a>
+                    </div>
+                    <button class="btn btn-success w-100" id="vosGenerateBtn">
+                        <i class="bi bi-patch-check me-1"></i> Generate Verification of Service
+                    </button>
+                </div>
+
+                <!-- Generating state -->
+                <div id="vosGenerating" class="d-none text-center py-3">
+                    <div class="spinner-border text-success mb-3" role="status"></div>
+                    <p class="text-muted">Generating document...</p>
+                </div>
+
+                <!-- Success state -->
+                <div id="vosResult" class="d-none">
+                    <div class="alert alert-success py-2 mb-3">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Document generated successfully!
+                    </div>
+                    <div class="text-muted small mb-2" id="vosTotal"></div>
+                    <a href="#" id="vosDownloadBtn" target="_blank"
+                       class="btn btn-outline-success w-100">
+                        <i class="bi bi-download me-1"></i> Download Verification of Service
+                    </a>
+                </div>
+
+                <!-- Error state -->
+                <div id="vosError" class="d-none">
+                    <div class="alert alert-danger py-2 small" id="vosErrorMsg"></div>
+                </div>
+
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -2014,6 +2083,87 @@ document.getElementById('pccUploadInput').addEventListener('change', async (e) =
         }
     } catch(ex) {}
     e.target.value = '';
+});
+
+// ── VOS (Verification of Service) buttons ─────────────────────────────
+const VOS_GEN_URL    = '/admin/live-staffs/vos/generate/__ID__';
+const VOS_DL_URL     = '/admin/live-staffs/vos/download/__ID__';
+const VOS_SAVED_URL  = '/admin/live-staffs/api/vos-saved/__ID__';
+
+let currentVosStaffId = null;
+
+document.querySelectorAll('.btn-vos').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentVosStaffId = btn.dataset.id;
+        const name        = btn.dataset.name || 'Staff';
+
+        document.getElementById('vosModalName').textContent = name;
+        document.getElementById('vosIdle').classList.remove('d-none');
+        document.getElementById('vosGenerating').classList.add('d-none');
+        document.getElementById('vosResult').classList.add('d-none');
+        document.getElementById('vosError').classList.add('d-none');
+        document.getElementById('vosSavedInfo').classList.add('d-none');
+        document.getElementById('vosGenerateBtn').disabled = false;
+        document.getElementById('vosGenerateBtn').innerHTML = '<i class="bi bi-patch-check me-1"></i> Generate Verification of Service';
+
+        // Check if already generated
+        try {
+            const r = await fetch(VOS_SAVED_URL.replace('__ID__', currentVosStaffId));
+            const d = await r.json();
+            if (d.success && d.found) {
+                document.getElementById('vosSavedInfo').classList.remove('d-none');
+                document.getElementById('vosSavedDate').textContent = d.generated_at || '';
+                document.getElementById('vosExistingDownload').href =
+                    VOS_DL_URL.replace('__ID__', currentVosStaffId);
+            }
+        } catch(e) {}
+
+        new bootstrap.Modal(document.getElementById('vosModal')).show();
+    });
+});
+
+document.getElementById('vosGenerateBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('vosGenerateBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Generating...';
+
+    document.getElementById('vosIdle').classList.add('d-none');
+    document.getElementById('vosGenerating').classList.remove('d-none');
+    document.getElementById('vosResult').classList.add('d-none');
+    document.getElementById('vosError').classList.add('d-none');
+
+    try {
+        const r = await fetch(VOS_GEN_URL.replace('__ID__', currentVosStaffId), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+        });
+        const text = await r.text();
+        let d;
+        try { d = JSON.parse(text); }
+        catch(_) {
+            document.getElementById('vosGenerating').classList.add('d-none');
+            document.getElementById('vosError').classList.remove('d-none');
+            document.getElementById('vosErrorMsg').textContent = `Server error ${r.status}: ${text.slice(0,150)}`;
+            return;
+        }
+        document.getElementById('vosGenerating').classList.add('d-none');
+        if (d.success) {
+            document.getElementById('vosResult').classList.remove('d-none');
+            document.getElementById('vosDownloadBtn').href =
+                VOS_DL_URL.replace('__ID__', currentVosStaffId);
+            if (d.total) {
+                document.getElementById('vosTotal').textContent =
+                    'Total Eligible Service: ' + d.total;
+            }
+        } else {
+            document.getElementById('vosError').classList.remove('d-none');
+            document.getElementById('vosErrorMsg').textContent = d.error || 'Generation failed';
+        }
+    } catch(e) {
+        document.getElementById('vosGenerating').classList.add('d-none');
+        document.getElementById('vosError').classList.remove('d-none');
+        document.getElementById('vosErrorMsg').textContent = 'Network error: ' + e.message;
+    }
 });
 
 </script>
