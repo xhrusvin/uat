@@ -923,7 +923,7 @@ def live_staff_api_vos_docs():
     doc = col.find_one_and_update(
         {"status": "generated", "downloaded": {"$ne": True}},
         {"$set": {"downloaded": True}},
-        projection={"staff_id": 1, "staff_name": 1},
+        projection={"staff_id": 1, "staff_name": 1, "email": 1},
     )
 
     if not doc:
@@ -933,6 +933,7 @@ def live_staff_api_vos_docs():
         "success":      True,
         "done":         False,
         "staff_name":   doc.get('staff_name', ''),
+        "email":        doc.get('email', ''),
         "download_url": f"{request.host_url.rstrip('/')}/admin/live-staffs/vos/download/{doc.get('staff_id', '')}",
     })
 
