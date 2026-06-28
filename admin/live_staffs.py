@@ -1244,8 +1244,8 @@ def _build_ai_cv_docx(doc, cv_text):
         r2.font.size = Pt(12)
         r2.italic    = True
 
-    # Contact line — phone only (no email to avoid duplication)
-    contact_parts = [x for x in [phone] if x]
+    # Contact line — phone + email
+    contact_parts = [x for x in [phone, email] if x]
     if contact_parts:
         pc = document.add_paragraph()
         pc.paragraph_format.space_before = Pt(2)
@@ -1253,19 +1253,6 @@ def _build_ai_cv_docx(doc, cv_text):
         rc = pc.add_run('  |  '.join(contact_parts))
         rc.font.name = 'Calibri'
         rc.font.size = Pt(10)
-
-    # Horizontal rule after header
-    p_rule = document.add_paragraph()
-    p_rule.paragraph_format.space_before = Pt(2)
-    p_rule.paragraph_format.space_after  = Pt(8)
-    pPr = p_rule._p.get_or_add_pPr()
-    pBdr = OxmlElement('w:pBdr')
-    bot = OxmlElement('w:bottom')
-    bot.set(qn('w:val'), 'single')
-    bot.set(qn('w:sz'), '12')
-    bot.set(qn('w:color'), '000000')
-    pBdr.append(bot)
-    pPr.append(pBdr)
 
     # ── Section heading — bold uppercase with bottom border ───────────
     def _heading(text):
@@ -1299,45 +1286,24 @@ def _build_ai_cv_docx(doc, cv_text):
         run.font.size = Pt(11)
 
     # ── Strip duplicate header lines Gemini repeats ──────────────────
+    # The DB header already has: Name (large) / Role (italic) / phone+email
+    # Gemini often repeats the name and role at top of cv_text — strip those.
+    # Keep contact lines (phone | address) — they come from the CV and are fine.
     import re as _re_cv
-    _skip_values = set(filter(None, [
-        full_name.lower(),
-        user_type.lower(),
-        email.lower(),
-        phone,
-        phone.replace(' ', ''),
-        phone.replace('+', ''),
-    ]))
 
     def _is_duplicate_header(line):
-        s = line.strip()
+        s  = line.strip()
         sl = s.lower()
         if not s:
             return False
-        # Exact match on known values
-        if sl in _skip_values:
-            return True
-        # Full name line
+        # Exact name match
         if full_name and sl == full_name.lower():
             return True
-        # Email-only line
-        if email and email.lower() in sl and len(sl) < len(email) + 5:
+        # Exact role match
+        if user_type and sl == user_type.lower():
             return True
-        # Phone-only line
-        if phone and phone.replace(' ','') in s.replace(' ',''):
-            digits = _re_cv.sub(r'\D','', s)
-            if len(digits) >= 8 and digits in _re_cv.sub(r'\D','', phone):
-                return True
-        # Contact line: "phone | email | location" or "name | email" etc.
-        # Catches: "0894878798 | analilsubil@gmail.com | Portlaoise, Ireland"
-        if '|' in s and (
-            (email and email.lower() in sl) or
-            (phone and phone.replace(' ','') in s.replace(' ','')) or
-            (full_name and full_name.lower() in sl)
-        ):
-            return True
-        # Line that is just the name
-        if full_name and full_name.lower() == sl:
+        # Name + role on one line
+        if full_name and user_type and full_name.lower() in sl and user_type.lower() in sl:
             return True
         return False
 
@@ -2260,7 +2226,8 @@ Candidate Name
 * Centre align the name.
 * Use a larger heading than the rest of the document.
 Immediately below the name (centre aligned), display:
-Mobile: | Email: | Address:
+Mobile: | Address:
+(Do NOT include Email — it is shown separately above)
 Only display fields that are available in the provided data.
 
 EMPLOYMENT ELIGIBILITY
@@ -3068,7 +3035,7 @@ STRICT RULES
 
 CV FORMAT
 Candidate Name (centred, large heading)
-Mobile | Email | Address (centred, only available fields)
+Mobile | Address (centred, only available fields — do NOT include Email)
 
 EMPLOYMENT ELIGIBILITY
 Label: Value per line. Do NOT include name, address, mobile or email.
