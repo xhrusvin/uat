@@ -55,16 +55,22 @@ def _gcs_download(blob_name):
 def _parse_employment_from_cv(extracted_cv, user_type=''):
     """
     Parse employment history from extracted_cv text.
-    Handles multi-line format:
-      Job Title
-      Employer - Location
-      Month Year to Month Year / Present
+    Handles two formats:
+      A) Multi-line:
+           Job Title
+           Employer - Location
+           Month Year to Month Year
+      B) Structured labels:
+           Job Title: Healthcare Assistant
+           Employer: Homes Instead Ireland
+           Location: Ireland
+           Dates: November 2023 - Present
     Returns list of dicts: {post, employer, from_str, to_str}
     """
     if not extracted_cv:
         return []
 
-    # Extract the experience section
+    # ── Extract experience section ────────────────────────────────────
     lines = extracted_cv.split('\n')
     exp_lines = []
     in_exp = False
@@ -80,31 +86,70 @@ def _parse_employment_from_cv(extracted_cv, user_type=''):
         'positions held',
     }
     for line in lines:
-        l = line.strip()
-        ll = l.lower()
+        l = line.strip(); ll = l.lower()
         if any(ll.startswith(h) for h in exp_headers):
-            in_exp = True
-            continue
+            in_exp = True; continue
         if in_exp and l and any(ll.startswith(h) for h in exp_stop):
             break
         if in_exp:
             exp_lines.append(l)
-
     if not exp_lines:
         exp_lines = [l.strip() for l in lines if l.strip()]
 
-    # Date pattern — "Month Year to Month Year/Present"
+    entries = []
+
+    # ── Format B: structured label-based ─────────────────────────────
+    # Look for Job Title: / Employer: / Dates: blocks
+    label_re = re.compile(r'^(?:job\s+title|title)\s*[:\-]\s*(.+)', re.I)
+    emp_re   = re.compile(r'^employer\s*[:\-]\s*(.+)', re.I)
+    loc_re   = re.compile(r'^location\s*[:\-]\s*(.+)', re.I)
+    date_re2 = re.compile(r'^dates?\s*[:\-]\s*(.+)', re.I)
+
+    cur = {}
+    for l in exp_lines:
+        ml = label_re.match(l)
+        me = emp_re.match(l)
+        mlo = loc_re.match(l)
+        md = date_re2.match(l)
+        if ml:
+            if cur.get('employer') and cur.get('dates'):
+                entries.append(cur); cur = {}
+            cur['post'] = ml.group(1).strip()
+        elif me:
+            cur['employer'] = me.group(1).strip()
+        elif mlo:
+            cur['location'] = mlo.group(1).strip()
+        elif md:
+            cur['dates'] = md.group(1).strip()
+
+    if cur.get('employer') and cur.get('dates'):
+        entries.append(cur)
+
+    if entries:
+        result = []
+        date_split = re.compile(
+            r'(.+?)\s*(?:to|-|–|—)\s*(present|current|ongoing|\w+\s+\d{4}|\d{4})',
+            re.I
+        )
+        for e in entries:
+            dates_str = e.get('dates', '')
+            ds = date_split.search(dates_str)
+            employer = e.get('employer', '') + (' - ' + e.get('location','') if e.get('location') else '')
+            result.append({
+                'post':     e.get('post') or user_type or 'Healthcare Assistant',
+                'employer': e.get('employer',''),
+                'location': e.get('location',''),
+                'from_str': ds.group(1).strip() if ds else dates_str,
+                'to_str':   ds.group(2).strip()  if ds else 'Present',
+            })
+        return result
+
+    # ── Format A: multi-line (Title / Employer - Location / Dates) ────
     date_re = re.compile(
-        r'^('
-        r'\d{1,2}/\d{1,2}/\d{4}'
-        r'|\w+\s+\d{4}'
-        r'|\d{4}'
-        r')\s*(?:to|-|–|—)\s*'
+        r'^(\d{1,2}/\d{1,2}/\d{4}|\w+\s+\d{4}|\d{4})\s*(?:to|-|–|—)\s*'
         r'(\d{1,2}/\d{1,2}/\d{4}|\w+\s+\d{4}|\d{4}|present|current|ongoing)',
         re.I
     )
-
-    entries = []
     i = 0
     while i < len(exp_lines):
         line = exp_lines[i]
@@ -112,27 +157,17 @@ def _parse_employment_from_cv(extracted_cv, user_type=''):
         if dm:
             from_str = dm.group(1).strip()
             to_str   = dm.group(2).strip()
-
-            # Look back up to 3 lines for job title and employer
-            post_text     = ''
-            employer_text = ''
+            post_text = ''; employer_text = ''
             for back in range(1, 4):
                 prev = exp_lines[i - back].strip() if i - back >= 0 else ''
-                if not prev:
-                    break
-                # Skip if it's another date line
-                if date_re.match(prev):
-                    break
-                if not employer_text:
-                    employer_text = prev
-                elif not post_text:
-                    post_text = prev
-                else:
-                    break
-
+                if not prev or date_re.match(prev): break
+                if not employer_text: employer_text = prev
+                elif not post_text:   post_text = prev
+                else: break
             entries.append({
                 'post':     post_text or user_type or 'Healthcare Assistant',
                 'employer': employer_text,
+                'location': '',
                 'from_str': from_str,
                 'to_str':   to_str,
             })
@@ -474,8 +509,9 @@ def _get_employment_rows(staff_doc):
     if extracted_cv:
         parsed = _parse_employment_from_cv(extracted_cv, user_type)
         for e in parsed:
+            location = e.get('location', '')
             # Skip non-Ireland roles
-            if not _is_ireland_employer(e['employer']):
+            if not _is_ireland_employer(e['employer'], location):
                 continue
             from_d  = _parse_date_flex(e['from_str'])
             to_d    = _parse_date_flex(e['to_str'])
