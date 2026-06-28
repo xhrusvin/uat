@@ -852,6 +852,46 @@ def live_staff_vos_generate(staff_id):
 
 # ── Excel export ──────────────────────────────────────────────────────
 
+@admin_bp.route('/live-staffs/vos/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_vos_upload(staff_id):
+    """Replace the saved VOS document with an uploaded .docx file."""
+    f = request.files.get('file')
+    if not f:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+    if not f.filename.lower().endswith('.docx'):
+        return jsonify({"success": False, "error": "Only .docx files accepted"}), 400
+    try:
+        staff_doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not staff_doc:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+
+        s1        = staff_doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        safe_name = full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"PointScale_{safe_name}.docx"
+        gcs_blob  = f"point_scale/{filename}"
+
+        docx_bytes = f.read()
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        _ps_col().update_one(
+            {"staff_id": staff_id},
+            {"$set": {
+                "gcs_blob":      gcs_blob,
+                "filename":      filename,
+                "status":        "generated",
+                "generated_at":  datetime.utcnow(),
+                "uploaded_by":   "admin",
+            }},
+            upsert=True
+        )
+        return jsonify({"success": True, "gcs_blob": gcs_blob, "filename": filename})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @admin_bp.route('/live-staffs/export/vos-xlsx')
 @admin_required
 def live_staff_export_vos_xlsx():
