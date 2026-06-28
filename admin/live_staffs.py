@@ -3086,162 +3086,162 @@ def api_generate_appform():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# ── Download all staff documents from XN Portal ───────────────────────
 
-@admin_bp.route('/live-staffs/api/download-documents', methods=['POST'])
+# ── API: Return document URLs for a staff member ──────────────────────
+
+@admin_bp.route('/live-staffs/api/staff-documents', methods=['POST'])
 @admin_required
-def live_staff_api_download_documents():
+def live_staff_api_staff_documents():
     """
-    Download all documents for one or all staff from XN Portal.
+    Return all document URLs for one staff member from XN Portal.
+    Local scripts call this, then download the files themselves.
 
     POST body:
-        {"email": "staff@example.com"}   — single staff
-        {}                               — all staff (uses MongoDB)
-        {"email": "...", "skip_existing": true}
+        {"email": "staff@example.com"}
+        {"staff_id": "ObjectId string"}
 
-    Downloads saved to server at:  downloads/<Staff Name (email)>/<DocType>/<file>
+    Response:
+        {
+          "success": true,
+          "email": "...",
+          "staff_name": "...",
+          "documents": [
+            {
+              "document_type_name": "Cv",
+              "url": "https://cdn.../file.pdf",
+              "filename": "Cv.pdf",
+              "extension": ".pdf"
+            },
+            ...
+          ]
+        }
     """
-    import threading, json as _json
+    import requests as _req
 
-    body          = request.get_json(silent=True) or {}
-    email_filter  = _v(body.get('email') or '').lower()
-    skip_existing = body.get('skip_existing', True)
+    body     = request.get_json(silent=True) or {}
+    staff_id = _v(body.get('staff_id') or '')
+    email    = _v(body.get('email') or '').lower()
 
+    if not staff_id and not email:
+        return jsonify({"success": False, "error": "email or staff_id required"}), 400
+
+    # ── Lookup staff ──────────────────────────────────────────────────
+    col = _staffs_col()
+    doc = None
+    if staff_id:
+        try:
+            doc = col.find_one({"_id": ObjectId(staff_id)})
+        except Exception:
+            pass
+    if not doc and email:
+        doc = col.find_one({"$or": [
+            {"email": email},
+            {"section_1_personal_details.email_address": email},
+        ]})
+    if not doc:
+        return jsonify({"success": False, "error": "Staff not found"}), 404
+
+    s1         = doc.get('section_1_personal_details') or {}
+    staff_name = _v(s1.get('full_name') or '')
+    email      = email or _v(doc.get('email') or s1.get('email_address') or '')
+
+    if not email:
+        return jsonify({"success": False, "error": "Staff has no email"}), 400
+
+    # ── Call XN Portal ────────────────────────────────────────────────
     base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
     api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
     app_country = os.environ.get('XN_APP_COUNTRY', '')
-    output_dir  = os.path.join(os.getcwd(), 'downloads')
-    os.makedirs(output_dir, exist_ok=True)
 
     if not base_url or not api_key:
-        return jsonify({"success": False, "error": "LIVE_STAFF_URL or XN_PORTAL_API_KEY not set"}), 500
+        return jsonify({"success": False, "error": "LIVE_STAFF_URL or XN_PORTAL_API_KEY not configured"}), 500
 
-    def _get_docs(email):
-        import requests as _req
-        hdrs = {"Api-Key": api_key, "X-App-Country": app_country,
-                "Content-Type": "application/json", "Accept": "application/json"}
+    hdrs = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
         endpoint = f"{base_url}/ai/recruitments/user-document-list"
-        try:
-            r = _req.post(endpoint, json={"email": email}, headers=hdrs, timeout=30)
-            if r.status_code == 405:
-                r = _req.get(endpoint, params={"email": email}, headers=hdrs, timeout=30)
-            r.raise_for_status()
-            d = r.json()
-            api_data = d.get('data')
-            return api_data if isinstance(api_data, list) else                    (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
-        except Exception:
-            return []
+        r = _req.post(endpoint, json={"email": email}, headers=hdrs, timeout=30)
+        if r.status_code == 405:
+            r = _req.get(endpoint, params={"email": email}, headers=hdrs, timeout=30)
+        r.raise_for_status()
+        data     = r.json()
+        api_data = data.get('data')
+        raw_docs = api_data if isinstance(api_data, list) else                    (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Portal API error: {e}"}), 502
 
-    def _safe(s):
-        import re
-        s = re.sub(r'[<>:"/\\|?*]', '_', str(s).strip())
-        return s[:80].strip()
+    # ── Build response with filename hints ────────────────────────────
+    import re as _re2
 
-    def _ext(url):
+    def _guess_ext(url):
         u = url.lower().split('?')[0]
-        for e in ('.pdf','.docx','.doc','.jpg','.jpeg','.png','.webp'):
-            if u.endswith(e): return e
-        return '.bin'
+        for ext in ('.pdf', '.docx', '.doc', '.jpg', '.jpeg', '.png', '.webp', '.heic'):
+            if u.endswith(ext):
+                return ext
+        return '.pdf'  # default assumption
 
-    def _download_one(email, name):
-        import requests as _req
-        dl_hdrs = {"Api-Key": api_key, "X-App-Country": app_country, "Accept": "*/*"}
-        docs = _get_docs(email)
-        downloaded = skipped = failed = 0
-        doc_results = []
-        folder = os.path.join(output_dir, _safe(f"{name} ({email})"))
-        for doc in docs:
-            doc_type = (doc.get('document_type_name') or 'Unknown').strip()
-            url      = (doc.get('url') or '').strip()
-            if not url:
-                doc_results.append({"type": doc_type, "status": "no_url"})
-                continue
-            dest_dir  = os.path.join(folder, _safe(doc_type.replace('/', '_')))
-            dest_file = os.path.join(dest_dir, _safe(doc_type) + _ext(url))
-            if skip_existing and os.path.exists(dest_file) and os.path.getsize(dest_file) > 0:
-                skipped += 1
-                doc_results.append({"type": doc_type, "status": "skipped"})
-                continue
-            try:
-                r = _req.get(url, headers=dl_hdrs, timeout=60, stream=True)
-                if r.status_code == 404:
-                    failed += 1
-                    doc_results.append({"type": doc_type, "status": "failed", "error": "404"})
-                    continue
-                r.raise_for_status()
-                os.makedirs(dest_dir, exist_ok=True)
-                size = 0
-                with open(dest_file, 'wb') as fh:
-                    for chunk in r.iter_content(8192):
-                        fh.write(chunk); size += len(chunk)
-                downloaded += 1
-                doc_results.append({"type": doc_type, "status": "ok",
-                                    "size": size, "path": dest_file})
-            except Exception as e:
-                failed += 1
-                doc_results.append({"type": doc_type, "status": "failed", "error": str(e)})
-        return {"email": email, "name": name,
-                "downloaded": downloaded, "skipped": skipped, "failed": failed,
-                "docs": doc_results}
-
-    if email_filter:
-        # Single staff — run synchronously and return result
-        s1 = _staffs_col().find_one({"$or": [
-            {"email": email_filter},
-            {"section_1_personal_details.email_address": email_filter},
-        ]}, {"section_1_personal_details": 1, "email": 1})
-        name = _v(((s1 or {}).get('section_1_personal_details') or {}).get('full_name') or email_filter)
-        result = _download_one(email_filter, name)
-        return jsonify({"success": True, "results": [result],
-                        "total_downloaded": result['downloaded']})
-    else:
-        # All staff — run in background thread, return immediately
-        staff_list = list(_staffs_col().find(
-            {}, {"email": 1, "section_1_personal_details": 1}
-        ))
-
-        def _bg():
-            for s in staff_list:
-                s1    = s.get('section_1_personal_details') or {}
-                email = _v(s.get('email') or s1.get('email_address') or '')
-                name  = _v(s1.get('full_name') or email)
-                if email:
-                    _download_one(email, name)
-                    import time; time.sleep(0.5)
-
-        threading.Thread(target=_bg, daemon=True).start()
-        return jsonify({
-            "success":     True,
-            "message":     f"Background download started for {len(staff_list)} staff",
-            "output_dir":  output_dir,
-            "staff_count": len(staff_list),
+    documents = []
+    for d in raw_docs:
+        doc_type = _v(d.get('document_type_name') or 'Unknown')
+        url      = _v(d.get('url') or '')
+        if not url:
+            continue
+        ext      = _guess_ext(url)
+        safe     = _re2.sub(r'[<>:"/\\|?*\s]+', '_', doc_type)[:60]
+        documents.append({
+            "document_type_name": doc_type,
+            "url":                url,
+            "filename":           safe + ext,
+            "extension":          ext,
+            "document_id":        d.get('id') or d.get('_id') or '',
         })
 
-
-@admin_bp.route('/live-staffs/api/download-status', methods=['GET'])
-@admin_required
-def live_staff_api_download_status():
-    """Check how many files have been downloaded."""
-    output_dir = os.path.join(os.getcwd(), 'downloads')
-    if not os.path.exists(output_dir):
-        return jsonify({"success": True, "staff_folders": 0, "total_files": 0,
-                        "output_dir": output_dir})
-    folders     = [f for f in os.listdir(output_dir)
-                   if os.path.isdir(os.path.join(output_dir, f))]
-    total_files = sum(
-        len(files) for _, _, files in os.walk(output_dir)
-    )
-    total_size  = sum(
-        os.path.getsize(os.path.join(dp, f))
-        for dp, dn, filenames in os.walk(output_dir)
-        for f in filenames
-    )
     return jsonify({
-        "success":       True,
-        "output_dir":    output_dir,
-        "staff_folders": len(folders),
-        "total_files":   total_files,
-        "total_size_mb": round(total_size / 1024 / 1024, 2),
+        "success":    True,
+        "email":      email,
+        "staff_name": staff_name,
+        "staff_id":   str(doc['_id']),
+        "count":      len(documents),
+        "documents":  documents,
+    })
+
+
+@admin_bp.route('/live-staffs/api/all-staff-emails', methods=['GET'])
+@admin_required
+def live_staff_api_all_emails():
+    """
+    Return list of all staff with email — for the local downloader
+    to iterate and call /api/staff-documents for each.
+    """
+    staff = list(_staffs_col().find(
+        {"$or": [
+            {"email": {"$exists": True, "$ne": ""}},
+            {"section_1_personal_details.email_address": {"$exists": True, "$ne": ""}},
+        ]},
+        {"email": 1, "section_1_personal_details": 1, "employee_code": 1}
+    ))
+    result = []
+    for s in staff:
+        s1    = s.get('section_1_personal_details') or {}
+        email = _v(s.get('email') or s1.get('email_address') or '')
+        name  = _v(s1.get('full_name') or '')
+        code  = _v(s.get('employee_code') or '')
+        if email:
+            result.append({
+                "staff_id": str(s['_id']),
+                "email":    email,
+                "name":     name,
+                "code":     code,
+            })
+    return jsonify({
+        "success": True,
+        "count":   len(result),
+        "staff":   result,
     })
 
 
