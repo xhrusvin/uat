@@ -9,7 +9,7 @@ client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 collection = db[COLLECTION]
 
-df = pd.read_excel("merged_output.xlsx")
+df = pd.read_excel("file_mapping.xlsx")
 df.columns = df.columns.str.strip()
 
 updated = 0
