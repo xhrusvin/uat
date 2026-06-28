@@ -574,9 +574,9 @@ def live_staff_cron_generate_point_scale():
 
 # ── Download generated document ───────────────────────────────────────
 
-@admin_bp.route('/live-staffs/point-scale/download/<staff_id>')
+@admin_bp.route('/live-staffs/vos/download/<staff_id>')
 @admin_required
-def live_staff_point_scale_download(staff_id):
+def live_staff_vos_download(staff_id):
     """Download the generated Verification of Service document."""
     try:
         rec = _ps_col().find_one({"staff_id": staff_id})
@@ -610,9 +610,9 @@ def live_staff_point_scale_download(staff_id):
 
 # ── Regenerate on-demand for a single staff ───────────────────────────
 
-@admin_bp.route('/live-staffs/point-scale/generate/<staff_id>', methods=['POST'])
+@admin_bp.route('/live-staffs/vos/generate/<staff_id>', methods=['POST'])
 @admin_required
-def live_staff_point_scale_generate(staff_id):
+def live_staff_vos_generate(staff_id):
     """Regenerate point scale document for a specific staff member."""
     try:
         staff_doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
@@ -668,9 +668,9 @@ def live_staff_point_scale_generate(staff_id):
 
 # ── Excel export ──────────────────────────────────────────────────────
 
-@admin_bp.route('/live-staffs/export/point-scale-xlsx')
+@admin_bp.route('/live-staffs/export/vos-xlsx')
 @admin_required
-def live_staff_export_point_scale_xlsx():
+def live_staff_export_vos_xlsx():
     """Export all generated point scale documents to Excel."""
     try:
         from openpyxl import Workbook
