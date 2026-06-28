@@ -468,64 +468,168 @@ def _parse_employment_regex(extracted_cv, user_type=''):
     return result
 
 
+def _fetch_hse_cv_text(email, gemini_key=''):
+    """
+    Fetch 'Hse Cv' document from XN Portal for the given email,
+    extract text using Gemini vision, and return raw text.
+    """
+    import requests as _req
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+
+    if not base_url or not email:
+        return ''
+
+    hdrs = {"Api-Key": api_key, "X-App-Country": app_country,
+            "Content-Type": "application/json", "Accept": "application/json"}
+
+    # Get document list
+    try:
+        r = _req.post(f"{base_url}/ai/recruitments/user-document-list",
+                      json={"email": email}, headers=hdrs, timeout=30)
+        if r.status_code == 405:
+            r = _req.get(f"{base_url}/ai/recruitments/user-document-list",
+                         params={"email": email}, headers=hdrs, timeout=30)
+        r.raise_for_status()
+        api_data = r.json().get('data')
+        docs = api_data if isinstance(api_data, list) else \
+               (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+    except Exception:
+        return ''
+
+    # Find Hse Cv document
+    hse_cv_url = None
+    for d in docs:
+        name = (d.get('document_type_name') or '').strip().lower()
+        if name in ('hse cv', 'hse_cv', 'hsecv') and d.get('url'):
+            hse_cv_url = d['url']
+            break
+
+    if not hse_cv_url:
+        return ''
+
+    # Download document
+    try:
+        dl_hdrs = {k: v for k, v in hdrs.items() if k != 'Content-Type'}
+        dl = _req.get(hse_cv_url, headers=dl_hdrs, timeout=60)
+        dl.raise_for_status()
+        raw_bytes    = dl.content
+        content_type = dl.headers.get('Content-Type', '').lower()
+        url_lower    = hse_cv_url.lower().split('?')[0]
+    except Exception:
+        return ''
+
+    # Extract text
+    raw_text = ''
+
+    # PDF text extraction
+    if 'pdf' in content_type or url_lower.endswith('.pdf'):
+        try:
+            import pdfplumber, io as _io
+            with pdfplumber.open(_io.BytesIO(raw_bytes)) as pdf:
+                raw_text = '\n'.join(p.extract_text() or '' for p in pdf.pages).strip()
+        except Exception:
+            pass
+
+    # DOCX text extraction
+    if not raw_text and ('wordprocessingml' in content_type or
+                         url_lower.endswith('.docx') or url_lower.endswith('.doc')):
+        try:
+            from docx import Document as _DDoc
+            import io as _io
+            ddoc = _DDoc(_io.BytesIO(raw_bytes))
+            raw_text = '\n'.join(p.text for p in ddoc.paragraphs).strip()
+        except Exception:
+            pass
+
+    # Gemini vision fallback for scanned PDFs
+    if not raw_text and gemini_key:
+        try:
+            import base64 as _b64
+            from google import genai as _gai
+            client = _gai.Client(api_key=gemini_key)
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[{"parts": [
+                    {"inline_data": {"mime_type": "application/pdf",
+                                     "data": _b64.b64encode(raw_bytes).decode()}},
+                    {"text": "Extract all text from this CV document. Return only the plain text."}
+                ]}]
+            )
+            raw_text = (response.text or '').strip()
+        except Exception:
+            pass
+
+    return raw_text
+
+
 def _get_employment_rows(staff_doc, gemini_key=None):
     """
-    Get Ireland-only employment rows from live_staffs document.
-    Priority: section_5 entries → Gemini extraction → regex fallback.
+    Get Ireland-only employment rows.
+    Priority:
+      1. HSE CV from XN Portal (document_type_name: 'Hse Cv')
+      2. extracted_cv from MongoDB
+      3. section_5 entries
+    Extraction: Gemini first → regex fallback.
     """
     if gemini_key is None:
         gemini_key = os.environ.get('GEMINI_API_KEY', '')
 
     user_type = _v(staff_doc.get('user_type') or 'Healthcare Assistant')
-    rows = []
+    s1        = staff_doc.get('section_1_personal_details') or {}
+    email     = _v(staff_doc.get('email') or s1.get('email_address') or '')
+    rows      = []
 
-    # 1. Try section_5 employment history entries
-    s5      = staff_doc.get('section_5_employment_history') or {}
-    entries = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+    # ── 1. Try HSE CV from portal ─────────────────────────────────────
+    cv_text = ''
+    if email:
+        cv_text = _fetch_hse_cv_text(email, gemini_key)
 
-    if entries:
-        for e in entries:
-            employer = _v(e.get('employer') or '')
-            location = _v(e.get('location') or e.get('city') or e.get('country') or '')
-            if not _is_ireland_employer(employer, location):
-                continue
-            from_str = _v(e.get('from') or '')
-            to_str   = _v(e.get('to') or 'Present')
-            from_d   = _parse_date_flex(from_str)
-            to_d     = _parse_date_flex(to_str)
+    # ── 2. Fall back to extracted_cv from MongoDB ─────────────────────
+    if not cv_text:
+        cv_text = _v(staff_doc.get('extracted_cv') or '')
+
+    # ── 3. Extract Ireland employment from CV text ────────────────────
+    if cv_text:
+        parsed = []
+        if gemini_key:
+            parsed = _parse_employment_from_cv(cv_text, user_type, gemini_key)
+        if not parsed:
+            parsed = _parse_employment_regex(cv_text, user_type)
+
+        for e in parsed:
+            from_d  = _parse_date_flex(_v(e.get('from_str') or ''))
+            to_d    = _parse_date_flex(_v(e.get('to_str') or ''))
             y, m, dys = _calc_duration(from_d, to_d)
             rows.append({
-                'post':     _v(e.get('position') or user_type),
-                'employer': employer,
-                'from_str': from_d.strftime('%d/%m/%Y') if from_d else from_str,
+                'post':     _v(e.get('post') or user_type),
+                'employer': _v(e.get('employer') or ''),
+                'from_str': from_d.strftime('%d/%m/%Y') if from_d else _v(e.get('from_str') or ''),
                 'to_str':   to_d.strftime('%d/%m/%Y') if to_d else 'Present',
                 'years':    y, 'months': m, 'days': dys,
             })
         if rows:
             return rows
 
-    # 2. Extract from extracted_cv — Gemini first, regex fallback
-    extracted_cv = _v(staff_doc.get('extracted_cv') or '')
-    if not extracted_cv:
-        return rows
-
-    # 2a. Try Gemini
-    parsed = []
-    if gemini_key:
-        parsed = _parse_employment_from_cv(extracted_cv, user_type, gemini_key)
-
-    # 2b. Regex fallback if Gemini returned nothing
-    if not parsed:
-        parsed = _parse_employment_regex(extracted_cv, user_type)
-
-    for e in parsed:
-        from_d  = _parse_date_flex(_v(e.get('from_str') or ''))
-        to_d    = _parse_date_flex(_v(e.get('to_str') or ''))
+    # ── 4. Last resort: section_5 entries ────────────────────────────
+    s5      = staff_doc.get('section_5_employment_history') or {}
+    entries = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+    for e in entries:
+        employer = _v(e.get('employer') or '')
+        location = _v(e.get('location') or e.get('city') or e.get('country') or '')
+        if not _is_ireland_employer(employer, location):
+            continue
+        from_str = _v(e.get('from') or '')
+        to_str   = _v(e.get('to') or 'Present')
+        from_d   = _parse_date_flex(from_str)
+        to_d     = _parse_date_flex(to_str)
         y, m, dys = _calc_duration(from_d, to_d)
         rows.append({
-            'post':     _v(e.get('post') or user_type),
-            'employer': _v(e.get('employer') or ''),
-            'from_str': from_d.strftime('%d/%m/%Y') if from_d else _v(e.get('from_str') or ''),
+            'post':     _v(e.get('position') or user_type),
+            'employer': employer,
+            'from_str': from_d.strftime('%d/%m/%Y') if from_d else from_str,
             'to_str':   to_d.strftime('%d/%m/%Y') if to_d else 'Present',
             'years':    y, 'months': m, 'days': dys,
         })
