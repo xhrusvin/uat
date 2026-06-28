@@ -1276,68 +1276,136 @@ def _build_ai_cv_docx(doc, cv_text):
 # ── AI Interview DOCX builder ─────────────────────────────────────────
 
 def _build_ai_interview_docx(doc, interview_text):
-    """Build interview notes DOCX — plain, clean format matching original."""
+    """
+    Build interview notes DOCX matching the exact design from sample:
+    - Title: bold 16pt
+    - Header fields (Name/Location/NMBI PIN/Visa Status): bold label + normal value
+    - Section headings (Experience/Clinical Questions/Compliance/Availability/Assessment): bold 13pt
+    - Questions (numbered): bold 11pt
+    - Answers: normal 11pt
+    - Compliance/Assessment/Availability fields: bold label + bold value
+    """
     import io as _io
     from docx import Document as _Doc
-    from docx.shared import Pt, Cm, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt, Cm
 
     document = _Doc()
     for sec in document.sections:
-        sec.top_margin = Cm(2.0); sec.bottom_margin = Cm(2.0)
-        sec.left_margin = Cm(2.5); sec.right_margin = Cm(2.5)
+        sec.top_margin    = Cm(2.0)
+        sec.bottom_margin = Cm(2.0)
+        sec.left_margin   = Cm(2.5)
+        sec.right_margin  = Cm(2.5)
     document.styles['Normal'].font.name = 'Calibri'
     document.styles['Normal'].font.size = Pt(11)
 
-    s1        = doc.get('section_1_personal_details') or {}
-    full_name = _v(s1.get('full_name') or '')
-    user_type = _v(doc.get('user_type') or '')
-
-    # Title
-    p = document.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run(f"Interview Notes — {full_name}")
-    run.bold = True; run.font.size = Pt(16); run.font.name = 'Calibri'
-
-    if user_type:
-        p2 = document.add_paragraph()
-        p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        r2 = p2.add_run(user_type)
-        r2.font.size = Pt(12); r2.italic = True; r2.font.name = 'Calibri'
-
-    document.add_paragraph()  # spacer
-
-    # Section headers — lines that are short and end with no punctuation
-    # OR match known section names from the template
-    SECTION_KEYWORDS = {
+    # Section headings from the template
+    SECTION_HEADINGS = {
         'experience', 'clinical questions', 'compliance',
-        'availability', 'assessment', 'completed'
+        'availability', 'assessment',
     }
 
-    for line in interview_text.split('\n'):
-        stripped = line.strip()
-        if not stripped or stripped == '---':
-            p = document.add_paragraph()
-            p.paragraph_format.space_before = Pt(4)
-            p.paragraph_format.space_after  = Pt(4)
-            continue
+    # Fields where both label AND value are bold
+    BOLD_VALUE_PREFIXES = (
+        'nmbi registration:', 'bls/cpr:', 'manual handling:',
+        'garda vetting:', 'references:', 'communication:',
+        'clinical knowledge:', 'experience:', 'suitable:',
+        'day/night/both:',
+    )
 
+    # Fields where label is bold, value is normal
+    BOLD_LABEL_PREFIXES = (
+        'name:', 'location:', 'nmbi pin:', 'visa status:',
+        'preferred counties:', 'earliest start date:',
+    )
+
+    def _add_label_value(text, bold_value=False):
+        """Add a paragraph with bold label: normal/bold value."""
+        if ':' not in text:
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(1)
+            p.paragraph_format.space_after  = Pt(1)
+            run = p.add_run(text)
+            run.bold = True
+            run.font.name = 'Calibri'
+            return
+        label, _, value = text.partition(':')
         p = document.add_paragraph()
         p.paragraph_format.space_before = Pt(1)
         p.paragraph_format.space_after  = Pt(1)
+        r1 = p.add_run(label + ': ')
+        r1.bold = True
+        r1.font.name = 'Calibri'
+        r2 = p.add_run(value.strip())
+        r2.bold = bold_value
+        r2.font.name = 'Calibri'
 
-        # Bold section headings
-        is_heading = (
-            stripped.lower() in SECTION_KEYWORDS or
-            any(stripped.lower().startswith(k) for k in SECTION_KEYWORDS) or
-            (stripped.isupper() and len(stripped) > 3)
-        )
-        run = p.add_run(stripped)
-        run.font.name = 'Calibri'
-        run.font.size = Pt(11)
-        if is_heading:
+    lines = interview_text.split('\n')
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        i += 1
+
+        if not stripped or stripped == '---':
+            if stripped == '---':
+                pass  # skip separator lines
+            else:
+                p = document.add_paragraph()
+                p.paragraph_format.space_before = Pt(2)
+                p.paragraph_format.space_after  = Pt(2)
+            continue
+
+        stripped_lower = stripped.lower()
+
+        # Title line — "Completed X Interview"
+        if stripped_lower.startswith('completed ') and 'interview' in stripped_lower:
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after  = Pt(6)
+            run = p.add_run(stripped)
             run.bold = True
-            run.font.size = Pt(12)
+            run.font.size = Pt(16)
+            run.font.name = 'Calibri'
+            continue
+
+        # Section headings
+        if stripped_lower in SECTION_HEADINGS:
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(10)
+            p.paragraph_format.space_after  = Pt(4)
+            run = p.add_run(stripped)
+            run.bold = True
+            run.font.size = Pt(13)
+            run.font.name = 'Calibri'
+            continue
+
+        # Numbered questions e.g. "1. Tell me about..."
+        if len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in '.':
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(6)
+            p.paragraph_format.space_after  = Pt(2)
+            run = p.add_run(stripped)
+            run.bold = True
+            run.font.size = Pt(11)
+            run.font.name = 'Calibri'
+            continue
+
+        # Bold label + bold value fields (Compliance/Assessment)
+        if any(stripped_lower.startswith(pfx) for pfx in BOLD_VALUE_PREFIXES):
+            _add_label_value(stripped, bold_value=True)
+            continue
+
+        # Bold label + normal value fields (header fields / Availability)
+        if any(stripped_lower.startswith(pfx) for pfx in BOLD_LABEL_PREFIXES):
+            _add_label_value(stripped, bold_value=False)
+            continue
+
+        # Normal answer text
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after  = Pt(1)
+        run = p.add_run(stripped)
+        run.font.size = Pt(11)
+        run.font.name = 'Calibri'
 
     buf = _io.BytesIO()
     document.save(buf)
