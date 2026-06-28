@@ -55,14 +55,19 @@ def _gcs_download(blob_name):
 def _parse_employment_from_cv(extracted_cv, user_type=''):
     """
     Parse employment history from extracted_cv text.
-    Returns list of dicts: {post, employer, from_date, to_date, verified}
+    Handles multi-line format:
+      Job Title
+      Employer - Location
+      Month Year to Month Year / Present
+    Returns list of dicts: {post, employer, from_str, to_str}
     """
     if not extracted_cv:
         return []
 
-    entries  = []
-    lines    = extracted_cv.split('\n')
-    in_exp   = False
+    # Extract the experience section
+    lines = extracted_cv.split('\n')
+    exp_lines = []
+    in_exp = False
     exp_stop = {
         'education', 'qualifications', 'training', 'certifications',
         'key skills', 'skills', 'references', 'declaration',
@@ -74,8 +79,6 @@ def _parse_employment_from_cv(extracted_cv, user_type=''):
         'employment', 'experience', 'career history', 'work history',
         'positions held',
     }
-
-    exp_lines = []
     for line in lines:
         l = line.strip()
         ll = l.lower()
@@ -84,43 +87,56 @@ def _parse_employment_from_cv(extracted_cv, user_type=''):
             continue
         if in_exp and l and any(ll.startswith(h) for h in exp_stop):
             break
-        if in_exp and l:
+        if in_exp:
             exp_lines.append(l)
 
     if not exp_lines:
-        # Fallback: scan whole CV for date patterns
-        exp_lines = [l.strip() for l in lines if l.strip() and
-                     re.search(r'\d{2}/\d{2}/\d{4}|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{4}|\d{4}\s*[-–]\s*(\d{4}|present)', l, re.I)]
+        exp_lines = [l.strip() for l in lines if l.strip()]
 
-    # Parse each line into an entry
-    date_pattern = re.compile(
-        r'(\d{2}/\d{2}/\d{4}|\d{1,2}\s+\w+\s+\d{4}|'
-        r'\w+\s+\d{4}|\d{4})'
-        r'\s*[-–—to]+\s*'
-        r'(\d{2}/\d{2}/\d{4}|\d{1,2}\s+\w+\s+\d{4}|'
-        r'\w+\s+\d{4}|\d{4}|present|current|ongoing)',
+    # Date pattern — "Month Year to Month Year/Present"
+    date_re = re.compile(
+        r'^('
+        r'\d{1,2}/\d{1,2}/\d{4}'
+        r'|\w+\s+\d{4}'
+        r'|\d{4}'
+        r')\s*(?:to|-|–|—)\s*'
+        r'(\d{1,2}/\d{1,2}/\d{4}|\w+\s+\d{4}|\d{4}|present|current|ongoing)',
         re.I
     )
 
-    for line in exp_lines:
-        dm = date_pattern.search(line)
+    entries = []
+    i = 0
+    while i < len(exp_lines):
+        line = exp_lines[i]
+        dm = date_re.match(line.strip())
         if dm:
             from_str = dm.group(1).strip()
             to_str   = dm.group(2).strip()
-            # Extract employer/post from line (before or after dates)
-            pre  = line[:dm.start()].strip().strip(',-')
-            post_text = line[dm.end():].strip().strip(',-')
-            employer  = pre or post_text or ''
 
-            # Remove date from employer string
-            employer = re.sub(r'\d{2}/\d{2}/\d{4}', '', employer).strip().strip(',-')
+            # Look back up to 3 lines for job title and employer
+            post_text     = ''
+            employer_text = ''
+            for back in range(1, 4):
+                prev = exp_lines[i - back].strip() if i - back >= 0 else ''
+                if not prev:
+                    break
+                # Skip if it's another date line
+                if date_re.match(prev):
+                    break
+                if not employer_text:
+                    employer_text = prev
+                elif not post_text:
+                    post_text = prev
+                else:
+                    break
 
             entries.append({
-                'post':      _v(user_type) or 'Healthcare Assistant',
-                'employer':  employer,
-                'from_str':  from_str,
-                'to_str':    to_str,
+                'post':     post_text or user_type or 'Healthcare Assistant',
+                'employer': employer_text,
+                'from_str': from_str,
+                'to_str':   to_str,
             })
+        i += 1
 
     return entries
 
@@ -397,11 +413,15 @@ def _is_ireland_employer(employer_str, location_str=''):
         'india', 'indian', 'bangalore', 'mumbai', 'delhi', 'chennai',
         'hyderabad', 'kolkata', 'pune', 'kerala', 'karnataka',
         'uk', 'united kingdom', 'england', 'scotland', 'wales',
-        'london', 'manchester', 'birmingham', 'leeds',
+        'london', 'manchester', 'birmingham', 'leeds', 'bristol',
+        'southampton', 'dorset', 'bournemouth', 'poole', 'christchurch',
+        'guernsey', 'jersey', 'isle of man',
         'usa', 'united states', 'america', 'australia', 'canada',
         'nigeria', 'kenya', 'ghana', 'zimbabwe', 'south africa',
         'philippines', 'pakistan', 'bangladesh', 'sri lanka',
         'malaysia', 'singapore', 'uae', 'dubai', 'saudi',
+        'netherlands', ' nl', 'sint oedenrode', 'poland', 'polska',
+        'germany', 'france', 'spain', 'italy', 'portugal',
     ]
     if any(kw in text for kw in non_ireland):
         return False
