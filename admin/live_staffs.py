@@ -2203,6 +2203,258 @@ def live_staff_ai_cv_upload(staff_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ── AI Interview Notes routes ─────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-interview/generate', methods=['POST'])
+@admin_required
+def live_staff_ai_interview_generate():
+    data     = request.get_json(silent=True) or {}
+    staff_id = _v(data.get('staff_id') or '')
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        if not gemini_key:
+            return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or '')
+        user_type = _v(doc.get('user_type') or '')
+        email     = _v(doc.get('email') or s1.get('email_address') or '')
+        emp_code  = _v(doc.get('employee_code') or '')
+        extracted_cv = _v(doc.get('extracted_cv') or '')
+        has_cv = extracted_cv and not extracted_cv.startswith('[')
+
+        s3 = doc.get('section_3_professional_registration') or {}
+        s5 = doc.get('section_5_employment_history') or {}
+        def _vv(v): return '' if v is None else str(v).strip()
+        nationality  = _vv(s1.get('nationality'))
+        reg_pin      = _vv(s3.get('registration_number_pin'))
+        total_exp    = _vv(s5.get('total_experience'))
+
+        entries   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+        exp_lines = [f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} ({_vv(e.get('from'))} - {_vv(e.get('to') or 'Present')})" for e in entries]
+
+        data_summary = f"""Name: {full_name}
+Role: {user_type}
+Nationality: {nationality}
+Registration PIN: {reg_pin}
+Total Experience: {total_exp}
+Employment History:
+{chr(10).join(exp_lines) if exp_lines else '  None recorded'}""".strip()
+
+        prompt = f"""You are an expert healthcare recruiter writing structured interview notes for a candidate.
+
+Write professional interview notes using this exact structure:
+
+CANDIDATE OVERVIEW
+EMPLOYMENT HISTORY SUMMARY
+CLINICAL EXPERIENCE
+KEY COMPETENCIES
+PROFESSIONAL STRENGTHS
+AREAS FOR DEVELOPMENT
+INTERVIEW RECOMMENDATION
+COMPLIANCE & ELIGIBILITY
+ADDITIONAL NOTES
+
+Rules:
+- Base all facts on CANDIDATE DATA and ORIGINAL CV only.
+- CANDIDATE OVERVIEW: brief summary of the candidate.
+- EMPLOYMENT HISTORY SUMMARY: summarise their work history.
+- CLINICAL EXPERIENCE: specific clinical skills and areas.
+- KEY COMPETENCIES: 5-8 bullet points.
+- PROFESSIONAL STRENGTHS: 4-6 bullet points.
+- AREAS FOR DEVELOPMENT: 2-3 constructive points.
+- INTERVIEW RECOMMENDATION: Recommended / Recommended with conditions / Not recommended.
+- COMPLIANCE & ELIGIBILITY: NMBI/registration, Garda vetting, visa status.
+- ADDITIONAL NOTES: any other relevant notes.
+
+CANDIDATE DATA:
+{data_summary}
+
+ORIGINAL CV:
+{extracted_cv[:10000] if has_cv else "No CV available — use CANDIDATE DATA only."}
+
+Output the interview notes text only. No markdown, no preamble.
+"""
+
+        from google import genai as _gai
+        client   = _gai.Client(api_key=gemini_key)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        interview_text = response.text.strip()
+
+        docx_bytes  = _build_ai_interview_docx(doc, interview_text)
+        safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        filename    = f"Interview_{safe_name}.docx"
+        gcs_blob    = f"interview/{filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        col2     = _ai_interviews_col()
+        existing = col2.find_one({"staff_id": staff_id})
+        ai_doc   = {
+            "staff_id":       staff_id,
+            "staff_name":     full_name,
+            "employee_code":  emp_code,
+            "interview_text": interview_text,
+            "filename":       filename,
+            "gcs_blob":       gcs_blob,
+            "generated_at":   datetime.utcnow(),
+        }
+        if existing:
+            col2.update_one({"_id": existing["_id"]}, {"$set": ai_doc})
+            ai_id = str(existing["_id"])
+        else:
+            ai_id = str(col2.insert_one(ai_doc).inserted_id)
+
+        _push_hse_document_background(
+            staff_id_str=staff_id, doc_type_key='interview',
+            docx_bytes=docx_bytes, staff_name=full_name,
+            mongo_id=staff_id, email=email,
+        )
+
+        signed_url = _gcs_signed_url(gcs_blob) or ''
+        return jsonify({
+            "success":       True,
+            "ai_id":         ai_id,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "download_url":  signed_url,
+            "generated_at":  datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-interview/saved/<staff_id>')
+@admin_required
+def live_staff_ai_interview_saved(staff_id):
+    rec = _ai_interviews_col().find_one({"staff_id": staff_id})
+    if rec:
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "ai_id":        str(rec["_id"]),
+            "filename":     rec.get("filename", ""),
+            "gcs_blob":     rec.get("gcs_blob", ""),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M") if rec.get("generated_at") else "",
+        })
+    return jsonify({"success": True, "found": False})
+
+
+@admin_bp.route('/live-staffs/ai-interview/download/<ai_id>')
+@admin_required
+def live_staff_ai_interview_download(ai_id):
+    try:
+        rec = _ai_interviews_col().find_one({"_id": ObjectId(ai_id)})
+        if not rec or not rec.get('gcs_blob'):
+            return jsonify({"success": False, "error": "Interview notes not found"}), 404
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{rec.get("filename", "interview.docx")}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-interview/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_ai_interview_upload(staff_id):
+    f = request.files.get('file')
+    if not f:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        safe_name = full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"Interview_{safe_name}.docx"
+        gcs_blob  = f"interview/{filename}"
+        docx_bytes = f.read()
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        _ai_interviews_col().update_one(
+            {"staff_id": staff_id},
+            {"$set": {"gcs_blob": gcs_blob, "filename": filename, "generated_at": datetime.utcnow()}},
+            upsert=True
+        )
+        return jsonify({"success": True, "gcs_blob": gcs_blob, "filename": filename})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── AI Appform routes ─────────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-appform/saved/<staff_id>')
+@admin_required
+def live_staff_ai_appform_saved(staff_id):
+    rec = _ai_appforms_col().find_one({"staff_id": staff_id})
+    if rec:
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "ai_id":        str(rec["_id"]),
+            "filename":     rec.get("filename", rec.get("gcs_blob", "")),
+            "gcs_blob":     rec.get("gcs_blob", ""),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M") if rec.get("generated_at") else "",
+        })
+    return jsonify({"success": True, "found": False})
+
+
+@admin_bp.route('/live-staffs/ai-appform/download/<ai_id>')
+@admin_required
+def live_staff_ai_appform_download(ai_id):
+    try:
+        rec = _ai_appforms_col().find_one({"_id": ObjectId(ai_id)})
+        if not rec or not rec.get('gcs_blob'):
+            return jsonify({"success": False, "error": "Application form not found"}), 404
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        fname = rec.get('filename') or rec.get('gcs_blob', 'appform.docx').split('/')[-1]
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-appform/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_ai_appform_upload(staff_id):
+    f = request.files.get('file')
+    if not f:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        safe_name = full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"AppForm_{safe_name}.docx"
+        gcs_blob  = f"appforms/{filename}"
+        docx_bytes = f.read()
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        _ai_appforms_col().update_one(
+            {"staff_id": staff_id},
+            {"$set": {"gcs_blob": gcs_blob, "filename": filename, "generated_at": datetime.utcnow()}},
+            upsert=True
+        )
+        return jsonify({"success": True, "gcs_blob": gcs_blob, "filename": filename})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @admin_bp.route('/live-staffs/api/generate-cv', methods=['POST'])
 def live_staff_api_generate_cv():
     """
