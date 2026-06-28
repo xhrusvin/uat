@@ -1276,55 +1276,68 @@ def _build_ai_cv_docx(doc, cv_text):
 # ── AI Interview DOCX builder ─────────────────────────────────────────
 
 def _build_ai_interview_docx(doc, interview_text):
-    """Build interview notes DOCX from AI-generated text."""
+    """Build interview notes DOCX — plain, clean format matching original."""
     import io as _io
     from docx import Document as _Doc
-    from docx.shared import Pt, RGBColor, Cm
+    from docx.shared import Pt, Cm, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.oxml.ns import qn
-    from docx.oxml import OxmlElement
-
-    NAVY  = RGBColor(0x1B, 0x3A, 0x6B)
-    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 
     document = _Doc()
-    for section in document.sections:
-        section.top_margin = Cm(1.8); section.bottom_margin = Cm(1.8)
-        section.left_margin = Cm(2.2); section.right_margin = Cm(2.2)
-    document.styles['Normal'].font.name = 'Arial'
-    document.styles['Normal'].font.size = Pt(10)
+    for sec in document.sections:
+        sec.top_margin = Cm(2.0); sec.bottom_margin = Cm(2.0)
+        sec.left_margin = Cm(2.5); sec.right_margin = Cm(2.5)
+    document.styles['Normal'].font.name = 'Calibri'
+    document.styles['Normal'].font.size = Pt(11)
 
     s1        = doc.get('section_1_personal_details') or {}
     full_name = _v(s1.get('full_name') or '')
+    user_type = _v(doc.get('user_type') or '')
 
+    # Title
     p = document.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run('INTERVIEW NOTES — ' + full_name.upper())
-    run.bold = True; run.font.size = Pt(16); run.font.color.rgb = NAVY; run.font.name = 'Arial'
+    run = p.add_run(f"Interview Notes — {full_name}")
+    run.bold = True; run.font.size = Pt(16); run.font.name = 'Calibri'
 
-    HEADINGS = {
-        'CANDIDATE OVERVIEW', 'EMPLOYMENT HISTORY SUMMARY', 'CLINICAL EXPERIENCE',
-        'KEY COMPETENCIES', 'PROFESSIONAL STRENGTHS', 'AREAS FOR DEVELOPMENT',
-        'INTERVIEW RECOMMENDATION', 'COMPLIANCE & ELIGIBILITY', 'ADDITIONAL NOTES',
+    if user_type:
+        p2 = document.add_paragraph()
+        p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r2 = p2.add_run(user_type)
+        r2.font.size = Pt(12); r2.italic = True; r2.font.name = 'Calibri'
+
+    document.add_paragraph()  # spacer
+
+    # Section headers — lines that are short and end with no punctuation
+    # OR match known section names from the template
+    SECTION_KEYWORDS = {
+        'experience', 'clinical questions', 'compliance',
+        'availability', 'assessment', 'completed'
     }
 
     for line in interview_text.split('\n'):
         stripped = line.strip()
-        if not stripped:
+        if not stripped or stripped == '---':
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(4)
+            p.paragraph_format.space_after  = Pt(4)
             continue
+
         p = document.add_paragraph()
         p.paragraph_format.space_before = Pt(1)
         p.paragraph_format.space_after  = Pt(1)
-        if stripped.upper() in HEADINGS or (stripped.isupper() and len(stripped) > 5):
-            run = p.add_run('  ' + stripped + '  ')
-            run.bold = True; run.font.size = Pt(11); run.font.color.rgb = WHITE; run.font.name = 'Arial'
-            rPr = run._r.get_or_add_rPr()
-            shd = OxmlElement('w:shd')
-            shd.set(qn('w:val'), 'clear'); shd.set(qn('w:color'), 'auto'); shd.set(qn('w:fill'), '1B3A6B')
-            rPr.append(shd)
-        else:
-            run = p.add_run(stripped)
-            run.font.size = Pt(10); run.font.name = 'Arial'
+
+        # Bold section headings
+        is_heading = (
+            stripped.lower() in SECTION_KEYWORDS or
+            any(stripped.lower().startswith(k) for k in SECTION_KEYWORDS) or
+            (stripped.isupper() and len(stripped) > 3)
+        )
+        run = p.add_run(stripped)
+        run.font.name = 'Calibri'
+        run.font.size = Pt(11)
+        if is_heading:
+            run.bold = True
+            run.font.size = Pt(12)
 
     buf = _io.BytesIO()
     document.save(buf)
@@ -2231,55 +2244,131 @@ def live_staff_ai_interview_generate():
 
         s3 = doc.get('section_3_professional_registration') or {}
         s5 = doc.get('section_5_employment_history') or {}
+        s8 = doc.get('section_8_garda_vetting_police_clearance') or {}
+        s9 = doc.get('section_9_occupational_health') or {}
+        s10= doc.get('section_10_mandatory_training') or {}
+        visa = s1.get('work_permit_visa_status') or {}
         def _vv(v): return '' if v is None else str(v).strip()
-        nationality  = _vv(s1.get('nationality'))
-        reg_pin      = _vv(s3.get('registration_number_pin'))
-        total_exp    = _vv(s5.get('total_experience'))
+        nationality = _vv(s1.get('nationality'))
+        address     = _vv(s1.get('address') or '')
+        reg_pin     = _vv(s3.get('registration_number_pin'))
+        visa_type   = _vv(visa.get('visa_type') or '')
+        divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+        total_exp   = _vv(s5.get('total_experience'))
+        nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+        garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
+        bls         = 'Yes' if s10.get('cpr_bls') else 'No'
+        manual      = 'Yes' if s10.get('manual_handling') else 'No'
+        fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
 
         entries   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
-        exp_lines = [f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} ({_vv(e.get('from'))} - {_vv(e.get('to') or 'Present')})" for e in entries]
+        exp_lines = [
+            f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} ({_vv(e.get('from'))} \u2013 {_vv(e.get('to') or 'Present')})"
+            for e in entries[:5]
+        ]
+        TLABELS = {
+            'manual_handling': 'Manual Handling', 'cpr_bls': 'BLS/CPR',
+            'safeguarding': 'Safeguarding', 'fire_safety': 'Fire Safety',
+            'infection_prevention_control': 'Infection Prevention & Control',
+        }
+        certs = [label for k, label in TLABELS.items() if s10.get(k)]
 
-        data_summary = f"""Name: {full_name}
-Role: {user_type}
+        county = ''
+        if address:
+            parts = [p.strip() for p in address.replace(',', ' ').split()]
+            for p in parts:
+                if p.lower().startswith('co.') or p.lower() == 'county':
+                    idx = parts.index(p)
+                    if idx + 1 < len(parts):
+                        county = parts[idx + 1]
+                    break
+            if not county and parts:
+                county = parts[-1]
+
+        data_summary = f"""
+Name: {full_name}
+Role / User Type: {user_type}
+Address / Location: {address}
 Nationality: {nationality}
-Registration PIN: {reg_pin}
+Visa / Stamp Type: {visa_type}
+NMBI Registration PIN: {reg_pin}
+NMBI Registration Active: {nmbi}
+Divisions / Speciality: {divisions}
 Total Experience: {total_exp}
+Garda Vetted: {garda}
+BLS/CPR on file: {bls}
+Manual Handling on file: {manual}
+Fit for Duties: {fit}
+
 Employment History:
-{chr(10).join(exp_lines) if exp_lines else '  None recorded'}""".strip()
+{chr(10).join(exp_lines) if exp_lines else '  None recorded'}
 
-        prompt = f"""You are an expert healthcare recruiter writing structured interview notes for a candidate.
+Certifications on file: {', '.join(certs) if certs else 'None recorded'}
+""".strip()
 
-Write professional interview notes using this exact structure:
+        prompt = f"""You are an experienced nursing recruitment consultant at Xpress Health, Ireland.
 
-CANDIDATE OVERVIEW
-EMPLOYMENT HISTORY SUMMARY
-CLINICAL EXPERIENCE
-KEY COMPETENCIES
-PROFESSIONAL STRENGTHS
-AREAS FOR DEVELOPMENT
-INTERVIEW RECOMMENDATION
-COMPLIANCE & ELIGIBILITY
-ADDITIONAL NOTES
+Using ONLY the verified candidate data below, complete a realistic, professional nurse interview notes template.
+Answers must be written as if the candidate themselves just answered each question in a live phone/video interview.
+Write naturally — conversational but professional. First person where appropriate ("I have", "I work", "I currently").
 
-Rules:
-- Base all facts on CANDIDATE DATA and ORIGINAL CV only.
-- CANDIDATE OVERVIEW: brief summary of the candidate.
-- EMPLOYMENT HISTORY SUMMARY: summarise their work history.
-- CLINICAL EXPERIENCE: specific clinical skills and areas.
-- KEY COMPETENCIES: 5-8 bullet points.
-- PROFESSIONAL STRENGTHS: 4-6 bullet points.
-- AREAS FOR DEVELOPMENT: 2-3 constructive points.
-- INTERVIEW RECOMMENDATION: Recommended / Recommended with conditions / Not recommended.
-- COMPLIANCE & ELIGIBILITY: NMBI/registration, Garda vetting, visa status.
-- ADDITIONAL NOTES: any other relevant notes.
+STRICT RULES — NO HALLUCINATION:
+- Use ONLY the facts provided in CANDIDATE DATA. Do not invent employers, dates, locations, or qualifications.
+- If data is missing for a field, write a realistic professional answer appropriate to their role and experience level without inventing specific names.
+- Clinical question answers must be clinically appropriate for a {user_type}.
+- Assessment scores: pick a random realistic score for each between 3.5 and 5.0 in 0.5 increments (e.g. 3.5/5, 4/5, 4.5/5, 5/5). Vary the three scores — do not give the same score to all three.
+- Do NOT add any text outside the template structure below.
 
-CANDIDATE DATA:
+Output ONLY the completed template below — no preamble, no explanations, no markdown symbols:
+
+---
+Completed {user_type} Interview
+
+Name: [full name]
+Location: [county/city from address]
+NMBI PIN: [registration pin or N/A]
+Visa Status: [visa type]
+
+Experience
+
+1. Tell me about your nursing experience.
+[Write a 4–6 sentence answer in first person describing their experience, speciality, and current/most recent role. Use only the data provided.]
+
+2. How many years in Ireland?
+[Write a realistic answer based on employment history dates. If Ireland-based work is evident, state it clearly.]
+
+3. Acute, Nursing Home, Community, or Mental Health?
+[Based on employment history, state the most relevant care setting.]
+
+Clinical Questions
+
+1. How would you manage a deteriorating patient?
+[Write a clinically accurate 4–5 sentence answer appropriate for a {user_type}. Use recognised frameworks (ABCDE, NEWS2, ISBAR) where appropriate.]
+
+2. What would you do if you witnessed a medication error?
+[Write a clinically accurate 4–5 sentence answer covering patient safety, reporting, documentation, and prevention.]
+
+Compliance
+NMBI Registration: [Yes/No based on data]
+BLS/CPR: [Yes/No based on data]
+Manual Handling: [Yes/No based on data]
+Garda Vetting: [Yes/No based on data]
+References: Yes
+
+Availability
+Preferred counties: [county from address, or nearest city]
+Day/Night/Both: Both
+Earliest start date: Immediate
+
+Assessment
+Communication: [3.5/5 or 4/5 or 4.5/5 or 5/5 — vary randomly]
+Clinical Knowledge: [3.5/5 or 4/5 or 4.5/5 or 5/5 — vary randomly]
+Experience: [3.5/5 or 4/5 or 4.5/5 or 5/5 — vary randomly]
+Suitable: Yes
+---
+
+CANDIDATE DATA (use ONLY this):
 {data_summary}
-
-ORIGINAL CV:
-{extracted_cv[:10000] if has_cv else "No CV available — use CANDIDATE DATA only."}
-
-Output the interview notes text only. No markdown, no preamble.
 """
 
         from google import genai as _gai
