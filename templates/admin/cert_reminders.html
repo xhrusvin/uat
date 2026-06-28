@@ -593,11 +593,9 @@ function updateQueueSelCount() {
 }
 
 // Build the reminder-call URL on the same origin.
+// Uses the /certificate-reminder/trigger/<id> POST endpoint directly.
 function callUrl(reminder) {
-    const certs = (reminder.certificates_needed || []).join(',');
-    return `${ORIGIN}/${CALL_ENDPOINT}`
-         + `?user_id=${encodeURIComponent(reminder.user_ref_id)}`
-         + `&certificates=${encodeURIComponent(certs)}`;
+    return `${ORIGIN}/certificate-reminder/trigger/${reminder._id}`;
 }
 
 async function markStatus(id, status, error) {
@@ -617,7 +615,7 @@ async function triggerOne(id) {
     const r = queueCache[id];
     if (!r) return false;
     try {
-        const res = await fetch(callUrl(r), { method: 'GET' });
+        const res = await fetch(callUrl(r), { method: 'POST' });
         if (res.ok) { await markStatus(id, 'triggered'); return true; }
 
         // Read the full response body so trigger_error contains real detail,

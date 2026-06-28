@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 # Default call window (UTC)
 ALLOWED_START_HOUR = 0   # 00:00 UTC
-ALLOWED_END_HOUR   = 23  # 23:00 UTC
+ALLOWED_END_HOUR   = 24  # up to (but not including) midnight — full day
 
 # Default limit if not passed as query param
 DEFAULT_LIMIT = 2

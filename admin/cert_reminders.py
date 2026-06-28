@@ -17,7 +17,7 @@ from admin.views import admin_required
 # a compliance-document reminder asking the user to submit their PCC /
 # Garda Vetting certificate. Change this string if a dedicated endpoint
 # is created for certificate reminders.
-REMINDER_CALL_ENDPOINT = "compliance_document_call"
+REMINDER_CALL_ENDPOINT = "certificate-reminder/trigger"
 
 # Certificate types a user can be reminded about.
 VALID_CERTS = ["PCC", "Garda Vetting"]
