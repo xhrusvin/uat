@@ -1298,6 +1298,52 @@ def _build_ai_cv_docx(doc, cv_text):
         run.font.name = 'Calibri'
         run.font.size = Pt(11)
 
+    # ── Strip duplicate header lines Gemini repeats ──────────────────
+    # Gemini often outputs name, role, email, phone at top of cv_text —
+    # we already render those from DB above, so skip them in cv_text.
+    import re as _re_cv
+    _skip_values = set(filter(None, [
+        full_name.lower(),
+        user_type.lower(),
+        email.lower(),
+        phone,
+        phone.replace(' ', ''),
+    ]))
+
+    def _is_duplicate_header(line):
+        """Return True if this line is just the name/role/email/phone we already printed."""
+        s = line.strip().lower()
+        if not s:
+            return False
+        # Exact match
+        if s in _skip_values:
+            return True
+        # Line is just the full name
+        if full_name and s == full_name.lower():
+            return True
+        # Contact line: "phone | email | address" style
+        if full_name and full_name.lower() in s and ('|' in s or '@' in s):
+            return True
+        # Line contains only email
+        if email and s == email.lower():
+            return True
+        # Line contains only phone
+        if phone and (s == phone or s == phone.replace(' ', '')):
+            return True
+        return False
+
+    # Find first section heading — skip everything before it that's a dup
+    _lines      = cv_text.split('\n')
+    _first_sec  = next((i for i, l in enumerate(_lines)
+                        if l.strip().upper() in SECTION_HEADINGS), None)
+    _clean_lines = []
+    for idx, line in enumerate(_lines):
+        if _first_sec is not None and idx < _first_sec:
+            if _is_duplicate_header(line):
+                continue  # skip dup header lines before first section
+        _clean_lines.append(line)
+    cv_text = '\n'.join(_clean_lines)
+
     # ── Parse and render cv_text ──────────────────────────────────────
     for line in cv_text.split('\n'):
         stripped = line.strip()
