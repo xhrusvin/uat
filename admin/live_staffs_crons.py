@@ -857,38 +857,80 @@ EXTRACTED CV TEXT (the candidate's original CV — use for PROFESSIONAL PROFILE,
 {extracted_cv[:12000] if extracted_cv and not extracted_cv.startswith('[') else "No CV text available — use CANDIDATE DATA only."}
 """ 
 
-    prompt = f"""You are a professional CV writer for Irish healthcare staffing.
+    prompt = f"""You are a professional CV writer specializing in Irish healthcare recruitment.
+Your task is to rewrite the candidate's CV into a clean, ATS-friendly, professional CV using ONLY the information provided.
 
-Rewrite the candidate's CV below into a clean, professional CV using this exact structure:
+STRICT RULES
+* NEVER invent, assume, enhance, or rewrite information that is not present.
+* Use ONLY information from:
+   1. CANDIDATE DATA
+   2. CANDIDATE'S ORIGINAL CV
+* Preserve employer names, job titles, dates, education, duties, certificates and skills exactly as provided.
+* Use professional formatting and grammar while keeping the original meaning.
+* Omit any section if no information is available.
+
+CV FORMAT
+
+Candidate Name
+* Display the candidate's FULL NAME at the very top.
+* Centre align the name.
+* Use a larger heading than the rest of the document.
+Immediately below the name (centre aligned), display:
+Mobile: | Email: | Address:
+Only display fields that are available in the provided data.
 
 EMPLOYMENT ELIGIBILITY
-PROFESSIONAL PROFILE
-EDUCATION & QUALIFICATIONS
-PROFESSIONAL EXPERIENCE
-TRAINING & CERTIFICATIONS
-KEY SKILLS
-ADDITIONAL INFORMATION
-
+Display each item as: Label: Value
+Example fields: Employment Type | Visa Status | Nationality | Current Location | Notice Period | Driving Licence | Own Transport | Healthcare Registration | Years of Experience
 Rules:
-- Use ONLY the information provided — do not invent anything.
-- EMPLOYMENT ELIGIBILITY: Label: Value per line. Do NOT include name, address, mobile or email.
-  For any blank fields in CANDIDATE DATA, analyse the CANDIDATE'S ORIGINAL CV and fill them:
-  * Nationality: look for "Nationality:", country of origin, or infer from education/work locations in the CV.
-  * Total Experience: if blank, calculate from employment dates (earliest start to today). Format as "X years Y months".
-  * Skip any field not found in either source.
-- EDUCATION & QUALIFICATIONS: copy ALL education exactly as written — every school, college, course, degree. Do not skip any entry.
-- PROFESSIONAL EXPERIENCE: copy ALL jobs exactly — employer, title, dates, duties.
-- TRAINING & CERTIFICATIONS: list all certificates and training from the CV.
-- KEY SKILLS: list skills from the CV.
-- ADDITIONAL INFORMATION: write only:
-  Driving Licence: No
-  Own Transport: No
+* Use the values from CANDIDATE DATA whenever available.
+* If Nationality is blank in CANDIDATE DATA:
+   - Look for "Nationality:" in the original CV.
+   - Otherwise infer from education and employment history only if strongly supported.
+* If Years of Experience is blank:
+   - Calculate from the earliest employment start date up to today. Ignore education dates.
+   - Format as: X years Y months
+* Skip any field that cannot be determined.
 
+PROFESSIONAL PROFILE
+Write a concise professional summary using ONLY the information contained in the CV.
+Do not invent skills, experience or achievements.
+
+EDUCATION & QUALIFICATIONS
+Copy ALL education exactly as written. For each qualification include:
+- Qualification
+- Institution
+- Location (if available)
+- Dates
+
+PROFESSIONAL EXPERIENCE
+List ALL employment in reverse chronological order. For every role include:
+- Job Title
+- Employer
+- Location (if available)
+- Employment Dates
+- Bullet-point responsibilities exactly as stated or lightly formatted for readability.
+Do not remove any employment. Do not create new responsibilities.
+
+TRAINING & CERTIFICATIONS
+List every certificate, mandatory training course, licence and professional training mentioned in the CV.
+
+KEY SKILLS
+List all skills explicitly mentioned in the CV. Use bullet points. Do not invent additional skills.
+
+ADDITIONAL INFORMATION
+Display:
+Driving Licence: No
+Own Transport: No
+If the original CV explicitly states different values, use those instead.
+
+---
 CANDIDATE DATA:
 {data_summary}
 
 CANDIDATE'S ORIGINAL CV:
 {extracted_cv[:15000] if has_extracted else "No CV available — build from CANDIDATE DATA above."}
+---
 
 Output the structured CV text only. No markdown, no preamble.
 """
