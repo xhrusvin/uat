@@ -2111,10 +2111,24 @@ document.querySelectorAll('.btn-vos').forEach(btn => {
             const r = await fetch(VOS_SAVED_URL.replace('__ID__', currentVosStaffId));
             const d = await r.json();
             if (d.success && d.found) {
-                document.getElementById('vosSavedInfo').classList.remove('d-none');
-                document.getElementById('vosSavedDate').textContent = d.generated_at || '';
-                document.getElementById('vosExistingDownload').href =
+                // Already generated — show result state directly
+                document.getElementById('vosIdle').classList.add('d-none');
+                document.getElementById('vosResult').classList.remove('d-none');
+                document.getElementById('vosDownloadBtn').href =
                     VOS_DL_URL.replace('__ID__', currentVosStaffId);
+                if (d.total) {
+                    document.getElementById('vosTotal').textContent =
+                        'Total Eligible Service: ' + d.total;
+                }
+                document.getElementById('vosTotal').insertAdjacentHTML('afterend',
+                    `<div class="text-muted small mt-1">Generated on ${d.generated_at || ''} 
+                     — <a href="#" class="text-muted" id="vosRegenLink">Regenerate</a></div>`
+                );
+                document.getElementById('vosRegenLink')?.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    document.getElementById('vosResult').classList.add('d-none');
+                    document.getElementById('vosIdle').classList.remove('d-none');
+                });
             }
         } catch(e) {}
 
