@@ -9,15 +9,6 @@ Only staff with consent_fetched=True but consent_uploaded≠True are picked up.
 
 Imported by admin/__init__.py — routes are registered on admin_bp automatically.
 
-REQUIRED: Add 'consent' to HSE_DOC_TYPES in admin/live_staffs.py:
-    HSE_DOC_TYPES = {
-        'cv':          'hse_cv',
-        'interview':   'interview_notes',
-        'appform':     'application_form',
-        'pcc':         'others_2',
-        'consent':     'others_1',   # ← add this
-    }
-
 To re-upload ALL consent docs, run in MongoDB first:
     db.live_staffs.updateMany(
         {consent_fetched: true},
@@ -28,6 +19,7 @@ To re-upload ALL consent docs, run in MongoDB first:
 from flask import request, jsonify
 from datetime import datetime
 import os
+import requests as _req
 
 from . import admin_bp
 
@@ -48,11 +40,14 @@ def _gcs_download(blob_name):
     return _f(blob_name)
 
 
-def _push_hse_document_background(staff_id_str, doc_type_key,
-                                   docx_bytes, staff_name='',
-                                   mongo_id=None, email=''):
-    from admin.live_staffs import _push_hse_document_background as _f
-    return _f(staff_id_str, doc_type_key, docx_bytes, staff_name, mongo_id, email)
+def _docx_to_pdf_bytes(docx_bytes):
+    from admin.live_staffs import _docx_to_pdf_bytes as _f
+    return _f(docx_bytes)
+
+
+def _resolve_xn_staff_id(mongo_id, email):
+    from admin.live_staffs import _resolve_xn_staff_id as _f
+    return _f(mongo_id, email)
 
 
 @admin_bp.route('/live-staffs/cron/upload-consent', methods=['GET', 'POST'])
@@ -61,9 +56,10 @@ def live_staff_cron_upload_consent():
     Cron job — uploads consent doc to HSE API for ONE staff member per call.
 
     Finds staff where consent_fetched=True but consent_uploaded is not True.
-    Downloads DOCX from GCS via consent_gcs_blob, converts to PDF, and pushes
-    to the HSE Document Upload API as hse_document_type=others_1.
+    Downloads DOCX from GCS via consent_gcs_blob, converts to PDF inline,
+    and POSTs to the HSE Document Upload API as hse_document_type=others_1.
 
+    Uses DOC_API_KEY + DOC_BASE_URL env vars (same as _push_hse_document_background).
     Protect with ?cron_key=<CRON_SECRET> env var.
     """
     cron_secret = os.environ.get('CRON_SECRET', '')
@@ -93,11 +89,11 @@ def live_staff_cron_upload_consent():
             "remaining_count": 0,
         })
 
-    staff_id  = str(staff['_id'])
-    s1        = staff.get('section_1_personal_details') or {}
-    full_name = _v(s1.get('full_name') or '')
-    email     = _v(staff.get('email') or s1.get('email_address') or '')
-    gcs_blob  = _v(staff.get('consent_gcs_blob') or '')
+    staff_id     = str(staff['_id'])
+    s1           = staff.get('section_1_personal_details') or {}
+    full_name    = _v(s1.get('full_name') or '')
+    email        = _v(staff.get('email') or s1.get('email_address') or '')
+    gcs_blob     = _v(staff.get('consent_gcs_blob') or '')
     consent_name = _v(staff.get('consent_document_name') or
                       f"{email}_consent_form.docx")
 
@@ -137,27 +133,103 @@ def live_staff_cron_upload_consent():
             "success":         False,
             "email":           email,
             "staff_name":      full_name,
-            "error":           f"Failed to download consent doc from GCS: {e}",
+            "error":           f"Failed to download from GCS: {e}",
             "remaining_count": max(0, remaining_total - 1),
         })
 
-    # ── Push to HSE API (same as PCC — handles PDF conversion + staff ID resolve) ──
+    # ── Convert DOCX → PDF ────────────────────────────────────────────
     try:
-        _push_hse_document_background(
-            staff_id_str=staff_id,
-            doc_type_key='consent',
-            docx_bytes=docx_bytes,
-            staff_name=full_name,
-            mongo_id=staff_id,
-            email=email,
-        )
+        pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
+        if not pdf_bytes:
+            raise ValueError("PDF conversion returned empty bytes")
     except Exception as e:
-        _mark_failed(f"push error: {e}")
+        _mark_failed(f"PDF conversion error: {e}")
         return jsonify({
             "success":         False,
             "email":           email,
             "staff_name":      full_name,
-            "error":           f"Push failed: {e}",
+            "error":           f"PDF conversion failed: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Resolve XN Portal staff ID ────────────────────────────────────
+    resolved_staff_id = staff_id
+    try:
+        xn_id = _resolve_xn_staff_id(staff_id, email)
+        if xn_id:
+            resolved_staff_id = xn_id
+    except Exception:
+        pass  # fall back to mongo _id
+
+    # ── POST to HSE Document Upload API ──────────────────────────────
+    base_url    = os.environ.get('DOC_BASE_URL', '').rstrip('/')
+    api_key     = os.environ.get('DOC_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', 'ie')
+    endpoint    = f"{base_url}/api/admin/staff/hse-document-upload"
+
+    if not base_url:
+        _mark_failed("DOC_BASE_URL not set")
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "staff_name":      full_name,
+            "error":           "DOC_BASE_URL not set in environment",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    try:
+        resp = _req.post(
+            endpoint,
+            data={
+                "staff_id":          resolved_staff_id,
+                "hse_document_type": "others_1",
+            },
+            files={
+                "file": ("others_1.pdf", pdf_bytes, "application/pdf"),
+            },
+            headers={
+                "Api-Key":       api_key,
+                "X-App-Country": app_country,
+                "Accept":        "application/json",
+            },
+            timeout=60,
+        )
+
+        try:
+            resp_json = resp.json()
+        except Exception:
+            resp_json = {"raw": resp.text[:500]}
+
+        if not resp.ok:
+            detail = str(resp_json)
+            _mark_failed(f"HSE API {resp.status_code}: {detail}")
+            return jsonify({
+                "success":         False,
+                "email":           email,
+                "staff_name":      full_name,
+                "error":           f"HSE upload HTTP {resp.status_code}",
+                "detail":          detail,
+                "remaining_count": max(0, remaining_total - 1),
+            })
+
+    except Exception as e:
+        _mark_failed(f"upload error: {e}")
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "staff_name":      full_name,
+            "error":           f"HSE upload failed: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not resp_json.get("success"):
+        msg = resp_json.get("message") or str(resp_json)
+        _mark_failed(f"HSE API error: {msg}")
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "staff_name":      full_name,
+            "error":           msg,
             "remaining_count": max(0, remaining_total - 1),
         })
 
@@ -169,6 +241,7 @@ def live_staff_cron_upload_consent():
         "email":           email,
         "filename":        consent_name,
         "gcs_blob":        gcs_blob,
+        "xn_staff_id":     resolved_staff_id,
         "remaining_count": max(0, remaining_total - 1),
         "message": (
             f"Consent doc uploaded for {full_name} — "
