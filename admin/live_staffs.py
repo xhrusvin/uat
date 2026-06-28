@@ -1130,16 +1130,10 @@ def _ai_pcc_col():
 
 # ── AI CV DOCX builder ────────────────────────────────────────────────
 
-def _build_ai_cv_docx(doc, cv_text):
-    """
-    Build an ATS-friendly, clean CV DOCX from AI-generated text.
-    No colours, no tables, no images — plain text with simple formatting
-    that passes all ATS parsers.
-    """
+def _build_ai_cv_docx(cv_text):
     import io as _io
     from docx import Document as _Doc
     from docx.shared import Pt, Cm
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
 
@@ -1156,60 +1150,12 @@ def _build_ai_cv_docx(doc, cv_text):
         sec.left_margin   = Cm(2.5)
         sec.right_margin  = Cm(2.5)
 
-    # Use Calibri — best ATS font
     style = document.styles['Normal']
     style.font.name = 'Calibri'
     style.font.size = Pt(11)
 
-    s1        = doc.get('section_1_personal_details') or {}
-    full_name = _v(s1.get('full_name') or '')
-    user_type = _v(doc.get('user_type') or '')
-    email     = _v(doc.get('email') or s1.get('email_address') or '')
-    phone     = _v(s1.get('mobile_number') or s1.get('phone_number') or '')
+    # No header block — name/contact come from cv_text lines parsed below
 
-    # ── Name header — large, bold, left-aligned ───────────────────────
-    p = document.add_paragraph()
-    p.paragraph_format.space_before = Pt(0)
-    p.paragraph_format.space_after  = Pt(0)
-    run = p.add_run(full_name if full_name else 'Curriculum Vitae')
-    run.bold = True
-    run.font.name = 'Calibri'
-    run.font.size = Pt(22)
-
-    # Role title
-    if user_type:
-        p2 = document.add_paragraph()
-        p2.paragraph_format.space_before = Pt(2)
-        p2.paragraph_format.space_after  = Pt(2)
-        r2 = p2.add_run(user_type)
-        r2.font.name = 'Calibri'
-        r2.font.size = Pt(12)
-        r2.italic    = True
-
-    # Contact line
-    contact_parts = [x for x in [phone, email] if x]
-    if contact_parts:
-        pc = document.add_paragraph()
-        pc.paragraph_format.space_before = Pt(2)
-        pc.paragraph_format.space_after  = Pt(6)
-        rc = pc.add_run('  |  '.join(contact_parts))
-        rc.font.name = 'Calibri'
-        rc.font.size = Pt(10)
-
-    # Horizontal rule after header
-    p_rule = document.add_paragraph()
-    p_rule.paragraph_format.space_before = Pt(2)
-    p_rule.paragraph_format.space_after  = Pt(8)
-    pPr = p_rule._p.get_or_add_pPr()
-    pBdr = OxmlElement('w:pBdr')
-    bot = OxmlElement('w:bottom')
-    bot.set(qn('w:val'), 'single')
-    bot.set(qn('w:sz'), '12')
-    bot.set(qn('w:color'), '000000')
-    pBdr.append(bot)
-    pPr.append(pBdr)
-
-    # ── Section heading — bold uppercase with bottom border ───────────
     def _heading(text):
         p = document.add_paragraph()
         p.paragraph_format.space_before = Pt(12)
@@ -1218,17 +1164,15 @@ def _build_ai_cv_docx(doc, cv_text):
         run.bold      = True
         run.font.name = 'Calibri'
         run.font.size = Pt(11)
-        # Simple bottom border — ATS safe
-        pPr = p._p.get_or_add_pPr()
+        pPr  = p._p.get_or_add_pPr()
         pBdr = OxmlElement('w:pBdr')
-        bot = OxmlElement('w:bottom')
-        bot.set(qn('w:val'), 'single')
-        bot.set(qn('w:sz'), '6')
+        bot  = OxmlElement('w:bottom')
+        bot.set(qn('w:val'),   'single')
+        bot.set(qn('w:sz'),    '6')
         bot.set(qn('w:color'), '000000')
         pBdr.append(bot)
         pPr.append(pBdr)
 
-    # ── Body line ─────────────────────────────────────────────────────
     def _body(text, bold=False, indent=False):
         p = document.add_paragraph()
         p.paragraph_format.space_before = Pt(1)
@@ -1240,23 +1184,47 @@ def _build_ai_cv_docx(doc, cv_text):
         run.font.name = 'Calibri'
         run.font.size = Pt(11)
 
-    # ── Parse and render cv_text ──────────────────────────────────────
-    for line in cv_text.split('\n'):
+    lines = cv_text.split('\n')
+    first_line = True  # treat the very first non-empty line as the name
+
+    for line in lines:
         stripped = line.strip()
         if not stripped:
-            # Small gap between entries
             p = document.add_paragraph()
             p.paragraph_format.space_before = Pt(2)
             p.paragraph_format.space_after  = Pt(2)
             continue
 
+        if first_line:
+            # First non-empty line = candidate name — render large bold header
+            first_line = False
+            from docx.oxml import OxmlElement as _OE
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after  = Pt(0)
+            run = p.add_run(stripped)
+            run.bold      = True
+            run.font.name = 'Calibri'
+            run.font.size = Pt(22)
+            # Horizontal rule after name
+            p_rule = document.add_paragraph()
+            p_rule.paragraph_format.space_before = Pt(2)
+            p_rule.paragraph_format.space_after  = Pt(8)
+            pPr  = p_rule._p.get_or_add_pPr()
+            pBdr = _OE('w:pBdr')
+            bot  = _OE('w:bottom')
+            bot.set(qn('w:val'),   'single')
+            bot.set(qn('w:sz'),    '12')
+            bot.set(qn('w:color'), '000000')
+            pBdr.append(bot)
+            pPr.append(pBdr)
+            continue
+
         if stripped.upper() in SECTION_HEADINGS:
             _heading(stripped)
         elif stripped.startswith('- ') or stripped.startswith('• '):
-            # Bullet point — use simple dash for ATS
             _body('- ' + stripped[2:].strip(), indent=True)
         elif ':' in stripped and stripped.split(':')[0].isupper() and len(stripped.split(':')[0]) < 30:
-            # Label: Value line (e.g. "Job Title: Staff Nurse")
             label, _, value = stripped.partition(':')
             p = document.add_paragraph()
             p.paragraph_format.space_before = Pt(1)
@@ -2167,7 +2135,7 @@ Output the structured CV text only. No markdown, no asterisks, no preamble.
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         cv_text  = response.text.strip()
 
-        docx_bytes  = _build_ai_cv_docx(doc, cv_text)
+        docx_bytes  = _build_ai_cv_docx(cv_text)
         safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
         cv_filename = f"{safe_name}.docx"
         gcs_blob    = f"cv/{cv_filename}"
@@ -2377,6 +2345,10 @@ Certifications on file: {', '.join(certs) if certs else 'None recorded'}
 Using ONLY the verified candidate data below, complete a realistic, professional nurse interview notes template.
 Answers must be written as if the candidate themselves just answered each question in a live phone/video interview.
 Write naturally — conversational but professional. First person where appropriate ("I have", "I work", "I currently").
+
+- Start your output with the candidate's full name on the very first line, alone, with no label or prefix.
+- Second line: their role/title. Third line: phone | email (if available in the CV).
+- Then a blank line, then begin the sections.
 
 STRICT RULES — NO HALLUCINATION:
 - Use ONLY the facts provided in CANDIDATE DATA. Do not invent employers, dates, locations, or qualifications.
