@@ -153,13 +153,23 @@ def live_staff_cron_upload_interview():
         })
 
     # ── Resolve XN Portal staff ID ────────────────────────────────────
-    resolved_staff_id = staff_id
+    resolved_staff_id = None
     try:
         xn_id = _resolve_xn_staff_id(staff_id, email)
         if xn_id:
             resolved_staff_id = xn_id
     except Exception:
-        pass  # fall back to mongo _id
+        pass
+
+    if not resolved_staff_id:
+        _mark_failed("skipped — no XN Portal staff ID found")
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "staff_name":      full_name,
+            "error":           "No XN Portal staff ID — skipped",
+            "remaining_count": max(0, remaining_total - 1),
+        })
 
     # ── POST to HSE Document Upload API ──────────────────────────────
     base_url    = os.environ.get('DOC_BASE_URL', '').rstrip('/')
