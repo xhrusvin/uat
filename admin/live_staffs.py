@@ -1244,8 +1244,8 @@ def _build_ai_cv_docx(doc, cv_text):
         r2.font.size = Pt(12)
         r2.italic    = True
 
-    # Contact line
-    contact_parts = [x for x in [phone, email] if x]
+    # Contact line — phone only (no email to avoid duplication)
+    contact_parts = [x for x in [phone] if x]
     if contact_parts:
         pc = document.add_paragraph()
         pc.paragraph_format.space_before = Pt(2)
@@ -1299,8 +1299,6 @@ def _build_ai_cv_docx(doc, cv_text):
         run.font.size = Pt(11)
 
     # ── Strip duplicate header lines Gemini repeats ──────────────────
-    # Gemini often outputs name, role, email, phone at top of cv_text —
-    # we already render those from DB above, so skip them in cv_text.
     import re as _re_cv
     _skip_values = set(filter(None, [
         full_name.lower(),
@@ -1308,39 +1306,49 @@ def _build_ai_cv_docx(doc, cv_text):
         email.lower(),
         phone,
         phone.replace(' ', ''),
+        phone.replace('+', ''),
     ]))
 
     def _is_duplicate_header(line):
-        """Return True if this line is just the name/role/email/phone we already printed."""
-        s = line.strip().lower()
+        s = line.strip()
+        sl = s.lower()
         if not s:
             return False
-        # Exact match
-        if s in _skip_values:
+        # Exact match on known values
+        if sl in _skip_values:
             return True
-        # Line is just the full name
-        if full_name and s == full_name.lower():
+        # Full name line
+        if full_name and sl == full_name.lower():
             return True
-        # Contact line: "phone | email | address" style
-        if full_name and full_name.lower() in s and ('|' in s or '@' in s):
+        # Email-only line
+        if email and email.lower() in sl and len(sl) < len(email) + 5:
             return True
-        # Line contains only email
-        if email and s == email.lower():
+        # Phone-only line
+        if phone and phone.replace(' ','') in s.replace(' ',''):
+            digits = _re_cv.sub(r'\D','', s)
+            if len(digits) >= 8 and digits in _re_cv.sub(r'\D','', phone):
+                return True
+        # Contact line: "phone | email | location" or "name | email" etc.
+        # Catches: "0894878798 | analilsubil@gmail.com | Portlaoise, Ireland"
+        if '|' in s and (
+            (email and email.lower() in sl) or
+            (phone and phone.replace(' ','') in s.replace(' ','')) or
+            (full_name and full_name.lower() in sl)
+        ):
             return True
-        # Line contains only phone
-        if phone and (s == phone or s == phone.replace(' ', '')):
+        # Line that is just the name
+        if full_name and full_name.lower() == sl:
             return True
         return False
 
-    # Find first section heading — skip everything before it that's a dup
-    _lines      = cv_text.split('\n')
-    _first_sec  = next((i for i, l in enumerate(_lines)
-                        if l.strip().upper() in SECTION_HEADINGS), None)
+    _lines     = cv_text.split('\n')
+    _first_sec = next((i for i, l in enumerate(_lines)
+                       if l.strip().upper() in SECTION_HEADINGS), None)
     _clean_lines = []
     for idx, line in enumerate(_lines):
         if _first_sec is not None and idx < _first_sec:
             if _is_duplicate_header(line):
-                continue  # skip dup header lines before first section
+                continue
         _clean_lines.append(line)
     cv_text = '\n'.join(_clean_lines)
 
