@@ -2393,68 +2393,6 @@ def live_staff_ai_interview_upload(staff_id):
 
 # ── AI Appform routes ─────────────────────────────────────────────────
 
-@admin_bp.route('/live-staffs/ai-appform/saved/<staff_id>')
-@admin_required
-def live_staff_ai_appform_saved(staff_id):
-    rec = _ai_appforms_col().find_one({"staff_id": staff_id})
-    if rec:
-        return jsonify({
-            "success":      True,
-            "found":        True,
-            "ai_id":        str(rec["_id"]),
-            "filename":     rec.get("filename", rec.get("gcs_blob", "")),
-            "gcs_blob":     rec.get("gcs_blob", ""),
-            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M") if rec.get("generated_at") else "",
-        })
-    return jsonify({"success": True, "found": False})
-
-
-@admin_bp.route('/live-staffs/ai-appform/download/<ai_id>')
-@admin_required
-def live_staff_ai_appform_download(ai_id):
-    try:
-        rec = _ai_appforms_col().find_one({"_id": ObjectId(ai_id)})
-        if not rec or not rec.get('gcs_blob'):
-            return jsonify({"success": False, "error": "Application form not found"}), 404
-        docx_bytes = _gcs_download(rec['gcs_blob'])
-        fname = rec.get('filename') or rec.get('gcs_blob', 'appform.docx').split('/')[-1]
-        return Response(
-            docx_bytes,
-            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            headers={"Content-Disposition": f'attachment; filename="{fname}"'}
-        )
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@admin_bp.route('/live-staffs/ai-appform/upload/<staff_id>', methods=['POST'])
-@admin_required
-def live_staff_ai_appform_upload(staff_id):
-    f = request.files.get('file')
-    if not f:
-        return jsonify({"success": False, "error": "No file uploaded"}), 400
-    try:
-        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
-        if not doc:
-            return jsonify({"success": False, "error": "Staff not found"}), 404
-        s1        = doc.get('section_1_personal_details') or {}
-        full_name = _v(s1.get('full_name') or 'staff')
-        safe_name = full_name.replace(' ', '_').replace('/', '_')
-        filename  = f"AppForm_{safe_name}.docx"
-        gcs_blob  = f"appforms/{filename}"
-        docx_bytes = f.read()
-        _gcs_upload(gcs_blob, docx_bytes,
-                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-        _ai_appforms_col().update_one(
-            {"staff_id": staff_id},
-            {"$set": {"gcs_blob": gcs_blob, "filename": filename, "generated_at": datetime.utcnow()}},
-            upsert=True
-        )
-        return jsonify({"success": True, "gcs_blob": gcs_blob, "filename": filename})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
 @admin_bp.route('/live-staffs/api/generate-cv', methods=['POST'])
 def live_staff_api_generate_cv():
     """
