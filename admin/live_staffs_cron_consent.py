@@ -158,7 +158,17 @@ def live_staff_cron_upload_consent():
             },
             timeout=60,
         )
-        upload_resp.raise_for_status()
+        if not upload_resp.ok:
+            body = upload_resp.text[:500]
+            _mark_failed(f"upload HTTP {upload_resp.status_code}: {body}")
+            return jsonify({
+                "success":         False,
+                "email":           email,
+                "staff_name":      full_name,
+                "error":           f"HSE upload HTTP {upload_resp.status_code}",
+                "detail":          body,
+                "remaining_count": max(0, remaining_total - 1),
+            })
         upload_data = upload_resp.json()
     except Exception as e:
         _mark_failed(f"upload error: {e}")
