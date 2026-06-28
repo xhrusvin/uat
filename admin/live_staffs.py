@@ -1723,13 +1723,11 @@ def _build_appform_docx(doc, signature_bytes=None):
 
     def _add_tick_run(para, checked):
         """
-        Add a tick/box using Unicode ballot box characters with DejaVu Sans font.
-        U+2611 ☑ = ballot box with check (ticked)
-        U+2610 ☐ = ballot box (empty)
-        DejaVu Sans is bundled with LibreOffice and renders these correctly in PDF.
+        Add a tick/box using Unicode ballot box characters.
+        Segoe UI Symbol renders ☑/☐ correctly in both Word and LibreOffice.
         """
         r = para.add_run('☑' if checked else '☐')
-        r.font.name = 'DejaVu Sans'
+        r.font.name = 'Segoe UI Symbol'
         r.font.size = Pt(12)
         r.font.color.rgb = BLACK
         return r

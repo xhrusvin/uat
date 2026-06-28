@@ -1835,8 +1835,11 @@ def _build_pcc_docx(doc, reviewer_index=0):
         p = document.add_paragraph()
         p.paragraph_format.space_before = Pt(2)
         p.paragraph_format.space_after  = Pt(2)
-        _add_run(p, ('☑' if checked else '☐') + '  ', size=11)
-        _add_run(p, text, size=9.5)
+        # Use Segoe UI Symbol for reliable checkbox rendering in Word
+        tick_run = p.add_run('☑' if checked else '☐')
+        tick_run.font.name = 'Segoe UI Symbol'
+        tick_run.font.size = Pt(11)
+        _add_run(p, '  ' + text, size=9.5)
         return p
 
     def blank_line(label):
