@@ -676,7 +676,7 @@ def live_staff_cron_generate_point_scale():
                     {"staff_id": staff_id},
                     {"$set": {
                         "status":  "no_employment_data",
-                        "note":    "No employment history found in section_5 or extracted_cv",
+                        "note":    "No Hse Cv document found in XN Portal or no Ireland employment extracted",
                         "updated_at": datetime.utcnow(),
                     }}
                 )
