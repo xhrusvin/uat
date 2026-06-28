@@ -75,7 +75,7 @@ def _build_appform_docx(doc, signature_bytes=None):
     return _f(doc, signature_bytes=signature_bytes)
 
 def _build_interview_docx(doc, interview_text):
-    from admin.live_staffs import _build_interview_docx as _f
+    from admin.live_staffs import _build_ai_interview_docx as _f
     return _f(doc, interview_text)
 
 def _get_pcc_reviewers():
