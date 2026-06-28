@@ -1533,6 +1533,7 @@ If a field is not visible, set it to null.
 # ── Export: Open Disclosure certificates to Excel ─────────────────────
 
 @admin_bp.route('/live-staffs/export/open-disclosure-xlsx')
+@admin_bp.route('/live-staffs/export/open-disclosure-xlsx-new')
 @admin_required
 def live_staff_export_open_disclosure_xlsx_new():
     """Export Open Disclosure certificate details to Excel."""
