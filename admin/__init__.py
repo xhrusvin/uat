@@ -40,5 +40,6 @@ from . import live_staffs_signature
 from . import live_staffs_crons2
 from . import live_staffs_crons3
 from . import live_staffs_cron_consent
+from . import live_staffs_point_scale
 
 
