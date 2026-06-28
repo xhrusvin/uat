@@ -412,10 +412,9 @@ def _build_vos_nurse_docx(staff_doc, rows):
     _run(p_sd, 'Staff Details', bold=True, size=12, color=NAVY)
 
     staff_rows = [
-        ('Full Name',       full_name),
+        ('Full Name',         full_name),
         ('Role / Designation', user_type),
-        ('PPS Number',      pps),
-        ('Contact Email',   email),
+        ('PPS Number',        pps),
     ]
     staff_tbl = d.add_table(rows=len(staff_rows), cols=2)
     staff_tbl.style = 'Table Grid'
