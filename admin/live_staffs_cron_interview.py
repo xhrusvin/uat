@@ -1,18 +1,18 @@
 """
-live_staffs_cron_consent.py
+live_staffs_cron_interview.py
 ────────────────────────────
-Cron route — uploads consent documents to the HSE Document Upload API
-as hse_document_type=others_1.
+Cron route — uploads interview documents to the HSE Document Upload API
+as hse_document_type=others_3.
 
 Processes ONE staff member per call.
-Only staff with consent_fetched=True but consent_uploaded≠True are picked up.
+Only staff with interview_fetched=True but interview_uploaded≠True are picked up.
 
 Imported by admin/__init__.py — routes are registered on admin_bp automatically.
 
-To re-upload ALL consent docs, run in MongoDB first:
+To re-upload ALL interview docs, run in MongoDB first:
     db.live_staffs.updateMany(
-        {consent_fetched: true},
-        {$set: {consent_uploaded: false}}
+        {interview_fetched: true},
+        {$set: {interview_uploaded: false}}
     )
 """
 
@@ -50,14 +50,14 @@ def _resolve_xn_staff_id(mongo_id, email):
     return _f(mongo_id, email)
 
 
-@admin_bp.route('/live-staffs/cron/upload-consent', methods=['GET', 'POST'])
-def live_staff_cron_upload_consent():
+@admin_bp.route('/live-staffs/cron/upload-interview', methods=['GET', 'POST'])
+def live_staff_cron_upload_interview():
     """
-    Cron job — uploads consent doc to HSE API for ONE staff member per call.
+    Cron job — uploads interview doc to HSE API for ONE staff member per call.
 
-    Finds staff where consent_fetched=True but consent_uploaded is not True.
-    Downloads DOCX from GCS via consent_gcs_blob, converts to PDF inline,
-    and POSTs to the HSE Document Upload API as hse_document_type=others_1.
+    Finds staff where interview_fetched=True but interview_uploaded is not True.
+    Downloads DOCX from GCS via interview_gcs_blob, converts to PDF inline,
+    and POSTs to the HSE Document Upload API as hse_document_type=others_3.
 
     Uses DOC_API_KEY + DOC_BASE_URL env vars (same as _push_hse_document_background).
     Protect with ?cron_key=<CRON_SECRET> env var.
@@ -72,11 +72,11 @@ def live_staff_cron_upload_consent():
     col = _staffs_col()
 
     pending_query = {
-        "consent_fetched": True,
+        "interview_fetched": True,
         "$or": [
-            {"consent_uploaded": {"$exists": False}},
-            {"consent_uploaded": False},
-            {"consent_uploaded": None},
+            {"interview_uploaded": {"$exists": False}},
+            {"interview_uploaded": False},
+            {"interview_uploaded": None},
         ],
     }
     remaining_total = col.count_documents(pending_query)
@@ -85,7 +85,7 @@ def live_staff_cron_upload_consent():
     if not staff:
         return jsonify({
             "success":         True,
-            "message":         "All consent documents already uploaded.",
+            "message":         "All interview documents already uploaded.",
             "remaining_count": 0,
         })
 
@@ -93,32 +93,32 @@ def live_staff_cron_upload_consent():
     s1           = staff.get('section_1_personal_details') or {}
     full_name    = _v(s1.get('full_name') or '')
     email        = _v(staff.get('email') or s1.get('email_address') or '')
-    gcs_blob     = _v(staff.get('consent_gcs_blob') or '')
-    consent_name = _v(staff.get('consent_document_name') or
-                      f"{email}_consent_form.docx")
+    gcs_blob     = _v(staff.get('interview_gcs_blob') or '')
+    interview_name = _v(staff.get('interview_document_name') or
+                      f"{email}_interview_form.docx")
 
     def _mark_done(fields):
-        fields["consent_uploaded"]    = True
-        fields["consent_uploaded_at"] = datetime.utcnow()
+        fields["interview_uploaded"]    = True
+        fields["interview_uploaded_at"] = datetime.utcnow()
         col.update_one({"_id": staff['_id']}, {"$set": fields})
 
     def _mark_failed(note):
         col.update_one(
             {"_id": staff['_id']},
             {"$set": {
-                "consent_uploaded":    False,
-                "consent_upload_note": note,
-                "consent_uploaded_at": datetime.utcnow(),
+                "interview_uploaded":    False,
+                "interview_upload_note": note,
+                "interview_uploaded_at": datetime.utcnow(),
             }},
         )
 
     if not gcs_blob:
-        _mark_failed("skipped — no consent_gcs_blob")
+        _mark_failed("skipped — no interview_gcs_blob")
         return jsonify({
             "success":         False,
             "email":           email,
             "staff_name":      full_name,
-            "error":           "No consent_gcs_blob on record",
+            "error":           "No interview_gcs_blob on record",
             "remaining_count": max(0, remaining_total - 1),
         })
 
@@ -182,10 +182,10 @@ def live_staff_cron_upload_consent():
             endpoint,
             data={
                 "staff_id":          resolved_staff_id,
-                "hse_document_type": "others_1",
+                "hse_document_type": "others_3",
             },
             files={
-                "file": ("others_1.pdf", pdf_bytes, "application/pdf"),
+                "file": ("others_3.pdf", pdf_bytes, "application/pdf"),
             },
             headers={
                 "Api-Key":       api_key,
@@ -233,18 +233,18 @@ def live_staff_cron_upload_consent():
             "remaining_count": max(0, remaining_total - 1),
         })
 
-    _mark_done({"consent_upload_note": "uploaded successfully"})
+    _mark_done({"interview_upload_note": "uploaded successfully"})
 
     return jsonify({
         "success":         True,
         "staff_name":      full_name,
         "email":           email,
-        "filename":        consent_name,
+        "filename":        interview_name,
         "gcs_blob":        gcs_blob,
         "xn_staff_id":     resolved_staff_id,
         "remaining_count": max(0, remaining_total - 1),
         "message": (
-            f"Consent doc uploaded for {full_name} — "
+            f"Interview doc uploaded for {full_name} — "
             f"{max(0, remaining_total - 1)} remaining."
         ),
     })
