@@ -2436,6 +2436,8 @@ def live_staff_cron_extract_experience_list():
 
     pending_query = {
         "$and": [
+            # Only Healthcare Assistant staff
+            {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
             {"$or": [
                 {"experience_list_at": {"$exists": False}},
                 {"experience_list_at": None},
@@ -2453,7 +2455,7 @@ def live_staff_cron_extract_experience_list():
     if not staff:
         return jsonify({
             "success":         True,
-            "message":         "All staff experience lists extracted — nothing to do.",
+            "message":         "All Healthcare Assistant staff experience lists extracted — nothing to do.",
             "remaining_count": 0,
         })
 
@@ -2574,24 +2576,40 @@ def live_staff_cron_extract_experience_list():
 
         prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
 
-Read the CV text below and extract ALL work experience entries without any filtering.
-Include EVERY job role regardless of type — care, non-care, nursing, retail, factory, any role.
+Read the CV text below and extract ONLY work experience entries where the job title matches
+one of the following Healthcare Assistant keywords (case-insensitive):
 
-For each role return it as a single formatted string exactly like this:
+healthcare assistant, health care assistant, care assistant, care worker, support worker,
+care support worker, healthcare support worker, healthcare support assistant,
+home care worker, home care assistant, home support worker, home support assistant,
+community care worker, community care assistant, personal care assistant, personal care worker,
+residential care worker, residential support worker, residential care assistant,
+nursing assistant, nursing care assistant, agency healthcare assistant, agency care assistant,
+agency support worker, relief healthcare assistant, relief care worker, bank healthcare assistant,
+bank care assistant, live-in carer, carer, caregiver, disability support worker,
+intellectual disability support worker
+
+STRICT RULES:
+- ONLY include roles whose job title contains one of the above keywords.
+- DO NOT include nursing roles (Registered Nurse, Staff Nurse, etc.).
+- DO NOT include non-care roles (retail, factory, admin, hospitality, etc.).
+- If the job title does not match any keyword above, SKIP it completely.
+
+For each matching role return it as a single formatted string exactly like this:
 "Job Title  Start Date – End Date  Employer, Location"
 
 Format rules:
-- Job title first
-- Then date range exactly as written in the CV (e.g. "Sept. 2017 – Present" or "2019 – 2021")
-- Then employer name and location/department if available
+- Job title first (as written in the CV)
+- Then date range exactly as written in the CV
+- Then employer name and location if available
 - Separate each part with two spaces
 - If no end date, write "Present"
-- List ALL roles, most recent first
+- List matching roles most recent first
 
 Return ONLY a JSON array of strings — nothing else, no markdown, no explanation:
 ["role 1 formatted string", "role 2 formatted string", ...]
 
-If no roles found, return: []
+If no matching roles found, return: []
 
 CV TEXT:
 {hse_cv_text}
