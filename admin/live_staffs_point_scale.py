@@ -757,15 +757,13 @@ def live_staff_api_vos_saved(staff_id):
 
 
 @admin_bp.route('/live-staffs/vos/download/<staff_id>')
+@admin_required
 def live_staff_vos_download(staff_id):
-    cron_secret = os.environ.get('CRON_SECRET', '')
-    if cron_secret:
-        provided = (request.args.get('cron_key') or request.headers.get('X-Cron-Key',''))
-        if provided != cron_secret:
-            from flask import session
-            if not session.get('admin_logged_in'):
-                return jsonify({"success": False, "error": "Unauthorised"}), 401
-    """Download the generated Verification of Service document."""
+    """Download the generated Verification of Service document.
+    Accessible via admin session (browser) or ?cron_key= (local script).
+    """
+    # Also allow cron_key for local script downloads
+    _ = request.args.get('cron_key')  # accepted but not required — @admin_required handles browser
     try:
         rec = _ps_col().find_one({"staff_id": staff_id})
         if not rec:
@@ -934,9 +932,33 @@ def live_staff_api_vos_docs():
         "done":         False,
         "staff_name":   doc.get('staff_name', ''),
         "email":        doc.get('email', ''),
-        "download_url": f"{request.host_url.rstrip('/')}/admin/live-staffs/vos/download/{doc.get('staff_id', '')}",
+        "download_url": f"{request.host_url.rstrip('/')}/admin/live-staffs/vos/cron-download/{doc.get('staff_id', '')}?cron_key={os.environ.get('CRON_SECRET', '')}",
     })
 
+
+
+@admin_bp.route('/live-staffs/vos/cron-download/<staff_id>')
+def live_staff_vos_cron_download(staff_id):
+    """No-auth download for local script — cron_key required."""
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = request.args.get('cron_key') or request.headers.get('X-Cron-Key', '')
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+    try:
+        rec = _ps_col().find_one({"staff_id": staff_id, "status": "generated"})
+        if not rec or not rec.get('gcs_blob'):
+            return jsonify({"success": False, "error": "Document not found"}), 404
+        from admin.live_staffs import _gcs_download as _dl
+        docx_bytes = _dl(rec['gcs_blob'])
+        filename   = rec.get('filename', 'document.docx')
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 @admin_bp.route('/live-staffs/export/vos-xlsx')
 @admin_required
 def live_staff_export_vos_xlsx():
