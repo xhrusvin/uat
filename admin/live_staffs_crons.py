@@ -2109,6 +2109,74 @@ def live_staff_cron_sync_vetting():
 
 # ── Cron: Analyse experience one staff at a time ──────────────────────
 
+
+
+@admin_bp.route('/live-staffs/cron/reset-experience', methods=['GET', 'POST'])
+def live_staff_cron_reset_experience():
+    """
+    Reset experience_analysed_at for the last N analysed staff
+    so the cron will re-analyse them.
+
+    Params:
+        cron_key  — required
+        n         — number of staff to reset (default 130)
+        all       — if "1", reset ALL staff
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    def _staffs_col_local():
+        from flask import current_app
+        return current_app.db.live_staffs
+
+    col = _staffs_col_local()
+
+    if request.args.get('all') == '1':
+        result = col.update_many(
+            {"experience_analysed_at": {"$exists": True}},
+            {"$unset": {"experience_analysed_at": "",
+                        "experience_years": "",
+                        "experience_months": "",
+                        "experience_total_months": "",
+                        "experience_note": "",
+                        "experience_source": ""}}
+        )
+        return jsonify({
+            "success": True,
+            "reset":   result.modified_count,
+            "message": f"Reset ALL {result.modified_count} staff for re-analysis",
+        })
+
+    n = int(request.args.get('n', 130))
+
+    # Find the last N analysed staff (most recently analysed first)
+    recent = list(col.find(
+        {"experience_analysed_at": {"$exists": True, "$ne": None}},
+        {"_id": 1}
+    ).sort("experience_analysed_at", -1).limit(n))
+
+    ids = [r['_id'] for r in recent]
+
+    result = col.update_many(
+        {"_id": {"$in": ids}},
+        {"$unset": {"experience_analysed_at": "",
+                    "experience_years": "",
+                    "experience_months": "",
+                    "experience_total_months": "",
+                    "experience_note": "",
+                    "experience_source": ""}}
+    )
+
+    return jsonify({
+        "success": True,
+        "reset":   result.modified_count,
+        "message": f"Reset last {result.modified_count} staff — they will be re-analysed on next cron run",
+    })
+
 @admin_bp.route('/live-staffs/cron/analyse-experience', methods=['GET', 'POST'])
 def live_staff_cron_analyse_experience():
     """
@@ -2395,14 +2463,7 @@ def live_staff_cron_extract_experience_list():
     email     = _v(staff.get('email') or '')
     user_type = _v(staff.get('user_type') or '')
 
-    extracted_cv = _v(staff.get('extracted_cv') or '')
-    has_cv_text  = (
-        extracted_cv and
-        not extracted_cv.startswith('[') and
-        extracted_cv != 'No doc found'
-    )
-
-    if not has_cv_text:
+    if not email:
         col.update_one(
             {"_id": staff['_id']},
             {"$set": {
@@ -2414,8 +2475,7 @@ def live_staff_cron_extract_experience_list():
         return jsonify({
             "success":         True,
             "staff_name":      full_name,
-            "email":           email,
-            "message":         f"Skipped {full_name} — no extracted CV text",
+            "message":         f"Skipped {full_name} — no email",
             "remaining_count": max(0, remaining_total - 1),
         })
 
@@ -2425,58 +2485,116 @@ def live_staff_cron_extract_experience_list():
         {"$set": {"experience_list_processing": True}}
     )
 
-    def _run(staff_id_str, user_type_, extracted_cv_, gemini_key_):
+    def _run(staff_id_str, user_type_, email_, gemini_key_):
+        import requests as _req_exp
         from google import genai as google_genai
 
         _col = _staffs_col()
-        ut_lower = (user_type_ or '').lower()
 
-        if 'nurse' in ut_lower or 'nursing' in ut_lower:
-            role_filter = (
-                "Extract ONLY nursing roles: Registered Nurse, Staff Nurse, Clinical Nurse, "
-                "ICU Nurse, Theatre Nurse, Community Nurse, Mental Health Nurse, Nursing Home Nurse, "
-                "or any role with Nurse or Nursing in the title. "
-                "IGNORE Healthcare Assistant, HCA, Carer, Support Worker, admin, or any non-nursing role."
+        # ── Fetch Hse Cv from XN Portal ───────────────────────────────
+        base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+        api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+        app_country = os.environ.get('XN_APP_COUNTRY', '')
+        hdrs = {"Api-Key": api_key, "X-App-Country": app_country,
+                "Content-Type": "application/json", "Accept": "application/json"}
+        dl_hdrs = {k: v for k, v in hdrs.items() if k != 'Content-Type'}
+
+        hse_cv_text = ''
+        try:
+            r = _req_exp.post(f"{base_url}/ai/recruitments/user-document-list",
+                              json={"email": email_}, headers=hdrs, timeout=30)
+            if r.status_code == 405:
+                r = _req_exp.get(f"{base_url}/ai/recruitments/user-document-list",
+                                 params={"email": email_}, headers=hdrs, timeout=30)
+            r.raise_for_status()
+            api_data = r.json().get('data')
+            docs = api_data if isinstance(api_data, list) else \
+                   (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+
+            hse_cv_url = next(
+                (d['url'] for d in docs
+                 if (d.get('document_type_name') or '').strip().lower()
+                 in ('hse cv', 'hse_cv', 'hsecv') and d.get('url')), None
             )
-        elif 'hca' in ut_lower or 'healthcare assistant' in ut_lower:
-            role_filter = (
-                "Extract ONLY Healthcare Assistant roles: Healthcare Assistant, HCA, "
-                "Care Assistant, Care Worker, Support Worker in a clinical/care setting, "
-                "Domiciliary Care Assistant, or any role with Healthcare Assistant or HCA in the title. "
-                "IGNORE nursing roles (Registered Nurse, Staff Nurse etc.) and non-care roles."
+
+            if hse_cv_url:
+                dl = _req_exp.get(hse_cv_url, headers=dl_hdrs, timeout=60)
+                dl.raise_for_status()
+                raw_bytes = dl.content
+                ct = dl.headers.get('Content-Type', '').lower()
+                ul = hse_cv_url.lower().split('?')[0]
+
+                # PDF
+                if 'pdf' in ct or ul.endswith('.pdf'):
+                    try:
+                        import pdfplumber as _plmb
+                        import io as _cvio
+                        with _plmb.open(_cvio.BytesIO(raw_bytes)) as pdf:
+                            hse_cv_text = '\n'.join(p.extract_text() or '' for p in pdf.pages).strip()
+                    except Exception: pass
+
+                # DOCX
+                if not hse_cv_text and ('wordprocessingml' in ct or ul.endswith('.docx')):
+                    try:
+                        from docx import Document as _DDoc
+                        import io as _cvio2
+                        ddoc = _DDoc(_cvio2.BytesIO(raw_bytes))
+                        hse_cv_text = '\n'.join(p.text for p in ddoc.paragraphs).strip()
+                    except Exception: pass
+
+                # Gemini vision fallback
+                if not hse_cv_text and gemini_key_:
+                    try:
+                        import base64 as _b64, io as _cvio3
+                        _gc = google_genai.Client(api_key=gemini_key_)
+                        _gr = _gc.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=[{"parts": [
+                                {"inline_data": {"mime_type": "application/pdf",
+                                                 "data": _b64.b64encode(raw_bytes).decode()}},
+                                {"text": "Extract all text from this CV. Return plain text only."}
+                            ]}]
+                        )
+                        hse_cv_text = (_gr.text or '').strip()
+                    except Exception: pass
+        except Exception:
+            pass
+
+        if not hse_cv_text:
+            _col.update_one(
+                {"_id": ObjectId(staff_id_str)},
+                {"$set": {
+                    "experience_list":            [],
+                    "experience_list_at":         datetime.utcnow(),
+                    "experience_list_processing": False,
+                    "experience_list_note":        "No Hse Cv found in XN Portal",
+                }}
             )
-        else:
-            role_filter = (
-                "Extract only healthcare or care-related work experience roles. "
-                "Ignore admin, retail, hospitality, or non-clinical roles."
-            )
+            return
 
         prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
 
-Candidate role: {user_type_}
+Read the CV text below and extract ALL work experience entries without any filtering.
+Include EVERY job role regardless of type — care, non-care, nursing, retail, factory, any role.
 
-Read the CV text below and extract ALL relevant work experience entries.
-
-{role_filter}
-
-For each matching role, return it as a single formatted string exactly like this example:
-"Healthcare Assistant  Jan 2022 – Present  HSE Sligo Leitrim, Disabilities Services"
+For each role return it as a single formatted string exactly like this:
+"Job Title  Start Date – End Date  Employer, Location"
 
 Format rules:
 - Job title first
-- Then date range (use the dates as written in the CV, e.g. "Jan 2022 – Present" or "2019 – 2021")
-- Then employer and location/department if available
+- Then date range exactly as written in the CV (e.g. "Sept. 2017 – Present" or "2019 – 2021")
+- Then employer name and location/department if available
 - Separate each part with two spaces
 - If no end date, write "Present"
-- List ALL matching roles, most recent first
+- List ALL roles, most recent first
 
 Return ONLY a JSON array of strings — nothing else, no markdown, no explanation:
 ["role 1 formatted string", "role 2 formatted string", ...]
 
-If no matching roles found, return an empty array: []
+If no roles found, return: []
 
 CV TEXT:
-{extracted_cv_[:10000]}
+{hse_cv_text}
 """
 
         try:
@@ -2515,7 +2633,7 @@ CV TEXT:
 
     threading.Thread(
         target=_run,
-        args=(staff_id, user_type, extracted_cv, gemini_key),
+        args=(staff_id, user_type, email, gemini_key),
         daemon=True,
     ).start()
 
