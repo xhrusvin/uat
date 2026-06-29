@@ -111,18 +111,25 @@ def _extract_cert_info(doc_url, doc_type_name, dl_headers, gemini_key):
         client = _gai2.Client(api_key=gemini_key)
         prompt = f"""You are a document validator for an Irish healthcare staffing agency.
 
-Analyse this document and extract the following information.
-The document type from the portal is: "{doc_type_name}"
+Analyse this document which was submitted as a "Police Clearance Certificate ( From Country Of Birth )".
+
+Your job is to:
+1. Confirm whether this document is genuinely a police clearance certificate or equivalent
+2. Extract all key details
+3. Determine if it is currently valid
 
 Return ONLY a JSON object — no markdown, no explanation:
 {{
-  "certificate_name": "<exact name of the certificate or document type>",
-  "holder_name": "<full name on the certificate>",
-  "issue_date": "<date issued, format DD/MM/YYYY or null>",
-  "expiry_date": "<expiry date, format DD/MM/YYYY or null>",
-  "is_valid": <true if not expired and appears legitimate, false if expired or invalid, null if cannot determine>,
-  "validity_reason": "<one sentence explaining why valid or invalid>",
-  "issuing_body": "<name of issuing organisation>"
+  "is_police_clearance": <true if this is genuinely a police clearance/criminal background check certificate, false if not>,
+  "not_police_clearance_reason": "<if false — explain exactly what the document appears to be instead>",
+  "certificate_name": "<exact certificate name as shown on the document>",
+  "holder_name": "<full name of the person on the certificate>",
+  "issue_date": "<date issued DD/MM/YYYY or null>",
+  "expiry_date": "<expiry date DD/MM/YYYY or null — many police certs expire after 6-12 months>",
+  "issuing_body": "<full name of the issuing police authority, government body or agency>",
+  "issuing_country": "<country that issued the certificate>",
+  "is_valid": <true if is_police_clearance is true AND not expired AND appears legitimate, false otherwise, null if cannot determine>,
+  "validity_reason": "<one clear sentence explaining the validity decision — mention expiry date if expired>"
 }}
 
 DOCUMENT TEXT:
@@ -133,6 +140,11 @@ DOCUMENT TEXT:
         raw = re.sub(r'```\s*$', '', raw, flags=re.MULTILINE).strip()
         result = json.loads(raw)
         result['extracted'] = True
+        # Ensure is_valid is False if document is not a police clearance
+        if result.get('is_police_clearance') is False:
+            result['is_valid'] = False
+            if not result.get('validity_reason'):
+                result['validity_reason'] = result.get('not_police_clearance_reason', 'Not a police clearance certificate')
         return result
     except Exception as e:
         return {"extracted": False, "error": str(e), "raw_text_length": len(raw_text)}
@@ -226,11 +238,8 @@ def live_staff_cron_check_certificates():
                                           "checked_at": datetime.utcnow()}})
             return
 
-        # Skip CV and application form — only check certificates
-        SKIP_TYPES = {
-            'cv', 'hse cv', 'hse_cv', 'application form', 'application_form',
-            'interview notes', 'interview_notes', 'profile photo', 'photo',
-        }
+        # Only check Police Clearance Certificate
+        TARGET_DOC = 'police clearance certificate ( from country of birth )'
 
         cert_results = []
         for doc in docs:
@@ -238,21 +247,24 @@ def live_staff_cron_check_certificates():
             url      = _v(doc.get('url') or '')
             if not url:
                 continue
-            if doc_type.lower().strip() in SKIP_TYPES:
+            if doc_type.lower().strip() != TARGET_DOC:
                 continue
 
             info = _extract_cert_info(url, doc_type, dl_hdrs, gemini_key)
             cert_results.append({
-                "document_type_name": doc_type,
-                "certificate_name":   info.get('certificate_name', doc_type),
-                "holder_name":        info.get('holder_name', ''),
-                "issue_date":         info.get('issue_date', ''),
-                "expiry_date":        info.get('expiry_date', ''),
-                "is_valid":           info.get('is_valid'),
-                "validity_reason":    info.get('validity_reason', ''),
-                "issuing_body":       info.get('issuing_body', ''),
-                "extracted":          info.get('extracted', False),
-                "error":              info.get('error', ''),
+                "document_type_name":       doc_type,
+                "is_police_clearance":      info.get('is_police_clearance'),
+                "not_police_clearance_reason": info.get('not_police_clearance_reason', ''),
+                "certificate_name":         info.get('certificate_name', doc_type),
+                "holder_name":              info.get('holder_name', ''),
+                "issue_date":               info.get('issue_date', ''),
+                "expiry_date":              info.get('expiry_date', ''),
+                "issuing_body":             info.get('issuing_body', ''),
+                "issuing_country":          info.get('issuing_country', ''),
+                "is_valid":                 info.get('is_valid'),
+                "validity_reason":          info.get('validity_reason', ''),
+                "extracted":                info.get('extracted', False),
+                "error":                    info.get('error', ''),
             })
 
         cert_col.update_one(
@@ -265,6 +277,7 @@ def live_staff_cron_check_certificates():
                 "total_docs":    len(cert_results),
                 "valid_count":   sum(1 for c in cert_results if c.get('is_valid') is True),
                 "invalid_count": sum(1 for c in cert_results if c.get('is_valid') is False),
+                "pcc_found":     len(cert_results) > 0,
                 "checked_at":    datetime.utcnow(),
             }}
         )
@@ -291,8 +304,22 @@ def live_staff_export_cert_check_xlsx():
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-        docs = list(_cert_col().find({"status": "checked"}))
-        docs.sort(key=lambda d: _v(d.get('staff_name') or '').lower())
+        # Get all staff
+        all_staff = list(_staffs_col().find(
+            {}, {"section_1_personal_details": 1, "email": 1, "_id": 1}
+        ))
+        all_staff.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        # Build lookup of cert check results by staff_id
+        cert_map = {
+            d['staff_id']: d
+            for d in _cert_col().find({"status": "checked"})
+            if d.get('staff_id')
+        }
+
+        docs = all_staff
 
         NAVY = '1B3A6B'; WHITE = 'FFFFFF'; GREEN = 'D4EDDA'
         RED  = 'FFDDDD'; WARN  = 'FFF3CD'; ALT   = 'EFF6FF'
@@ -306,14 +333,15 @@ def live_staff_export_cert_check_xlsx():
 
         wb = Workbook()
         ws = wb.active
-        ws.title = 'Certificate Checks'
+        ws.title = 'Police Clearance Certificates'
 
         headers    = ['Sno', 'Staff Name', 'Email',
-                      'Document Type', 'Certificate Name',
+                      'Certificate Name', 'Is Police Cert',
                       'Holder Name', 'Issue Date', 'Expiry Date',
-                      'Valid', 'Validity Reason', 'Issuing Body',
-                      'Extracted', 'Checked At']
-        col_widths = [5, 28, 32, 28, 30, 22, 12, 12, 8, 40, 25, 10, 18]
+                      'Valid', 'Validity Reason',
+                      'Issuing Body', 'Issuing Country',
+                      'Not PCC Reason', 'Extracted', 'Checked At']
+        col_widths = [5, 28, 32, 28, 14, 22, 12, 12, 8, 40, 28, 16, 40, 10, 18]
 
         for ci, (hdr, w) in enumerate(zip(headers, col_widths), 1):
             cell = ws.cell(row=1, column=ci, value=hdr)
@@ -328,62 +356,88 @@ def live_staff_export_cert_check_xlsx():
         sno     = 0
 
         for staff_doc in docs:
-            name      = _v(staff_doc.get('staff_name') or '')
-            email     = _v(staff_doc.get('email') or '')
-            checked   = staff_doc.get('checked_at')
+            sno    += 1
+            s1      = staff_doc.get('section_1_personal_details') or {}
+            name    = _v(s1.get('full_name') or '')
+            email   = _v(staff_doc.get('email') or '')
+            sid     = str(staff_doc['_id'])
+            checked_doc = cert_map.get(sid)
+
+            if not checked_doc:
+                # Not yet checked
+                row_vals = [sno, name, email, 'Police Clearance Certificate',
+                            '', '', '', 'Not Checked', 'Not yet analysed', '', '', '']
+                row_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
+                aligns   = ['center','left','left','left','left','center',
+                            'center','center','left','left','center','center']
+                for ci, (val, align) in enumerate(zip(row_vals, aligns), 1):
+                    cell = ws.cell(row=row_num, column=ci, value=val)
+                    cell.font = b_font; cell.border = border; cell.fill = row_fill
+                    cell.alignment = Alignment(horizontal=align, vertical='center')
+                ws.row_dimensions[row_num].height = 16
+                row_num += 1
+                continue
+
+            checked   = checked_doc.get('checked_at')
             checked_s = checked.strftime('%d %b %Y %H:%M') if checked else ''
-            certs     = staff_doc.get('certificates') or []
+            certs     = checked_doc.get('certificates') or []
 
             if not certs:
-                # Staff with no certificates
-                sno += 1
-                row_vals = [sno, name, email, '—', 'No certificates found',
-                            '', '', '', '', '', '', '', checked_s]
-                for ci, val in enumerate(row_vals, 1):
+                # Checked but no PCC found
+                row_vals = [sno, name, email, 'Police Clearance Certificate',
+                            '', '', '', 'No PCC Found', 'No PCC document in portal',
+                            '', 'Yes', checked_s]
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+                aligns   = ['center','left','left','left','left','center',
+                            'center','center','left','left','center','center']
+                for ci, (val, align) in enumerate(zip(row_vals, aligns), 1):
                     cell = ws.cell(row=row_num, column=ci, value=val)
-                    cell.font = b_font; cell.border = border
-                    cell.alignment = Alignment(horizontal='left', vertical='center')
+                    cell.font = b_font; cell.border = border; cell.fill = row_fill
+                    cell.alignment = Alignment(horizontal=align, vertical='center')
+                ws.row_dimensions[row_num].height = 16
                 row_num += 1
                 continue
 
             for cert in certs:
-                sno += 1
-                is_valid = cert.get('is_valid')
+                is_pcc    = cert.get('is_police_clearance')
+                is_valid  = cert.get('is_valid')
                 valid_str = 'Yes' if is_valid is True else ('No' if is_valid is False else '?')
+                pcc_str   = 'Yes' if is_pcc is True else ('No' if is_pcc is False else '?')
 
                 if is_valid is True:
                     row_fill = PatternFill('solid', start_color=GREEN, end_color=GREEN)
                 elif is_valid is False:
                     row_fill = PatternFill('solid', start_color=RED, end_color=RED)
                 else:
-                    row_fill = PatternFill('solid', start_color=WARN, end_color=WARN) \
-                               if row_num % 2 == 0 else PatternFill()
+                    row_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
 
                 row_vals = [
                     sno, name, email,
-                    cert.get('document_type_name', ''),
-                    cert.get('certificate_name', ''),
+                    cert.get('certificate_name', 'Police Clearance Certificate'),
+                    pcc_str,
                     cert.get('holder_name', ''),
                     cert.get('issue_date', ''),
                     cert.get('expiry_date', ''),
                     valid_str,
                     cert.get('validity_reason', ''),
                     cert.get('issuing_body', ''),
+                    cert.get('issuing_country', ''),
+                    cert.get('not_police_clearance_reason', ''),
                     'Yes' if cert.get('extracted') else 'No',
                     checked_s,
                 ]
-                aligns = ['center','left','left','left','left','left',
-                          'center','center','center','left','left','center','center']
+                aligns = ['center','left','left','left','center','left',
+                          'center','center','center','left','left','left',
+                          'left','center','center']
                 for ci, (val, align) in enumerate(zip(row_vals, aligns), 1):
                     cell = ws.cell(row=row_num, column=ci, value=val)
-                    cell.font = b_font; cell.border = border
-                    cell.fill = row_fill
+                    cell.font = b_font; cell.border = border; cell.fill = row_fill
                     cell.alignment = Alignment(horizontal=align, vertical='center')
                 ws.row_dimensions[row_num].height = 16
                 row_num += 1
 
         ws.cell(row=row_num, column=1,
-                value=f'Total rows: {sno}').font = Font(name='Calibri', bold=True, size=9)
+                value=f'Total: {sno}').font = Font(name='Calibri', bold=True, size=9)
 
         buf = io.BytesIO()
         wb.save(buf)
