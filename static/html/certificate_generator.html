@@ -176,7 +176,6 @@
 }
 
 @media print {
-
     html,
     body {
         width: 297mm;
@@ -184,6 +183,7 @@
         margin: 0;
         padding: 0;
         background: white;
+        overflow: hidden;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
@@ -198,12 +198,12 @@
         margin: 0;
         padding: 8mm;
         box-shadow: none;
+        transform: none !important;
         page-break-after: avoid;
     }
 }
 
-   @media (max-width: 1300px) {
-
+@media screen and (max-width: 1300px) {
     .certificate-wrap {
         transform: scale(0.75);
         transform-origin: top center;
