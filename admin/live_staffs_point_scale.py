@@ -357,7 +357,7 @@ def _build_point_scale_docx(staff_doc, rows):
         f'{_total_y} Year{"s" if _total_y != 1 else ""}, '
         f'{_total_m} Month{"s" if _total_m != 1 else ""}, '
         f'{_total_d} Day{"s" if _total_d != 1 else ""}',
-        bold=True, size=11, color=NAVY,
+        size=11,
     )
 
     sp(12)
