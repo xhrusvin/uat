@@ -23,8 +23,7 @@ def _v(val):
     return str(val).strip()
 
 def _staffs_col():
-    from flask import current_app
-    return current_app.db.live_staffs
+    return db.live_staffs
 
 def _gcs_upload(blob_name, data_bytes, content_type='application/octet-stream'):
     from admin.live_staffs import _gcs_upload as _f
@@ -39,20 +38,16 @@ def _gcs_signed_url(blob_name, expiry_minutes=60):
     return _f(blob_name, expiry_minutes)
 
 def _ai_pcc_col():
-    from flask import current_app
-    return current_app.db.live_staff_ai_pcc
+    return db.live_staff_ai_pcc
 
 def _ai_cvs_col():
-    from flask import current_app
-    return current_app.db.live_staff_ai_cvs
+    return db.live_staff_ai_cvs
 
 def _ai_interviews_col():
-    from flask import current_app
-    return current_app.db.live_staff_ai_interviews
+    return db.live_staff_ai_interviews
 
 def _ai_appforms_col():
-    from flask import current_app
-    return current_app.db.live_staff_ai_appforms
+    return db.live_staff_ai_appforms
 
 def _build_pcc_docx(doc, reviewer_index=0):
     from admin.live_staffs import _build_pcc_docx as _f
@@ -2130,8 +2125,7 @@ def live_staff_cron_reset_experience():
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
     def _staffs_col_local():
-        from flask import current_app
-        return current_app.db.live_staffs
+        return db.live_staffs
 
     col = _staffs_col_local()
 
