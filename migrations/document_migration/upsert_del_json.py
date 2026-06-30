@@ -6,7 +6,7 @@ MONGO_URI = "mongodb://localhost:27017"
 DB_NAME = "xpress_health_uat"
 COLLECTION = "live_staffs"
 
-JSON_FILE = "deleted_staff.json"
+JSON_FILE = "removed_staff.json"
 
 client = MongoClient(MONGO_URI)
 collection = client[DB_NAME][COLLECTION]
