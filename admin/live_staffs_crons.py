@@ -2636,6 +2636,7 @@ CV TEXT:
                     "experience_list":            result,
                     "experience_list_at":         datetime.utcnow(),
                     "experience_list_processing": False,
+                    "experience_list_note":       "" if result else "No HCA-matching roles found in Hse Cv",
                 }}
             )
         except Exception as e:
@@ -2688,9 +2689,10 @@ def live_staff_export_experience_xlsx():
         import io as _io
 
         docs = list(_staffs_col().find(
-            {},
+            {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
             {"section_1_personal_details": 1, "email": 1,
-             "user_type": 1, "experience_list": 1}
+             "user_type": 1, "experience_list": 1, "experience_list_note": 1,
+             "experience_list_at": 1}
         ))
 
         # Sort by name
@@ -2722,10 +2724,10 @@ def live_staff_export_experience_xlsx():
         ws.title = 'Experience List'
 
         # ── Headers ───────────────────────────────────────────────────
-        base_headers = ['Sno', 'Name', 'Email', 'User Type']
+        base_headers = ['Sno', 'Name', 'Email', 'User Type', 'Note']
         exp_headers  = [f'Experience {i+1}' for i in range(max_exp)]
         headers      = base_headers + exp_headers
-        col_widths   = [5, 30, 38, 20] + [45] * max_exp
+        col_widths   = [5, 30, 38, 20, 35] + [45] * max_exp
 
         for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
             cell = ws.cell(row=1, column=ci, value=hdr)
@@ -2749,10 +2751,13 @@ def live_staff_export_experience_xlsx():
             email     = _v(doc.get('email') or '')
             user_type = _v(doc.get('user_type') or '')
             exp_list  = doc.get('experience_list') or []
+            note      = _v(doc.get('experience_list_note') or '')
+            if not doc.get('experience_list_at'):
+                note = 'Not yet processed'
 
             alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) if ri % 2 == 0 else None
 
-            row_data = [ri - 1, name, email, user_type] + exp_list
+            row_data = [ri - 1, name, email, user_type, note] + exp_list
 
             for ci, val in enumerate(row_data, start=1):
                 cell = ws.cell(row=ri, column=ci, value=val or '')
