@@ -25,7 +25,18 @@
       padding:22mm 19mm 18mm; border:2px solid var(--dark);
       box-shadow:0 4px 18px rgba(0,0,0,.12);
     }
-    .logo { text-align:center; color:var(--green); margin-top:0; }
+    .logo {
+    text-align: center;
+    margin: 0;
+    padding: 0;
+    line-height: 0;
+}
+.logo img {
+    display: block;
+    margin: 0 auto;
+    max-width: 180px; /* adjust if required */
+    height: auto;
+}
     .logo-mark { width:70px; height:70px; border:8px solid var(--green); border-radius:50%; margin:0 auto 8px; position:relative; }
     .logo-mark:before, .logo-mark:after { content:""; position:absolute; background:var(--green); left:26px; top:-10px; width:8px; height:90px; transform:rotate(45deg); opacity:.35; }
     .logo-mark:after { transform:rotate(-45deg); }
