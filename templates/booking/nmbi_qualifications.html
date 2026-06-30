@@ -1,0 +1,283 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4>NMBI Qualifications</h4>
+
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">
+      Add NMBI Qualification
+    </button>
+  </div>
+
+  <form method="GET" class="mb-3">
+    <div class="input-group">
+      <input type="text" name="search" class="form-control"
+             placeholder="Search staff name, registration number, division"
+             value="{{ search }}">
+      <button class="btn btn-outline-secondary">Search</button>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="card-body table-responsive">
+      <table class="table table-bordered table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Staff Name</th>
+            <th>Registration No</th>
+            <th>Division</th>
+            <th>Initial Registration</th>
+            <th>Renewed Until</th>
+            <th>Status</th>
+            <th>Attachment</th>
+            <th width="160">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for q in qualifications %}
+          <tr>
+            <td>{{ q.staff_name }}</td>
+            <td>{{ q.registration_number }}</td>
+            <td>{{ q.division }}</td>
+            <td>{{ q.initial_registration_date }}</td>
+            <td>{{ q.renewed_until }}</td>
+            <td>
+              {% if q.is_active %}
+                <span class="badge bg-success">Active</span>
+              {% else %}
+                <span class="badge bg-secondary">Inactive</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if q.attachment %}
+                <a class="btn btn-sm btn-outline-primary"
+                   href="/booking/nmbi-qualifications/download/{{ q.attachment }}">
+                  Download PDF
+                </a>
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>
+              <button class="btn btn-sm btn-warning"
+                      onclick='openEditModal({{ q|tojson }})'>
+                Edit
+              </button>
+
+              <button class="btn btn-sm btn-danger"
+                      onclick="deleteQualification('{{ q._id }}')">
+                Delete
+              </button>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center text-muted">No records found</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- Add Modal -->
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <form id="addForm" class="modal-content" enctype="multipart/form-data">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Add NMBI Qualification</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body row g-3">
+
+        <div class="col-md-6">
+          <label class="form-label">Staff Name</label>
+          <input type="text" name="staff_name" class="form-control" required>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Registration Number</label>
+          <input type="text" name="registration_number" class="form-control" required>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Division</label>
+          <input type="text" name="division" class="form-control">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Initial Registration Date</label>
+          <input type="text" name="initial_registration_date" class="form-control" placeholder="DD/MM/YYYY">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Renewed Until</label>
+          <input type="text" name="renewed_until" class="form-control" placeholder="DD/MM/YYYY">
+        </div>
+
+        <div class="col-md-12">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-control"></textarea>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">PDF Attachment</label>
+          <input type="file" name="attachment" class="form-control" accept="application/pdf">
+        </div>
+
+        <div class="col-md-6 d-flex align-items-end">
+          <div class="form-check">
+            <input type="checkbox" name="is_active" value="true" class="form-check-input" checked>
+            <label class="form-check-label">Active</label>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-primary">Save</button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <form id="editForm" class="modal-content" enctype="multipart/form-data">
+
+      <input type="hidden" name="qualification_id" id="edit_qualification_id">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Edit NMBI Qualification</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body row g-3">
+
+        <div class="col-md-6">
+          <label class="form-label">Staff Name</label>
+          <input type="text" name="staff_name" id="edit_staff_name" class="form-control" required>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Registration Number</label>
+          <input type="text" name="registration_number" id="edit_registration_number" class="form-control" required>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Division</label>
+          <input type="text" name="division" id="edit_division" class="form-control">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Initial Registration Date</label>
+          <input type="text" name="initial_registration_date" id="edit_initial_registration_date" class="form-control">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Renewed Until</label>
+          <input type="text" name="renewed_until" id="edit_renewed_until" class="form-control">
+        </div>
+
+        <div class="col-md-12">
+          <label class="form-label">Description</label>
+          <textarea name="description" id="edit_description" class="form-control"></textarea>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Replace PDF Attachment</label>
+          <input type="file" name="attachment" class="form-control" accept="application/pdf">
+        </div>
+
+        <div class="col-md-6 d-flex align-items-end">
+          <div class="form-check">
+            <input type="checkbox" name="is_active" value="true" id="edit_is_active" class="form-check-input">
+            <label class="form-check-label">Active</label>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-primary">Update</button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+
+<script>
+document.getElementById("addForm").addEventListener("submit", function(e) {
+  e.preventDefault();
+
+  fetch("/booking/nmbi-qualifications/add", {
+    method: "POST",
+    body: new FormData(this)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) location.reload();
+    else alert(data.error || "Something went wrong");
+  });
+});
+
+
+document.getElementById("editForm").addEventListener("submit", function(e) {
+  e.preventDefault();
+
+  fetch("/booking/nmbi-qualifications/edit", {
+    method: "POST",
+    body: new FormData(this)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) location.reload();
+    else alert(data.error || "Something went wrong");
+  });
+});
+
+
+function openEditModal(q) {
+  document.getElementById("edit_qualification_id").value = q._id.$oid || q._id;
+  document.getElementById("edit_staff_name").value = q.staff_name || "";
+  document.getElementById("edit_registration_number").value = q.registration_number || "";
+  document.getElementById("edit_division").value = q.division || "";
+  document.getElementById("edit_initial_registration_date").value = q.initial_registration_date || "";
+  document.getElementById("edit_renewed_until").value = q.renewed_until || "";
+  document.getElementById("edit_description").value = q.description || "";
+  document.getElementById("edit_is_active").checked = q.is_active === true;
+
+  new bootstrap.Modal(document.getElementById("editModal")).show();
+}
+
+
+function deleteQualification(id) {
+  if (!confirm("Delete this NMBI qualification?")) return;
+
+  fetch("/booking/nmbi-qualifications/delete", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ qualification_id: id })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) location.reload();
+    else alert(data.error || "Something went wrong");
+  });
+}
+</script>
+{% endblock %}
