@@ -11,6 +11,18 @@ from werkzeug.utils import secure_filename
 from database import db
 from booking.models.nmbi_qualification import NmbiQualification
 
+
+from bson import ObjectId
+
+from booking.utils.gcs import upload_to_gcs, get_gcs_public_url  # ← New import
+
+from . import bp
+from admin.views import admin_required
+
+nmbi_model = NmbiQualification(db.nmbi_qualifications)
+
+
+
 from . import bp
 from admin.views import admin_required
 
@@ -24,23 +36,20 @@ ALLOWED_EXTENSIONS = {"pdf"}
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
-def save_pdf(file):
+def save_to_gcs(file, prefix="nmbi_qualifications"):
     if not file or file.filename == "":
         return None
 
     if not allowed_file(file.filename):
         raise ValueError("Only PDF files are allowed")
 
-    upload_path = os.path.join(current_app.root_path, UPLOAD_FOLDER)
-    os.makedirs(upload_path, exist_ok=True)
-
     filename = secure_filename(file.filename)
-    unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{filename}"
+    unique_name = f"{prefix}/{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{filename}"
 
-    file.save(os.path.join(upload_path, unique_name))
+    upload_to_gcs(file, unique_name)
     return unique_name
 
+pdf_filename = save_to_gcs(request.files.get('attachment'))
 
 @bp.route('/nmbi-qualifications')
 @admin_required
@@ -174,26 +183,21 @@ def generate_nmbi_certificate(qualification_id):
     if not qual:
         return jsonify({"success": False, "error": "Qualification not found"}), 404
 
-    filename = f"NMBI_Certificate_{qual['registration_number']}.pdf"
-    output_path = os.path.join(current_app.root_path, UPLOAD_FOLDER, filename)
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    import io
 
-    # Create PDF
-    doc = SimpleDocTemplate(output_path, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=50, bottomMargin=50)
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=50, bottomMargin=50)
     styles = getSampleStyleSheet()
-    
-    # Custom styles
+
     title_style = ParagraphStyle('Title', parent=styles['Title'], fontSize=18, spaceAfter=30, alignment=1, textColor=colors.darkgreen)
     header_style = ParagraphStyle('Header', parent=styles['Heading2'], fontSize=14, alignment=1, textColor=colors.darkgreen)
-    normal_style = styles['Normal']
 
     story = []
-
-    # Logo (you can place your logo in static/images/)
-    logo_path = os.path.join(current_app.root_path, 'static/images/nmbi_logo.png')  # Optional
-    if os.path.exists(logo_path):
-        story.append(Image(logo_path, width=1.5*inch, height=1.5*inch))
-        story.append(Spacer(1, 12))
-
     story.append(Paragraph("Nursing and Midwifery Board of Ireland", header_style))
     story.append(Paragraph("Certificate of Annual Retention", title_style))
     story.append(Spacer(1, 20))
@@ -201,7 +205,6 @@ def generate_nmbi_certificate(qualification_id):
     data = [
         ["Registration Number:", qual.get('registration_number', '')],
         ["Name:", qual.get('staff_name', '')],
-        ["Address:", qual.get('address', 'Toomore, Foxford, Co. Mayo, F26PX43, Ireland')],  # Add address field if needed
         ["Division:", qual.get('division', 'General Nurses')],
         ["Date of Initial Registration:", qual.get('initial_registration_date', '')],
         ["Renewed Until:", qual.get('renewed_until', '')],
@@ -212,26 +215,33 @@ def generate_nmbi_certificate(qualification_id):
         ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
         ('BACKGROUND', (0, 0), (0, -1), colors.lightblue),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 11),
     ]))
 
     story.append(table)
     story.append(Spacer(1, 30))
-
-    # Signature area
     story.append(Paragraph("Carolyn Donohoe", styles['Normal']))
     story.append(Paragraph("Chief Executive Officer", styles['Normal']))
     story.append(Paragraph(f"Date: {datetime.utcnow().strftime('%d.%m.%Y')}", styles['Normal']))
 
-    story.append(Spacer(1, 20))
-    story.append(Paragraph("This certificate is proof of annual renewal.", normal_style))
-
     doc.build(story)
+    buffer.seek(0)
 
-    # Return file for download
-    return send_from_directory(
-        os.path.join(current_app.root_path, UPLOAD_FOLDER),
-        filename,
-        as_attachment=True
-    )
+    # Upload generated PDF to GCS
+    cert_filename = f"nmbi_certificates/NMBI_Certificate_{qual['registration_number']}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.pdf"
+    upload_to_gcs(buffer, cert_filename)
+
+    # Return download link
+    file_url = get_gcs_public_url(cert_filename)
+    
+    return jsonify({
+        "success": True,
+        "download_url": file_url,
+        "message": "Certificate generated successfully"
+    })
+
+
+@bp.route('/nmbi-qualifications/download/<path:blob_name>')
+@admin_required
+def nmbi_qualification_download(blob_name):
+    # You can redirect to GCS public URL
+    return jsonify({"url": get_gcs_public_url(blob_name)})
