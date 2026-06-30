@@ -79,6 +79,24 @@
       .page-wrap { margin:0; display:block; }
       .certificate { width:210mm; height:297mm; margin:0; box-shadow:none; border:2px solid var(--dark); page-break-after:avoid; }
     }
+    th {
+    background: #007a3d !important;
+    color: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+@media print {
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    th {
+        background: #007a3d !important;
+        color: #fff !important;
+    }
+}
   </style>
 </head>
 <body>
