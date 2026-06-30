@@ -21,10 +21,28 @@
 
     .page-wrap { display:flex; justify-content:center; margin:20px 0 40px; }
     .certificate {
-      width:210mm; height:297mm; background:#fff; position:relative;
-      padding:22mm 19mm 18mm; border:2px solid var(--dark);
-      box-shadow:0 4px 18px rgba(0,0,0,.12);
-    }
+    width:210mm;
+    height:297mm;
+    background:#fff;
+    position:relative;
+    padding:22mm 19mm 18mm;
+    box-shadow:0 4px 18px rgba(0,0,0,.12);
+
+    /* Creates the white margin like the original */
+    border:none;
+}
+
+.certificate::before{
+    content:"";
+    position:absolute;
+    top:4mm;
+    left:4mm;
+    right:4mm;
+    bottom:4mm;
+
+    border:1.5px solid #0d8a73;   /* teal border */
+    pointer-events:none;
+}
     .logo {
     text-align: center;
     margin: 0;
@@ -96,6 +114,32 @@
         background: #007a3d !important;
         color: #fff !important;
     }
+}
+@media print {
+
+    body{
+        margin:0;
+        background:#fff;
+    }
+
+    .certificate{
+        width:210mm;
+        height:297mm;
+        margin:0;
+        box-shadow:none;
+        border:none;
+    }
+
+    .certificate::before{
+        content:"";
+        position:absolute;
+        top:4mm;
+        left:4mm;
+        right:4mm;
+        bottom:4mm;
+        border:1.5px solid #0d8a73;
+    }
+
 }
   </style>
 </head>
