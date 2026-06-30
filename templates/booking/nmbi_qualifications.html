@@ -75,6 +75,10 @@
     )">
     Edit
 </button>
+<button class="btn btn-sm btn-success" 
+            onclick="generateCertificate('{{ q._id }}')">
+        Generate PDF
+    </button>
 
               <button class="btn btn-sm btn-danger"
                       onclick="deleteQualification('{{ q._id }}')">
@@ -295,6 +299,9 @@ function deleteQualification(id) {
     if (data.success) location.reload();
     else alert(data.error || "Something went wrong");
   });
+}
+function generateCertificate(id) {
+    window.location.href = `/booking/nmbi-qualifications/generate/${id}`;
 }
 </script>
 {% endblock %}

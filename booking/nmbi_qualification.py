@@ -1,3 +1,8 @@
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.units import inch
 import os
 from datetime import datetime
 from flask import render_template, request, jsonify, send_from_directory, current_app
@@ -160,3 +165,73 @@ def nmbi_qualification_delete():
 def nmbi_qualification_download(filename):
     upload_path = os.path.join(current_app.root_path, UPLOAD_FOLDER)
     return send_from_directory(upload_path, filename, as_attachment=True)
+
+
+@bp.route('/nmbi-qualifications/generate/<qualification_id>')
+@admin_required
+def generate_nmbi_certificate(qualification_id):
+    qual = nmbi_model.get_by_id(qualification_id)
+    if not qual:
+        return jsonify({"success": False, "error": "Qualification not found"}), 404
+
+    filename = f"NMBI_Certificate_{qual['registration_number']}.pdf"
+    output_path = os.path.join(current_app.root_path, UPLOAD_FOLDER, filename)
+
+    # Create PDF
+    doc = SimpleDocTemplate(output_path, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=50, bottomMargin=50)
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle('Title', parent=styles['Title'], fontSize=18, spaceAfter=30, alignment=1, textColor=colors.darkgreen)
+    header_style = ParagraphStyle('Header', parent=styles['Heading2'], fontSize=14, alignment=1, textColor=colors.darkgreen)
+    normal_style = styles['Normal']
+
+    story = []
+
+    # Logo (you can place your logo in static/images/)
+    logo_path = os.path.join(current_app.root_path, 'static/images/nmbi_logo.png')  # Optional
+    if os.path.exists(logo_path):
+        story.append(Image(logo_path, width=1.5*inch, height=1.5*inch))
+        story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Nursing and Midwifery Board of Ireland", header_style))
+    story.append(Paragraph("Certificate of Annual Retention", title_style))
+    story.append(Spacer(1, 20))
+
+    data = [
+        ["Registration Number:", qual.get('registration_number', '')],
+        ["Name:", qual.get('staff_name', '')],
+        ["Address:", qual.get('address', 'Toomore, Foxford, Co. Mayo, F26PX43, Ireland')],  # Add address field if needed
+        ["Division:", qual.get('division', 'General Nurses')],
+        ["Date of Initial Registration:", qual.get('initial_registration_date', '')],
+        ["Renewed Until:", qual.get('renewed_until', '')],
+    ]
+
+    table = Table(data, colWidths=[2.5*inch, 4*inch])
+    table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.lightblue),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+    ]))
+
+    story.append(table)
+    story.append(Spacer(1, 30))
+
+    # Signature area
+    story.append(Paragraph("Carolyn Donohoe", styles['Normal']))
+    story.append(Paragraph("Chief Executive Officer", styles['Normal']))
+    story.append(Paragraph(f"Date: {datetime.utcnow().strftime('%d.%m.%Y')}", styles['Normal']))
+
+    story.append(Spacer(1, 20))
+    story.append(Paragraph("This certificate is proof of annual renewal.", normal_style))
+
+    doc.build(story)
+
+    # Return file for download
+    return send_from_directory(
+        os.path.join(current_app.root_path, UPLOAD_FOLDER),
+        filename,
+        as_attachment=True
+    )
