@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Care Learning Certificate Generator</title>
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #ececec;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #222;
+    }
+
+    .controls {
+      max-width: 1120px;
+      margin: 18px auto;
+      padding: 14px 18px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.08);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .controls label {
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .controls input {
+      padding: 10px 12px;
+      min-width: 270px;
+      border: 1px solid #cfcfcf;
+      border-radius: 7px;
+      font-size: 16px;
+    }
+
+    .controls button {
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 7px;
+      background: #111;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .page {
+      width: 297mm;
+      height: 210mm;
+      margin: 18px auto;
+      background: white;
+      padding: 11mm;
+      position: relative;
+      box-shadow: 0 3px 18px rgba(0,0,0,.18);
+    }
+
+    .border-outer {
+      position: absolute;
+      inset: 10mm;
+      border: 2px solid #b27036;
+    }
+
+    .border-inner {
+      position: absolute;
+      inset: 13mm;
+      border: 2px solid #e7cc4d;
+    }
+
+    .certificate {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      padding: 15mm 22mm 13mm;
+      text-align: center;
+    }
+
+    .logo {
+      position: absolute;
+      right: 29mm;
+      top: 20mm;
+      font-size: 23px;
+      font-weight: 900;
+      line-height: .78;
+      letter-spacing: -1.5px;
+      color: #111;
+      text-align: left;
+    }
+
+    .title {
+      margin-top: 35mm;
+      color: #c27a28;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 50px;
+      font-weight: 700;
+      letter-spacing: .5px;
+      line-height: 1;
+    }
+
+    .certify {
+      margin-top: 14mm;
+      font-size: 24px;
+      letter-spacing: .5px;
+    }
+
+    .student-name {
+      margin: 7mm auto 0;
+      width: 142mm;
+      padding-bottom: 2mm;
+      border-bottom: 1.5px solid #9b9b9b;
+      font-family: 'Brush Script MT', 'Segoe Script', cursive;
+      font-size: 48px;
+      line-height: 1.05;
+      color: #050505;
+    }
+
+    .completed {
+      margin-top: 17mm;
+      font-size: 14px;
+      letter-spacing: .4px;
+    }
+
+    .course {
+      margin-top: 4mm;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: 3px;
+    }
+
+    .footer {
+      position: absolute;
+      left: 23mm;
+      right: 23mm;
+      bottom: 24mm;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 34mm;
+      align-items: end;
+    }
+
+    .footer-block {
+      text-align: center;
+      min-height: 22mm;
+      position: relative;
+    }
+
+    .footer-value {
+      font-size: 17px;
+      font-weight: 700;
+      padding-bottom: 5mm;
+      border-bottom: 1px solid #d2d2d2;
+      min-height: 9mm;
+    }
+
+    .footer-label {
+      margin-top: 3mm;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 4px;
+    }
+
+    .signature-svg {
+      width: 42mm;
+      height: 23mm;
+      margin-bottom: -1mm;
+    }
+
+    .expiry {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 12mm;
+      font-size: 12px;
+      letter-spacing: 5px;
+      word-spacing: 5px;
+    }
+
+    @media print {
+      body { background: white; }
+      .controls { display: none; }
+      .page {
+        margin: 0;
+        box-shadow: none;
+        width: 297mm;
+        height: 210mm;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <label for="nameInput">Candidate name</label>
+    <input id="nameInput" value="Emma Lannon" oninput="updateName()" />
+    <button onclick="window.print()">Generate PDF / Print</button>
+  </div>
+
+  <main class="page">
+    <div class="border-outer"></div>
+    <div class="border-inner"></div>
+
+    <section class="certificate">
+      <div class="logo">Care<br>Learning</div>
+
+      <div class="title">Certificate of Achievement</div>
+      <div class="certify">This is to Certify that</div>
+      <div class="student-name" id="studentName">Emma Lannon</div>
+
+      <div class="completed">has successfully completed</div>
+      <div class="course">PATIENT MOVING &amp; HANDLING TRAINING</div>
+
+      <div class="footer">
+        <div class="footer-block">
+          <div class="footer-value">Sunil Varghese</div>
+          <div class="footer-label">INSTRUCTOR NAME</div>
+        </div>
+        <div class="footer-block">
+          <div class="footer-value">25 May 2026</div>
+          <div class="footer-label">ISSUED DATE</div>
+        </div>
+        <div class="footer-block">
+          <div class="footer-value" style="padding-bottom: 1mm;">
+            <svg class="signature-svg" viewBox="0 0 200 100" aria-label="signature">
+              <path d="M20 72 C45 70, 50 10, 62 14 C76 18, 46 90, 84 82 C106 78, 109 31, 121 29 C135 27, 108 88, 143 73 C159 66, 169 75, 180 70" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round"/>
+              <path d="M42 75 L166 75" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="footer-label">SIGNATURE</div>
+        </div>
+      </div>
+
+      <div class="expiry">Expiry date is 3 years from the issued date</div>
+    </section>
+  </main>
+
+  <script>
+    function updateName() {
+      const value = document.getElementById('nameInput').value.trim() || 'Emma Lannon';
+      document.getElementById('studentName').textContent = value;
+    }
+  </script>
+</body>
+</html>
