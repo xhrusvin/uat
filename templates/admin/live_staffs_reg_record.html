@@ -66,21 +66,6 @@
             </div>
             <div class="modal-body p-4">
 
-                <!-- Link to existing staff (optional, for prefill) -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold small">Link to Staff (optional — prefills fields)</label>
-                    <div class="input-group">
-                        <input type="text" id="staffIdInput" class="form-control"
-                               placeholder="Paste staff _id to prefill from their profile">
-                        <button class="btn btn-outline-primary" id="btnPrefill" type="button">
-                            <i class="bi bi-magic me-1"></i> Prefill
-                        </button>
-                    </div>
-                    <div id="prefillMsg" class="form-text"></div>
-                </div>
-
-                <hr>
-
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label fw-bold small">Registration Number *</label>
@@ -105,13 +90,13 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-bold small">Date of Initial Registration</label>
-                        <input type="text" id="fieldInitialReg" class="form-control"
-                               placeholder="DD/MM/YYYY">
+                        <input type="text" id="fieldInitialReg" class="form-control date-picker"
+                               placeholder="Select date" autocomplete="off">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-bold small">Renewed Until</label>
-                        <input type="text" id="fieldRenewedUntil" class="form-control"
-                               placeholder="DD/MM/YYYY">
+                        <input type="text" id="fieldRenewedUntil" class="form-control date-picker"
+                               placeholder="Select date" autocomplete="off">
                     </div>
 
                     <div class="col-md-6">
@@ -127,8 +112,8 @@
 
                     <div class="col-md-6">
                         <label class="form-label fw-bold small">Issue Date</label>
-                        <input type="text" id="fieldIssueDate" class="form-control"
-                               placeholder="DD/MM/YYYY (defaults to today)">
+                        <input type="text" id="fieldIssueDate" class="form-control date-picker"
+                               placeholder="Select date (defaults to today)" autocomplete="off">
                     </div>
                 </div>
 
@@ -149,22 +134,34 @@
     </div>
 </div>
 
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
 <script>
 const LIST_URL     = "{{ '/admin/live-staffs/reg-record/list' }}";
 const GET_URL_BASE  = "{{ '/admin/live-staffs/reg-record/get/__ID__' }}";
 const SAVE_URL      = "{{ '/admin/live-staffs/reg-record/save' }}";
 const DELETE_URL_BASE = "{{ '/admin/live-staffs/reg-record/delete/__ID__' }}";
 const DOWNLOAD_URL_BASE = "{{ '/admin/live-staffs/reg-record/download/__ID__/__FMT__' }}";
-const PREFILL_URL_BASE  = "{{ '/admin/live-staffs/reg-record/prefill/__STAFFID__' }}";
 
 let currentRecId = null;
 let recordModalInstance = null;
+let datePickerInstances = [];
 
 function getRecordModal() {
     if (!recordModalInstance) {
         recordModalInstance = new bootstrap.Modal(document.getElementById('recordModal'));
     }
     return recordModalInstance;
+}
+
+function initDatePickers() {
+    if (datePickerInstances.length) return;
+    document.querySelectorAll('.date-picker').forEach(el => {
+        datePickerInstances.push(flatpickr(el, {
+            dateFormat: 'd/m/Y',
+            allowInput: true,
+        }));
+    });
 }
 
 function escapeHtml(s) {
@@ -178,8 +175,6 @@ function escapeHtml(s) {
 
 function clearForm() {
     currentRecId = null;
-    document.getElementById('staffIdInput').value = '';
-    document.getElementById('prefillMsg').textContent = '';
     document.getElementById('fieldRegNumber').value = '';
     document.getElementById('fieldHolderName').value = '';
     document.getElementById('fieldAddressLines').value = '';
@@ -197,7 +192,6 @@ function clearForm() {
 
 function fillForm(rec) {
     currentRecId = rec._id || null;
-    document.getElementById('staffIdInput').value = rec.staff_id || '';
     document.getElementById('fieldRegNumber').value = rec.registration_number || '';
     document.getElementById('fieldHolderName').value = rec.holder_name || '';
     document.getElementById('fieldAddressLines').value = (rec.address_lines || []).join('\n');
@@ -271,7 +265,9 @@ async function editRecord(recId) {
         const d = await r.json();
         if (!d.success) { alert(d.error || 'Failed to load record'); return; }
         clearForm();
+        initDatePickers();
         fillForm(d.record);
+        datePickerInstances.forEach(fp => fp.setDate(fp.input.value, false));
         getRecordModal().show();
     } catch (e) {
         alert('Network error: ' + e.message);
@@ -295,30 +291,8 @@ async function deleteRecord(recId) {
 
 document.getElementById('btnNewRecord').addEventListener('click', () => {
     clearForm();
+    initDatePickers();
     getRecordModal().show();
-});
-
-document.getElementById('btnPrefill').addEventListener('click', async () => {
-    const staffId = document.getElementById('staffIdInput').value.trim();
-    const msg = document.getElementById('prefillMsg');
-    if (!staffId) { msg.className = 'form-text text-danger'; msg.textContent = 'Enter a staff _id first.'; return; }
-    msg.className = 'form-text text-muted';
-    msg.textContent = 'Loading...';
-    try {
-        const r = await fetch(PREFILL_URL_BASE.replace('__STAFFID__', staffId));
-        const d = await r.json();
-        if (!d.success) { msg.className = 'form-text text-danger'; msg.textContent = d.error || 'Prefill failed'; return; }
-        document.getElementById('fieldRegNumber').value = d.registration_number || '';
-        document.getElementById('fieldHolderName').value = d.holder_name || '';
-        document.getElementById('fieldAddressLines').value = (d.address_lines || []).join('\n');
-        document.getElementById('fieldDivision').value = d.division || '';
-        document.getElementById('fieldRenewedUntil').value = d.renewed_until || '';
-        msg.className = 'form-text text-success';
-        msg.textContent = `Prefilled from ${d.staff_name || 'staff record'}.`;
-    } catch (e) {
-        msg.className = 'form-text text-danger';
-        msg.textContent = 'Network error: ' + e.message;
-    }
 });
 
 document.getElementById('btnSaveRecord').addEventListener('click', async () => {
@@ -341,7 +315,6 @@ document.getElementById('btnSaveRecord').addEventListener('click', async () => {
 
     const body = {
         rec_id: currentRecId || '',
-        staff_id: document.getElementById('staffIdInput').value.trim(),
         registration_number: regNumber,
         holder_name: holderName,
         address_lines: addressLines,
