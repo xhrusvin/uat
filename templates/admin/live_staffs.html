@@ -355,37 +355,37 @@
                             </td>
                             <td class="text-center">
                                 <!-- store only the _id; data fetched via API on click -->
-                                <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 btn-view"
+                                <!-- <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 btn-view"
                                         data-id="{{ s._id }}" title="View full record">
                                     <i class="bi bi-eye"></i>
                                 </button>
                                 <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 me-1 btn-edit"
                                         data-id="{{ s._id }}">
                                     <i class="bi bi-pencil"></i>
-                                </button>
+                                </button> -->
                                 <button class="btn btn-outline-info btn-sm rounded-pill px-3 me-1 btn-edit-cv"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
                                         title="Edit Extracted CV Text">
                                     <i class="bi bi-file-text"></i>
-                                </button>
+                                <!-- </button>
                                 <a class="btn btn-outline-success btn-sm rounded-pill px-3 me-1"
                                    href="{{ '/admin/live-staffs/cv/' + s._id }}"
                                    title="Download Standard CV as PDF" target="_blank">
                                     <i class="bi bi-file-earmark-person"></i>
-                                </a>
+                                </a> -->
                                 <button class="btn btn-warning btn-sm rounded-pill px-3 me-1 btn-ai-cv"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
                                         title="Generate AI-Personalised CV">
                                     <i class="bi bi-stars"></i>
                                 </button>
-                                <button class="btn btn-outline-dark btn-sm rounded-pill px-3 me-1 btn-pcc"
+                                <!-- <button class="btn btn-outline-dark btn-sm rounded-pill px-3 me-1 btn-pcc"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
                                         title="Generate PCC Self-Declaration Form">
                                     <i class="bi bi-file-earmark-lock"></i>
-                                </button>
+                                </button> -->
                                 <button class="btn btn-info btn-sm rounded-pill px-3 me-1 btn-ai-interview"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
