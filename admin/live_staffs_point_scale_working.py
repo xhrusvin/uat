@@ -344,23 +344,9 @@ def _build_point_scale_docx(staff_doc, rows):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER if ci >= 2 else WD_ALIGN_PARAGRAPH.LEFT
             _add_run(p, val, size=10)
 
-    sp(8)
-
-    # ── Total Eligible Service for Incremental Credit ──────────────────
-    _total_y, _total_m, _total_d = _total_service(rows)
-    p_total = d.add_paragraph()
-    p_total.paragraph_format.space_before = Pt(2)
-    p_total.paragraph_format.space_after  = Pt(2)
-    _add_run(
-        p_total,
-        f'Total Eligible Service for Incremental Credit: '
-        f'{_total_y} Year{"s" if _total_y != 1 else ""}, '
-        f'{_total_m} Month{"s" if _total_m != 1 else ""}, '
-        f'{_total_d} Day{"s" if _total_d != 1 else ""}',
-        bold=True, size=11, color=NAVY,
-    )
-
     sp(12)
+
+    # ── Declaration ───────────────────────────────────────────────────
     p_decl = d.add_paragraph()
     p_decl.paragraph_format.space_before = Pt(4)
     p_decl.paragraph_format.space_after  = Pt(16)
