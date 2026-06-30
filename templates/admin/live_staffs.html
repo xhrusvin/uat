@@ -398,11 +398,11 @@
                                         title="Generate Application Form">
                                     <i class="bi bi-file-earmark-text"></i>
                                 </button>
-                                <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
+                                <!-- <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('this record') | e }}">
                                     <i class="bi bi-trash"></i>
-                                </button>
+                                </button> -->
                                 {% if 'healthcare assistant' in (s.user_type or '') | lower %}
                                 <button class="btn btn-success btn-sm rounded-pill px-3 me-1 btn-vos"
                                         data-id="{{ s._id }}"
