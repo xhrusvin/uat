@@ -1,0 +1,402 @@
+{% extends "admin/base.html" %}
+{% block title %}Professional Registration Records • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0">
+            <i class="bi bi-patch-check-fill me-2 text-primary"></i>
+            Professional Registration Records
+        </h4>
+        <button class="btn btn-primary" id="btnNewRecord">
+            <i class="bi bi-plus-lg me-1"></i> New Record
+        </button>
+    </div>
+
+    <!-- Search -->
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="input-group">
+                <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                <input type="text" id="searchInput" class="form-control"
+                       placeholder="Search by staff name, email, or registration number...">
+                <button class="btn btn-outline-secondary" id="btnSearch">Search</button>
+                <button class="btn btn-outline-secondary" id="btnClearSearch">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- List -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Staff Name</th>
+                            <th>Email</th>
+                            <th>Registration No.</th>
+                            <th>Division</th>
+                            <th>Renewed Until</th>
+                            <th>Updated</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recordsTableBody">
+                        <tr><td colspan="7" class="text-center text-muted py-4">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Create / Edit Modal ──────────────────────────────────────── -->
+<div class="modal fade" id="recordModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title" id="recordModalTitle">
+                    <i class="bi bi-patch-check-fill me-2 text-primary"></i>
+                    New Registration Record
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+
+                <!-- Link to existing staff (optional, for prefill) -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">Link to Staff (optional — prefills fields)</label>
+                    <div class="input-group">
+                        <input type="text" id="staffIdInput" class="form-control"
+                               placeholder="Paste staff _id to prefill from their profile">
+                        <button class="btn btn-outline-primary" id="btnPrefill" type="button">
+                            <i class="bi bi-magic me-1"></i> Prefill
+                        </button>
+                    </div>
+                    <div id="prefillMsg" class="form-text"></div>
+                </div>
+
+                <hr>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small">Registration Number *</label>
+                        <input type="text" id="fieldRegNumber" class="form-control" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small">Holder Name *</label>
+                        <input type="text" id="fieldHolderName" class="form-control" required>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label fw-bold small">Address</label>
+                        <textarea id="fieldAddressLines" class="form-control" rows="2"
+                                  placeholder="One line per address line, e.g.&#10;123 Example Street&#10;Co. Example"></textarea>
+                        <div class="form-text">Enter each address line on its own row.</div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small">Division / Category</label>
+                        <input type="text" id="fieldDivision" class="form-control"
+                               placeholder="e.g. General Nurses">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small">Date of Initial Registration</label>
+                        <input type="text" id="fieldInitialReg" class="form-control"
+                               placeholder="DD/MM/YYYY">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small">Renewed Until</label>
+                        <input type="text" id="fieldRenewedUntil" class="form-control"
+                               placeholder="DD/MM/YYYY">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small">Authorised Signatory</label>
+                        <input type="text" id="fieldSignatoryName" class="form-control"
+                               placeholder="Betsy Daniel">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small">Signatory Designation</label>
+                        <input type="text" id="fieldSignatoryTitle" class="form-control"
+                               placeholder="Head of Recruitment">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small">Issue Date</label>
+                        <input type="text" id="fieldIssueDate" class="form-control"
+                               placeholder="DD/MM/YYYY (defaults to today)">
+                    </div>
+                </div>
+
+                <div id="saveError" class="alert alert-danger mt-3 py-2 small d-none"></div>
+                <div id="saveSuccess" class="alert alert-success mt-3 py-2 small d-none">
+                    <i class="bi bi-check-circle me-1"></i>
+                    Saved. <span id="saveSuccessActions"></span>
+                </div>
+
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button class="btn btn-primary" id="btnSaveRecord">
+                    <i class="bi bi-save me-1"></i> Save & Generate
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const LIST_URL     = "{{ '/admin/live-staffs/reg-record/list' }}";
+const GET_URL_BASE  = "{{ '/admin/live-staffs/reg-record/get/__ID__' }}";
+const SAVE_URL      = "{{ '/admin/live-staffs/reg-record/save' }}";
+const DELETE_URL_BASE = "{{ '/admin/live-staffs/reg-record/delete/__ID__' }}";
+const DOWNLOAD_URL_BASE = "{{ '/admin/live-staffs/reg-record/download/__ID__/__FMT__' }}";
+const PREFILL_URL_BASE  = "{{ '/admin/live-staffs/reg-record/prefill/__STAFFID__' }}";
+
+let currentRecId = null;
+let recordModalInstance = null;
+
+function getRecordModal() {
+    if (!recordModalInstance) {
+        recordModalInstance = new bootstrap.Modal(document.getElementById('recordModal'));
+    }
+    return recordModalInstance;
+}
+
+function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
+}
+
+function clearForm() {
+    currentRecId = null;
+    document.getElementById('staffIdInput').value = '';
+    document.getElementById('prefillMsg').textContent = '';
+    document.getElementById('fieldRegNumber').value = '';
+    document.getElementById('fieldHolderName').value = '';
+    document.getElementById('fieldAddressLines').value = '';
+    document.getElementById('fieldDivision').value = '';
+    document.getElementById('fieldInitialReg').value = '';
+    document.getElementById('fieldRenewedUntil').value = '';
+    document.getElementById('fieldSignatoryName').value = '';
+    document.getElementById('fieldSignatoryTitle').value = '';
+    document.getElementById('fieldIssueDate').value = '';
+    document.getElementById('saveError').classList.add('d-none');
+    document.getElementById('saveSuccess').classList.add('d-none');
+    document.getElementById('recordModalTitle').innerHTML =
+        '<i class="bi bi-patch-check-fill me-2 text-primary"></i> New Registration Record';
+}
+
+function fillForm(rec) {
+    currentRecId = rec._id || null;
+    document.getElementById('staffIdInput').value = rec.staff_id || '';
+    document.getElementById('fieldRegNumber').value = rec.registration_number || '';
+    document.getElementById('fieldHolderName').value = rec.holder_name || '';
+    document.getElementById('fieldAddressLines').value = (rec.address_lines || []).join('\n');
+    document.getElementById('fieldDivision').value = rec.division || '';
+    document.getElementById('fieldInitialReg').value = rec.date_of_initial_registration || '';
+    document.getElementById('fieldRenewedUntil').value = rec.renewed_until || '';
+    document.getElementById('fieldSignatoryName').value = rec.signatory_name || '';
+    document.getElementById('fieldSignatoryTitle').value = rec.signatory_title || '';
+    document.getElementById('fieldIssueDate').value = rec.issue_date || '';
+    document.getElementById('recordModalTitle').innerHTML =
+        '<i class="bi bi-pencil-square me-2 text-primary"></i> Edit Registration Record';
+}
+
+async function loadRecords(search) {
+    const tbody = document.getElementById('recordsTableBody');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Loading...</td></tr>';
+    try {
+        const url = search ? `${LIST_URL}?search=${encodeURIComponent(search)}` : LIST_URL;
+        const r = await fetch(url);
+        const d = await r.json();
+        if (!d.success) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">${escapeHtml(d.error || 'Failed to load')}</td></tr>`;
+            return;
+        }
+        const records = d.records || [];
+        if (records.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No records found.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = records.map(rec => `
+            <tr>
+                <td>${escapeHtml(rec.staff_name)}</td>
+                <td>${escapeHtml(rec.email)}</td>
+                <td>${escapeHtml(rec.registration_number)}</td>
+                <td>${escapeHtml(rec.division)}</td>
+                <td>${escapeHtml(rec.renewed_until)}</td>
+                <td class="text-muted small">${escapeHtml((rec.updated_at || '').slice(0, 10))}</td>
+                <td class="text-end">
+                    <a href="${DOWNLOAD_URL_BASE.replace('__ID__', rec._id).replace('__FMT__', 'pdf')}"
+                       class="btn btn-sm btn-outline-danger" title="Download PDF" target="_blank">
+                        <i class="bi bi-file-earmark-pdf"></i>
+                    </a>
+                    <a href="${DOWNLOAD_URL_BASE.replace('__ID__', rec._id).replace('__FMT__', 'docx')}"
+                       class="btn btn-sm btn-outline-primary" title="Download DOCX" target="_blank">
+                        <i class="bi bi-file-earmark-word"></i>
+                    </a>
+                    <button class="btn btn-sm btn-outline-secondary btn-edit-rec" data-id="${rec._id}" title="Edit">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger btn-delete-rec" data-id="${rec._id}" title="Delete">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        tbody.querySelectorAll('.btn-edit-rec').forEach(btn => {
+            btn.addEventListener('click', () => editRecord(btn.dataset.id));
+        });
+        tbody.querySelectorAll('.btn-delete-rec').forEach(btn => {
+            btn.addEventListener('click', () => deleteRecord(btn.dataset.id));
+        });
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">Network error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+async function editRecord(recId) {
+    try {
+        const r = await fetch(GET_URL_BASE.replace('__ID__', recId));
+        const d = await r.json();
+        if (!d.success) { alert(d.error || 'Failed to load record'); return; }
+        clearForm();
+        fillForm(d.record);
+        getRecordModal().show();
+    } catch (e) {
+        alert('Network error: ' + e.message);
+    }
+}
+
+async function deleteRecord(recId) {
+    if (!confirm('Delete this registration record? This does not remove the stored files.')) return;
+    try {
+        const r = await fetch(DELETE_URL_BASE.replace('__ID__', recId), { method: 'POST' });
+        const d = await r.json();
+        if (d.success) {
+            loadRecords(document.getElementById('searchInput').value.trim());
+        } else {
+            alert(d.error || 'Delete failed');
+        }
+    } catch (e) {
+        alert('Network error: ' + e.message);
+    }
+}
+
+document.getElementById('btnNewRecord').addEventListener('click', () => {
+    clearForm();
+    getRecordModal().show();
+});
+
+document.getElementById('btnPrefill').addEventListener('click', async () => {
+    const staffId = document.getElementById('staffIdInput').value.trim();
+    const msg = document.getElementById('prefillMsg');
+    if (!staffId) { msg.className = 'form-text text-danger'; msg.textContent = 'Enter a staff _id first.'; return; }
+    msg.className = 'form-text text-muted';
+    msg.textContent = 'Loading...';
+    try {
+        const r = await fetch(PREFILL_URL_BASE.replace('__STAFFID__', staffId));
+        const d = await r.json();
+        if (!d.success) { msg.className = 'form-text text-danger'; msg.textContent = d.error || 'Prefill failed'; return; }
+        document.getElementById('fieldRegNumber').value = d.registration_number || '';
+        document.getElementById('fieldHolderName').value = d.holder_name || '';
+        document.getElementById('fieldAddressLines').value = (d.address_lines || []).join('\n');
+        document.getElementById('fieldDivision').value = d.division || '';
+        document.getElementById('fieldRenewedUntil').value = d.renewed_until || '';
+        msg.className = 'form-text text-success';
+        msg.textContent = `Prefilled from ${d.staff_name || 'staff record'}.`;
+    } catch (e) {
+        msg.className = 'form-text text-danger';
+        msg.textContent = 'Network error: ' + e.message;
+    }
+});
+
+document.getElementById('btnSaveRecord').addEventListener('click', async () => {
+    const btn = document.getElementById('btnSaveRecord');
+    const errorBox = document.getElementById('saveError');
+    const successBox = document.getElementById('saveSuccess');
+    errorBox.classList.add('d-none');
+    successBox.classList.add('d-none');
+
+    const regNumber = document.getElementById('fieldRegNumber').value.trim();
+    const holderName = document.getElementById('fieldHolderName').value.trim();
+    if (!regNumber || !holderName) {
+        errorBox.textContent = 'Registration Number and Holder Name are required.';
+        errorBox.classList.remove('d-none');
+        return;
+    }
+
+    const addressLines = document.getElementById('fieldAddressLines').value
+        .split('\n').map(s => s.trim()).filter(Boolean);
+
+    const body = {
+        rec_id: currentRecId || '',
+        staff_id: document.getElementById('staffIdInput').value.trim(),
+        registration_number: regNumber,
+        holder_name: holderName,
+        address_lines: addressLines,
+        division: document.getElementById('fieldDivision').value.trim(),
+        date_of_initial_registration: document.getElementById('fieldInitialReg').value.trim(),
+        renewed_until: document.getElementById('fieldRenewedUntil').value.trim(),
+        signatory_name: document.getElementById('fieldSignatoryName').value.trim(),
+        signatory_title: document.getElementById('fieldSignatoryTitle').value.trim(),
+        issue_date: document.getElementById('fieldIssueDate').value.trim(),
+    };
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Generating...';
+
+    try {
+        const r = await fetch(SAVE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const d = await r.json();
+        if (!d.success) {
+            errorBox.textContent = d.error || 'Save failed';
+            errorBox.classList.remove('d-none');
+            return;
+        }
+        currentRecId = d.rec_id;
+        const pdfUrl = DOWNLOAD_URL_BASE.replace('__ID__', d.rec_id).replace('__FMT__', 'pdf');
+        const docxUrl = DOWNLOAD_URL_BASE.replace('__ID__', d.rec_id).replace('__FMT__', 'docx');
+        document.getElementById('saveSuccessActions').innerHTML =
+            `<a href="${pdfUrl}" target="_blank" class="ms-1">Download PDF</a> |
+             <a href="${docxUrl}" target="_blank" class="ms-1">Download DOCX</a>`;
+        successBox.classList.remove('d-none');
+        loadRecords(document.getElementById('searchInput').value.trim());
+    } catch (e) {
+        errorBox.textContent = 'Network error: ' + e.message;
+        errorBox.classList.remove('d-none');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save me-1"></i> Save & Generate';
+    }
+});
+
+document.getElementById('btnSearch').addEventListener('click', () => {
+    loadRecords(document.getElementById('searchInput').value.trim());
+});
+document.getElementById('searchInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') loadRecords(document.getElementById('searchInput').value.trim());
+});
+document.getElementById('btnClearSearch').addEventListener('click', () => {
+    document.getElementById('searchInput').value = '';
+    loadRecords('');
+});
+
+// Initial load
+loadRecords('');
+</script>
+{% endblock %}
