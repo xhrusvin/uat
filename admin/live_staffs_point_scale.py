@@ -959,6 +959,107 @@ def live_staff_vos_cron_download(staff_id):
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+@admin_bp.route('/live-staffs/export/vos-missing-xlsx')
+@admin_required
+def live_staff_export_vos_missing_xlsx():
+    """Export Healthcare Assistant staff who do NOT have a generated Point Scale document."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        ps_col     = _ps_col()
+        staffs_col = _staffs_col()
+
+        hca_staff = list(staffs_col.find(
+            {"user_type": {"$regex": "Healthcare Assistant", "$options": "i"}},
+            {"section_1_personal_details": 1, "email": 1, "user_type": 1}
+        ))
+
+        ps_records = {r['staff_id']: r for r in ps_col.find({}) if r.get('staff_id')}
+
+        missing = []
+        for s in hca_staff:
+            sid = str(s['_id'])
+            rec = ps_records.get(sid)
+            if rec and rec.get('status') == 'generated':
+                continue  # already has document — skip
+            s1 = s.get('section_1_personal_details') or {}
+            reason = 'Not started'
+            detail = ''
+            if rec:
+                status_map = {
+                    'processing':          'Processing',
+                    'no_employment_data':  'No employment data found',
+                    'error':               'Error during generation',
+                }
+                reason = status_map.get(rec.get('status'), rec.get('status', 'Unknown'))
+                detail = rec.get('note') or rec.get('error') or ''
+            missing.append({
+                "staff_name": _v(s1.get('full_name') or ''),
+                "email":      _v(s.get('email') or s1.get('email_address') or ''),
+                "user_type":  _v(s.get('user_type') or ''),
+                "reason":     reason,
+                "detail":     detail,
+            })
+
+        missing.sort(key=lambda d: d['staff_name'].lower())
+
+        NAVY  = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
+        ALT   = 'EFF6FF'; WARN  = 'FFF3CD'
+
+        h_font  = Font(name='Calibri', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Calibri', size=10)
+        l_align = Alignment(horizontal='left',   vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        g_bot   = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+        warn_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Missing Point Scale Docs'
+
+        headers    = ['Sno', 'Staff Name', 'Email', 'User Type', 'Reason', 'Detail']
+        col_widths = [5, 30, 36, 24, 22, 50]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = g_bot
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:F{len(missing)+1}'
+
+        for ri, m in enumerate(missing, start=2):
+            row_vals = [ri - 1, m['staff_name'], m['email'], m['user_type'], m['reason'], m['detail']]
+            aligns   = [c_align, l_align, l_align, l_align, l_align, l_align]
+            alt_fill = warn_fill if ri % 2 == 0 else PatternFill()
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border; cell.fill = alt_fill
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(missing)+2, column=1,
+                value=f'Total missing: {len(missing)}').font = Font(name='Calibri', bold=True, size=9)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="point_scale_missing_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @admin_bp.route('/live-staffs/export/vos-xlsx')
 @admin_required
 def live_staff_export_vos_xlsx():

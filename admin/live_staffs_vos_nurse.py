@@ -786,6 +786,8 @@ def live_staff_vos_nurse_cron_download(staff_id):
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
 @admin_bp.route('/live-staffs/export/vos-nurse-xlsx')
 @admin_required
 def live_staff_export_vos_nurse_xlsx():
