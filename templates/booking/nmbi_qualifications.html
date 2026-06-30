@@ -62,10 +62,19 @@
               {% endif %}
             </td>
             <td>
-              <button class="btn btn-sm btn-warning"
-                      onclick='openEditModal({{ q|tojson }})'>
-                Edit
-              </button>
+             <button class="btn btn-warning btn-sm"
+    onclick="openEditModal(
+        '{{ q._id }}',
+        {{ q.staff_name|tojson }},
+        {{ q.registration_number|tojson }},
+        {{ q.division|tojson }},
+        {{ q.initial_registration_date|tojson }},
+        {{ q.renewed_until|tojson }},
+        {{ q.description|tojson }},
+        {{ 'true' if q.is_active else 'false' }}
+    )">
+    Edit
+</button>
 
               <button class="btn btn-sm btn-danger"
                       onclick="deleteQualification('{{ q._id }}')">
@@ -249,17 +258,25 @@ document.getElementById("editForm").addEventListener("submit", function(e) {
 });
 
 
-function openEditModal(q) {
-  document.getElementById("edit_qualification_id").value = q._id.$oid || q._id;
-  document.getElementById("edit_staff_name").value = q.staff_name || "";
-  document.getElementById("edit_registration_number").value = q.registration_number || "";
-  document.getElementById("edit_division").value = q.division || "";
-  document.getElementById("edit_initial_registration_date").value = q.initial_registration_date || "";
-  document.getElementById("edit_renewed_until").value = q.renewed_until || "";
-  document.getElementById("edit_description").value = q.description || "";
-  document.getElementById("edit_is_active").checked = q.is_active === true;
-
-  new bootstrap.Modal(document.getElementById("editModal")).show();
+function openEditModal(
+    id,
+    staff_name,
+    registration_number,
+    division,
+    initial_registration_date,
+    renewed_until,
+    description,
+    is_active
+){
+    document.getElementById("edit_qualification_id").value = id;
+    document.getElementById("edit_staff_name").value = staff_name;
+    document.getElementById("edit_registration_number").value = registration_number;
+    document.getElementById("edit_division").value = division;
+    document.getElementById("edit_initial_registration_date").value = initial_registration_date;
+    document.getElementById("edit_renewed_until").value = renewed_until;
+    document.getElementById("edit_description").value = description;
+    document.getElementById("edit_is_active").checked = is_active;
+    new bootstrap.Modal(document.getElementById("editModal")).show();
 }
 
 
