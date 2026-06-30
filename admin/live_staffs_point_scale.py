@@ -962,39 +962,48 @@ def live_staff_vos_cron_download(staff_id):
 @admin_bp.route('/live-staffs/export/vos-missing-xlsx')
 @admin_required
 def live_staff_export_vos_missing_xlsx():
-    """Export Healthcare Assistant staff who do NOT have a generated Point Scale document."""
+    """
+    Export staff who do NOT have a generated Verification of Service
+    document — covers both:
+      - Healthcare Assistant staff (Point Scale document)
+      - Nurse-type staff (VOS Nurse document)
+    """
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-        ps_col     = _ps_col()
         staffs_col = _staffs_col()
+        ps_col     = _ps_col()
+        vos_nurse_col = db.live_staff_vos_nurse  # read-only cross-collection lookup
 
+        status_map = {
+            'processing':          'Processing',
+            'no_employment_data':  'No employment data found',
+            'error':               'Error during generation',
+        }
+
+        missing = []
+
+        # ── Healthcare Assistant → Point Scale ─────────────────────────
         hca_staff = list(staffs_col.find(
             {"user_type": {"$regex": "Healthcare Assistant", "$options": "i"}},
             {"section_1_personal_details": 1, "email": 1, "user_type": 1}
         ))
-
         ps_records = {r['staff_id']: r for r in ps_col.find({}) if r.get('staff_id')}
 
-        missing = []
         for s in hca_staff:
             sid = str(s['_id'])
             rec = ps_records.get(sid)
             if rec and rec.get('status') == 'generated':
-                continue  # already has document — skip
+                continue
             s1 = s.get('section_1_personal_details') or {}
             reason = 'Not started'
             detail = ''
             if rec:
-                status_map = {
-                    'processing':          'Processing',
-                    'no_employment_data':  'No employment data found',
-                    'error':               'Error during generation',
-                }
                 reason = status_map.get(rec.get('status'), rec.get('status', 'Unknown'))
                 detail = rec.get('note') or rec.get('error') or ''
             missing.append({
+                "doc_type":   "Point Scale (HCA)",
                 "staff_name": _v(s1.get('full_name') or ''),
                 "email":      _v(s.get('email') or s1.get('email_address') or ''),
                 "user_type":  _v(s.get('user_type') or ''),
@@ -1002,10 +1011,40 @@ def live_staff_export_vos_missing_xlsx():
                 "detail":     detail,
             })
 
-        missing.sort(key=lambda d: d['staff_name'].lower())
+        # ── Nurse-type staff → VOS Nurse ───────────────────────────────
+        nurse_staff = list(staffs_col.find(
+            {"user_type": {"$regex": "nurse|rgn|rnm|midwife|nchd|staff nurse|clinical nurse|"
+                                      "registered nurse|community nurse|public health nurse|"
+                                      "theatre nurse|icu nurse|phn|cns|cnm|rnid",
+                          "$options": "i"}},
+            {"section_1_personal_details": 1, "email": 1, "user_type": 1}
+        ))
+        vos_records = {r['staff_id']: r for r in vos_nurse_col.find({}) if r.get('staff_id')}
+
+        for s in nurse_staff:
+            sid = str(s['_id'])
+            rec = vos_records.get(sid)
+            if rec and rec.get('status') == 'generated':
+                continue
+            s1 = s.get('section_1_personal_details') or {}
+            reason = 'Not started'
+            detail = ''
+            if rec:
+                reason = status_map.get(rec.get('status'), rec.get('status', 'Unknown'))
+                detail = rec.get('note') or rec.get('error') or ''
+            missing.append({
+                "doc_type":   "VOS Nurse",
+                "staff_name": _v(s1.get('full_name') or ''),
+                "email":      _v(s.get('email') or s1.get('email_address') or ''),
+                "user_type":  _v(s.get('user_type') or ''),
+                "reason":     reason,
+                "detail":     detail,
+            })
+
+        missing.sort(key=lambda d: (d['doc_type'], d['staff_name'].lower()))
 
         NAVY  = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
-        ALT   = 'EFF6FF'; WARN  = 'FFF3CD'
+        WARN  = 'FFF3CD'
 
         h_font  = Font(name='Calibri', bold=True, color=WHITE, size=10)
         h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
@@ -1021,10 +1060,10 @@ def live_staff_export_vos_missing_xlsx():
 
         wb = Workbook()
         ws = wb.active
-        ws.title = 'Missing Point Scale Docs'
+        ws.title = 'Missing VOS Documents'
 
-        headers    = ['Sno', 'Staff Name', 'Email', 'User Type', 'Reason', 'Detail']
-        col_widths = [5, 30, 36, 24, 22, 50]
+        headers    = ['Sno', 'Doc Type', 'Staff Name', 'Email', 'User Type', 'Reason', 'Detail']
+        col_widths = [5, 18, 30, 36, 24, 22, 50]
 
         for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
             cell = ws.cell(row=1, column=ci, value=hdr)
@@ -1033,11 +1072,12 @@ def live_staff_export_vos_missing_xlsx():
             ws.column_dimensions[cell.column_letter].width = width
         ws.row_dimensions[1].height = 24
         ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = f'A1:F{len(missing)+1}'
+        ws.auto_filter.ref = f'A1:G{len(missing)+1}'
 
         for ri, m in enumerate(missing, start=2):
-            row_vals = [ri - 1, m['staff_name'], m['email'], m['user_type'], m['reason'], m['detail']]
-            aligns   = [c_align, l_align, l_align, l_align, l_align, l_align]
+            row_vals = [ri - 1, m['doc_type'], m['staff_name'], m['email'],
+                        m['user_type'], m['reason'], m['detail']]
+            aligns   = [c_align, c_align, l_align, l_align, l_align, l_align, l_align]
             alt_fill = warn_fill if ri % 2 == 0 else PatternFill()
             for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
                 cell = ws.cell(row=ri, column=ci, value=val)
@@ -1054,7 +1094,7 @@ def live_staff_export_vos_missing_xlsx():
             buf.getvalue(),
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             headers={"Content-Disposition":
-                     f'attachment; filename="point_scale_missing_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+                     f'attachment; filename="vos_missing_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
