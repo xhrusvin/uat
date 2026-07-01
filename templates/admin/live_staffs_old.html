@@ -355,25 +355,25 @@
                             </td>
                             <td class="text-center">
                                 <!-- store only the _id; data fetched via API on click -->
-                                <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 btn-view"
+                                <!-- <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 btn-view"
                                         data-id="{{ s._id }}" title="View full record">
                                     <i class="bi bi-eye"></i>
                                 </button>
                                 <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 me-1 btn-edit"
                                         data-id="{{ s._id }}">
                                     <i class="bi bi-pencil"></i>
-                                </button>
+                                </button> -->
                                 <button class="btn btn-outline-info btn-sm rounded-pill px-3 me-1 btn-edit-cv"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
                                         title="Edit Extracted CV Text">
                                     <i class="bi bi-file-text"></i>
-                                </button>
+                                <!-- </button>
                                 <a class="btn btn-outline-success btn-sm rounded-pill px-3 me-1"
                                    href="{{ '/admin/live-staffs/cv/' + s._id }}"
                                    title="Download Standard CV as PDF" target="_blank">
                                     <i class="bi bi-file-earmark-person"></i>
-                                </a>
+                                </a> -->
                                 <button class="btn btn-warning btn-sm rounded-pill px-3 me-1 btn-ai-cv"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
@@ -386,23 +386,23 @@
                                         title="Generate PCC Self-Declaration Form">
                                     <i class="bi bi-file-earmark-lock"></i>
                                 </button>
-                                <button class="btn btn-info btn-sm rounded-pill px-3 me-1 btn-ai-interview"
+                                <!-- <button class="btn btn-info btn-sm rounded-pill px-3 me-1 btn-ai-interview"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
                                         title="Generate AI Interview Notes">
                                     <i class="bi bi-clipboard2-check"></i>
-                                </button>
+                                </button> -->
                                 <button class="btn btn-secondary btn-sm rounded-pill px-3 me-1 btn-ai-appform"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
                                         title="Generate Application Form">
                                     <i class="bi bi-file-earmark-text"></i>
                                 </button>
-                                <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
+                                <!-- <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('this record') | e }}">
                                     <i class="bi bi-trash"></i>
-                                </button>
+                                </button> -->
                                 {% if 'healthcare assistant' in (s.user_type or '') | lower %}
                                 <button class="btn btn-success btn-sm rounded-pill px-3 me-1 btn-vos"
                                         data-id="{{ s._id }}"
@@ -2092,7 +2092,7 @@ document.querySelectorAll('.btn-pcc').forEach(btn => {
                 const el = document.getElementById('pccExistingAlert');
                 el.innerHTML = `<i class="bi bi-info-circle me-1"></i> Existing form found (${d.generated_at}, Reviewer: ${d.reviewer}). Click Generate to regenerate.`;
                 el.classList.remove('d-none');
-                document.getElementById('pccDownloadBtn').href = PCC_DL_URL.replace('__ID__', d.pcc_id);
+                document.getElementById('pccDownloadBtn').href = PCC_DL_URL.replace('PCC_ID', d.pcc_id);
                 document.getElementById('pccResult').classList.remove('d-none');
             }
         } catch(e) {}
@@ -2129,7 +2129,7 @@ document.getElementById('pccGenerateBtn').addEventListener('click', async () => 
         }
         gen.classList.add('d-none');
         if (d.success) {
-            document.getElementById('pccDownloadBtn').href = PCC_DL_URL.replace('__ID__', d.pcc_id);
+            document.getElementById('pccDownloadBtn').href = PCC_DL_URL.replace('PCC_ID', d.pcc_id);
             res.classList.remove('d-none');
         } else {
             err.textContent = d.error || 'Generation failed';
