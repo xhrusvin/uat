@@ -2430,8 +2430,6 @@ def live_staff_cron_extract_experience_list():
 
     pending_query = {
         "$and": [
-            # Only Healthcare Assistant staff
-            {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
             {"$or": [
                 {"experience_list_at": {"$exists": False}},
                 {"experience_list_at": None},
@@ -2449,7 +2447,7 @@ def live_staff_cron_extract_experience_list():
     if not staff:
         return jsonify({
             "success":         True,
-            "message":         "All Healthcare Assistant staff experience lists extracted — nothing to do.",
+            "message":         "All staff experience lists extracted — nothing to do.",
             "remaining_count": 0,
         })
 
@@ -2570,40 +2568,24 @@ def live_staff_cron_extract_experience_list():
 
         prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
 
-Read the CV text below and extract ONLY work experience entries where the job title matches
-one of the following Healthcare Assistant keywords (case-insensitive):
+Read the CV text below and extract ALL work experience entries without any filtering.
+Include every job role regardless of type — care, nursing, retail, factory, admin, any role.
 
-healthcare assistant, health care assistant, care assistant, care worker, support worker,
-care support worker, healthcare support worker, healthcare support assistant,
-home care worker, home care assistant, home support worker, home support assistant,
-community care worker, community care assistant, personal care assistant, personal care worker,
-residential care worker, residential support worker, residential care assistant,
-nursing assistant, nursing care assistant, agency healthcare assistant, agency care assistant,
-agency support worker, relief healthcare assistant, relief care worker, bank healthcare assistant,
-bank care assistant, live-in carer, carer, caregiver, disability support worker,
-intellectual disability support worker
-
-STRICT RULES:
-- ONLY include roles whose job title contains one of the above keywords.
-- DO NOT include nursing roles (Registered Nurse, Staff Nurse, etc.).
-- DO NOT include non-care roles (retail, factory, admin, hospitality, etc.).
-- If the job title does not match any keyword above, SKIP it completely.
-
-For each matching role return it as a single formatted string exactly like this:
+For each role return it as a single formatted string exactly like this:
 "Job Title  Start Date – End Date  Employer, Location"
 
 Format rules:
 - Job title first (as written in the CV)
-- Then date range exactly as written in the CV
+- Then date range exactly as written in the CV (e.g. "Sept. 2017 – Present" or "2019 – 2021")
 - Then employer name and location if available
 - Separate each part with two spaces
 - If no end date, write "Present"
-- List matching roles most recent first
+- List ALL roles, most recent first
 
 Return ONLY a JSON array of strings — nothing else, no markdown, no explanation:
 ["role 1 formatted string", "role 2 formatted string", ...]
 
-If no matching roles found, return: []
+If no roles found, return: []
 
 CV TEXT:
 {hse_cv_text}
@@ -2683,10 +2665,10 @@ def live_staff_export_experience_xlsx():
         import io as _io
 
         docs = list(_staffs_col().find(
-            {"user_type": {"$regex": "healthcare assistant", "$options": "i"}},
+            {},
             {"section_1_personal_details": 1, "email": 1,
              "user_type": 1, "experience_list": 1, "experience_list_note": 1,
-             "experience_list_at": 1}
+             "experience_list_at": 1, "special": 1}
         ))
 
         # Sort by name
@@ -2718,10 +2700,10 @@ def live_staff_export_experience_xlsx():
         ws.title = 'Experience List'
 
         # ── Headers ───────────────────────────────────────────────────
-        base_headers = ['Sno', 'Name', 'Email', 'User Type', 'Note']
+        base_headers = ['Sno', 'Name', 'Email', 'User Type', 'Special', 'Note']
         exp_headers  = [f'Experience {i+1}' for i in range(max_exp)]
         headers      = base_headers + exp_headers
-        col_widths   = [5, 30, 38, 20, 35] + [45] * max_exp
+        col_widths   = [5, 30, 38, 20, 10, 35] + [45] * max_exp
 
         for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
             cell = ws.cell(row=1, column=ci, value=hdr)
@@ -2744,6 +2726,8 @@ def live_staff_export_experience_xlsx():
             name      = _v(s1.get('full_name') or '')
             email     = _v(doc.get('email') or '')
             user_type = _v(doc.get('user_type') or '')
+            special_val = doc.get('special')
+            special   = 1 if special_val in (1, '1', True) else 0
             exp_list  = doc.get('experience_list') or []
             note      = _v(doc.get('experience_list_note') or '')
             if not doc.get('experience_list_at'):
@@ -2751,7 +2735,7 @@ def live_staff_export_experience_xlsx():
 
             alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) if ri % 2 == 0 else None
 
-            row_data = [ri - 1, name, email, user_type, note] + exp_list
+            row_data = [ri - 1, name, email, user_type, special, note] + exp_list
 
             for ci, val in enumerate(row_data, start=1):
                 cell = ws.cell(row=ri, column=ci, value=val or '')
@@ -3619,7 +3603,7 @@ def live_staff_export_nmbi_xlsx():
                 {"user_type": {"$regex": "nursing", "$options": "i"}},
             ]},
             {"section_1_personal_details": 1, "email": 1,
-             "user_type": 1, "nmbi_number": 1, "qualification_fetched": 1}
+             "user_type": 1, "nmbi_number": 1, "qualification_fetched": 1, "special": 1}
         ))
         docs.sort(key=lambda d: _v(
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
@@ -3654,7 +3638,7 @@ def live_staff_export_qqi_xlsx():
                 {"user_type": {"$regex": "\bhca\b", "$options": "i"}},
             ]},
             {"section_1_personal_details": 1, "email": 1,
-             "user_type": 1, "qqi_number": 1, "qualification_fetched": 1}
+             "user_type": 1, "qqi_number": 1, "qualification_fetched": 1, "special": 1}
         ))
         docs.sort(key=lambda d: _v(
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
@@ -3695,8 +3679,8 @@ def _build_qual_xlsx(docs, sheet_title, number_field, number_label):
     ws = wb.active
     ws.title = sheet_title[:31]
 
-    headers    = ['Sno', 'Name', 'Email', number_label, 'Status']
-    col_widths = [5, 32, 40, 25, 18]
+    headers    = ['Sno', 'Name', 'Email', number_label, 'Special', 'Status']
+    col_widths = [5, 32, 40, 25, 10, 18]
 
     for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
         cell = ws.cell(row=1, column=ci, value=hdr)
@@ -3714,6 +3698,8 @@ def _build_qual_xlsx(docs, sheet_title, number_field, number_label):
         email  = _v(doc.get('email') or '')
         number = _v(doc.get(number_field) or '')
         fetched= doc.get('qualification_fetched', False)
+        special_val = doc.get('special')
+        special     = 1 if special_val in (1, '1', True) else 0
 
         if number:
             status = 'Found'
@@ -3728,7 +3714,8 @@ def _build_qual_xlsx(docs, sheet_title, number_field, number_label):
         alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) if ri % 2 == 0 and not row_fill else None
 
         for ci, (val, align) in enumerate(
-            [(ri-1, c_align), (name, l_align), (email, l_align), (number, c_align), (status, c_align)],
+            [(ri-1, c_align), (name, l_align), (email, l_align), (number, c_align),
+             (special, c_align), (status, c_align)],
             start=1
         ):
             cell = ws.cell(row=ri, column=ci, value=val)
@@ -4060,7 +4047,7 @@ def live_staff_export_cpr_xlsx():
             {"section_1_personal_details": 1, "email": 1,
              "cpr_certificate_name": 1, "cpr_staff_name": 1,
              "cpr_expiry_date": 1, "cpr_issue_date": 1,
-             "cpr_issuing_body": 1, "cpr_fetched": 1}
+             "cpr_issuing_body": 1, "cpr_fetched": 1, "special": 1}
         ))
         docs.sort(key=lambda d: _v(
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
@@ -4085,8 +4072,8 @@ def live_staff_export_cpr_xlsx():
         ws.title = 'CPR-BLS Certificates'
 
         headers    = ['Sno', 'Staff Name', 'Email', 'Certificate Name',
-                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Status']
-        col_widths = [5, 28, 36, 30, 28, 16, 16, 28, 14]
+                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Special', 'Status']
+        col_widths = [5, 28, 36, 30, 28, 16, 16, 28, 10, 14]
 
         for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
             cell = ws.cell(row=1, column=ci, value=hdr)
@@ -4095,7 +4082,7 @@ def live_staff_export_cpr_xlsx():
             ws.column_dimensions[cell.column_letter].width = width
         ws.row_dimensions[1].height = 24
         ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
+        ws.auto_filter.ref = f'A1:J{len(docs)+1}'
 
         from datetime import date as _date
         today = _date.today()
@@ -4122,6 +4109,8 @@ def live_staff_export_cpr_xlsx():
             issue    = _v(doc.get('cpr_issue_date') or '')
             issuer   = _v(doc.get('cpr_issuing_body') or '')
             fetched  = doc.get('cpr_fetched', False)
+            special_val = doc.get('special')
+            special     = 1 if special_val in (1, '1', True) else 0
 
             expired  = _is_expired(expiry)
 
@@ -4143,8 +4132,8 @@ def live_staff_export_cpr_xlsx():
 
             alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT)                        if ri % 2 == 0 and not row_fill else None
 
-            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, status]
-            aligns   = [c_align,l_align,l_align,l_align,l_align,c_align,c_align,l_align,c_align]
+            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, special, status]
+            aligns   = [c_align,l_align,l_align,l_align,l_align,c_align,c_align,l_align,c_align,c_align]
 
             for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
                 cell = ws.cell(row=ri, column=ci, value=val)
@@ -4190,7 +4179,7 @@ def live_staff_export_missing_nmbi_xlsx():
                 ]},
             ]},
             {"section_1_personal_details": 1, "email": 1,
-             "user_type": 1, "nmbi_number": 1, "qualification_fetched": 1}
+             "user_type": 1, "nmbi_number": 1, "qualification_fetched": 1, "special": 1}
         ))
         docs.sort(key=lambda d: _v(
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
@@ -4226,7 +4215,7 @@ def live_staff_export_missing_qqi_xlsx():
                 ]},
             ]},
             {"section_1_personal_details": 1, "email": 1,
-             "user_type": 1, "qqi_number": 1, "qualification_fetched": 1}
+             "user_type": 1, "qqi_number": 1, "qualification_fetched": 1, "special": 1}
         ))
         docs.sort(key=lambda d: _v(
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
@@ -4256,7 +4245,7 @@ def live_staff_export_passport_xlsx():
         docs = list(_staffs_col().find(
             {"passport_fetched": True},
             {"section_1_personal_details": 1, "email": 1,
-             "passport_id": 1, "passport_data": 1, "passport_fetched": 1}
+             "passport_id": 1, "passport_data": 1, "passport_fetched": 1, "special": 1}
         ))
         docs.sort(key=lambda d: _v(
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
@@ -4281,8 +4270,8 @@ def live_staff_export_passport_xlsx():
         ws.title = 'Passport IDs'
 
         headers    = ['Sno', 'Name', 'Email', 'Passport ID',
-                      'Nationality', 'DOB', 'Expiry Date', 'Status']
-        col_widths = [5, 30, 36, 18, 18, 14, 14, 14]
+                      'Nationality', 'DOB', 'Expiry Date', 'Special', 'Status']
+        col_widths = [5, 30, 36, 18, 18, 14, 14, 10, 14]
 
         for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
             cell = ws.cell(row=1, column=ci, value=hdr)
@@ -4291,7 +4280,7 @@ def live_staff_export_passport_xlsx():
             ws.column_dimensions[cell.column_letter].width = width
         ws.row_dimensions[1].height = 24
         ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = f'A1:H{len(docs)+1}'
+        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
 
         for ri, doc in enumerate(docs, start=2):
             s1          = doc.get('section_1_personal_details') or {}
@@ -4302,6 +4291,8 @@ def live_staff_export_passport_xlsx():
             nationality = _v(pdata.get('nationality') or '')
             dob         = _v(pdata.get('date_of_birth') or '')
             expiry      = _v(pdata.get('expiry_date') or '')
+            special_val = doc.get('special')
+            special     = 1 if special_val in (1, '1', True) else 0
 
             if passport_id:
                 status   = 'Found'
@@ -4313,9 +4304,9 @@ def live_staff_export_passport_xlsx():
             alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT)                        if ri % 2 == 0 and not row_fill else None
 
             row_vals = [ri-1, name, email, passport_id,
-                        nationality, dob, expiry, status]
+                        nationality, dob, expiry, special, status]
             aligns   = [c_align, l_align, l_align, c_align,
-                        l_align, c_align, c_align, c_align]
+                        l_align, c_align, c_align, c_align, c_align]
 
             for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
                 cell = ws.cell(row=ri, column=ci, value=val)
@@ -4730,7 +4721,7 @@ def live_staff_export_ipc_xlsx():
             {"section_1_personal_details": 1, "email": 1,
              "ipc_certificate_name": 1, "ipc_staff_name": 1,
              "ipc_expiry_date": 1, "ipc_issue_date": 1,
-             "ipc_issuing_body": 1, "ipc_fetched": 1}
+             "ipc_issuing_body": 1, "ipc_fetched": 1, "special": 1}
         ))
         docs.sort(key=lambda d: _v(
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
@@ -4755,8 +4746,8 @@ def live_staff_export_ipc_xlsx():
         ws.title = 'IPC Certificates'
 
         headers    = ['Sno', 'Staff Name', 'Email', 'Certificate Name',
-                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Status']
-        col_widths = [5, 28, 36, 35, 28, 16, 16, 30, 14]
+                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Special', 'Status']
+        col_widths = [5, 28, 36, 35, 28, 16, 16, 30, 10, 14]
 
         for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
             cell = ws.cell(row=1, column=ci, value=hdr)
@@ -4765,7 +4756,7 @@ def live_staff_export_ipc_xlsx():
             ws.column_dimensions[cell.column_letter].width = width
         ws.row_dimensions[1].height = 24
         ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
+        ws.auto_filter.ref = f'A1:J{len(docs)+1}'
 
         from datetime import date as _date
         today = _date.today()
@@ -4792,6 +4783,8 @@ def live_staff_export_ipc_xlsx():
             issue    = _v(doc.get('ipc_issue_date') or '')
             issuer   = _v(doc.get('ipc_issuing_body') or '')
             fetched  = doc.get('ipc_fetched', False)
+            special_val = doc.get('special')
+            special     = 1 if special_val in (1, '1', True) else 0
 
             expired  = _is_expired(expiry)
 
@@ -4813,8 +4806,8 @@ def live_staff_export_ipc_xlsx():
 
             alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT)                        if ri % 2 == 0 and not row_fill else None
 
-            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, status]
-            aligns   = [c_align,l_align,l_align,l_align,l_align,c_align,c_align,l_align,c_align]
+            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, special, status]
+            aligns   = [c_align,l_align,l_align,l_align,l_align,c_align,c_align,l_align,c_align,c_align]
 
             for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
                 cell = ws.cell(row=ri, column=ci, value=val)
@@ -5128,7 +5121,7 @@ def live_staff_export_hand_hygiene_xlsx():
             {"section_1_personal_details": 1, "email": 1,
              "hh_certificate_name": 1, "hh_staff_name": 1,
              "hh_expiry_date": 1, "hh_issue_date": 1,
-             "hh_issuing_body": 1, "hh_fetched": 1}
+             "hh_issuing_body": 1, "hh_fetched": 1, "special": 1}
         ))
         docs.sort(key=lambda d: _v(
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
@@ -5153,8 +5146,8 @@ def live_staff_export_hand_hygiene_xlsx():
         ws.title = 'Hand Hygiene Certificates'
 
         headers    = ['Sno', 'Staff Name', 'Email', 'Certificate Name',
-                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Status']
-        col_widths = [5, 28, 36, 32, 28, 16, 16, 30, 14]
+                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Special', 'Status']
+        col_widths = [5, 28, 36, 32, 28, 16, 16, 30, 10, 14]
 
         for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
             cell = ws.cell(row=1, column=ci, value=hdr)
@@ -5163,7 +5156,7 @@ def live_staff_export_hand_hygiene_xlsx():
             ws.column_dimensions[cell.column_letter].width = width
         ws.row_dimensions[1].height = 24
         ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
+        ws.auto_filter.ref = f'A1:J{len(docs)+1}'
 
         from datetime import date as _date
         today = _date.today()
@@ -5190,6 +5183,8 @@ def live_staff_export_hand_hygiene_xlsx():
             issue    = _v(doc.get('hh_issue_date') or '')
             issuer   = _v(doc.get('hh_issuing_body') or '')
             fetched  = doc.get('hh_fetched', False)
+            special_val = doc.get('special')
+            special     = 1 if special_val in (1, '1', True) else 0
             expired  = _is_expired(expiry)
 
             if not fetched:
@@ -5210,8 +5205,8 @@ def live_staff_export_hand_hygiene_xlsx():
 
             alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT)                        if ri % 2 == 0 and not row_fill else None
 
-            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, status]
-            aligns   = [c_align,l_align,l_align,l_align,l_align,c_align,c_align,l_align,c_align]
+            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, special, status]
+            aligns   = [c_align,l_align,l_align,l_align,l_align,c_align,c_align,l_align,c_align,c_align]
 
             for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
                 cell = ws.cell(row=ri, column=ci, value=val)
@@ -5525,7 +5520,7 @@ def live_staff_export_children_first_xlsx():
             {"section_1_personal_details": 1, "email": 1,
              "cf_certificate_name": 1, "cf_staff_name": 1,
              "cf_expiry_date": 1, "cf_issue_date": 1,
-             "cf_issuing_body": 1, "cf_fetched": 1}
+             "cf_issuing_body": 1, "cf_fetched": 1, "special": 1}
         ))
         docs.sort(key=lambda d: _v(
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
@@ -5550,8 +5545,8 @@ def live_staff_export_children_first_xlsx():
         ws.title = 'Children First Certificates'
 
         headers    = ['Sno', 'Staff Name', 'Email', 'Certificate Name',
-                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Status']
-        col_widths = [5, 28, 36, 32, 28, 16, 16, 30, 14]
+                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Special', 'Status']
+        col_widths = [5, 28, 36, 32, 28, 16, 16, 30, 10, 14]
 
         for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
             cell = ws.cell(row=1, column=ci, value=hdr)
@@ -5560,7 +5555,7 @@ def live_staff_export_children_first_xlsx():
             ws.column_dimensions[cell.column_letter].width = width
         ws.row_dimensions[1].height = 24
         ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
+        ws.auto_filter.ref = f'A1:J{len(docs)+1}'
 
         from datetime import date as _date
         today = _date.today()
@@ -5587,6 +5582,8 @@ def live_staff_export_children_first_xlsx():
             issue    = _v(doc.get('cf_issue_date') or '')
             issuer   = _v(doc.get('cf_issuing_body') or '')
             fetched  = doc.get('cf_fetched', False)
+            special_val = doc.get('special')
+            special     = 1 if special_val in (1, '1', True) else 0
             expired  = _is_expired(expiry)
 
             if not fetched:
@@ -5607,8 +5604,8 @@ def live_staff_export_children_first_xlsx():
 
             alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT)                        if ri % 2 == 0 and not row_fill else None
 
-            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, status]
-            aligns   = [c_align,l_align,l_align,l_align,l_align,c_align,c_align,l_align,c_align]
+            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, special, status]
+            aligns   = [c_align,l_align,l_align,l_align,l_align,c_align,c_align,l_align,c_align,c_align]
 
             for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
                 cell = ws.cell(row=ri, column=ci, value=val)
@@ -5867,7 +5864,7 @@ def live_staff_export_safeguarding_xlsx():
             {"section_1_personal_details": 1, "email": 1,
              "sg_certificate_name": 1, "sg_staff_name": 1,
              "sg_expiry_date": 1, "sg_issue_date": 1,
-             "sg_issuing_body": 1, "sg_fetched": 1}
+             "sg_issuing_body": 1, "sg_fetched": 1, "special": 1}
         ))
         docs.sort(key=lambda d: _v(
             (d.get('section_1_personal_details') or {}).get('full_name') or ''
@@ -5892,8 +5889,8 @@ def live_staff_export_safeguarding_xlsx():
         ws.title = 'Safeguarding Certificates'
 
         headers    = ['Sno', 'Staff Name', 'Email', 'Certificate Name',
-                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Status']
-        col_widths = [5, 28, 36, 35, 28, 16, 16, 30, 14]
+                      'Name on Cert', 'Expiry Date', 'Issue Date', 'Issuing Body', 'Special', 'Status']
+        col_widths = [5, 28, 36, 35, 28, 16, 16, 30, 10, 14]
 
         for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
             cell = ws.cell(row=1, column=ci, value=hdr)
@@ -5902,7 +5899,7 @@ def live_staff_export_safeguarding_xlsx():
             ws.column_dimensions[cell.column_letter].width = width
         ws.row_dimensions[1].height = 24
         ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = f'A1:I{len(docs)+1}'
+        ws.auto_filter.ref = f'A1:J{len(docs)+1}'
 
         from datetime import date as _date
         today = _date.today()
@@ -5929,6 +5926,8 @@ def live_staff_export_safeguarding_xlsx():
             issue    = _v(doc.get('sg_issue_date') or '')
             issuer   = _v(doc.get('sg_issuing_body') or '')
             fetched  = doc.get('sg_fetched', False)
+            special_val = doc.get('special')
+            special     = 1 if special_val in (1, '1', True) else 0
             expired  = _is_expired(expiry)
 
             if not fetched:
@@ -5950,9 +5949,9 @@ def live_staff_export_safeguarding_xlsx():
             alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) \
                        if ri % 2 == 0 and not row_fill else None
 
-            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, status]
+            row_vals = [ri-1, name, email, cert_n, cert_s, expiry, issue, issuer, special, status]
             aligns   = [c_align, l_align, l_align, l_align, l_align,
-                        c_align, c_align, l_align, c_align]
+                        c_align, c_align, l_align, c_align, c_align]
 
             for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
                 cell = ws.cell(row=ri, column=ci, value=val)
