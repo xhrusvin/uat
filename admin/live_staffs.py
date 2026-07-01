@@ -2824,20 +2824,22 @@ def live_staff_api_all_emails():
             {"email": {"$exists": True, "$ne": ""}},
             {"section_1_personal_details.email_address": {"$exists": True, "$ne": ""}},
         ]},
-        {"email": 1, "section_1_personal_details": 1, "employee_code": 1}
+        {"email": 1, "section_1_personal_details": 1, "employee_code": 1, "user_type": 1}
     ))
     result = []
     for s in staff:
-        s1    = s.get('section_1_personal_details') or {}
-        email = _v(s.get('email') or s1.get('email_address') or '')
-        name  = _v(s1.get('full_name') or '')
-        code  = _v(s.get('employee_code') or '')
+        s1        = s.get('section_1_personal_details') or {}
+        email     = _v(s.get('email') or s1.get('email_address') or '')
+        name      = _v(s1.get('full_name') or '')
+        code      = _v(s.get('employee_code') or '')
+        user_type = _v(s.get('user_type') or '')
         if email:
             result.append({
-                "staff_id": str(s['_id']),
-                "email":    email,
-                "name":     name,
-                "code":     code,
+                "staff_id":  str(s['_id']),
+                "email":     email,
+                "name":      name,
+                "code":      code,
+                "user_type": user_type,
             })
     return jsonify({
         "success": True,
@@ -3131,7 +3133,42 @@ Output the structured CV text only. No markdown, no preamble.
 
 
 
-@admin_bp.route('/live-staffs/export/special-flag-xlsx')
+@admin_bp.route('/live-staffs/api/nurse-list')
+def live_staff_api_nurse_list():
+    """
+    Return all nurse-type staff with name, email, user_type.
+    Auth: cron_key — used by the local NMBI register checker script.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    nurse_regex = (
+        "nurse|rgn|rnm|midwife|nchd|staff nurse|clinical nurse|"
+        "registered nurse|community nurse|public health nurse|"
+        "theatre nurse|icu nurse|phn|cns|cnm|rnid"
+    )
+    docs = list(_staffs_col().find(
+        {"user_type": {"$regex": nurse_regex, "$options": "i"}},
+        {"section_1_personal_details": 1, "email": 1, "user_type": 1}
+    ))
+
+    staff = []
+    for d in docs:
+        s1 = d.get('section_1_personal_details') or {}
+        staff.append({
+            "staff_name": _v(s1.get('full_name') or ''),
+            "email":      _v(d.get('email') or s1.get('email_address') or ''),
+            "user_type":  _v(d.get('user_type') or ''),
+        })
+
+    return jsonify({"success": True, "count": len(staff), "staff": staff})
+
+
+
 @admin_required
 def live_staff_export_special_flag_xlsx():
     """
