@@ -2082,18 +2082,30 @@ document.querySelectorAll('.btn-pcc').forEach(btn => {
         document.getElementById('pccGenerating').classList.add('d-none');
         document.getElementById('pccResult').classList.add('d-none');
         document.getElementById('pccError').classList.add('d-none');
+        document.getElementById('pccGenerateBtn').disabled = false;
+        document.getElementById('pccGenerateBtn').innerHTML = '<i class="bi bi-magic me-1"></i> Generate';
         new bootstrap.Modal(document.getElementById('pccModal')).show();
 
-        // Check if already exists
+        // Check if already generated — show result state directly (same as VOS)
         try {
-            const r = await fetch(PCC_SAVED_URL.replace('STAFF_ID', currentPccStaffId));
+            const r = await fetch(PCC_SAVED_URL.replace('__ID__', currentPccStaffId));
             const d = await r.json();
             if (d.success && d.found) {
-                const el = document.getElementById('pccExistingAlert');
-                el.innerHTML = `<i class="bi bi-info-circle me-1"></i> Existing form found (${d.generated_at}, Reviewer: ${d.reviewer}). Click Generate to regenerate.`;
-                el.classList.remove('d-none');
                 document.getElementById('pccDownloadBtn').href = PCC_DL_URL.replace('__ID__', d.pcc_id);
                 document.getElementById('pccResult').classList.remove('d-none');
+                // Add regenerate link below the success alert
+                const res = document.getElementById('pccResult');
+                if (!res.querySelector('.pcc-regen-link')) {
+                    res.insertAdjacentHTML('beforeend',
+                        `<div class="text-muted small mt-2">Generated on ${d.generated_at || ''}
+                         — <a href="#" class="text-muted pcc-regen-link">Regenerate</a></div>`
+                    );
+                    res.querySelector('.pcc-regen-link').addEventListener('click', (ev) => {
+                        ev.preventDefault();
+                        document.getElementById('pccResult').classList.add('d-none');
+                        res.querySelector('.pcc-regen-link')?.closest('div')?.remove();
+                    });
+                }
             }
         } catch(e) {}
     });
@@ -2151,7 +2163,7 @@ document.getElementById('pccUploadInput').addEventListener('change', async (e) =
     const fd = new FormData();
     fd.append('file', file);
     try {
-        const r = await fetch(PCC_UPL_URL.replace('STAFF_ID', currentPccStaffId), {method:'POST', body:fd});
+        const r = await fetch(PCC_UPL_URL.replace('__ID__', currentPccStaffId), {method:'POST', body:fd});
         const d = await r.json();
         const err = document.getElementById('pccError');
         if (d.success) {
