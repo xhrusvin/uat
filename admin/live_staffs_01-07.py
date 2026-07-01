@@ -2287,7 +2287,7 @@ Output the structured CV text only. No markdown, no preamble.
 """
 
         from google import genai as google_genai
-        client   = google_genai.Client(api_key=_gemini_key)
+        client   = google_genai.Client(api_key=gemini_key)
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         cv_text  = response.text.strip()
 
