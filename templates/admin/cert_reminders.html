@@ -10,7 +10,7 @@
                 <i class="bi bi-file-earmark-medical me-2"></i>Certificate Reminder Calls
             </h2>
             <p class="text-muted mb-0 small">
-                Remind users to submit their <strong>PCC</strong> and/or <strong>Garda Vetting</strong> certificate.
+                Remind users to submit their <strong>PCC</strong>, <strong>Garda Vetting</strong>, and/or <strong>Occupational Certificate</strong>.
             </p>
         </div>
         <button class="btn btn-success fw-semibold rounded-pill px-4"
@@ -62,7 +62,8 @@
             <span class="small text-muted fw-semibold me-1">Set for all shown:</span>
             <button class="btn btn-sm btn-outline-primary rounded-pill" onclick="setAllVisible('PCC')">PCC</button>
             <button class="btn btn-sm btn-outline-warning text-dark rounded-pill" onclick="setAllVisible('Garda Vetting')">Garda Vetting</button>
-            <button class="btn btn-sm btn-outline-success rounded-pill" onclick="setAllVisible('both')">Both</button>
+            <button class="btn btn-sm btn-outline-info text-dark rounded-pill" onclick="setAllVisible('Occupational Certificate')">Occupational Certificate</button>
+            <button class="btn btn-sm btn-outline-success rounded-pill" onclick="setAllVisible('both')">All</button>
             <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setAllVisible('none')">Clear shown</button>
         </div>
 
@@ -192,17 +193,18 @@
                 <div class="table-responsive mb-3">
                     <table class="table table-sm table-bordered mb-1 small">
                         <thead class="table-light">
-                            <tr><th>email</th><th>PCC</th><th>Garda Vetting</th><th>Both</th></tr>
+                            <tr><th>email</th><th>PCC</th><th>Garda Vetting</th><th>Occupational Certificate</th><th>Both</th></tr>
                         </thead>
                         <tbody>
-                            <tr><td>jane@x.ie</td><td>x</td><td></td><td></td></tr>
-                            <tr><td>tom@x.ie</td><td></td><td></td><td>x</td></tr>
+                            <tr><td>jane@x.ie</td><td>x</td><td></td><td></td><td></td></tr>
+                            <tr><td>tom@x.ie</td><td></td><td></td><td>x</td><td></td></tr>
+                            <tr><td>mary@x.ie</td><td></td><td></td><td></td><td>x</td></tr>
                         </tbody>
                     </table>
                 </div>
                 <p class="text-muted small">
                     Mark a cell (e.g. <code>x</code>, <code>yes</code>, <code>1</code>, <code>True</code>) under the certificate each
-                    person needs. <strong>Both</strong> applies PCC and Garda Vetting together. Each email is matched
+                    person needs. <strong>Both</strong> applies all three certificates together. Each email is matched
                     to an existing user; unmatched emails are reported and skipped.
                 </p>
 
@@ -232,8 +234,9 @@ const ORIGIN = window.location.origin;
 
 // Certificate display config
 const CERTS = [
-    { key: "PCC",           label: "PCC",           active: "btn-primary" },
-    { key: "Garda Vetting", label: "Garda Vetting", active: "btn-warning text-dark" },
+    { key: "PCC",                    label: "PCC",                    active: "btn-primary" },
+    { key: "Garda Vetting",          label: "Garda Vetting",          active: "btn-warning text-dark" },
+    { key: "Occupational Certificate", label: "Occupational Certificate", active: "btn-info text-dark" },
 ];
 
 // Selection state across searches: id -> {user_id, xn_user_id, name, phone, certs:[]}
@@ -367,7 +370,7 @@ function setAllVisible(mode) {
         if (mode === 'none') {
             selection.delete(id);
         } else {
-            const certs = mode === 'both' ? ['PCC', 'Garda Vetting'] : [mode];
+            const certs = mode === 'both' ? ['PCC', 'Garda Vetting', 'Occupational Certificate'] : [mode];
             selection.set(id, {
                 user_id:    u._id,
                 xn_user_id: u.xn_user_id || null,
@@ -413,9 +416,10 @@ function renderSelectionBar() {
     bar.style.display = 'block';
 
     chips.innerHTML = Array.from(selection.values()).map(s => {
-        const tags = s.certs.map(c =>
-            `<span class="badge ${c === 'PCC' ? 'bg-primary' : 'bg-warning text-dark'} ms-1">${c}</span>`
-        ).join('');
+        const tags = s.certs.map(c => {
+            const cls = c === 'PCC' ? 'bg-primary' : c === 'Garda Vetting' ? 'bg-warning text-dark' : 'bg-info text-dark';
+            return `<span class="badge ${cls} ms-1">${c}</span>`;
+        }).join('');
         return `<span class="badge bg-light text-dark border d-inline-flex align-items-center gap-1 py-2 px-2"
                       style="white-space:nowrap;">
                     <i class="bi bi-person-fill text-primary"></i>${s.name}${tags}
@@ -535,9 +539,10 @@ function renderQueue(reminders) {
 
     reminders.forEach(r => {
         queueCache[r._id] = r;
-        const certs = (r.certificates_needed || []).map(c =>
-            `<span class="badge ${c === 'PCC' ? 'bg-primary' : 'bg-warning text-dark'} me-1">${c}</span>`
-        ).join('') || '<span class="text-muted small">—</span>';
+        const certs = (r.certificates_needed || []).map(c => {
+            const cls = c === 'PCC' ? 'bg-primary' : c === 'Garda Vetting' ? 'bg-warning text-dark' : 'bg-info text-dark';
+            return `<span class="badge ${cls} me-1">${c}</span>`;
+        }).join('') || '<span class="text-muted small">—</span>';
 
         const status = r.call_status || 'pending';
         const last = r.last_triggered_at
@@ -727,10 +732,11 @@ async function removeOne(id) {
 // ─────────────────────────── Import ───────────────────────────
 function downloadSample(e) {
     e.preventDefault();
-    const csv = 'email,PCC,Garda Vetting,Both\n'
-              + 'jane@example.ie,x,,\n'
-              + 'tom@example.ie,,x,\n'
-              + 'mary@example.ie,,,x\n';
+    const csv = 'email,PCC,Garda Vetting,Occupational Certificate,Both\n'
+              + 'jane@example.ie,x,,,\n'
+              + 'tom@example.ie,,x,,\n'
+              + 'mary@example.ie,,,x,\n'
+              + 'john@example.ie,,,,x\n';
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
