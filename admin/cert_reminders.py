@@ -20,7 +20,7 @@ from admin.views import admin_required
 REMINDER_CALL_ENDPOINT = "certificate-reminder/trigger"
 
 # Certificate types a user can be reminded about.
-VALID_CERTS = ["PCC", "Garda Vetting"]
+VALID_CERTS = ["PCC", "Garda Vetting", "Occupational Certificate"]
 
 # Allowed call-status values stored on each reminder record.
 VALID_STATUSES = {"pending", "triggered", "completed", "failed"}
@@ -244,7 +244,7 @@ def certificate_reminders_save():
 @admin_required
 def certificate_reminders_import():
     """
-    Accept an .xlsx/.csv with columns: email, PCC, Garda Vetting, Both.
+    Accept an .xlsx/.csv with columns: email, PCC, Garda Vetting, Occupational Certificate, Both.
     For each row, look up the user by email and upsert a reminder record.
     """
     if 'file' not in request.files:
@@ -275,14 +275,16 @@ def certificate_reminders_import():
     pcc_i   = _find_col(col_idx, "pcc", "police clearance", "police clearance certificate")
     garda_i = _find_col(col_idx, "garda vetting", "garda", "garda_vetting",
                         "gardavetting", "garda vetting certificate")
+    occ_i   = _find_col(col_idx, "occupational certificate", "occupational", "occ cert",
+                        "occ_cert", "occupational_certificate")
     both_i  = _find_col(col_idx, "both")
 
     if email_i is None:
         return jsonify({"success": False,
                         "error": "No 'email' column found in the file"}), 400
-    if pcc_i is None and garda_i is None and both_i is None:
+    if pcc_i is None and garda_i is None and occ_i is None and both_i is None:
         return jsonify({"success": False,
-                        "error": "No 'PCC', 'Garda Vetting', or 'Both' column found"}), 400
+                        "error": "No 'PCC', 'Garda Vetting', 'Occupational Certificate', or 'Both' column found"}), 400
 
     def cell(row, i):
         return row[i] if (i is not None and i < len(row)) else None
@@ -301,13 +303,15 @@ def certificate_reminders_import():
             email = str(email).strip()
 
             if _is_flagged(cell(row, both_i)):
-                certs = ["PCC", "Garda Vetting"]
+                certs = ["PCC", "Garda Vetting", "Occupational Certificate"]
             else:
                 certs = []
                 if _is_flagged(cell(row, pcc_i)):
                     certs.append("PCC")
                 if _is_flagged(cell(row, garda_i)):
                     certs.append("Garda Vetting")
+                if _is_flagged(cell(row, occ_i)):
+                    certs.append("Occupational Certificate")
 
             if not certs:
                 no_cert.append({"row": n, "email": email})
