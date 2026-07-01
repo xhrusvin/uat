@@ -2809,8 +2809,10 @@ def live_staff_api_staff_documents():
 @admin_bp.route('/live-staffs/api/all-staff-emails', methods=['GET'])
 def live_staff_api_all_emails():
     """
-    Return list of all staff with email — for the local downloader
-    to iterate and call /api/staff-documents for each.
+    Return ONE unprocessed HCA staff at a time.
+    Marks the staff as point_scale_doc_downloaded=True atomically.
+    Local script calls this in a loop.
+    Auth: cron_key
     """
     cron_secret = os.environ.get('CRON_SECRET', '')
     if cron_secret:
@@ -2819,34 +2821,34 @@ def live_staff_api_all_emails():
         if provided != cron_secret:
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
-    staff = list(_staffs_col().find(
-        {"$or": [
-            {"email": {"$exists": True, "$ne": ""}},
-            {"section_1_personal_details.email_address": {"$exists": True, "$ne": ""}},
-        ]},
-        {"email": 1, "section_1_personal_details": 1, "employee_code": 1, "user_type": 1}
-    ))
-    result = []
-    for s in staff:
-        s1        = s.get('section_1_personal_details') or {}
-        email     = _v(s.get('email') or s1.get('email_address') or '')
-        name      = _v(s1.get('full_name') or '')
-        code      = _v(s.get('employee_code') or '')
-        user_type = _v(s.get('user_type') or '')
-        if email:
-            result.append({
-                "staff_id":  str(s['_id']),
-                "email":     email,
-                "name":      name,
-                "code":      code,
-                "user_type": user_type,
-            })
-    return jsonify({
-        "success": True,
-        "count":   len(result),
-        "staff":   result,
-    })
+    doc = _staffs_col().find_one_and_update(
+        {
+            "user_type": {"$regex": "healthcare assistant|health care assistant|\\bhca\\b|care assistant",
+                          "$options": "i"},
+            "point_scale_doc_downloaded": {"$ne": True},
+            "$or": [
+                {"email": {"$exists": True, "$ne": ""}},
+                {"section_1_personal_details.email_address": {"$exists": True, "$ne": ""}},
+            ]
+        },
+        {"$set": {"point_scale_doc_downloaded": True}},
+        projection={"email": 1, "section_1_personal_details": 1,
+                    "employee_code": 1, "user_type": 1}
+    )
 
+    if not doc:
+        return jsonify({"success": True, "done": True,
+                        "message": "All HCA staff processed"})
+
+    s1 = doc.get('section_1_personal_details') or {}
+    return jsonify({
+        "success":   True,
+        "done":      False,
+        "staff_id":  str(doc['_id']),
+        "email":     _v(doc.get('email') or s1.get('email_address') or ''),
+        "name":      _v(s1.get('full_name') or ''),
+        "user_type": _v(doc.get('user_type') or ''),
+    })
 
 
 # ── API: Generate CV ──────────────────────────────────────────────────
