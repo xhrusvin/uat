@@ -113,6 +113,8 @@
                 <button class="btn btn-outline-secondary" data-filter="pending" onclick="setFilter(this,'pending')">Pending</button>
                 <button class="btn btn-outline-secondary" data-filter="triggered" onclick="setFilter(this,'triggered')">Triggered</button>
                 <button class="btn btn-outline-secondary" data-filter="failed" onclick="setFilter(this,'failed')">Failed</button>
+                <button class="btn btn-outline-secondary" data-filter="retry" onclick="setFilter(this,'retry')">Awaiting Retry</button>
+                <button class="btn btn-outline-secondary" data-filter="max_retries_reached" onclick="setFilter(this,'max_retries_reached')">Max Retries</button>
             </div>
             <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="loadQueue()">
                 <i class="bi bi-arrow-clockwise"></i> Refresh
@@ -139,6 +141,8 @@
                                 <th>Certificates needed</th>
                                 <th class="text-center">Call status</th>
                                 <th>Last triggered</th>
+                                <th class="text-center">Retries</th>
+                                <th>Next retry</th>
                                 <th class="text-center">Action</th>
                             </tr>
                         </thead>
@@ -189,23 +193,23 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-                <p class="mb-2">Upload an <strong>.xlsx</strong> or <strong>.csv</strong> file with these columns:</p>
+                <p class="mb-2">Upload an <strong>.xlsx</strong> or <strong>.csv</strong> file with an <strong>email</strong> or <strong>phone</strong> column (or both), plus certificate columns:</p>
                 <div class="table-responsive mb-3">
                     <table class="table table-sm table-bordered mb-1 small">
                         <thead class="table-light">
-                            <tr><th>email</th><th>PCC</th><th>Garda Vetting</th><th>Occupational Certificate</th><th>Both</th></tr>
+                            <tr><th>email</th><th>phone</th><th>PCC</th><th>Garda Vetting</th><th>Occupational Certificate</th><th>Both</th></tr>
                         </thead>
                         <tbody>
-                            <tr><td>jane@x.ie</td><td>x</td><td></td><td></td><td></td></tr>
-                            <tr><td>tom@x.ie</td><td></td><td></td><td>x</td><td></td></tr>
-                            <tr><td>mary@x.ie</td><td></td><td></td><td></td><td>x</td></tr>
+                            <tr><td>jane@x.ie</td><td></td><td>x</td><td></td><td></td><td></td></tr>
+                            <tr><td>tom@x.ie</td><td></td><td></td><td>x</td><td></td><td></td></tr>
+                            <tr><td></td><td>+353861234567</td><td></td><td></td><td>x</td><td></td></tr>
+                            <tr><td></td><td>+353871234567</td><td></td><td></td><td></td><td>x</td></tr>
                         </tbody>
                     </table>
                 </div>
                 <p class="text-muted small">
                     Mark a cell (e.g. <code>x</code>, <code>yes</code>, <code>1</code>, <code>True</code>) under the certificate each
-                    person needs. <strong>Both</strong> applies all three certificates together. Each email is matched
-                    to an existing user; unmatched emails are reported and skipped.
+                    person needs. <strong>Both</strong> applies all three certificates together. Rows are matched by <strong>email</strong> first; if no email is present, by <strong>phone number</strong>. Unmatched rows are reported and skipped.
                 </p>
 
                 <a href="#" class="small" onclick="downloadSample(event)">
@@ -503,10 +507,15 @@ function setFilter(btn, value) {
     loadQueue();
 }
 
+// Maps UI filter value to query param sent to the server
+function filterParam(value) {
+    return value;   // server handles 'retry' as a special keyword
+}
+
 async function loadQueue() {
     try {
         const url = currentFilter
-            ? `/admin/certificate_reminders/list?status=${encodeURIComponent(currentFilter)}`
+            ? `/admin/certificate_reminders/list?status=${encodeURIComponent(filterParam(currentFilter))}`
             : '/admin/certificate_reminders/list';
         const res = await fetch(url);
         const data = await res.json();
@@ -550,6 +559,16 @@ function renderQueue(reminders) {
                 { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
             : '<span class="text-muted small">Never</span>';
 
+        const retryCount  = r.retry_count || 0;
+        const maxRetries  = 10;
+        const retryBadge  = retryCount > 0
+            ? `<span class="badge ${retryCount >= maxRetries ? 'bg-dark' : 'bg-warning text-dark'} rounded-pill">${retryCount}/${maxRetries}</span>`
+            : '<span class="text-muted small">—</span>';
+        const nextRetry   = r.retry_after
+            ? new Date(r.retry_after).toLocaleString('en-GB',
+                { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : '<span class="text-muted small">—</span>';
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td class="ps-4">
@@ -559,8 +578,10 @@ function renderQueue(reminders) {
             <td class="fw-semibold">${r.name || '—'}</td>
             <td class="text-muted small font-monospace">${r.phone || '—'}</td>
             <td>${certs}</td>
-            <td class="text-center"><span class="badge ${statusColor(status)} rounded-pill px-3">${status}</span></td>
+            <td class="text-center"><span class="badge ${statusColor(status)} rounded-pill px-3" title="${r.call_outcome || ''}">${status}</span></td>
             <td class="text-muted small">${last}</td>
+            <td class="text-center">${retryBadge}</td>
+            <td class="text-muted small">${nextRetry}</td>
             <td class="text-center">
                 <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1"
                         onclick="triggerOneConfirm('${r._id}')">
@@ -578,12 +599,13 @@ function renderQueue(reminders) {
 }
 
 function statusColor(s) {
-    return {
-        pending:   'bg-secondary',
-        triggered: 'bg-info text-dark',
-        completed: 'bg-success',
-        failed:    'bg-danger',
-    }[s] || 'bg-secondary';
+    if (s === 'pending')             return 'bg-secondary';
+    if (s === 'triggered')           return 'bg-info text-dark';
+    if (s === 'completed')           return 'bg-success';
+    if (s === 'failed')              return 'bg-danger';
+    if (s === 'max_retries_reached') return 'bg-dark';
+    // Any other value is a non-success outcome (e.g. "Voicemail Detected") — amber
+    return 'bg-warning text-dark';
 }
 
 function toggleSelectAll(box) {
@@ -732,11 +754,12 @@ async function removeOne(id) {
 // ─────────────────────────── Import ───────────────────────────
 function downloadSample(e) {
     e.preventDefault();
-    const csv = 'email,PCC,Garda Vetting,Occupational Certificate,Both\n'
-              + 'jane@example.ie,x,,,\n'
-              + 'tom@example.ie,,x,,\n'
-              + 'mary@example.ie,,,x,\n'
-              + 'john@example.ie,,,,x\n';
+    const csv = 'email,phone,PCC,Garda Vetting,Occupational Certificate,Both\n'
+              + 'jane@example.ie,,x,,, \n'
+              + 'tom@example.ie,,,x,,\n'
+              + 'mary@example.ie,,,,x,\n'
+              + ',+353861234567,,,x,\n'
+              + ',+353871234567,,,,x\n';
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -773,16 +796,16 @@ async function importExcel() {
 
         if (notFound.length) {
             html += `<details class="mb-2"><summary class="text-danger">
-                       ${notFound.length} email(s) not matched to a user</summary>
+                       ${notFound.length} row(s) not matched to a user</summary>
                        <ul class="small mb-0 mt-1">` +
-                     notFound.map(r => `<li>Row ${r.row}: ${r.email}</li>`).join('') +
+                     notFound.map(r => `<li>Row ${r.row}: ${r.identifier}</li>`).join('') +
                      `</ul></details>`;
         }
         if (noCert.length) {
             html += `<details><summary class="text-warning">
                        ${noCert.length} row(s) had no certificate marked</summary>
                        <ul class="small mb-0 mt-1">` +
-                     noCert.map(r => `<li>Row ${r.row}: ${r.email}</li>`).join('') +
+                     noCert.map(r => `<li>Row ${r.row}: ${r.identifier}</li>`).join('') +
                      `</ul></details>`;
         }
         html += `</div>`;

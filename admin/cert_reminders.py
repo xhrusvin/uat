@@ -23,7 +23,7 @@ REMINDER_CALL_ENDPOINT = "certificate-reminder/trigger"
 VALID_CERTS = ["PCC", "Garda Vetting", "Occupational Certificate"]
 
 # Allowed call-status values stored on each reminder record.
-VALID_STATUSES = {"pending", "triggered", "completed", "failed"}
+VALID_STATUSES = {"pending", "triggered", "completed", "failed", "max_retries_reached"}
 
 
 # ── Collections ──────────────────────────────────────────────────────
@@ -244,8 +244,10 @@ def certificate_reminders_save():
 @admin_required
 def certificate_reminders_import():
     """
-    Accept an .xlsx/.csv with columns: email, PCC, Garda Vetting, Occupational Certificate, Both.
-    For each row, look up the user by email and upsert a reminder record.
+    Accept an .xlsx/.csv with columns: email or phone (or both),
+    PCC, Garda Vetting, Occupational Certificate, Both.
+    Each row is looked up by email first; if no email is present, by phone number.
+    Upserts a reminder record for each matched user.
     """
     if 'file' not in request.files:
         return jsonify({"success": False, "error": "No file uploaded"}), 400
@@ -272,6 +274,8 @@ def certificate_reminders_import():
         col_idx[str(h).strip().lower()] = i
 
     email_i = _find_col(col_idx, "email", "e-mail", "email address")
+    phone_i = _find_col(col_idx, "phone", "phone number", "mobile", "mobile number",
+                        "telephone", "tel", "contact number")
     pcc_i   = _find_col(col_idx, "pcc", "police clearance", "police clearance certificate")
     garda_i = _find_col(col_idx, "garda vetting", "garda", "garda_vetting",
                         "gardavetting", "garda vetting certificate")
@@ -279,9 +283,9 @@ def certificate_reminders_import():
                         "occ_cert", "occupational_certificate")
     both_i  = _find_col(col_idx, "both")
 
-    if email_i is None:
+    if email_i is None and phone_i is None:
         return jsonify({"success": False,
-                        "error": "No 'email' column found in the file"}), 400
+                        "error": "No 'email' or 'phone' column found in the file"}), 400
     if pcc_i is None and garda_i is None and occ_i is None and both_i is None:
         return jsonify({"success": False,
                         "error": "No 'PCC', 'Garda Vetting', 'Occupational Certificate', or 'Both' column found"}), 400
@@ -289,18 +293,33 @@ def certificate_reminders_import():
     def cell(row, i):
         return row[i] if (i is not None and i < len(row)) else None
 
-    now = datetime.now(timezone.utc)
-    imported = 0
-    not_found = []   # email not in users collection
-    no_cert = []     # row has no certificate flagged
+    def _normalise_phone(raw):
+        """Strip formatting for loose matching against DB values."""
+        if not raw:
+            return ""
+        s = str(raw).strip().replace(' ', '').replace('​', '')
+        if s.startswith('00'):
+            s = '+' + s[2:]
+        digits = re.sub(r'[^\d+]', '', s)
+        if not digits.startswith('+'):
+            digits = '+' + digits
+        return digits
+
+    now       = datetime.now(timezone.utc)
+    imported  = 0
+    not_found = []   # identifier not matched to any user
+    no_cert   = []   # row has no certificate flagged
+
+    projection = {"_id": 1, "xn_user_id": 1, "first_name": 1, "last_name": 1, "phone": 1}
 
     try:
         for n, row in enumerate(data_rows, start=2):   # row 2 = first data row under the header
-            email = cell(row, email_i)
-            if email is None or str(email).strip() == "":
-                continue   # blank line
+            email = str(cell(row, email_i) or "").strip()
+            phone = str(cell(row, phone_i) or "").strip()
 
-            email = str(email).strip()
+            # Skip entirely blank rows
+            if not email and not phone:
+                continue
 
             if _is_flagged(cell(row, both_i)):
                 certs = ["PCC", "Garda Vetting", "Occupational Certificate"]
@@ -314,15 +333,31 @@ def certificate_reminders_import():
                     certs.append("Occupational Certificate")
 
             if not certs:
-                no_cert.append({"row": n, "email": email})
+                no_cert.append({"row": n, "identifier": email or phone})
                 continue
 
-            user = _users_col().find_one(
-                {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}},
-                {"_id": 1, "xn_user_id": 1, "first_name": 1, "last_name": 1, "phone": 1},
-            )
+            user = None
+
+            # Prefer email lookup; fall back to phone
+            if email:
+                user = _users_col().find_one(
+                    {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}},
+                    projection,
+                )
+
+            if user is None and phone:
+                norm = _normalise_phone(phone)
+                # Try both the normalised form and the raw value to cover varied DB formats
+                user = _users_col().find_one(
+                    {"$or": [
+                        {"phone": {"$regex": re.escape(norm),  "$options": "i"}},
+                        {"phone": {"$regex": re.escape(phone), "$options": "i"}},
+                    ]},
+                    projection,
+                )
+
             if not user:
-                not_found.append({"row": n, "email": email})
+                not_found.append({"row": n, "identifier": email or phone})
                 continue
 
             name = " ".join(
@@ -352,9 +387,19 @@ def certificate_reminders_import():
 @admin_required
 def certificate_reminders_list():
     status = request.args.get('status', '').strip()
-    query = {}
-    if status in VALID_STATUSES:
-        query["call_status"] = status
+
+    # 'retry' is a UI pseudo-filter: records with a non-success outcome
+    # that are waiting to be re-called (retry_after exists, not terminal).
+    TERMINAL = {"completed", "failed", "max_retries_reached"}
+    if status == 'retry':
+        query = {
+            "call_status": {"$nin": list(TERMINAL) + ["pending", "triggered"]},
+            "retry_after":  {"$exists": True},
+        }
+    elif status in VALID_STATUSES:
+        query = {"call_status": status}
+    else:
+        query = {}
 
     try:
         items = list(
@@ -366,7 +411,7 @@ def certificate_reminders_list():
 
         for r in items:
             r["_id"] = str(r["_id"])
-            for f in ("created_at", "updated_at", "last_triggered_at"):
+            for f in ("created_at", "updated_at", "last_triggered_at", "retry_after"):
                 if f in r and hasattr(r[f], "isoformat"):
                     r[f] = r[f].isoformat()
 
