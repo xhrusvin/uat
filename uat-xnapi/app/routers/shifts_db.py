@@ -450,14 +450,12 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     filter_outreach_status = payload.outreach_status  # optional specific status filter
 
     # ── Resolve outreach-active shift IDs from outreach collection ─────────────
-    # input outreach_status mapping:
-    #   1 → outreach_status > 0 AND != 10  (all active: Live/Paused/Ended)
-    #   2 → outreach_status == 10           (Completed)
-    #   None → default: outreach_status > 0 AND != 10
+    # outreach_status input mapping:
+    #   1 or None → outreach_status > 0 AND != 10  (all active: Live/Paused/Ended)
+    #   2         → outreach_status == 10           (Completed)
     if filter_outreach_status == 2:
         outreach_query: dict = {"outreach_status": 10}
     else:
-        # 1 or None → all active
         outreach_query: dict = {"outreach_status": {"$gt": 0, "$ne": 10}}
 
     # Get shift_ids that have matching outreach records
@@ -467,8 +465,23 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     ).to_list(length=10000)
 
     if not outreach_docs:
-        return {"success": True, "total": 0, "page": payload.page,
-                "per_page": payload.per_page, "data": []}
+        # Still return counts even when no data
+        automation_shift_ids_all = await db["outreach"].distinct("shift_id", {"outreach_status": {"$gt": 0}})
+        automation_count_all     = len(set(str(s) for s in automation_shift_ids_all))
+        total_shifts_all         = await db["shifts"].count_documents({})
+        outreach_active_all      = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
+        outreach_completed_all   = await db["outreach"].count_documents({"outreach_status": 10})
+        return {
+            "success":            True,
+            "total":              0,
+            "automation_count":   automation_count_all,
+            "to_be_filled_count": total_shifts_all - automation_count_all,
+            "outreach_active":    outreach_active_all,
+            "outreach_completed": outreach_completed_all,
+            "page":               payload.page,
+            "per_page":           payload.per_page,
+            "data":               [],
+        }
 
     # Latest outreach per shift (keep most recent)
     shift_outreach_map: dict = {}
