@@ -631,12 +631,24 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         s["ghost_booking"]          = 0
         results.append(s)
 
+    # Aggregate outreach counts (across all shifts, not just filtered)
+    automation_shift_ids = await db["outreach"].distinct("shift_id", {"outreach_status": {"$gt": 0}})
+    automation_count     = len(set(str(s) for s in automation_shift_ids))
+    total_shifts         = await db["shifts"].count_documents({})
+    outreach_active      = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
+    outreach_completed   = await db["outreach"].count_documents({"outreach_status": 10})
+    to_be_filled_count   = total_shifts - automation_count
+
     return {
-        "success":  True,
-        "total":    total,
-        "page":     payload.page,
-        "per_page": payload.per_page,
-        "data":     results,
+        "success":            True,
+        "total":              total,
+        "automation_count":   automation_count,
+        "to_be_filled_count": to_be_filled_count,
+        "outreach_active":    outreach_active,
+        "outreach_completed": outreach_completed,
+        "page":               payload.page,
+        "per_page":           payload.per_page,
+        "data":               results,
     }
 
 class ShiftDetailRequest(BaseModel):
