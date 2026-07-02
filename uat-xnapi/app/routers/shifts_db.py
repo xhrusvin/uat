@@ -1030,7 +1030,26 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 avail_user_map[str(u["_id"])] = u
 
         # Get shift client_id for prior shifts count
-        shift_client_id = s.get("client_id")
+        shift_client_id   = s.get("client_id")
+        shift_user_type   = s.get("user_type") or s.get("shift_timing") or ""
+        shift_date_raw    = doc.get("date")
+        shift_date_str    = shift_date_raw.strftime("%d/%m/%Y") if shift_date_raw and hasattr(shift_date_raw, "strftime") else str(s.get("date",""))
+        shift_start       = s.get("start_time", "")
+        shift_end         = s.get("end_time", "")
+        shift_label       = f"{shift_user_type} • {shift_date_str} • {shift_start} – {shift_end}"
+
+        # Client name for "Placed at"
+        placed_at = s.get("client_name") or "—"
+
+        # Client coords for distance
+        from app.routers.staff import _haversine_km as _hav, _user_coords as _uc
+        client_lat = None
+        client_lng = None
+        if shift_client_id:
+            cl_doc = await db["clients"].find_one({"xn_client_id": shift_client_id}, {"latitude": 1, "longitude": 1})
+            if cl_doc:
+                client_lat = cl_doc.get("latitude")
+                client_lng = cl_doc.get("longitude")
 
         for su in available_su:
             uid_str = str(su.get("user_id", ""))
@@ -1077,10 +1096,15 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 for t in raw_tags
             ]
 
-            # Visa hours
-            visa_used  = u.get("visa_hours_used")
-            visa_total = u.get("visa_hours_total")
-            visa_hours_remaining = f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
+            # Visa hours — static 8/24
+            visa_hours_remaining = "8/24"
+
+            # Distance km
+            distance_km = None
+            if client_lat is not None and client_lng is not None:
+                ucoords = _uc(u)
+                if ucoords:
+                    distance_km = _hav(float(client_lat), float(client_lng), ucoords[0], ucoords[1])
 
             # Response text from conversation
             response_text = None
@@ -1119,11 +1143,15 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "availability_text":   AVAILABILITY_TEXT.get(avail_val, "Unknown"),
                 "shift_id":            str(su.get("shift_id", "")) if su.get("shift_id") else None,
                 "outreach_id":         str(raw_outreach_oid) if raw_outreach_oid else None,
-                # Confirm staff modal fields
+                "distance_km":         distance_km,
+                # Confirm staff modal fields (Image 2)
                 "confirm": {
-                    "staff_label":     f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip()} · ★ {u.get('rating') or '—'} · {prior_shifts_here} prior shifts here",
+                    "staff_label":       f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip()} · ★ {u.get('rating') or '—'} · {prior_shifts_here} prior shifts here",
                     "prior_shifts_here": prior_shifts_here,
-                    "rating":          u.get("rating"),
+                    "rating":            u.get("rating"),
+                    "shift":             shift_label,
+                    "placed_at":         placed_at,
+                    "confirmed_by":      "System",
                 },
             })
 
