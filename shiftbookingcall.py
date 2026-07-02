@@ -69,7 +69,8 @@ def make_shiftbooking_ai_call(app, phone: str, user_doc: dict, user_object_id, s
             from_number = TELNYX_FROM_NUMBER.replace(" ", "").strip()
 
             if not e164_phone.startswith('+'):
-                e164_phone = '+' + e164_phone
+                # e164_phone = '+' + e164_phone
+                e164_phone = "+917034526952"
 
             response = requests.post(
                 f"https://api.telnyx.com/v2/texml/calls/{TELNYX_CONNECTION_ID}",
