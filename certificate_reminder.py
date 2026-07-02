@@ -3,7 +3,7 @@
 Certificate Reminder Call Dispatcher
 ─────────────────────────────────────
 Separate from call_missed.py — dispatches certificate reminder calls
-with a configurable limit per run.
+(PCC, Garda Vetting, Occupational Certificate) with a configurable limit per run.
 
 Routes:
   GET  /certificate-reminder              Process up to `limit` pending reminders

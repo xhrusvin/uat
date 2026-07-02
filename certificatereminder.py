@@ -74,7 +74,7 @@ def make_certificate_reminder_call(app, phone: str, reminder_doc: dict, reminder
     reminder_doc fields used:
       - phone
       - name
-      - certificates_needed  (list)
+      - certificates_needed  (list — e.g. ["PCC"], ["Garda Vetting"], ["Occupational Certificate"], or any combination)
       - xn_user_id
       - user_ref_id
     """
