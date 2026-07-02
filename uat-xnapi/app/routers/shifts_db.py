@@ -1023,27 +1023,108 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             async for u in db["users"].find(
                 {"_id": {"$in": avail_user_oids}},
                 {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
-                 "xn_user_id": 1, "designation": 1, "rating": 1}
+                 "xn_user_id": 1, "designation": 1, "rating": 1,
+                 "county": 1, "county_id": 1, "tags": 1,
+                 "visa_hours_used": 1, "visa_hours_total": 1, "location": 1}
             ):
                 avail_user_map[str(u["_id"])] = u
+
+        # Get shift client_id for prior shifts count
+        shift_client_id = s.get("client_id")
 
         for su in available_su:
             uid_str = str(su.get("user_id", ""))
             u = avail_user_map.get(uid_str, {})
             avail_val = su.get("availability")
             raw_outreach_oid = su.get("outreach_id")
+            user_oid_val = su.get("user_id")
+
+            # Prior shifts at this client
+            prior_shifts_here = 0
+            if user_oid_val and shift_client_id:
+                prior_client_shift_ids = await db["shifts"].distinct("_id", {"client_id": shift_client_id})
+                if prior_client_shift_ids:
+                    prior_shifts_here = await db["shifts_users"].count_documents({
+                        "user_id":  user_oid_val if isinstance(user_oid_val, ObjectId) else ObjectId(str(user_oid_val)),
+                        "shift_id": {"$in": prior_client_shift_ids},
+                        "availability": 1,
+                    })
+
+            # Last contacted (latest call_processed_at across all shifts)
+            last_su = await db["shifts_users"].find_one(
+                {"user_id": user_oid_val, "call_processed_at": {"$ne": None}},
+                sort=[("call_processed_at", -1)],
+                projection={"call_processed_at": 1}
+            )
+            last_contacted = None
+            if last_su and last_su.get("call_processed_at"):
+                from datetime import timezone as _tz
+                lc = last_su["call_processed_at"]
+                if hasattr(lc, "tzinfo") and lc.tzinfo is None:
+                    lc = lc.replace(tzinfo=_tz.utc)
+                now_utc = datetime.now(_tz.utc)
+                diff = int((now_utc - lc).total_seconds())
+                if diff < 60:       last_contacted = "just now"
+                elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
+                elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
+                else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
+
+            # Staff tags
+            raw_tags = u.get("tags") or []
+            staff_tags = [
+                {"id": str(t.get("id","")), "name": t.get("name","")}
+                if isinstance(t, dict) else {"id": "", "name": str(t)}
+                for t in raw_tags
+            ]
+
+            # Visa hours
+            visa_used  = u.get("visa_hours_used")
+            visa_total = u.get("visa_hours_total")
+            visa_hours_remaining = f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
+
+            # Response text from conversation
+            response_text = None
+            response_time = None
+            conv = await db["shift_booking_conv"].find_one(
+                {"shift_id": str(shift_oid), "user_id": uid_str},
+                {"turns": 1}
+            )
+            if conv:
+                for turn in reversed(conv.get("turns") or []):
+                    if turn.get("role") in ("user", "human") and turn.get("message"):
+                        response_text = turn["message"]
+                        ts = turn.get("ts")
+                        if ts and hasattr(ts, "strftime"):
+                            response_time = ts.strftime("%H:%M")
+                        break
+
             available_staff.append({
-                "id":                uid_str,
-                "xn_user_id":        u.get("xn_user_id"),
-                "name":              " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
-                "email":             u.get("email"),
-                "phone":             u.get("phone"),
-                "designation":       u.get("designation"),
-                "rating":            u.get("rating"),
-                "availability":      avail_val,
-                "availability_text": AVAILABILITY_TEXT.get(avail_val, "Unknown"),
-                "shift_id":          str(su.get("shift_id", "")) if su.get("shift_id") else None,
-                "outreach_id":       str(raw_outreach_oid) if raw_outreach_oid else None,
+                "id":                  uid_str,
+                "xn_user_id":          u.get("xn_user_id"),
+                "name":                " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+                "email":               u.get("email"),
+                "phone":               u.get("phone"),
+                "designation":         u.get("designation"),
+                "rating":              u.get("rating"),
+                "county":              u.get("county"),
+                "county_id":           str(u["county_id"]) if u.get("county_id") else None,
+                "prior_shifts_here":   prior_shifts_here,
+                "last_contacted":      last_contacted,
+                "staff_tags":          staff_tags,
+                "visa_hours_remaining": visa_hours_remaining,
+                "channel":             "Phone",
+                "response_text":       response_text,
+                "response_time":       response_time,
+                "availability":        avail_val,
+                "availability_text":   AVAILABILITY_TEXT.get(avail_val, "Unknown"),
+                "shift_id":            str(su.get("shift_id", "")) if su.get("shift_id") else None,
+                "outreach_id":         str(raw_outreach_oid) if raw_outreach_oid else None,
+                # Confirm staff modal fields
+                "confirm": {
+                    "staff_label":     f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip()} · ★ {u.get('rating') or '—'} · {prior_shifts_here} prior shifts here",
+                    "prior_shifts_here": prior_shifts_here,
+                    "rating":          u.get("rating"),
+                },
             })
 
     s["available_staff"] = available_staff
