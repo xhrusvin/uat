@@ -854,6 +854,14 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         ):
             pool_user_map[str(u["_id"])] = u
 
+    AVAILABILITY_TEXT = {
+        1: "Available",
+        0: "Not Available",
+        3: "Voicemail",
+        4: "Call Not Attended",
+        6: "Call Not Triggered",
+    }
+
     pool_users = []
     for p in pool_docs:
         uid_str = str(p.get("user_id", ""))
@@ -987,7 +995,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     # Fetch available staff: shifts_users where shift_id AND availability == 1
     available_su = await db["shifts_users"].find(
         {"shift_id": shift_oid, "availability": 1},
-        {"user_id": 1, "availability": 1, "call_processed_at": 1}
+        {"user_id": 1, "availability": 1, "call_processed_at": 1, "shift_id": 1, "outreach_id": 1}
     ).to_list(length=500)
 
     available_staff = []
@@ -1008,15 +1016,20 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         for su in available_su:
             uid_str = str(su.get("user_id", ""))
             u = avail_user_map.get(uid_str, {})
+            avail_val = su.get("availability")
+            raw_outreach_oid = su.get("outreach_id")
             available_staff.append({
-                "id":          uid_str,
-                "xn_user_id":  u.get("xn_user_id"),
-                "name":        " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
-                "email":       u.get("email"),
-                "phone":       u.get("phone"),
-                "designation": u.get("designation"),
-                "rating":      u.get("rating"),
-                "availability": su.get("availability"),
+                "id":                uid_str,
+                "xn_user_id":        u.get("xn_user_id"),
+                "name":              " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+                "email":             u.get("email"),
+                "phone":             u.get("phone"),
+                "designation":       u.get("designation"),
+                "rating":            u.get("rating"),
+                "availability":      avail_val,
+                "availability_text": AVAILABILITY_TEXT.get(avail_val, "Unknown"),
+                "shift_id":          str(su.get("shift_id", "")) if su.get("shift_id") else None,
+                "outreach_id":       str(raw_outreach_oid) if raw_outreach_oid else None,
             })
 
     s["available_staff"] = available_staff
