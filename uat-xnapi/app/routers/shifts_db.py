@@ -387,12 +387,13 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["ghost_booking"]          = 0
         results.append(s)
 
-    # Aggregate outreach counts
+    # Aggregate outreach counts (global — not filtered)
+    total_shifts        = await db["shifts"].count_documents({})
     automation_count    = await db["outreach"].distinct("shift_id", {"outreach_status": {"$gt": 0}})
     outreach_active     = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
     outreach_completed  = await db["outreach"].count_documents({"outreach_status": 10})
     automation_total    = len(set(str(s) for s in automation_count))
-    to_be_filled_count  = total - automation_total
+    to_be_filled_count  = total_shifts - automation_total
 
     return {
         "success":            True,
