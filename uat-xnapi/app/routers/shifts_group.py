@@ -285,3 +285,175 @@ async def delete_shift_group(request: Request, payload: ShiftGroupDeleteRequest)
         raise HTTPException(status_code=404, detail="Shift group not found")
 
     return {"success": True, "message": "Shift group deleted", "id": payload.group_id}
+
+
+# ── shifts_group_pool ─────────────────────────────────────────────────────────
+
+class GroupPoolAddRequest(BaseModel):
+    group_id:  str
+    user_ids:  list   # list of users._id strings
+
+
+class GroupPoolRemoveRequest(BaseModel):
+    group_id:  str
+    user_ids:  list   # list of users._id strings
+
+
+@router.post(
+    "/pool/add",
+    summary="Add staff to a shift group pool",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest):
+    """
+    Body: { "group_id": "...", "user_ids": ["<user_id>", ...] }
+    Adds users to shifts_group_pool for this group (skips duplicates).
+    """
+    db = _get_db()
+    if not ObjectId.is_valid(payload.group_id):
+        raise HTTPException(status_code=422, detail="Invalid group_id")
+
+    group = await db["shifts_group"].find_one({"_id": ObjectId(payload.group_id)}, {"_id": 1})
+    if not group:
+        raise HTTPException(status_code=404, detail="Shift group not found")
+
+    # Validate user ObjectIds
+    user_oids = []
+    invalid = []
+    for uid in payload.user_ids:
+        if ObjectId.is_valid(str(uid)):
+            user_oids.append(ObjectId(str(uid)))
+        else:
+            invalid.append(uid)
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"Invalid user_ids: {invalid}")
+    if not user_oids:
+        raise HTTPException(status_code=400, detail="No valid user_ids provided")
+
+    now = datetime.now(timezone.utc)
+    group_oid = ObjectId(payload.group_id)
+
+    # Get already added user_ids
+    existing = {
+        str(p["user_id"])
+        async for p in db["shifts_group_pool"].find(
+            {"group_id": group_oid, "user_id": {"$in": user_oids}},
+            {"user_id": 1}
+        )
+    }
+
+    inserted = 0
+    skipped  = 0
+    for oid in user_oids:
+        if str(oid) in existing:
+            skipped += 1
+            continue
+        await db["shifts_group_pool"].insert_one({
+            "group_id":  group_oid,
+            "user_id":   oid,
+            "added_at":  now,
+            "added_by":  "manual",
+        })
+        inserted += 1
+
+    return {
+        "success":  True,
+        "message":  f"{inserted} staff added to group pool",
+        "group_id": payload.group_id,
+        "inserted": inserted,
+        "skipped":  skipped,
+    }
+
+
+@router.post(
+    "/pool/remove",
+    summary="Remove staff from a shift group pool",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def remove_staff_from_group_pool(request: Request, payload: GroupPoolRemoveRequest):
+    """
+    Body: { "group_id": "...", "user_ids": ["<user_id>", ...] }
+    Removes users from shifts_group_pool for this group.
+    """
+    db = _get_db()
+    if not ObjectId.is_valid(payload.group_id):
+        raise HTTPException(status_code=422, detail="Invalid group_id")
+
+    group_oid = ObjectId(payload.group_id)
+    user_oids = [ObjectId(str(uid)) for uid in payload.user_ids if ObjectId.is_valid(str(uid))]
+    if not user_oids:
+        raise HTTPException(status_code=400, detail="No valid user_ids provided")
+
+    result = await db["shifts_group_pool"].delete_many({
+        "group_id": group_oid,
+        "user_id":  {"$in": user_oids},
+    })
+
+    return {
+        "success":  True,
+        "message":  f"{result.deleted_count} staff removed from group pool",
+        "group_id": payload.group_id,
+        "removed":  result.deleted_count,
+    }
+
+
+@router.post(
+    "/pool/list",
+    summary="List staff in a shift group pool",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
+    """
+    Body: { "group_id": "..." }
+    Returns all users in the shifts_group_pool for this group with user details.
+    """
+    db = _get_db()
+    if not ObjectId.is_valid(payload.group_id):
+        raise HTTPException(status_code=422, detail="Invalid group_id")
+
+    group_oid = ObjectId(payload.group_id)
+    group = await db["shifts_group"].find_one({"_id": group_oid}, {"_id": 1, "name": 1})
+    if not group:
+        raise HTTPException(status_code=404, detail="Shift group not found")
+
+    pool_docs = await db["shifts_group_pool"].find({"group_id": group_oid}).to_list(5000)
+
+    # Batch user lookup
+    user_oids = [p["user_id"] for p in pool_docs if p.get("user_id") and ObjectId.is_valid(str(p.get("user_id", "")))]
+    user_map: dict = {}
+    if user_oids:
+        async for u in db["users"].find(
+            {"_id": {"$in": user_oids}},
+            {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+             "xn_user_id": 1, "designation": 1, "rating": 1, "status": 1}
+        ):
+            user_map[str(u["_id"])] = u
+
+    staff = []
+    for p in pool_docs:
+        uid_str = str(p.get("user_id", ""))
+        u = user_map.get(uid_str, {})
+        staff.append({
+            "id":          str(p["_id"]),
+            "user_id":     uid_str,
+            "xn_user_id":  u.get("xn_user_id"),
+            "name":        " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+            "email":       u.get("email"),
+            "phone":       u.get("phone"),
+            "designation": u.get("designation"),
+            "rating":      u.get("rating"),
+            "status":      u.get("status"),
+            "added_at":    p["added_at"].isoformat() if p.get("added_at") and hasattr(p["added_at"], "isoformat") else None,
+            "added_by":    p.get("added_by"),
+        })
+
+    return {
+        "success":    True,
+        "group_id":   payload.group_id,
+        "group_name": group.get("name"),
+        "total":      len(staff),
+        "data":       staff,
+    }
