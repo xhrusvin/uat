@@ -259,14 +259,25 @@ async def remove_user_from_shift(request: Request, payload: RemoveUserFromShiftR
     if not existing:
         raise HTTPException(status_code=404, detail=f"shifts_pool record {payload.id} not found")
 
+    user_oid  = existing.get("user_id")
+    shift_oid = existing.get("shift_id")
+
+    # Remove from shifts_pool
     await db["shifts_pool"].delete_one({"_id": oid})
 
+    # Also remove from shifts_users where same user_id and shift_id
+    su_result = await db["shifts_users"].delete_many({
+        "user_id":  user_oid,
+        "shift_id": shift_oid,
+    })
+
     return {
-        "success":  True,
-        "message":  "User removed from pool",
-        "id":       payload.id,
-        "shift_id": str(existing.get("shift_id", "")),
-        "user_id":  str(existing.get("user_id", "")),
+        "success":          True,
+        "message":          "User removed from pool and shifts_users",
+        "id":               payload.id,
+        "shift_id":         str(shift_oid) if shift_oid else None,
+        "user_id":          str(user_oid) if user_oid else None,
+        "shifts_users_removed": su_result.deleted_count,
     }
 
 

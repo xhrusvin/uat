@@ -422,16 +422,23 @@ async def remove_staff_from_group_pool(request: Request, payload: GroupPoolRemov
     if not user_oids:
         raise HTTPException(status_code=400, detail="No valid user_ids provided")
 
-    result = await db["shifts_group_pool"].delete_many({
+    pool_result = await db["shifts_group_pool"].delete_many({
+        "group_id": group_oid,
+        "user_id":  {"$in": user_oids},
+    })
+
+    # Also remove from shifts_group_users for same group + users
+    su_result = await db["shifts_group_users"].delete_many({
         "group_id": group_oid,
         "user_id":  {"$in": user_oids},
     })
 
     return {
-        "success":  True,
-        "message":  f"{result.deleted_count} staff removed from group pool",
-        "group_id": payload.group_id,
-        "removed":  result.deleted_count,
+        "success":                  True,
+        "message":                  f"{pool_result.deleted_count} staff removed from group pool and users",
+        "group_id":                 payload.group_id,
+        "pool_removed":             pool_result.deleted_count,
+        "shifts_group_users_removed": su_result.deleted_count,
     }
 
 
