@@ -227,3 +227,127 @@ async def list_shifts(request: Request, payload: ShiftListRequest):
         logger.error(f"shifts/list unexpected error: {e}", exc_info=True)
         return {"success": False, "status_code": 500, "upstream_url": url,
                 "message": f"Internal error: {e}", "data": None, "sync": None}
+
+
+# ── POST /shifts/sync-detail ──────────────────────────────────────────────────
+
+class ShiftSyncDetailRequest(BaseModel):
+    id: str   # xn shift id e.g. "69c2679dd3565ae372023eb6"
+
+
+@router.post(
+    "/sync-detail",
+    summary="Fetch single shift from XpressHealth API and upsert to DB",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
+    """
+    Body: { "id": "<xn_shift_id>" }
+    Calls SHIFT_URL/ai/shifts/detail, maps response and upserts to shifts collection
+    matching on shifts.shift_id == response.data.id
+    """
+    url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/detail"
+    headers = {
+        "Api-Key": settings.SHIFT_INTERNAL_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(url, json={"id": payload.id}, headers=headers)
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Upstream API error: {resp.text[:300]}"
+        )
+
+    body = resp.json()
+    if not body.get("success"):
+        raise HTTPException(status_code=502, detail=body.get("message", "Upstream error"))
+
+    data = body.get("data", {})
+    if not data:
+        raise HTTPException(status_code=404, detail="No shift data returned")
+
+    now = datetime.now(timezone.utc)
+
+    # Parse date
+    date_obj = _parse_date(data.get("date"))
+
+    # Parse times
+    start_time = data.get("scheduled_start_time", "")[:5] if data.get("scheduled_start_time") else ""
+    end_time   = data.get("scheduled_end_time", "")[:5]   if data.get("scheduled_end_time")   else ""
+
+    client_details = data.get("client_details") or {}
+    staff_details  = data.get("staff") or {}
+
+    doc = {
+        "shift_id":           data.get("id", ""),
+        "shift_code":         data.get("shift_code", ""),
+        "shift_xn_id":        data.get("shift_code", ""),
+        "name":               data.get("shift_code", ""),
+        "date":               date_obj,
+        "start_time":         start_time,
+        "end_time":           end_time,
+        "shift_timing":       data.get("shift", ""),
+        "user_type":          data.get("user_type"),
+        "user_type_id":       data.get("user_type_id"),
+        "is_premium":         (data.get("type") or "").lower() == "premium",
+        "status":             _map_status(data.get("status_name")),
+        "upstream_status":    data.get("status_name"),
+        "upstream_status_id": data.get("status"),
+        "round":              data.get("round"),
+        "pay_rate":           data.get("pay_rate"),
+        "client_id":          client_details.get("id", ""),
+        "client_name":        client_details.get("name"),
+        "client_county":      client_details.get("county"),
+        "unit":               client_details.get("unit"),
+        "assigned_staff":     staff_details.get("name"),
+        "staff_id":           staff_details.get("id"),
+        "slots": [{
+            "date":        date_obj,
+            "start_time":  start_time,
+            "end_time":    end_time,
+            "shift_xn_id": data.get("shift_code", ""),
+            "shift_type":  data.get("shift", ""),
+        }],
+        "updated_at": now,
+    }
+
+    collection = _get_collection()
+    # Match on shift_id (xn id string)
+    existing = await collection.find_one({"shift_id": data["id"]})
+    if existing:
+        await collection.update_one({"shift_id": data["id"]}, {"$set": doc})
+        action = "updated"
+    else:
+        # Also try matching by shift_code
+        existing_code = await collection.find_one({"shift_xn_id": data.get("shift_code")})
+        if existing_code:
+            await collection.update_one({"shift_xn_id": data["shift_code"]}, {"$set": doc})
+            action = "updated"
+        else:
+            doc["created_at"] = now
+            await collection.insert_one(doc)
+            action = "inserted"
+
+    return {
+        "success": True,
+        "action":  action,
+        "shift_id": data.get("id"),
+        "shift_code": data.get("shift_code"),
+        "data": {
+            "shift_id":    data.get("id"),
+            "shift_code":  data.get("shift_code"),
+            "date":        data.get("date"),
+            "start_time":  start_time,
+            "end_time":    end_time,
+            "user_type":   data.get("user_type"),
+            "status":      data.get("status_name"),
+            "client":      client_details.get("name"),
+            "staff":       staff_details.get("name"),
+            "is_premium":  (data.get("type") or "").lower() == "premium",
+        },
+    }

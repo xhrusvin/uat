@@ -30,7 +30,7 @@ def generate_twiml(user_doc: dict):
     """Generate TwiML to connect call to WebSocket stream"""
     from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
     resp = VoiceResponse()
-    connect = Connect()
+    connect = Connect()    
     connect.stream(url="wss://app.expresshealth.ie/wss")
     resp.append(connect)
     return str(resp)

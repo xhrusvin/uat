@@ -88,6 +88,7 @@ export const commonApi = {
 }
 
 export const shiftsApi = {
+  syncDetail: (data) => usersClient.post('/shifts/sync-detail', data),
   list: (payload) => usersClient.post('/shifts/list', payload),
 }
 
