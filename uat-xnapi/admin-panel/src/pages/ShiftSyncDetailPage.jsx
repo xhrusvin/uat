@@ -14,7 +14,7 @@ export default function ShiftSyncDetailPage() {
     setResult(null)
     setError(null)
     try {
-      const { data } = await shiftsApi.syncDetail({ id: shiftId.trim() })
+      const { data } = await shiftsApi.syncDetail({ shift_id: shiftId.trim() })
       setResult(data)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to sync shift')
