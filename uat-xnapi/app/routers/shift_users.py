@@ -48,7 +48,8 @@ class AddUserToShiftRequest(BaseModel):
 
 
 class RemoveUserFromShiftRequest(BaseModel):
-    id: str   # shift_users._id
+    id:       str   # user_id (users._id)
+    shift_id: str   # shifts._id
 
 
 class AddUsersToShiftRequest(BaseModel):
