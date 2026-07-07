@@ -233,7 +233,7 @@ async def list_shifts(request: Request, payload: ShiftListRequest):
 # ── POST /shifts/sync-detail ──────────────────────────────────────────────────
 
 class ShiftSyncDetailRequest(BaseModel):
-    id: str   # xn shift id e.g. "69c2679dd3565ae372023eb6"
+    shift_id: str   # xn shift id e.g. "69c2679dd3565ae372023eb6"
 
 
 @router.post(
@@ -256,7 +256,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(url, json={"id": payload.id}, headers=headers)
+        resp = await client.post(url, json={"shift_id": payload.shift_id}, headers=headers)
 
     if resp.status_code != 200:
         raise HTTPException(
