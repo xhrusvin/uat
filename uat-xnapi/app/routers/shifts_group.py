@@ -181,6 +181,149 @@ async def get_shift_group(request: Request, payload: ShiftGroupDetailRequest):
 
     s["pool_users"]  = pool_users
     s["pool_count"]  = len(pool_users)
+
+    # Available staff — full structure matching /shifts-db/detail
+    avail_su = await db["shifts_group_users"].find(
+        {"group_id": group_oid, "availability": 1},
+        {"user_id": 1, "availability": 1, "call_processed_at": 1,
+         "outreach_id": 1, "conversation_id": 1, "shift_id": 1}
+    ).to_list(length=500)
+
+    avail_user_oids = [
+        ObjectId(str(su["user_id"])) for su in avail_su
+        if su.get("user_id") and ObjectId.is_valid(str(su.get("user_id", "")))
+    ]
+    avail_user_map: dict = {}
+    if avail_user_oids:
+        async for u in db["users"].find(
+            {"_id": {"$in": avail_user_oids}},
+            {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+             "xn_user_id": 1, "designation": 1, "rating": 1,
+             "county": 1, "county_id": 1, "tags": 1, "location": 1,
+             "visa_hours_used": 1, "visa_hours_total": 1}
+        ):
+            avail_user_map[str(u["_id"])] = u
+
+    AVAIL_TEXT = {1: "Available", 0: "Not Available", 3: "Voicemail", 4: "Call Not Attended", 6: "Call Not Triggered"}
+
+    from app.routers.staff import _haversine_km as _hav_sg, _user_coords as _uc_sg
+
+    available_staff = []
+    for su in avail_su:
+        uid_str   = str(su.get("user_id", ""))
+        u         = avail_user_map.get(uid_str, {})
+        avail_val = su.get("availability")
+        raw_oid   = su.get("outreach_id")
+        user_oid_val = su.get("user_id")
+
+        # Staff tags
+        raw_tags   = u.get("tags") or []
+        staff_tags = [
+            {"id": str(t.get("id","")), "name": t.get("name","")} if isinstance(t, dict)
+            else {"id": "", "name": str(t)} for t in raw_tags
+        ]
+
+        # Last contacted
+        last_contacted = None
+        lc_su = await db["shifts_group_users"].find_one(
+            {"user_id": user_oid_val, "call_processed_at": {"$ne": None}},
+            sort=[("call_processed_at", -1)], projection={"call_processed_at": 1}
+        )
+        if lc_su and lc_su.get("call_processed_at"):
+            from datetime import timezone as _tz_sg
+            lc = lc_su["call_processed_at"]
+            if hasattr(lc, "tzinfo") and lc.tzinfo is None:
+                lc = lc.replace(tzinfo=_tz_sg.utc)
+            diff = int((datetime.now(_tz_sg.utc) - lc).total_seconds())
+            if diff < 60:       last_contacted = "just now"
+            elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
+            elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
+            else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
+
+        # Distance (no single client coord for group — skip)
+        distance_km = None
+
+        # Response + call_details
+        response_text = response_time_sg = None
+        call_details  = None
+        conv_sg = await db["shift_booking_conv"].find_one(
+            {"user_id": uid_str},
+            {"turns": 1, "started_at": 1, "ended_at": 1,
+             "elevenlabs_conversation_id": 1, "round_number": 1,
+             "phone": 1, "duration_seconds": 1, "confidence": 1}
+        )
+        if conv_sg:
+            for turn in reversed(conv_sg.get("turns") or []):
+                if turn.get("role") in ("user", "human") and turn.get("message"):
+                    response_text = turn["message"]
+                    ts = turn.get("ts")
+                    if ts and hasattr(ts, "strftime"):
+                        response_time_sg = ts.strftime("%H:%M")
+                    break
+            started_sg = conv_sg.get("started_at")
+            ended_sg   = conv_sg.get("ended_at")
+            dur_sg     = conv_sg.get("duration_seconds")
+            if not dur_sg and started_sg and ended_sg:
+                dur_sg = int((ended_sg - started_sg).total_seconds())
+            pt_sg      = started_sg.strftime("%H:%M:%S") if started_sg and hasattr(started_sg, "strftime") else None
+            rn_sg      = conv_sg.get("round_number", 1)
+            ph_sg      = conv_sg.get("phone") or u.get("phone")
+            ai_sg      = None
+            conf_sg    = conv_sg.get("confidence")
+            for turn in reversed(conv_sg.get("turns") or []):
+                if turn.get("role") in ("user", "human") and turn.get("message"):
+                    t_ts = turn.get("ts")
+                    t_t  = t_ts.strftime("%H:%M") if t_ts and hasattr(t_ts, "strftime") else None
+                    cp   = f"{int(conf_sg * 100)}% confidence" if conf_sg else None
+                    parts = [f'"{turn["message"]}"']
+                    if t_t: parts.append(f"at {t_t}")
+                    if cp:  parts.append(f"· {cp}")
+                    ai_sg = " ".join(parts)
+                    break
+            call_details = {
+                "called_via": f"{ph_sg} (phone)" if ph_sg else "Phone",
+                "placed_at":  f"{pt_sg} · Round {rn_sg}" if pt_sg else None,
+                "duration":   f"{dur_sg} seconds" if dur_sg else None,
+                "ai_heard":   ai_sg,
+            }
+
+        available_staff.append({
+            "id":                  uid_str,
+            "xn_user_id":          u.get("xn_user_id"),
+            "name":                " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+            "email":               u.get("email"),
+            "phone":               u.get("phone"),
+            "designation":         u.get("designation"),
+            "rating":              u.get("rating"),
+            "county":              u.get("county"),
+            "county_id":           str(u["county_id"]) if u.get("county_id") else None,
+            "prior_shifts_here":   0,
+            "last_contacted":      last_contacted,
+            "staff_tags":          staff_tags,
+            "visa_hours_remaining": "8/24",
+            "channel":             "Phone",
+            "response_text":       response_text,
+            "response_time":       response_time_sg,
+            "availability":        avail_val,
+            "availability_text":   AVAIL_TEXT.get(avail_val, "Unknown"),
+            "group_id":            str(group_oid),
+            "outreach_id":         str(raw_oid) if raw_oid else None,
+            "conversation_id":     su.get("conversation_id"),
+            "distance_km":         distance_km,
+            "call_details":        call_details,
+            "confirm": {
+                "staff_label":   f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip()} · ★ {u.get('rating') or '—'} · 0 prior shifts here",
+                "prior_shifts_here": 0,
+                "rating":        u.get("rating"),
+                "shift":         None,
+                "placed_at":     None,
+                "confirmed_by":  "System",
+            },
+        })
+
+    s["available_staff"] = available_staff
+    s["available_count"] = len(available_staff)
+
     return {"success": True, "data": s}
 
 
