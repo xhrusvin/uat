@@ -11,7 +11,7 @@ class User(Document):
     Mirrors the existing xpress_health_uat.users collection schema.
     """
     # ── Identity ──────────────────────────────────────────────────────────────
-    email: EmailStr
+    email: Optional[str] = None
     password: Optional[object] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
