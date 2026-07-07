@@ -331,8 +331,8 @@ class GroupPoolAddRequest(BaseModel):
 
 
 class GroupPoolRemoveRequest(BaseModel):
-    group_id:  str
-    user_ids:  list   # list of users._id strings
+    group_id: str
+    user_id:  str   # single users._id
 
 
 @router.post(
@@ -410,34 +410,35 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
 @limiter.limit("30/minute")
 async def remove_staff_from_group_pool(request: Request, payload: GroupPoolRemoveRequest):
     """
-    Body: { "group_id": "...", "user_ids": ["<user_id>", ...] }
-    Removes users from shifts_group_pool for this group.
+    Body: { "group_id": "...", "user_id": "<user_id>" }
+    Removes user from shifts_group_pool and shifts_group_users.
     """
     db = _get_db()
     if not ObjectId.is_valid(payload.group_id):
         raise HTTPException(status_code=422, detail="Invalid group_id")
+    if not ObjectId.is_valid(str(payload.user_id)):
+        raise HTTPException(status_code=422, detail="Invalid user_id")
 
     group_oid = ObjectId(payload.group_id)
-    user_oids = [ObjectId(str(uid)) for uid in payload.user_ids if ObjectId.is_valid(str(uid))]
-    if not user_oids:
-        raise HTTPException(status_code=400, detail="No valid user_ids provided")
+    user_oid  = ObjectId(str(payload.user_id))
 
     pool_result = await db["shifts_group_pool"].delete_many({
         "group_id": group_oid,
-        "user_id":  {"$in": user_oids},
+        "user_id":  user_oid,
     })
 
-    # Also remove from shifts_group_users for same group + users
+    # Also remove from shifts_group_users
     su_result = await db["shifts_group_users"].delete_many({
         "group_id": group_oid,
-        "user_id":  {"$in": user_oids},
+        "user_id":  user_oid,
     })
 
     return {
-        "success":                  True,
-        "message":                  f"{pool_result.deleted_count} staff removed from group pool and users",
-        "group_id":                 payload.group_id,
-        "pool_removed":             pool_result.deleted_count,
+        "success":                    True,
+        "message":                    "Staff removed from group pool and users",
+        "group_id":                   payload.group_id,
+        "user_id":                    payload.user_id,
+        "pool_removed":               pool_result.deleted_count,
         "shifts_group_users_removed": su_result.deleted_count,
     }
 
