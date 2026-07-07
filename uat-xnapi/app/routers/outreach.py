@@ -1352,9 +1352,10 @@ async def remove_staff_from_outreach(request: Request, payload: RemoveStaffReque
 # ── POST /outreach/transcription ──────────────────────────────────────────────
 
 class TranscriptionRequest(BaseModel):
-    shift_id:    str
-    user_id:     str
-    outreach_id: Optional[str] = None
+    shift_id:        str
+    user_id:         str
+    outreach_id:     Optional[str] = None
+    conversation_id: Optional[str] = None   # shifts_users.conversation_id — use directly if provided
 
 
 @router.post(
@@ -1373,6 +1374,10 @@ async def get_transcription(request: Request, payload: TranscriptionRequest):
     query: dict = {"shift_id": payload.shift_id, "user_id": payload.user_id}
     if payload.outreach_id:
         query["outreach_id"] = payload.outreach_id
+
+    # If conversation_id provided, look up directly by elevenlabs_conversation_id
+    if payload.conversation_id:
+        query = {"elevenlabs_conversation_id": payload.conversation_id}
 
     conv = await db["shift_booking_conv"].find_one(query)
     if not conv:
@@ -1427,6 +1432,10 @@ async def get_transcription_audio(request: Request, payload: TranscriptionReques
     audio_query: dict = {"shift_id": payload.shift_id, "user_id": payload.user_id}
     if payload.outreach_id:
         audio_query["outreach_id"] = payload.outreach_id
+
+    # If conversation_id provided use directly
+    if payload.conversation_id:
+        audio_query = {"elevenlabs_conversation_id": payload.conversation_id}
 
     conv = await db["shift_booking_conv"].find_one(
         audio_query,
