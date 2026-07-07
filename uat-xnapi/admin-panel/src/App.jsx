@@ -33,7 +33,8 @@ export default function App() {
           <Route path="dashboard"      element={<DashboardPage />} />
           <Route path="users"          element={<UsersPage />} />
           <Route path="shifts"         element={<ShiftsPage />} />
-          <Route path="xn-api/shifts"        element={<ShiftListPage />} />
+          <Route path="xn-api/shifts"            element={<ShiftListPage />} />
+          <Route path="xn-api/shift-details"     element={<ShiftSyncDetailPage />} />
           <Route path="xn-api/client-type-list"  element={<ClientTypeListPage />} />
           <Route path="master/client-type"        element={<ClientTypePage />} />
           <Route path="master/clients"             element={<ClientsPage />} />
