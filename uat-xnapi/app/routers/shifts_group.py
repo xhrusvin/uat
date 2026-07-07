@@ -117,7 +117,8 @@ async def get_shift_group(request: Request, payload: ShiftGroupDetailRequest):
     if not ObjectId.is_valid(payload.group_id):
         raise HTTPException(status_code=422, detail="Invalid group_id")
 
-    group = await db["shifts_group"].find_one({"_id": ObjectId(payload.group_id)})
+    group_oid = ObjectId(payload.group_id)
+    group = await db["shifts_group"].find_one({"_id": group_oid})
     if not group:
         raise HTTPException(status_code=404, detail="Shift group not found")
 
@@ -147,7 +148,7 @@ async def get_shift_group(request: Request, payload: ShiftGroupDetailRequest):
     s["shift_count"] = len(shifts)
 
     # Fetch pool users from shifts_group_pool
-    pool_docs = await db["shifts_group_pool"].find({"group_id": ObjectId(payload.group_id)}).to_list(5000)
+    pool_docs = await db["shifts_group_pool"].find({"group_id": group_oid}).to_list(5000)
     pool_user_oids = [
         p["user_id"] for p in pool_docs
         if p.get("user_id") and ObjectId.is_valid(str(p.get("user_id", "")))
