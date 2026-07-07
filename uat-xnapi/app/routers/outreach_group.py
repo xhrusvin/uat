@@ -486,3 +486,317 @@ async def complete_group_outreach(request: Request, payload: GroupOutreachAction
         "outreach_status": 10, "outreach_status_text": "Completed",
         "shifts_group_users_updated": result.modified_count,
     }
+
+
+# ── POST /outreach-group/staff_list ──────────────────────────────────────────
+
+class GroupOutreachIdRequest(BaseModel):
+    outreach_id: str
+
+
+@router.post("/staff_list", summary="Get group outreach with full shifts_group_users list",
+             dependencies=[Depends(verify_api_key)])
+@limiter.limit("60/minute")
+async def group_outreach_staff_list(request: Request, payload: GroupOutreachIdRequest):
+    db = _get_db()
+    if not ObjectId.is_valid(payload.outreach_id):
+        raise HTTPException(status_code=422, detail="Invalid outreach_id")
+
+    outreach_oid = ObjectId(payload.outreach_id)
+    outreach = await db["outreach_shift_group"].find_one({"_id": outreach_oid})
+    if not outreach:
+        raise HTTPException(status_code=404, detail="Group outreach not found")
+
+    seq_name = None
+    seq_oid  = outreach.get("sequence_id")
+    if seq_oid:
+        seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
+        if seq:
+            seq_name = seq.get("name")
+
+    group_oid   = outreach.get("group_id")
+    group_info  = None
+    if group_oid:
+        gr = await db["shifts_group"].find_one({"_id": group_oid}, {"name": 1, "shift_ids": 1})
+        if gr:
+            group_info = {"group_id": str(group_oid), "name": gr.get("name"), "shift_count": len(gr.get("shift_ids") or [])}
+
+    su_docs = await db["shifts_group_users"].find(
+        {"outreach_id": outreach_oid},
+        {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
+         "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1,
+         "group_id": 1, "outreach_id": 1, "conversation_id": 1}
+    ).to_list(length=2000)
+
+    user_oids = [ObjectId(str(su["user_id"])) for su in su_docs if su.get("user_id") and ObjectId.is_valid(str(su.get("user_id","")))]
+    user_map: dict = {}
+    if user_oids:
+        async for u in db["users"].find(
+            {"_id": {"$in": user_oids}},
+            {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+             "xn_user_id": 1, "designation": 1, "rating": 1,
+             "county": 1, "county_id": 1, "tags": 1, "location": 1}
+        ):
+            user_map[str(u["_id"])] = u
+
+    AVAIL_TEXT = {1: "Available", 0: "Not Available", 3: "Voicemail", 4: "Call Not Attended", 6: "Call Not Triggered"}
+
+    from app.routers.staff import _user_coords as _uc_g
+    from app.routers.outreach import _format_call_time as _fct_g
+
+    staff_list = []
+    for su in su_docs:
+        uid_str  = str(su.get("user_id", ""))
+        u        = user_map.get(uid_str, {})
+        avail    = su.get("availability")
+        raw_oid  = su.get("outreach_id")
+
+        # Staff tags
+        staff_tags = [
+            {"id": str(t.get("id","")), "name": t.get("name","")} if isinstance(t, dict)
+            else {"id": "", "name": str(t)} for t in (u.get("tags") or [])
+        ]
+
+        # Last contacted
+        last_contacted = None
+        lc_su = await db["shifts_group_users"].find_one(
+            {"user_id": su.get("user_id"), "call_processed_at": {"$ne": None}},
+            sort=[("call_processed_at", -1)], projection={"call_processed_at": 1}
+        )
+        if lc_su and lc_su.get("call_processed_at"):
+            lc_dt = lc_su["call_processed_at"]
+            if hasattr(lc_dt, "tzinfo") and lc_dt.tzinfo is None:
+                lc_dt = lc_dt.replace(tzinfo=timezone.utc)
+            diff = int((datetime.now(timezone.utc) - lc_dt).total_seconds())
+            if diff < 60:       last_contacted = "just now"
+            elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
+            elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
+            else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
+
+        # Response + call_details
+        response_text = response_time_g = None
+        call_details  = None
+        conv_g = await db["shift_booking_conv"].find_one(
+            {"user_id": uid_str},
+            {"turns": 1, "started_at": 1, "ended_at": 1,
+             "elevenlabs_conversation_id": 1, "round_number": 1,
+             "phone": 1, "duration_seconds": 1, "confidence": 1}
+        )
+        if conv_g:
+            for turn in reversed(conv_g.get("turns") or []):
+                if turn.get("role") in ("user", "human") and turn.get("message"):
+                    response_text = turn["message"]
+                    ts = turn.get("ts")
+                    if ts and hasattr(ts, "strftime"):
+                        response_time_g = ts.strftime("%H:%M")
+                    break
+            started_g = conv_g.get("started_at")
+            ended_g   = conv_g.get("ended_at")
+            dur_g     = conv_g.get("duration_seconds")
+            if not dur_g and started_g and ended_g:
+                dur_g = int((ended_g - started_g).total_seconds())
+            pt = started_g.strftime("%H:%M:%S") if started_g and hasattr(started_g, "strftime") else None
+            rn_g = conv_g.get("round_number", 1)
+            ph_g = conv_g.get("phone") or u.get("phone")
+            ai_h = None
+            conf_g = conv_g.get("confidence")
+            for turn in reversed(conv_g.get("turns") or []):
+                if turn.get("role") in ("user", "human") and turn.get("message"):
+                    t_ts = turn.get("ts")
+                    t_t  = t_ts.strftime("%H:%M") if t_ts and hasattr(t_ts, "strftime") else None
+                    cp   = f"{int(conf_g * 100)}% confidence" if conf_g else None
+                    parts = [f'"{turn["message"]}"']
+                    if t_t: parts.append(f"at {t_t}")
+                    if cp:  parts.append(f"· {cp}")
+                    ai_h = " ".join(parts)
+                    break
+            call_details = {
+                "called_via": f"{ph_g} (phone)" if ph_g else "Phone",
+                "placed_at":  f"{pt} · Round {rn_g}" if pt else None,
+                "duration":   f"{dur_g} seconds" if dur_g else None,
+                "ai_heard":   ai_h,
+            }
+
+        staff_list.append({
+            "id":                  str(su["_id"]),
+            "user_id":             uid_str,
+            "xn_user_id":          u.get("xn_user_id"),
+            "name":                " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+            "email":               u.get("email"),
+            "phone":               u.get("phone"),
+            "designation":         u.get("designation"),
+            "rating":              u.get("rating"),
+            "county":              u.get("county"),
+            "county_id":           str(u["county_id"]) if u.get("county_id") else None,
+            "last_contacted":      last_contacted,
+            "staff_tags":          staff_tags,
+            "visa_hours_remaining": "8/24",
+            "channel":             "Phone",
+            "response_text":       response_text,
+            "response_time":       response_time_g,
+            "availability":        avail,
+            "availability_text":   AVAIL_TEXT.get(avail, "Unknown"),
+            "call_enabled":        su.get("call_enabled"),
+            "call_processed":      su.get("call_processed"),
+            "call_processed_text": "Sent" if su.get("call_processed") == 1 else "Queued",
+            "start_time":          _fct_g(su.get("call_processed_at")) if su.get("call_processed_at") and hasattr(su.get("call_processed_at"), "date") else None,
+            "flag":                su.get("flag", 0),
+            "call_status":         su.get("call_status"),
+            "call_processed_at":   su["call_processed_at"].isoformat() if su.get("call_processed_at") and hasattr(su["call_processed_at"], "isoformat") else None,
+            "assigned_at":         su["assigned_at"].isoformat() if su.get("assigned_at") and hasattr(su["assigned_at"], "isoformat") else None,
+            "group_id":            str(su.get("group_id","")) if su.get("group_id") else None,
+            "outreach_id":         str(raw_oid) if raw_oid else None,
+            "conversation_id":     su.get("conversation_id"),
+            "call_details":        call_details,
+        })
+
+    total     = len(staff_list)
+    available = sum(1 for s in staff_list if s["availability"] == 1)
+    pending   = sum(1 for s in staff_list if s["call_enabled"] == 1 and s["call_processed"] == 0)
+    processed = sum(1 for s in staff_list if s["call_processed"] == 1)
+    o_status  = outreach.get("outreach_status", 0)
+
+    return {
+        "success": True,
+        "data": {
+            "id":                   str(outreach["_id"]),
+            "group_id":             str(group_oid) if group_oid else None,
+            "sequence_id":          str(seq_oid) if seq_oid else None,
+            "sequence_name":        seq_name,
+            "round_number":         outreach.get("round_number"),
+            "outreach_status":      o_status,
+            "outreach_status_text": STATUS_TEXT.get(o_status, "Not Started"),
+            "group":                group_info,
+            "counts": {"total": total, "available": available, "pending": pending, "processed": processed},
+            "shifts_group_users":   staff_list,
+        },
+    }
+
+
+# ── POST /outreach-group/flag ─────────────────────────────────────────────────
+
+class GroupFlagRequest(BaseModel):
+    outreach_id:        str
+    shifts_group_users_id: str
+    flag:               int = 1
+
+
+@router.post("/flag", summary="Flag or unflag a staff member in shifts_group_users",
+             dependencies=[Depends(verify_api_key)])
+@limiter.limit("60/minute")
+async def flag_group_staff(request: Request, payload: GroupFlagRequest):
+    db = _get_db()
+    if not ObjectId.is_valid(payload.outreach_id):
+        raise HTTPException(status_code=422, detail="Invalid outreach_id")
+    if not ObjectId.is_valid(payload.shifts_group_users_id):
+        raise HTTPException(status_code=422, detail="Invalid shifts_group_users_id")
+
+    su_oid = ObjectId(payload.shifts_group_users_id)
+    doc = await db["shifts_group_users"].find_one(
+        {"_id": su_oid, "outreach_id": ObjectId(payload.outreach_id)}, {"_id": 1}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Record not found for this outreach")
+
+    now = datetime.now(timezone.utc)
+    await db["shifts_group_users"].update_one(
+        {"_id": su_oid},
+        {"$set": {"flag": payload.flag, "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S+00:00")}}
+    )
+    return {
+        "success": True, "message": "Flagged" if payload.flag else "Unflagged",
+        "outreach_id": payload.outreach_id,
+        "shifts_group_users_id": payload.shifts_group_users_id,
+        "flag": payload.flag,
+    }
+
+
+# ── POST /outreach-group/transcription ───────────────────────────────────────
+
+class GroupTranscriptionRequest(BaseModel):
+    user_id:         str
+    outreach_id:     Optional[str] = None
+    conversation_id: Optional[str] = None
+
+
+@router.post("/transcription", summary="Get AI call transcription for a group staff member",
+             dependencies=[Depends(verify_api_key)])
+@limiter.limit("60/minute")
+async def group_transcription(request: Request, payload: GroupTranscriptionRequest):
+    db = _get_db()
+
+    if payload.conversation_id:
+        query = {"elevenlabs_conversation_id": payload.conversation_id}
+    else:
+        query = {"user_id": payload.user_id}
+        if payload.outreach_id:
+            query["outreach_id"] = payload.outreach_id
+
+    conv = await db["shift_booking_conv"].find_one(query)
+    if not conv:
+        raise HTTPException(status_code=404, detail="No conversation found")
+
+    def _fmt(dt):
+        return dt.isoformat() if dt and hasattr(dt, "isoformat") else None
+
+    turns = [
+        {"role": t.get("role"), "message": t.get("message") or t.get("text"), "ts": _fmt(t.get("ts"))}
+        for t in conv.get("turns", [])
+    ]
+
+    return {
+        "success": True,
+        "data": {
+            "id":                           str(conv["_id"]),
+            "user_id":                      payload.user_id,
+            "outreach_id":                  payload.outreach_id,
+            "elevenlabs_conversation_id":   conv.get("elevenlabs_conversation_id"),
+            "started_at":                   _fmt(conv.get("started_at")),
+            "ended_at":                     _fmt(conv.get("ended_at")),
+            "turns":                        turns,
+            "has_audio":                    bool(conv.get("elevenlabs_conversation_id")),
+        },
+    }
+
+
+# ── POST /outreach-group/transcription/audio ─────────────────────────────────
+
+@router.post("/transcription/audio", summary="Stream audio for a group staff call",
+             dependencies=[Depends(verify_api_key)])
+@limiter.limit("30/minute")
+async def group_transcription_audio(request: Request, payload: GroupTranscriptionRequest):
+    import os
+    from fastapi.responses import StreamingResponse
+
+    db = _get_db()
+
+    if payload.conversation_id:
+        query = {"elevenlabs_conversation_id": payload.conversation_id}
+    else:
+        query = {"user_id": payload.user_id}
+        if payload.outreach_id:
+            query["outreach_id"] = payload.outreach_id
+
+    conv = await db["shift_booking_conv"].find_one(query, {"elevenlabs_conversation_id": 1})
+    if not conv:
+        raise HTTPException(status_code=404, detail="No conversation found")
+
+    el_id   = conv.get("elevenlabs_conversation_id")
+    if not el_id:
+        raise HTTPException(status_code=404, detail="No audio available")
+
+    api_key = settings.ELEVENLABS_API_KEY or ""
+    url     = f"https://api.elevenlabs.io/v1/convai/conversations/{el_id}/audio"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, headers={"xi-api-key": api_key})
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code,
+            detail=f"ElevenLabs error: {resp.text[:200]} | key: {api_key[:8]}...")
+
+    return StreamingResponse(
+        iter([resp.content]),
+        media_type="audio/mpeg",
+        headers={"Content-Disposition": "inline; filename=call_audio.mp3"},
+    )
