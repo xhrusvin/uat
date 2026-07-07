@@ -1157,10 +1157,11 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
     su_docs = await db["shifts_users"].find(
         {"outreach_id": outreach_oid},
         {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
-         "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1}
+         "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1,
+         "shift_id": 1, "outreach_id": 1, "conversation_id": 1}
     ).to_list(length=2000)
 
-    # Batch user lookup
+    # Batch user lookup — include all fields needed for available_staff structure
     user_oids = [
         ObjectId(str(su["user_id"])) for su in su_docs
         if su.get("user_id") and ObjectId.is_valid(str(su.get("user_id", "")))
@@ -1170,42 +1171,182 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         async for u in db["users"].find(
             {"_id": {"$in": user_oids}},
             {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
-             "xn_user_id": 1, "designation": 1, "rating": 1}
+             "xn_user_id": 1, "designation": 1, "rating": 1,
+             "county": 1, "county_id": 1, "tags": 1, "location": 1,
+             "visa_hours_used": 1, "visa_hours_total": 1}
         ):
             user_map[str(u["_id"])] = u
 
     AVAILABILITY_TEXT = {
-        1: "Available",
-        0: "Not Available",
-        3: "Voicemail",
-        4: "Call Not Attended",
-        6: "Call Not Triggered",
+        1: "Available", 0: "Not Available", 3: "Voicemail",
+        4: "Call Not Attended", 6: "Call Not Triggered",
     }
+
+    # Get shift info for client coords + shift label
+    shift_oid_for_staff = outreach.get("shift_id")
+    shift_doc_for_staff = None
+    client_lat_s = client_lng_s = None
+    shift_label_s = placed_at_s = ""
+    if shift_oid_for_staff:
+        shift_doc_for_staff = await db["shifts"].find_one(
+            {"_id": shift_oid_for_staff},
+            {"name": 1, "shift_code": 1, "date": 1, "start_time": 1,
+             "end_time": 1, "user_type": 1, "shift_timing": 1, "client_id": 1}
+        )
+        if shift_doc_for_staff:
+            sd = shift_doc_for_staff
+            date_str = sd["date"].strftime("%d/%m/%Y") if sd.get("date") and hasattr(sd["date"], "strftime") else ""
+            shift_label_s = f"{sd.get('user_type') or sd.get('shift_timing') or ''} • {date_str} • {sd.get('start_time','')} – {sd.get('end_time','')}"
+            cid = sd.get("client_id")
+            if cid:
+                cl = await db["clients"].find_one({"xn_client_id": cid}, {"name": 1, "title": 1, "latitude": 1, "longitude": 1})
+                if cl:
+                    placed_at_s  = cl.get("name") or cl.get("title") or "—"
+                    client_lat_s = cl.get("latitude")
+                    client_lng_s = cl.get("longitude")
+
+    from app.routers.staff import _haversine_km as _hav_s, _user_coords as _uc_s
+
+    # Prior shifts lookup helper
+    shift_client_id_s = shift_doc_for_staff.get("client_id") if shift_doc_for_staff else None
+    prior_client_shift_ids_s = []
+    if shift_client_id_s:
+        prior_client_shift_ids_s = await db["shifts"].distinct("_id", {"client_id": shift_client_id_s})
 
     shifts_users_list = []
     for su in su_docs:
         uid_str = str(su.get("user_id", ""))
         u = user_map.get(uid_str, {})
+        avail_val    = su.get("availability")
+        raw_oid_su   = su.get("outreach_id")
+
+        # Prior shifts here
+        prior_here = 0
+        if prior_client_shift_ids_s and su.get("user_id"):
+            prior_here = await db["shifts_users"].count_documents({
+                "user_id":  su["user_id"],
+                "shift_id": {"$in": prior_client_shift_ids_s},
+                "availability": 1,
+            })
+
+        # Last contacted
+        last_contacted = None
+        last_su_lc = await db["shifts_users"].find_one(
+            {"user_id": su.get("user_id"), "call_processed_at": {"$ne": None}},
+            sort=[("call_processed_at", -1)], projection={"call_processed_at": 1}
+        )
+        if last_su_lc and last_su_lc.get("call_processed_at"):
+            from datetime import timezone as _tz2
+            lc = last_su_lc["call_processed_at"]
+            if hasattr(lc, "tzinfo") and lc.tzinfo is None:
+                lc = lc.replace(tzinfo=_tz2.utc)
+            diff = int((datetime.now(_tz2.utc) - lc).total_seconds())
+            if diff < 60:       last_contacted = "just now"
+            elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
+            elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
+            else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
+
+        # Staff tags
+        raw_tags = u.get("tags") or []
+        staff_tags = [
+            {"id": str(t.get("id","")), "name": t.get("name","")} if isinstance(t, dict)
+            else {"id": "", "name": str(t)} for t in raw_tags
+        ]
+
+        # Visa hours static
+        visa_hours_remaining = "8/24"
+
+        # Distance
+        distance_km = None
+        if client_lat_s is not None and client_lng_s is not None:
+            ucoords = _uc_s(u)
+            if ucoords:
+                distance_km = _hav_s(float(client_lat_s), float(client_lng_s), ucoords[0], ucoords[1])
+
+        # Response + call_details from conversation
+        response_text = response_time_s = None
+        call_details = None
+        conv_s = await db["shift_booking_conv"].find_one(
+            {"shift_id": str(shift_oid_for_staff) if shift_oid_for_staff else "", "user_id": uid_str},
+            {"turns": 1, "started_at": 1, "ended_at": 1, "elevenlabs_conversation_id": 1,
+             "round_number": 1, "phone": 1, "duration_seconds": 1, "confidence": 1}
+        )
+        if conv_s:
+            for turn in reversed(conv_s.get("turns") or []):
+                if turn.get("role") in ("user", "human") and turn.get("message"):
+                    response_text = turn["message"]
+                    ts = turn.get("ts")
+                    if ts and hasattr(ts, "strftime"):
+                        response_time_s = ts.strftime("%H:%M")
+                    break
+            started   = conv_s.get("started_at")
+            ended_cv  = conv_s.get("ended_at")
+            dur_s     = conv_s.get("duration_seconds")
+            if not dur_s and started and ended_cv:
+                dur_s = int((ended_cv - started).total_seconds())
+            placed_time_s  = started.strftime("%H:%M:%S") if started and hasattr(started, "strftime") else None
+            round_num_s    = conv_s.get("round_number", 1)
+            phone_used_s   = conv_s.get("phone") or u.get("phone")
+            ai_heard_s     = None
+            confidence_s   = conv_s.get("confidence")
+            for turn in reversed(conv_s.get("turns") or []):
+                if turn.get("role") in ("user", "human") and turn.get("message"):
+                    t_ts = turn.get("ts")
+                    t_time_s = t_ts.strftime("%H:%M") if t_ts and hasattr(t_ts, "strftime") else None
+                    conf_pct = f"{int(confidence_s * 100)}% confidence" if confidence_s else None
+                    parts = [f'"{turn["message"]}"']
+                    if t_time_s: parts.append(f"at {t_time_s}")
+                    if conf_pct: parts.append(f"· {conf_pct}")
+                    ai_heard_s = " ".join(parts)
+                    break
+            call_details = {
+                "called_via": f"{phone_used_s} (phone)" if phone_used_s else "Phone",
+                "placed_at":  f"{placed_time_s} · Round {round_num_s}" if placed_time_s else None,
+                "duration":   f"{dur_s} seconds" if dur_s else None,
+                "ai_heard":   ai_heard_s,
+            }
+
         shifts_users_list.append({
-            "id":              str(su["_id"]),
-            "user_id":         uid_str,
-            "xn_user_id":      u.get("xn_user_id"),
-            "name":            " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
-            "email":           u.get("email"),
-            "phone":           u.get("phone"),
-            "designation":     u.get("designation"),
-            "rating":          u.get("rating"),
-            "availability":       su.get("availability"),
-            "availability_text":  AVAILABILITY_TEXT.get(su.get("availability"), "Unknown"),
-            "call_enabled":       su.get("call_enabled"),
-            "channel":            "Phone",
-            "call_processed":     su.get("call_processed"),
+            "id":                  str(su["_id"]),
+            "user_id":             uid_str,
+            "xn_user_id":          u.get("xn_user_id"),
+            "name":                " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+            "email":               u.get("email"),
+            "phone":               u.get("phone"),
+            "designation":         u.get("designation"),
+            "rating":              u.get("rating"),
+            "county":              u.get("county"),
+            "county_id":           str(u["county_id"]) if u.get("county_id") else None,
+            "prior_shifts_here":   prior_here,
+            "last_contacted":      last_contacted,
+            "staff_tags":          staff_tags,
+            "visa_hours_remaining": visa_hours_remaining,
+            "channel":             "Phone",
+            "response_text":       response_text,
+            "response_time":       response_time_s,
+            "availability":        avail_val,
+            "availability_text":   AVAILABILITY_TEXT.get(avail_val, "Unknown"),
+            "call_enabled":        su.get("call_enabled"),
+            "call_processed":      su.get("call_processed"),
             "call_processed_text": "Sent" if su.get("call_processed") == 1 else "Queued",
-            "start_time":         _format_call_time(su.get("call_processed_at")) if su.get("call_processed_at") and hasattr(su.get("call_processed_at"), "date") else None,
-            "flag":               su.get("flag", 0),
-            "call_status":       su.get("call_status"),
-            "call_processed_at": su["call_processed_at"].isoformat() if su.get("call_processed_at") and hasattr(su["call_processed_at"], "isoformat") else None,
-            "assigned_at":       su["assigned_at"].isoformat() if su.get("assigned_at") and hasattr(su["assigned_at"], "isoformat") else None,
+            "start_time":          _format_call_time(su.get("call_processed_at")) if su.get("call_processed_at") and hasattr(su.get("call_processed_at"), "date") else None,
+            "flag":                su.get("flag", 0),
+            "call_status":         su.get("call_status"),
+            "call_processed_at":   su["call_processed_at"].isoformat() if su.get("call_processed_at") and hasattr(su["call_processed_at"], "isoformat") else None,
+            "assigned_at":         su["assigned_at"].isoformat() if su.get("assigned_at") and hasattr(su["assigned_at"], "isoformat") else None,
+            "shift_id":            str(su.get("shift_id", "")) if su.get("shift_id") else None,
+            "outreach_id":         str(raw_oid_su) if raw_oid_su else None,
+            "conversation_id":     su.get("conversation_id"),
+            "distance_km":         distance_km,
+            "call_details":        call_details,
+            "confirm": {
+                "staff_label":       f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip()} · ★ {u.get('rating') or '—'} · {prior_here} prior shifts here",
+                "prior_shifts_here": prior_here,
+                "rating":            u.get("rating"),
+                "shift":             shift_label_s,
+                "placed_at":         placed_at_s,
+                "confirmed_by":      "System",
+            },
         })
 
     total     = len(shifts_users_list)
