@@ -40,8 +40,8 @@ from .whatsapp_wati import _send_template_message
 
 fb_webhooks_bp = Blueprint("fb_webhooks", __name__, url_prefix="/webhooks")
 
-FB_VERIFY_TOKEN      = os.environ.get("FB_VERIFY_TOKEN", "")
-FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN", "")
+FB_VERIFY_TOKEN      = os.environ.get("CARE_VERIFY_TOKEN", "")
+FB_PAGE_ACCESS_TOKEN = os.environ.get("CARE_PAGE_ACCESS_TOKEN", "")
 WATI_WEBHOOK_SECRET  = os.environ.get("WATI_WEBHOOK_SECRET", "")
 WATI_LEAD_TEMPLATE   = os.environ.get("WATI_LEAD_TEMPLATE", "new_chat_v1")
 
