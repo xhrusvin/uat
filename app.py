@@ -40,6 +40,8 @@ from gemini_call import bp as gemini_call_bp
 from booking import bp as booking_bp
 from carelearning import bp as carelearning_bp
 
+from admin.care_leads import fb_webhooks_bp
+
 from webhook import webhook_bp
 from flask_talisman import Talisman
 from admin import admin_bp
@@ -184,6 +186,7 @@ app.register_blueprint(booking_bp)
 app.register_blueprint(carelearning_bp)
 app.register_blueprint(document_validate_bp)
 app.register_blueprint(document_worker_bp)
+app.register_blueprint(fb_webhooks_bp)
 
 
 
