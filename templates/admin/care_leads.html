@@ -1,0 +1,352 @@
+{% extends "admin/base.html" %}
+{% block title %}Care Leads • WhatsApp • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-5" id="careLeadsApp">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-0 fw-bold text-primary">Care Leads → WhatsApp</h2>
+            <p class="text-muted mb-0 small">
+                Care leads from your Facebook Page, auto-messaged via WATI. Replies are captured below.
+            </p>
+        </div>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            Back to Dashboard
+        </a>
+    </div>
+
+    <!-- Stats -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h4 class="mb-1" id="statTotal">–</h4>
+                    <p class="text-muted mb-0 small">Care Leads</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h4 class="mb-1 text-success" id="statSent">–</h4>
+                    <p class="text-muted mb-0 small">WhatsApp Sent</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h4 class="mb-1 text-primary" id="statReplied">–</h4>
+                    <p class="text-muted mb-0 small">Replied</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h4 class="mb-1 text-danger" id="statFailed">–</h4>
+                    <p class="text-muted mb-0 small">Send Failed</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters + table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-gradient text-white py-3"
+             style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h5 class="mb-0">Incoming Leads</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="form-check form-switch text-white mb-0">
+                        <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                        <label class="form-check-label small" for="autoRefresh">Auto-refresh</label>
+                    </div>
+                    <button class="btn btn-light btn-sm" id="refreshBtn">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row g-2 mb-3">
+                <div class="col-md-5">
+                    <input type="text" class="form-control" id="searchInput"
+                           placeholder="Search name, phone, email or location…">
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="statusFilter">
+                        <option value="">All statuses</option>
+                        <option value="pending">Pending send</option>
+                        <option value="sent">WhatsApp sent</option>
+                        <option value="replied">Replied</option>
+                        <option value="failed">Send failed</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th>Location</th>
+                            <th>WhatsApp</th>
+                            <th>Reply Captured</th>
+                            <th>Received</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leadsBody">
+                        <tr><td colspan="8" class="text-center text-muted py-5">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <span class="text-muted small" id="pageInfo"></span>
+                <div class="btn-group">
+                    <button class="btn btn-outline-primary btn-sm" id="prevPage">← Prev</button>
+                    <button class="btn btn-outline-primary btn-sm" id="nextPage">Next →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Replies / detail modal -->
+<div class="modal fade" id="repliesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header text-white"
+                 style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                <h5 class="modal-title" id="modalTitle">Lead</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3" id="modalLeadInfo"></div>
+                <h6 class="text-primary mb-2">
+                    <i class="bi bi-whatsapp"></i> Captured WhatsApp Replies
+                </h6>
+                <div id="modalReplies" class="p-3 rounded"
+                     style="background:#e5ddd5; min-height:120px; max-height:340px; overflow-y:auto;"></div>
+                <div class="mt-3" id="modalFormFields"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const state = { page: 1, totalPages: 1, search: "", status: "" };
+    let debounceTimer = null;
+    let refreshTimer = null;
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => (s == null ? "" : String(s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;"));
+
+    function fmtDate(iso) {
+        if (!iso) return "—";
+        const d = new Date(iso);
+        return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
+             + "<br><small class='text-muted'>"
+             + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+             + "</small>";
+    }
+
+    function whatsappBadge(lead) {
+        if (lead.whatsapp_sent)
+            return '<span class="badge bg-success">Sent</span>';
+        if (lead.whatsapp_status)
+            return '<span class="badge bg-danger" title="' + esc(lead.whatsapp_status) + '">Failed</span>';
+        return '<span class="badge bg-secondary">Pending</span>';
+    }
+
+    function replyCell(lead) {
+        if (!lead.reply_received)
+            return '<span class="badge bg-warning text-dark rounded-pill">No reply yet</span>';
+        const preview = esc((lead.last_reply || "").slice(0, 60));
+        return '<span class="badge bg-primary rounded-pill me-1">' + lead.reply_count + '</span>'
+             + '<span class="small text-muted">' + preview + (lead.last_reply && lead.last_reply.length > 60 ? "…" : "") + '</span>';
+    }
+
+    function renderRows(leads) {
+        const body = $("leadsBody");
+        if (!leads.length) {
+            body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-5">'
+                + 'No care leads yet. They will appear here automatically when the webhook receives one.'
+                + '</td></tr>';
+            return;
+        }
+        body.innerHTML = leads.map(l => `
+            <tr>
+                <td><strong>${esc(l.name) || "—"}</strong></td>
+                <td><code>${esc(l.phone_number) || "—"}</code></td>
+                <td>${esc(l.email_id) || "—"}</td>
+                <td>${esc(l.location) || "—"}</td>
+                <td>${whatsappBadge(l)}</td>
+                <td>${replyCell(l)}</td>
+                <td>${fmtDate(l.received_at)}</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-primary" data-action="view" data-id="${l.id}" title="View replies">
+                        <i class="bi bi-chat-dots"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" data-action="resend" data-id="${l.id}" title="Resend template">
+                        <i class="bi bi-send"></i>
+                    </button>
+                </td>
+            </tr>`).join("");
+    }
+
+    async function loadLeads() {
+        const params = new URLSearchParams({
+            page: state.page, search: state.search, status: state.status
+        });
+        try {
+            const r = await fetch(`{{ url_for('admin.care_leads_data') }}?` + params);
+            const data = await r.json();
+            if (!data.success) throw new Error(data.error || "Load failed");
+
+            renderRows(data.leads);
+            state.totalPages = data.total_pages;
+            $("pageInfo").textContent =
+                `Page ${data.page} of ${data.total_pages} • ${data.total} lead(s)`;
+            $("prevPage").disabled = data.page <= 1;
+            $("nextPage").disabled = data.page >= data.total_pages;
+
+            $("statTotal").textContent   = data.stats.total;
+            $("statSent").textContent    = data.stats.sent;
+            $("statReplied").textContent = data.stats.replied;
+            $("statFailed").textContent  = data.stats.failed;
+        } catch (e) {
+            $("leadsBody").innerHTML =
+                '<tr><td colspan="8" class="text-center text-danger py-4">Could not load leads: '
+                + esc(e.message) + '</td></tr>';
+        }
+    }
+
+    async function openReplies(id) {
+        const modal = new bootstrap.Modal($("repliesModal"));
+        $("modalReplies").innerHTML = '<div class="text-center text-muted py-3">Loading…</div>';
+        $("modalLeadInfo").innerHTML = "";
+        $("modalFormFields").innerHTML = "";
+        modal.show();
+
+        const r = await fetch(`/admin/care_leads/${id}/replies`);
+        const data = await r.json();
+        if (!data.success) {
+            $("modalReplies").innerHTML =
+                '<div class="text-danger">' + esc(data.error) + '</div>';
+            return;
+        }
+        const l = data.lead;
+        $("modalTitle").textContent = l.name || l.phone_number || "Lead";
+
+        $("modalLeadInfo").innerHTML = `
+            <div class="col-md-6">
+                <small class="text-muted d-block">Phone</small><code>${esc(l.phone_number)}</code>
+            </div>
+            <div class="col-md-6">
+                <small class="text-muted d-block">Email</small>${esc(l.email_id) || "—"}
+            </div>
+            <div class="col-md-6 mt-2">
+                <small class="text-muted d-block">Template sent</small>
+                ${esc(l.whatsapp_template) || "—"}
+                ${l.whatsapp_sent
+                    ? '<span class="badge bg-success ms-1">Sent</span>'
+                    : (l.whatsapp_status
+                        ? '<span class="badge bg-danger ms-1">Failed</span>'
+                        : '<span class="badge bg-secondary ms-1">Pending</span>')}
+            </div>
+            <div class="col-md-6 mt-2">
+                <small class="text-muted d-block">Facebook Ad / Form</small>
+                ${esc(l.fb_ad_id) || "—"} / ${esc(l.fb_form_id) || "—"}
+            </div>`;
+
+        if (!data.replies.length) {
+            $("modalReplies").innerHTML =
+                '<div class="text-center text-muted py-3">No replies captured yet.</div>';
+        } else {
+            $("modalReplies").innerHTML = data.replies.map(m => `
+                <div class="d-flex mb-2">
+                    <div class="bg-white rounded shadow-sm px-3 py-2" style="max-width:80%;">
+                        <div>${esc(m.text) || "<em class='text-muted'>(" + esc(m.type) + " message)</em>"}</div>
+                        <div class="text-end">
+                            <small class="text-muted">
+                                ${m.received_at ? new Date(m.received_at).toLocaleString() : ""}
+                            </small>
+                        </div>
+                    </div>
+                </div>`).join("");
+            $("modalReplies").scrollTop = $("modalReplies").scrollHeight;
+        }
+
+        const ff = l.form_fields || {};
+        const keys = Object.keys(ff);
+        if (keys.length) {
+            $("modalFormFields").innerHTML =
+                '<h6 class="text-primary mb-2"><i class="bi bi-ui-checks"></i> Facebook Form Answers</h6>'
+                + '<table class="table table-sm table-bordered mb-0"><tbody>'
+                + keys.map(k =>
+                    `<tr><th class="text-muted small" style="width:35%">${esc(k)}</th>`
+                    + `<td class="small">${esc(ff[k])}</td></tr>`).join("")
+                + '</tbody></table>';
+        }
+    }
+
+    async function resend(id, btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        try {
+            const r = await fetch(`/admin/care_leads/${id}/resend`, { method: "POST" });
+            const data = await r.json();
+            if (!data.success) alert("Send failed: " + (data.error || "Unknown error"));
+        } catch (e) {
+            alert("Send failed: " + e.message);
+        }
+        loadLeads();
+    }
+
+    // Events
+    $("leadsBody").addEventListener("click", (ev) => {
+        const btn = ev.target.closest("button[data-action]");
+        if (!btn) return;
+        if (btn.dataset.action === "view") openReplies(btn.dataset.id);
+        if (btn.dataset.action === "resend") resend(btn.dataset.id, btn);
+    });
+    $("searchInput").addEventListener("input", (ev) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            state.search = ev.target.value.trim();
+            state.page = 1;
+            loadLeads();
+        }, 400);
+    });
+    $("statusFilter").addEventListener("change", (ev) => {
+        state.status = ev.target.value;
+        state.page = 1;
+        loadLeads();
+    });
+    $("refreshBtn").addEventListener("click", loadLeads);
+    $("prevPage").addEventListener("click", () => { if (state.page > 1) { state.page--; loadLeads(); } });
+    $("nextPage").addEventListener("click", () => { if (state.page < state.totalPages) { state.page++; loadLeads(); } });
+
+    function setAutoRefresh(on) {
+        clearInterval(refreshTimer);
+        if (on) refreshTimer = setInterval(loadLeads, 30000);
+    }
+    $("autoRefresh").addEventListener("change", (ev) => setAutoRefresh(ev.target.checked));
+
+    loadLeads();
+    setAutoRefresh(true);
+})();
+</script>
+{% endblock %}

@@ -45,6 +45,7 @@ from . import live_staffs_point_scale
 from . import live_staffs_vos_nurse
 from . import live_staffs_cert_check
 from . import live_staffs_reg_record
+from . import care_leads
 
 
 
