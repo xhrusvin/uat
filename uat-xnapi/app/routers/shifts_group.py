@@ -596,7 +596,7 @@ async def remove_staff_from_group_pool(request: Request, payload: GroupPoolRemov
 async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
     """
     Body: { "group_id": "..." }
-    Returns all users in the shifts_group_pool for this group with user details.
+    Returns all users in the shifts_group_pool with same structure as /shift-users/list.
     """
     db = _get_db()
     if not ObjectId.is_valid(payload.group_id):
@@ -609,33 +609,95 @@ async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
 
     pool_docs = await db["shifts_group_pool"].find({"group_id": group_oid}).to_list(5000)
 
-    # Batch user lookup
     user_oids = [p["user_id"] for p in pool_docs if p.get("user_id") and ObjectId.is_valid(str(p.get("user_id", "")))]
     user_map: dict = {}
     if user_oids:
         async for u in db["users"].find(
             {"_id": {"$in": user_oids}},
             {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
-             "xn_user_id": 1, "designation": 1, "rating": 1, "status": 1}
+             "xn_user_id": 1, "designation": 1, "rating": 1, "status": 1,
+             "county": 1, "county_id": 1, "country_id": 1, "tags": 1,
+             "location": 1, "latitude": 1, "longitude": 1,
+             "visa_hours_used": 1, "visa_hours_total": 1, "user_type_id": 1}
         ):
             user_map[str(u["_id"])] = u
+
+    # Last contacted map from shifts_group_users
+    last_contacted_map: dict = {}
+    if user_oids:
+        async for su in db["shifts_group_users"].find(
+            {"user_id": {"$in": user_oids}, "call_processed_at": {"$ne": None}},
+            {"user_id": 1, "call_processed_at": 1}
+        ).sort("call_processed_at", -1):
+            uid = str(su.get("user_id", ""))
+            if uid not in last_contacted_map:
+                last_contacted_map[uid] = su.get("call_processed_at")
+
+    def _time_ago(dt):
+        if not dt: return None
+        if hasattr(dt, "tzinfo") and dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        diff = int((datetime.now(timezone.utc) - dt).total_seconds())
+        if diff < 60:       return "just now"
+        elif diff < 3600:   return f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
+        elif diff < 86400:  return f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
+        else:               return f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
 
     staff = []
     for p in pool_docs:
         uid_str = str(p.get("user_id", ""))
-        u = user_map.get(uid_str, {})
+        u       = user_map.get(uid_str, {})
+
+        raw_tags = u.get("tags") or []
+        staff_tags = [
+            {"id": str(t.get("id","")), "name": t.get("name","")} if isinstance(t, dict)
+            else {"id": "", "name": str(t)} for t in raw_tags
+        ]
+
+        lc_dt = last_contacted_map.get(uid_str)
+        last_contacted = _time_ago(lc_dt)
+
+        visa_used  = u.get("visa_hours_used")
+        visa_total = u.get("visa_hours_total")
+        visa_hours_remaining = f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
+
+        prior_shifts = await db["shifts_group_users"].count_documents({
+            "user_id": p.get("user_id"), "availability": 1
+        })
+        work_history = None
+        if prior_shifts > 0 and last_contacted:
+            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_contacted}"
+        elif prior_shifts > 0:
+            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''}"
+        elif last_contacted:
+            work_history = last_contacted
+
+        county_id   = str(u["county_id"]) if u.get("county_id") else None
+        user_type_id = str(u["user_type_id"]) if u.get("user_type_id") else None
+
         staff.append({
-            "id":          str(p["_id"]),
-            "user_id":     uid_str,
-            "xn_user_id":  u.get("xn_user_id"),
-            "name":        " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
-            "email":       u.get("email"),
-            "phone":       u.get("phone"),
-            "designation": u.get("designation"),
-            "rating":      u.get("rating"),
-            "status":      u.get("status"),
-            "added_at":    p["added_at"].isoformat() if p.get("added_at") and hasattr(p["added_at"], "isoformat") else None,
-            "added_by":    p.get("added_by"),
+            "id":                  str(p["_id"]),
+            "user_id":             uid_str,
+            "xn_user_id":          u.get("xn_user_id"),
+            "name":                " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+            "email":               u.get("email"),
+            "phone":               u.get("phone"),
+            "designation":         u.get("designation"),
+            "rating":              u.get("rating"),
+            "status":              u.get("status"),
+            "channel":             "Phone",
+            "staff_tags":          staff_tags,
+            "last_contacted":      last_contacted,
+            "visa_hours_remaining": visa_hours_remaining,
+            "prior_shifts":        prior_shifts,
+            "work_history":        work_history,
+            "county_id":           county_id,
+            "county":              u.get("county"),
+            "user_type_id":        user_type_id,
+            "requested":           0,
+            "in_pool":             1,
+            "added_at":            p["added_at"].isoformat() if p.get("added_at") and hasattr(p["added_at"], "isoformat") else None,
+            "added_by":            p.get("added_by"),
         })
 
     return {
