@@ -68,7 +68,7 @@ def staff_details_webhook():
                     "Authorization": f"Bearer {XN_API_KEY}",
                     "Content-Type": "application/json",
                 },
-                json={"user_id": user_id},
+                json={"_id": user_id},
                 timeout=30,
             )
             staff_api_status = staff_response.status_code
