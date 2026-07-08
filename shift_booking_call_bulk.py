@@ -65,19 +65,11 @@ def register_shift_booking_call_bulk_routes(app):
         today_start = datetime(current_time.year, current_time.month, current_time.day)
 
         # Find up to 10 oldest eligible assignments
-        eligible_assignments = list(db.shifts_users.find({
+        eligible_assignments = list(db.shifts_group_users.find({
             "call_enabled": 1,
-            "call_processed": {"$ne": 1},          # prevent re-processing
-            "shift_id": {
-                "$in": db.shifts.find(
-                    {
-                        #"is_active": True,
-                        "date": {"$gte": today_start}
-                    },
-                    {"_id": 1}
-                ).distinct("_id")
-            }
-        }).sort("assigned_at", 1).limit(10))
+            "call_processed": {"$ne": 1},
+            "group_id": {"$exists": True}
+        }).sort("created_at", 1).limit(10))
 
         if not eligible_assignments:
             return jsonify({
@@ -90,7 +82,7 @@ def register_shift_booking_call_bulk_routes(app):
         skipped = []
 
         for assignment in eligible_assignments:
-            shift_id = assignment["shift_id"]
+            group_id = assignment["group_id"]
             user_id = assignment["user_id"]
 
             user = db.users.find_one(
@@ -129,7 +121,7 @@ def register_shift_booking_call_bulk_routes(app):
                 continue
 
             # Mark as processed BEFORE starting call (important!)
-            db.shifts_users.update_one(
+            db.shifts_group_users.update_one(
                 {"_id": assignment["_id"]},
                 {"$set": {
                     "call_processed": 1,
@@ -144,7 +136,7 @@ def register_shift_booking_call_bulk_routes(app):
             # Trigger the AI call in background
             threading.Thread(
                 target=make_shiftbooking_ai_call_bulk,
-                args=(current_app._get_current_object(), user.get("phone"), user, str(user_id), str(shift_id)),
+                args=(current_app._get_current_object(), user.get("phone"), user, str(user_id), str(group_id)),
                 daemon=True
             ).start()
 
@@ -157,7 +149,7 @@ def register_shift_booking_call_bulk_routes(app):
 
             triggered.append({
                 "user_id": str(user_id),
-                "shift_id": str(shift_id),
+                "group_id": str(group_id),
                 "phone": user.get("phone"),
                 "name": name,
                 "created_at": created_at_str
