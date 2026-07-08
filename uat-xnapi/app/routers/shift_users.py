@@ -803,3 +803,96 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         "sort":            payload.sort or "asc",
         "data":            results,
     }
+
+
+# ── POST /shift-users/assign ──────────────────────────────────────────────────
+
+class AssignStaffRequest(BaseModel):
+    shift_id: str
+    user_id:  str
+
+
+@router.post(
+    "/assign",
+    summary="Assign a staff member to a shift (sets staff_email and assigned_staff)",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
+    """
+    Body: { "shift_id": "<shift._id>", "user_id": "<user._id>" }
+    Sets shifts.staff_email = users.email and shifts.assigned_staff = users full name.
+    """
+    db = _get_db()
+
+    user_oid  = _resolve_oid(payload.user_id,  "user_id")
+    shift_oid = _resolve_oid(payload.shift_id, "shift_id")
+
+    # Fetch user
+    user = await db["users"].find_one(
+        {"_id": user_oid},
+        {"first_name": 1, "last_name": 1, "email": 1, "xn_user_id": 1, "designation": 1, "rating": 1}
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User {payload.user_id} not found")
+
+    # Fetch shift
+    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1, "shift_code": 1, "name": 1})
+    if not shift:
+        raise HTTPException(status_code=404, detail=f"Shift {payload.shift_id} not found")
+
+    email      = user.get("email") or ""
+    full_name  = " ".join(filter(None, [user.get("first_name",""), user.get("last_name","")])).strip() or "—"
+    now        = datetime.now(timezone.utc)
+
+    # Check exclusion conditions before assigning
+    target_shift = await db["shifts"].find_one(
+        {"_id": shift_oid},
+        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1}
+    ) or {}
+    exclusion_tags = await _get_user_exclusion_tags(db, email, target_shift) if email and target_shift else []
+
+    if exclusion_tags:
+        tag_messages = {
+            "overlap":              "User has an overlapping shift on the same day",
+            "duplicate_day":        "User already has a day shift on this date",
+            "duplicate_night":      "User already has a night shift on this date",
+            "consecutive_day_night": "User has both day and night shifts on this date",
+            "exceeds_16h":          "Assignment would exceed 16 consecutive hours",
+            "under_6h_gap":         "Less than 6 hours gap between shifts",
+        }
+        reasons = [tag_messages.get(t, t) for t in exclusion_tags]
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message":        "Cannot assign — exclusion conditions triggered",
+                "exclusion_tags": exclusion_tags,
+                "reasons":        reasons,
+            }
+        )
+
+    # Update shift with assigned staff
+    await db["shifts"].update_one(
+        {"_id": shift_oid},
+        {"$set": {
+            "staff_email":     email,
+            "assigned_staff":  full_name,
+            "staff_id":        str(user_oid),
+            "assigned_at":     now,
+            "updated_at":      now,
+        }}
+    )
+
+    logger.info(f"Assigned user={payload.user_id} ({email}) to shift={payload.shift_id}")
+
+    return {
+        "success":        True,
+        "message":        f"{full_name} assigned to shift",
+        "shift_id":       payload.shift_id,
+        "user_id":        payload.user_id,
+        "assigned_staff": full_name,
+        "staff_email":    email,
+        "designation":    user.get("designation"),
+        "rating":         user.get("rating"),
+        "assigned_at":    now.isoformat(),
+    }
