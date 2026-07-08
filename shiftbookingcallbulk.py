@@ -44,7 +44,7 @@ def generate_texml(user_doc: dict):
     return reparsed.toprettyxml(indent="  ")
 
 
-def make_shiftbooking_ai_call_bulk(app, phone: str, user_doc: dict, user_object_id, shift_id):
+def make_shiftbooking_ai_call_bulk(app, phone: str, user_doc: dict, user_object_id, shift_group_id):
     """Initiate AI shift booking call using Telnyx TeXML"""
     print(f'[Shift Booking] Initiating Telnyx AI call to {phone}')
 
@@ -57,10 +57,10 @@ def make_shiftbooking_ai_call_bulk(app, phone: str, user_doc: dict, user_object_
         return
 
     params_dict = user_doc.copy()
-    params_dict['shift_id'] = str(shift_id)
+    params_dict['shift_group_id'] = str(shift_group_id)
 
     params = urllib.parse.urlencode(params_dict, doseq=True)
-    texml_fetch_url = f'https://app.expresshealth.ie/shiftbookinguat?{params}'
+    texml_fetch_url = f'https://app.expresshealth.ie/shiftbookingbulkuat?{params}'
 
     try:
         with app.app_context():
