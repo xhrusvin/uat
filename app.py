@@ -25,6 +25,7 @@ from elevenlabs1.agent_conversations import bp as elevenlabs_bp
 from elevenlabs1.agent_conversations_ivr import bp as elevenlabs_bp_ivr
 from elevenlabs1.agent_conversations_xpgp import bp as elevenlabs_bp_xpgp
 from elevenlabs1.agent_conversations_shift_booking import bp as elevenlabs_bp_shift_booking
+from elevenlabs1.agent_conversations_shift_booking_bulk import bp as elevenlabs_bp_shift_booking_bulk
 from elevenlabs1.agent_conversations_intro_call import bp as elevenlabs_bp_intro_call
 from elevenlabs1.agent_conversations_followup_call import bp as elevenlabs_bp_followup_call
 from elevenlabs1.agent_conversations_levelfour_call import bp as elevenlabs_bp_levelfour_call
@@ -175,6 +176,7 @@ app.register_blueprint(elevenlabs_bp)
 app.register_blueprint(elevenlabs_bp_ivr)
 app.register_blueprint(elevenlabs_bp_xpgp)
 app.register_blueprint(elevenlabs_bp_shift_booking)
+app.register_blueprint(elevenlabs_bp_shift_booking_bulk)
 app.register_blueprint(elevenlabs_bp_intro_call)
 app.register_blueprint(elevenlabs_bp_followup_call)
 app.register_blueprint(elevenlabs_bp_levelfour_call)
