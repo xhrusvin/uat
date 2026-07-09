@@ -61,10 +61,11 @@ def _webhook_debug(tag, payload=None, note=None):
         with open(WEBHOOK_DEBUG_LOG, "a") as f:
             f.write("=" * 80 + "\n")
             f.write(f"[{datetime.utcnow().isoformat()}Z] {tag}\n")
-            f.write(f"  remote_addr : {request.remote_addr}\n")
-            f.write(f"  method/path : {request.method} {request.full_path}\n")
-            ua = request.headers.get("User-Agent", "-")
-            f.write(f"  user-agent  : {ua}\n")
+            if request:  # only when inside an HTTP request context
+                f.write(f"  remote_addr : {request.remote_addr}\n")
+                f.write(f"  method/path : {request.method} {request.full_path}\n")
+                ua = request.headers.get("User-Agent", "-")
+                f.write(f"  user-agent  : {ua}\n")
             if note:
                 f.write(f"  note        : {note}\n")
             if payload is not None:
@@ -147,32 +148,55 @@ def process_fb_lead(db, leadgen_id, page_id=None, ad_id=None, form_id=None):
     Also callable from a polling fetcher if you use one.
     """
     if db.care_leads.find_one({"fb_leadgen_id": str(leadgen_id)}):
+        _webhook_debug(f"LEAD {leadgen_id}: SKIPPED",
+                       note="duplicate fb_leadgen_id — already in db.care_leads")
         return None  # already processed (Meta retries deliveries)
 
-    raw, fields = _fetch_fb_lead(leadgen_id)
+    try:
+        raw, fields = _fetch_fb_lead(leadgen_id)
+    except Exception as e:
+        body = getattr(getattr(e, "response", None), "text", "")
+        _webhook_debug(f"LEAD {leadgen_id}: GRAPH FETCH FAILED",
+                       note=f"{e} | body={body[:500]}")
+        raise
+    _webhook_debug(f"LEAD {leadgen_id}: GRAPH FETCH OK", payload=fields)
 
-    phone = _normalize_phone(
-        _first(fields, "phone_number", "phone", "mobile_number", "whatsapp_number")
+    raw_phone = _first(
+        fields, "phone_number", "phone", "mobile_number", "whatsapp_number"
     )
-    if not phone:
-        current_app.logger.warning(f"FB lead {leadgen_id}: no valid phone, skipped")
-        return None
+    phone = _normalize_phone(raw_phone)
 
-    if db.care_leads.find_one({"phone_number": phone}):
+    if phone and db.care_leads.find_one({"phone_number": phone}):
         # Record linkage so retries don't refetch, but don't message twice
         db.care_leads.update_one(
             {"phone_number": phone},
             {"$addToSet": {"other_leadgen_ids": str(leadgen_id)}},
         )
+        _webhook_debug(f"LEAD {leadgen_id}: SKIPPED",
+                       note=f"phone {phone} already exists in db.care_leads")
         return None
 
     email = (_first(fields, "email", "email_address") or "").strip().lower()
     created_time = raw.get("created_time")
+    name = _first(fields, "full_name", "name")
+
+    # Every lead is stored; problems are flagged, not dropped.
+    issues = []
+    if not raw_phone:
+        issues.append("missing_phone")
+    elif not phone:
+        issues.append("invalid_phone")
+    if not name:
+        issues.append("missing_name")
+    if "@" not in email:
+        issues.append("missing_email" if not email else "invalid_email")
 
     lead = {
-        "name": _first(fields, "full_name", "name"),
+        "name": name,
         "email_id": email if "@" in email else None,
         "phone_number": phone,
+        "raw_phone": raw_phone if (raw_phone and not phone) else None,
+        "data_issues": issues,
         "location": (_first(fields, "location", "city") or "").title() or None,
         "fb_leadgen_id": str(leadgen_id),
         "fb_page_id": str(page_id) if page_id else None,
@@ -193,9 +217,17 @@ def process_fb_lead(db, leadgen_id, page_id=None, ad_id=None, form_id=None):
     }
     res = db.care_leads.insert_one(lead)
     lead["_id"] = res.inserted_id
+    _webhook_debug(f"LEAD {leadgen_id}: SAVED",
+                   note=f"_id={res.inserted_id} phone={phone} "
+                        f"issues={issues or 'none'}")
     current_app.logger.info(f"FB lead {leadgen_id} saved as {res.inserted_id}")
 
-    _send_whatsapp_to_care_lead(db, lead)
+    if phone:
+        ok = _send_whatsapp_to_care_lead(db, lead)
+        _webhook_debug(f"LEAD {leadgen_id}: WATI SEND {'OK' if ok else 'FAILED'}",
+                       note=None if ok else "see whatsapp_status on the lead")
+    else:
+        _webhook_debug(f"LEAD {leadgen_id}: WATI SEND SKIPPED", note="no phone")
     return lead
 
 
@@ -241,7 +273,9 @@ def fb_leadgen_webhook():
                     form_id=value.get("form_id"),
                 ):
                     processed += 1
-            except Exception:
+            except Exception as e:
+                _webhook_debug(f"LEAD {leadgen_id}: PROCESSING FAILED",
+                               note=repr(e))
                 current_app.logger.exception(
                     f"Failed to process FB lead {leadgen_id}"
                 )
@@ -311,6 +345,8 @@ def _serialize_lead(doc):
         "name": doc.get("name"),
         "email_id": doc.get("email_id"),
         "phone_number": doc.get("phone_number"),
+        "raw_phone": doc.get("raw_phone"),
+        "data_issues": doc.get("data_issues") or [],
         "location": doc.get("location"),
         "fb_ad_id": doc.get("fb_ad_id"),
         "fb_form_id": doc.get("fb_form_id"),
@@ -356,6 +392,7 @@ def care_leads_data():
     if status == "pending":
         query["whatsapp_sent"] = False
         query["whatsapp_status"] = None
+        query["phone_number"] = {"$ne": None}
     elif status == "sent":
         query["whatsapp_sent"] = True
     elif status == "failed":
@@ -363,6 +400,8 @@ def care_leads_data():
         query["whatsapp_status"] = {"$nin": [None, "sent"]}
     elif status == "replied":
         query["reply_received"] = True
+    elif status == "incomplete":
+        query["data_issues"] = {"$exists": True, "$ne": []}
 
     total = db.care_leads.count_documents(query)
     docs = (db.care_leads.find(query)
@@ -376,6 +415,8 @@ def care_leads_data():
         "failed":  db.care_leads.count_documents(
             {"whatsapp_sent": False, "whatsapp_status": {"$nin": [None, "sent"]}}),
         "replied": db.care_leads.count_documents({"reply_received": True}),
+        "incomplete": db.care_leads.count_documents(
+            {"data_issues": {"$exists": True, "$ne": []}}),
     }
 
     return jsonify({
@@ -428,6 +469,10 @@ def care_lead_resend(lead_id):
     lead = db.care_leads.find_one({"_id": ObjectId(lead_id)})
     if not lead:
         return jsonify({"success": False, "error": "Lead not found"}), 404
+    if not lead.get("phone_number"):
+        return jsonify({"success": False,
+                        "error": "Lead has no valid phone number",
+                        "lead": _serialize_lead(lead)}), 400
 
     ok = _send_whatsapp_to_care_lead(db, lead)
     fresh = db.care_leads.find_one({"_id": lead["_id"]})

@@ -18,7 +18,7 @@
 
     <!-- Stats -->
     <div class="row g-3 mb-4">
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-md">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <h4 class="mb-1" id="statTotal">–</h4>
@@ -26,7 +26,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-md">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <h4 class="mb-1 text-success" id="statSent">–</h4>
@@ -34,7 +34,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-md">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <h4 class="mb-1 text-primary" id="statReplied">–</h4>
@@ -42,11 +42,19 @@
                 </div>
             </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-md">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <h4 class="mb-1 text-danger" id="statFailed">–</h4>
                     <p class="text-muted mb-0 small">Send Failed</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h4 class="mb-1 text-warning" id="statIncomplete">–</h4>
+                    <p class="text-muted mb-0 small">Incomplete Data</p>
                 </div>
             </div>
         </div>
@@ -82,6 +90,7 @@
                         <option value="sent">WhatsApp sent</option>
                         <option value="replied">Replied</option>
                         <option value="failed">Send failed</option>
+                        <option value="incomplete">Incomplete data</option>
                     </select>
                 </div>
             </div>
@@ -162,11 +171,27 @@
              + "</small>";
     }
 
+    const ISSUE_LABELS = {
+        missing_phone: "No phone",
+        invalid_phone: "Invalid phone",
+        missing_name: "No name",
+        missing_email: "No email",
+        invalid_email: "Invalid email",
+    };
+
+    function issueBadges(lead) {
+        return (lead.data_issues || []).map(i =>
+            '<span class="badge bg-warning text-dark me-1">'
+            + esc(ISSUE_LABELS[i] || i) + '</span>').join("");
+    }
+
     function whatsappBadge(lead) {
         if (lead.whatsapp_sent)
             return '<span class="badge bg-success">Sent</span>';
         if (lead.whatsapp_status)
             return '<span class="badge bg-danger" title="' + esc(lead.whatsapp_status) + '">Failed</span>';
+        if (!lead.phone_number)
+            return '<span class="badge bg-warning text-dark" title="Cannot send without a phone number">Not possible</span>';
         return '<span class="badge bg-secondary">Pending</span>';
     }
 
@@ -187,9 +212,17 @@
             return;
         }
         body.innerHTML = leads.map(l => `
-            <tr>
-                <td><strong>${esc(l.name) || "—"}</strong></td>
-                <td><code>${esc(l.phone_number) || "—"}</code></td>
+            <tr class="${(l.data_issues || []).length ? 'table-warning' : ''}">
+                <td>
+                    <strong>${esc(l.name) || "—"}</strong>
+                    ${(l.data_issues || []).length ? '<div class="mt-1">' + issueBadges(l) + '</div>' : ''}
+                </td>
+                <td>
+                    <code>${esc(l.phone_number) || "—"}</code>
+                    ${(!l.phone_number && l.raw_phone)
+                        ? '<div><small class="text-muted" title="Raw value from the form">raw: ' + esc(l.raw_phone) + '</small></div>'
+                        : ''}
+                </td>
                 <td>${esc(l.email_id) || "—"}</td>
                 <td>${esc(l.location) || "—"}</td>
                 <td>${whatsappBadge(l)}</td>
@@ -199,7 +232,9 @@
                     <button class="btn btn-sm btn-outline-primary" data-action="view" data-id="${l.id}" title="View replies">
                         <i class="bi bi-chat-dots"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-success" data-action="resend" data-id="${l.id}" title="Resend template">
+                    <button class="btn btn-sm btn-outline-success" data-action="resend" data-id="${l.id}"
+                            title="${l.phone_number ? 'Resend template' : 'No phone number — cannot send'}"
+                            ${l.phone_number ? '' : 'disabled'}>
                         <i class="bi bi-send"></i>
                     </button>
                 </td>
@@ -226,6 +261,7 @@
             $("statSent").textContent    = data.stats.sent;
             $("statReplied").textContent = data.stats.replied;
             $("statFailed").textContent  = data.stats.failed;
+            $("statIncomplete").textContent = data.stats.incomplete ?? "–";
         } catch (e) {
             $("leadsBody").innerHTML =
                 '<tr><td colspan="8" class="text-center text-danger py-4">Could not load leads: '
@@ -251,8 +287,16 @@
         $("modalTitle").textContent = l.name || l.phone_number || "Lead";
 
         $("modalLeadInfo").innerHTML = `
+            ${(l.data_issues || []).length
+                ? '<div class="col-12 mb-2"><div class="alert alert-warning py-2 mb-0">'
+                  + '<i class="bi bi-exclamation-triangle me-1"></i>Incomplete lead: '
+                  + issueBadges(l) + '</div></div>'
+                : ''}
             <div class="col-md-6">
-                <small class="text-muted d-block">Phone</small><code>${esc(l.phone_number)}</code>
+                <small class="text-muted d-block">Phone</small>
+                <code>${esc(l.phone_number) || "—"}</code>
+                ${(!l.phone_number && l.raw_phone)
+                    ? '<small class="text-muted d-block">raw: ' + esc(l.raw_phone) + '</small>' : ''}
             </div>
             <div class="col-md-6">
                 <small class="text-muted d-block">Email</small>${esc(l.email_id) || "—"}
