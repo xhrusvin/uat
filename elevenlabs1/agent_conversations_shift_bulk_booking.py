@@ -17,7 +17,7 @@ from bson import ObjectId
 load_dotenv()
 
 # ==================== BLUEPRINT ====================
-bp = Blueprint("elevenlabs_bp_shift_bulk_booking", __name__)
+bp = Blueprint("elevenlabs_bp_shift_booking_bulk", __name__)
 
 # ==================== CONFIG ====================
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
