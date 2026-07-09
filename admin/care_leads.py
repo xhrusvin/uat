@@ -190,6 +190,10 @@ def fb_verify():
 def fb_leadgen_webhook():
     """Receives Meta `leadgen` events and processes each new lead."""
     payload = request.get_json(silent=True) or {}
+    print("=" * 80)
+    print("FACEBOOK WEBHOOK RECIEVED")
+    print(payload)
+    print("=" * 80)
     if payload.get("object") != "page":
         return jsonify({"status": "ignored"}), 200
 
