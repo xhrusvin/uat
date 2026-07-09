@@ -1277,3 +1277,73 @@ async def get_shift_detail(request: Request, shift_id: str):
             },
         },
     }
+
+
+# ── POST /shifts-db/cursor-list ───────────────────────────────────────────────
+
+class ShiftCursorListRequest(BaseModel):
+    after_id:   Optional[str] = None   # last _id from previous page
+    per_page:   int = 100
+    sort_order: str = "asc"            # asc by _id for stable cursor
+
+
+@router.post(
+    "/cursor-list",
+    summary="Cursor-based shift list — no skip, no timeout on large offsets",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("120/minute")
+async def cursor_list_shifts(request: Request, payload: ShiftCursorListRequest):
+    """
+    Body: { "after_id": "<last_id_from_prev_page>", "per_page": 100 }
+    Uses _id-based cursor pagination — avoids MongoDB skip on high pages.
+    First call: omit after_id. Next call: pass last id from data array.
+    """
+    db = _get_db()
+
+    query: dict = {}
+    if payload.after_id and ObjectId.is_valid(payload.after_id):
+        op = "$gt" if payload.sort_order.lower() == "asc" else "$lt"
+        query["_id"] = {op: ObjectId(payload.after_id)}
+
+    sort_dir = 1 if payload.sort_order.lower() == "asc" else -1
+    total    = await db["shifts"].count_documents({})
+
+    docs = await db["shifts"].find(query) \
+                              .sort("_id", sort_dir) \
+                              .limit(payload.per_page) \
+                              .to_list(length=payload.per_page)
+
+    results = []
+    for doc in docs:
+        s   = _serialize(doc)
+        cid = s.get("client_id", "")
+        results.append({
+            "id":           str(doc["_id"]),
+            "shift_id":     s.get("shift_id") or s.get("shift_xn_id") or "",
+            "shift_code":   s.get("shift_code") or s.get("shift_xn_id") or "",
+            "name":         s.get("name") or s.get("shift_code") or "",
+            "date":         s.get("date"),
+            "start_time":   s.get("start_time"),
+            "end_time":     s.get("end_time"),
+            "shift_timing": s.get("shift_timing") or s.get("shift") or "",
+            "user_type":    s.get("user_type") or "",
+            "client_id":    cid,
+            "client_name":  s.get("client_name"),
+            "client_county": s.get("client_county"),
+            "is_premium":   s.get("is_premium"),
+            "status":       s.get("status"),
+            "upstream_status": s.get("upstream_status"),
+        })
+
+    next_after_id = str(docs[-1]["_id"]) if docs else None
+    has_more      = len(docs) == payload.per_page
+
+    return {
+        "success":       True,
+        "total":         total,
+        "count":         len(results),
+        "has_more":      has_more,
+        "next_after_id": next_after_id,
+        "data":          results,
+    }

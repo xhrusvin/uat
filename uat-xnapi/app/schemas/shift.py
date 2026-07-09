@@ -10,13 +10,14 @@ CRITERIA = Literal[
 
 class ShiftListRequest(BaseModel):
     search:     str = ""
-    criteria:   Optional[CRITERIA] = None   # narrows the search field
+    criteria:   Optional[CRITERIA] = None
     page:       int = 1
     per_page:   int = 20
     start_date: Optional[str] = None
     end_date:   Optional[str] = None
     sort_by:    str = "date"
     sort_order: str = "desc"
+    after_id:   Optional[str] = None  # cursor pagination — skip is avoided when set
 
 
 class ShiftListResponse(BaseModel):
