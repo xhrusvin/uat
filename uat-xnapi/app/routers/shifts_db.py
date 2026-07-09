@@ -134,6 +134,7 @@ class ShiftsDbListRequest(BaseModel):
     county_multiple:           Optional[list] = None  # list of county _id strings → shifts.client_county
     automation_status_multiple:  Optional[list] = None  # list of ints: 0,1,2,3,10
     is_premium:                  Optional[int]  = None  # 1 = true, 0 = false
+    has_available:               Optional[int]  = None  # 1 = has available staff, 0 = none
     automation_status:   Optional[str] = None
     start_date:          Optional[str] = None   # YYYY-MM-DD
     end_date:            Optional[str] = None   # YYYY-MM-DD
@@ -311,6 +312,15 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
 
     if payload.is_premium is not None:
         filters.append({"is_premium": payload.is_premium == 1})
+
+    if payload.has_available is not None:
+        avail_shift_ids = await db["shifts_users"].distinct(
+            "shift_id", {"availability": 1}
+        )
+        if payload.has_available == 1:
+            filters.append({"_id": {"$in": avail_shift_ids}})
+        else:
+            filters.append({"_id": {"$nin": avail_shift_ids}})
 
     # automation_status_multiple filter
     if payload.automation_status_multiple:
@@ -558,6 +568,15 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     if payload.is_premium is not None:
         filters.append({"is_premium": payload.is_premium == 1})
 
+    if payload.has_available is not None:
+        avail_shift_ids = await db["shifts_users"].distinct(
+            "shift_id", {"availability": 1}
+        )
+        if payload.has_available == 1:
+            filters.append({"_id": {"$in": avail_shift_ids}})
+        else:
+            filters.append({"_id": {"$nin": avail_shift_ids}})
+
     # automation_status_multiple: filter active_shift_oids by outreach status
     if payload.automation_status_multiple:
         asm = [int(s) for s in payload.automation_status_multiple if str(s).lstrip('-').isdigit()]
@@ -704,6 +723,7 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
         "no_reply":      no_reply,
         "pending":       pending,
         "display":       f"{available} Available · {declined} Declined · {no_reply} No reply",
+        "has_available": 1 if available > 0 else 0,
     }
 
 
