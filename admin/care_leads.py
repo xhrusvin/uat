@@ -26,6 +26,7 @@
 #   WATI  → https://yourdomain.com/webhooks/wati/fb?secret=<WATI_WEBHOOK_SECRET>
 #           (event: Message Received)
 
+import json
 import os
 import re
 from datetime import datetime
@@ -40,12 +41,36 @@ from .whatsapp_wati import _send_template_message
 
 fb_webhooks_bp = Blueprint("fb_webhooks", __name__, url_prefix="/webhooks")
 
-FB_VERIFY_TOKEN      = os.environ.get("FB_VERIFY_TOKEN", "")
-FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN", "")
+FB_VERIFY_TOKEN      = os.environ.get("CARE_VERIFY_TOKEN", "")
+FB_PAGE_ACCESS_TOKEN = os.environ.get("CARE_PAGE_ACCESS_TOKEN", "")
 WATI_WEBHOOK_SECRET  = os.environ.get("WATI_WEBHOOK_SECRET", "")
 WATI_LEAD_TEMPLATE   = os.environ.get("WATI_LEAD_TEMPLATE", "new_chat_v1")
 
 FB_GRAPH_URL = "https://graph.facebook.com/v21.0"
+
+# Every webhook hit (FB verify, FB leadgen, WATI reply) is appended here.
+# Watch it live with:  tail -f /tmp/care_webhook_debug.log
+WEBHOOK_DEBUG_LOG = os.environ.get(
+    "CARE_WEBHOOK_DEBUG_LOG", "/tmp/care_webhook_debug.log"
+)
+
+
+def _webhook_debug(tag, payload=None, note=None):
+    """Append one webhook event to the debug log file. Never raises."""
+    try:
+        with open(WEBHOOK_DEBUG_LOG, "a") as f:
+            f.write("=" * 80 + "\n")
+            f.write(f"[{datetime.utcnow().isoformat()}Z] {tag}\n")
+            f.write(f"  remote_addr : {request.remote_addr}\n")
+            f.write(f"  method/path : {request.method} {request.full_path}\n")
+            ua = request.headers.get("User-Agent", "-")
+            f.write(f"  user-agent  : {ua}\n")
+            if note:
+                f.write(f"  note        : {note}\n")
+            if payload is not None:
+                f.write(json.dumps(payload, indent=2, default=str) + "\n")
+    except Exception:
+        current_app.logger.exception("webhook debug log write failed")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -182,7 +207,10 @@ def fb_verify():
     if (request.args.get("hub.mode") == "subscribe"
             and request.args.get("hub.verify_token")
             and request.args.get("hub.verify_token") == FB_VERIFY_TOKEN):
+        _webhook_debug("FB VERIFY OK", payload=dict(request.args))
         return request.args.get("hub.challenge", ""), 200
+    _webhook_debug("FB VERIFY FAILED (token mismatch?)",
+                   payload=dict(request.args))
     return "Verification failed", 403
 
 
@@ -190,7 +218,9 @@ def fb_verify():
 def fb_leadgen_webhook():
     """Receives Meta `leadgen` events and processes each new lead."""
     payload = request.get_json(silent=True) or {}
+    _webhook_debug("FB LEADGEN WEBHOOK RECEIVED", payload=payload)
     if payload.get("object") != "page":
+        _webhook_debug("FB LEADGEN IGNORED", note="object != 'page'")
         return jsonify({"status": "ignored"}), 200
 
     db = current_app.db
@@ -216,6 +246,7 @@ def fb_leadgen_webhook():
                     f"Failed to process FB lead {leadgen_id}"
                 )
     # Always ACK with 200 — Meta retries aggressively otherwise
+    _webhook_debug("FB LEADGEN DONE", note=f"processed={processed}")
     return jsonify({"status": "ok", "processed": processed}), 200
 
 
@@ -226,9 +257,11 @@ def wati_reply_webhook():
     Only stores messages whose number matches a Facebook lead.
     """
     if WATI_WEBHOOK_SECRET and request.args.get("secret") != WATI_WEBHOOK_SECRET:
+        _webhook_debug("WATI WEBHOOK UNAUTHORIZED (bad/missing secret)")
         return jsonify({"error": "unauthorized"}), 403
 
     payload = request.get_json(silent=True) or {}
+    _webhook_debug("WATI WEBHOOK RECEIVED", payload=payload)
 
     # Inbound customer message only (owner == False)
     if payload.get("eventType") != "message" or payload.get("owner") is not False:
