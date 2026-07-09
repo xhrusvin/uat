@@ -103,7 +103,7 @@ def is_call_status_value(value):
 
 # ==================== ROUTE ====================
 @bp.route("/api/elevenlabs/agent/conversations_shift_bulk_booking", methods=["GET", "POST"])
-def sync_agent_conversations_shift_booking():
+def sync_agent_conversations_shift_bulk_booking():
     key = request.args.get("key")
     agent_id = request.args.get("agent_id")
     limit = int(request.args.get("limit", 20))
