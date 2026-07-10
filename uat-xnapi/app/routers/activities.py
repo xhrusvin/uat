@@ -127,10 +127,19 @@ class ActivityCreate(BaseModel):
     metadata:      Optional[dict] = None
 
 
+# Tab groupings
+ACTIVITY_TAB_MAP = {
+    "system": ["round_started", "round_paused", "round_completed", "round_ended"],
+    "ai":     ["ai_call_placed", "ai_whatsapp_sent", "available_response"],
+    "people": [],   # non-system, non-AI activity types (custom or manually logged)
+}
+
+
 class ActivityListRequest(BaseModel):
     shift_id:      Optional[str] = None
     outreach_id:   Optional[str] = None
     activity_type: Optional[str] = None
+    tab:           Optional[str] = None  # "all" | "system" | "ai" | "people"
     page:          int = 1
     per_page:      int = 20
 
@@ -215,9 +224,33 @@ async def list_activities(request: Request, payload: ActivityListRequest):
     if payload.activity_type:
         filters.append({"activity_type": payload.activity_type})
 
+    # Tab filter
+    tab = (payload.tab or "all").lower()
+    if tab == "system":
+        filters.append({"activity_type": {"$in": ACTIVITY_TAB_MAP["system"]}})
+    elif tab == "ai":
+        filters.append({"activity_type": {"$in": ACTIVITY_TAB_MAP["ai"]}})
+    elif tab == "people":
+        all_known = ACTIVITY_TAB_MAP["system"] + ACTIVITY_TAB_MAP["ai"]
+        filters.append({"activity_type": {"$nin": all_known}})
+
+    base_filter  = {"$and": filters[:-1]} if len(filters) > 1 else (filters[0] if len(filters) == 1 and tab == "all" else {})
     mongo_filter = {"$and": filters} if filters else {}
     skip  = (payload.page - 1) * payload.per_page
     total = await db["activities"].count_documents(mongo_filter)
+
+    # Tab counts (always based on shift_id/outreach_id filter, not tab)
+    count_base = {}
+    if payload.shift_id and ObjectId.is_valid(payload.shift_id):
+        count_base["shift_id"] = ObjectId(payload.shift_id)
+    if payload.outreach_id and ObjectId.is_valid(payload.outreach_id):
+        count_base["outreach_id"] = ObjectId(payload.outreach_id)
+
+    count_all    = await db["activities"].count_documents(count_base)
+    count_system = await db["activities"].count_documents({**count_base, "activity_type": {"$in": ACTIVITY_TAB_MAP["system"]}})
+    count_ai     = await db["activities"].count_documents({**count_base, "activity_type": {"$in": ACTIVITY_TAB_MAP["ai"]}})
+    count_people = await db["activities"].count_documents({**count_base, "activity_type": {"$nin": ACTIVITY_TAB_MAP["system"] + ACTIVITY_TAB_MAP["ai"]}})
+    
     docs  = await db["activities"].find(mongo_filter) \
                                   .sort("created_at", -1) \
                                   .skip(skip).limit(payload.per_page) \
@@ -275,6 +308,13 @@ async def list_activities(request: Request, payload: ActivityListRequest):
         "total":    total,
         "page":     payload.page,
         "per_page": payload.per_page,
+        "tab":      tab,
+        "tabs": {
+            "all":    count_all,
+            "system": count_system,
+            "ai":     count_ai,
+            "people": count_people,
+        },
         "data":     results,
     }
 
