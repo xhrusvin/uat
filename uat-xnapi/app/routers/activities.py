@@ -301,6 +301,20 @@ async def list_activities(request: Request, payload: ActivityListRequest):
         s["shift_id"]      = str(d["shift_id"]) if d.get("shift_id") else None
         s["created_at"]    = d["created_at"].isoformat() if hasattr(d.get("created_at"), "isoformat") else str(d.get("created_at", ""))
 
+        # time_ago from created_at
+        time_ago = None
+        raw_dt   = d.get("created_at")
+        if raw_dt and hasattr(raw_dt, "tzinfo"):
+            from datetime import timezone as _tz
+            if raw_dt.tzinfo is None:
+                raw_dt = raw_dt.replace(tzinfo=_tz.utc)
+            diff = int((datetime.now(_tz.utc) - raw_dt).total_seconds())
+            if diff < 60:       time_ago = "just now"
+            elif diff < 3600:   time_ago = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
+            elif diff < 86400:  time_ago = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
+            else:               time_ago = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
+        s["time_ago"] = time_ago
+
         results.append(s)
 
     return {
