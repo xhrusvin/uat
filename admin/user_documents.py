@@ -2,6 +2,7 @@
 from flask import (
     render_template, request, redirect, url_for, flash, jsonify, current_app
 )
+import traceback
 from functools import wraps
 from bson import ObjectId
 from datetime import datetime
@@ -254,12 +255,14 @@ def api_list_user_documents():
         resp.raise_for_status()
         api_data = resp.json()
 
+
         if not api_data.get("success"):
             current_app.logger.warning(f"External API non-success: {api_data}")
             return jsonify({"status": "error", "message": "External API non-success"}), 502
 
         fresh_documents = api_data.get("data", []) or []
-
+        if isinstance(fresh_documents, dict):
+            fresh_documents = fresh_documents.get("documents", []) or []
         # documents = []
         # for doc in fresh_documents:
         #     doc_name = (doc.get("document_type_name") or "").strip()
@@ -406,8 +409,13 @@ def api_list_user_documents():
         current_app.logger.error(f"Invalid JSON from external API: {e}")
         return jsonify({"status": "error", "message": "Invalid response format"}), 502
     except Exception as e:
-        current_app.logger.exception("Unexpected error in list documents")
-        return jsonify({"status": "error", "message": "Internal error"}), 500
+        traceback.print_exc()
+        current_app.logger.exception(e)
+        return jsonify({
+         "status": "error",
+         "message": str(e),
+         "traceback": traceback.format_exc()   # Remove in production
+        }), 500
     
 
 @admin_bp.route('/api/prompts/types')
@@ -700,6 +708,8 @@ def api_user_documents_accepted():
         resp.raise_for_status()
 
         fresh_documents = resp.json().get("data", []) or []
+        if isinstance(fresh_documents, dict):
+            fresh_documents = fresh_documents.get("documents", []) or []
 
        
         result = []

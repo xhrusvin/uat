@@ -352,3 +352,34 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
             "is_premium":  (data.get("type") or "").lower() == "premium",
         },
     }
+
+
+# ── POST /shifts/sync ─────────────────────────────────────────────────────────
+
+class ShiftsBulkSyncRequest(BaseModel):
+    shifts: list   # list of shift dicts from upstream API
+
+
+@router.post(
+    "/sync",
+    summary="Bulk upsert shifts from upstream API response into DB",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def bulk_sync_shifts(request: Request, payload: ShiftsBulkSyncRequest):
+    """
+    Body: { "shifts": [ ...upstream shift objects... ] }
+    Same mapping as /shifts/list — upserts by shift_code (shift_xn_id).
+    """
+    if not payload.shifts:
+        raise HTTPException(status_code=400, detail="shifts list is empty")
+
+    result = await _upsert_shifts(payload.shifts)
+
+    return {
+        "success":  True,
+        "inserted": result["inserted"],
+        "updated":  result["updated"],
+        "skipped":  result["skipped"],
+        "total":    len(payload.shifts),
+    }
