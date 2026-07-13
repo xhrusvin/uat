@@ -525,7 +525,8 @@ async def group_outreach_staff_list(request: Request, payload: GroupOutreachIdRe
         {"outreach_id": outreach_oid},
         {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
          "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1,
-         "group_id": 1, "outreach_id": 1, "conversation_id": 1}
+         "group_id": 1, "outreach_id": 1, "conversation_id": 1,
+         "availability_details": 1}
     ).to_list(length=2000)
 
     user_oids = [ObjectId(str(su["user_id"])) for su in su_docs if su.get("user_id") and ObjectId.is_valid(str(su.get("user_id","")))]
@@ -648,6 +649,7 @@ async def group_outreach_staff_list(request: Request, payload: GroupOutreachIdRe
             "outreach_id":         str(raw_oid) if raw_oid else None,
             "conversation_id":     su.get("conversation_id"),
             "call_details":        call_details,
+            "availability_details": su.get("availability_details") or [],
         })
 
     total     = len(staff_list)
@@ -782,6 +784,156 @@ async def group_transcription_audio(request: Request, payload: GroupTranscriptio
         raise HTTPException(status_code=404, detail="No conversation found")
 
     el_id   = conv.get("elevenlabs_conversation_id")
+    if not el_id:
+        raise HTTPException(status_code=404, detail="No audio available")
+
+    api_key = settings.ELEVENLABS_API_KEY or ""
+    url     = f"https://api.elevenlabs.io/v1/convai/conversations/{el_id}/audio"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, headers={"xi-api-key": api_key})
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code,
+            detail=f"ElevenLabs error: {resp.text[:200]} | key: {api_key[:8]}...")
+
+    return StreamingResponse(
+        iter([resp.content]),
+        media_type="audio/mpeg",
+        headers={"Content-Disposition": "inline; filename=call_audio.mp3"},
+    )
+
+
+# ── POST /outreach-group/transcription ───────────────────────────────────────
+
+class GroupTranscriptionV2Request(BaseModel):
+    conversation_id: str   # shifts_group_users.conversation_id (unique)
+
+
+@router.post("/transcription", summary="Get AI call transcription for a group staff member",
+             dependencies=[Depends(verify_api_key)])
+@limiter.limit("60/minute")
+async def group_transcription_v2(request: Request, payload: GroupTranscriptionV2Request):
+    """
+    Body: { "user_id": "...", "shift_id"?: "...", "outreach_id"?: "...", "conversation_id"?: "..." }
+    Fetches from shift_booking_bulk_conv collection.
+    shift_id is resolved from shifts_group_users.availability_details.shift_id if not provided.
+    """
+    db = _get_db()
+
+    # Resolve shift_id from shifts_group_users if not provided
+    # Resolve conversation from shifts_group_users
+    su_doc = None
+    if payload.user_id and ObjectId.is_valid(payload.user_id):
+        su_query = {"user_id": ObjectId(payload.user_id)}
+        if payload.group_id and ObjectId.is_valid(payload.group_id):
+            su_query["group_id"] = ObjectId(payload.group_id)
+        su_doc = await db["shifts_group_users"].find_one(
+            su_query,
+            sort=[("call_processed_at", -1)],
+        )
+
+    # Get availability_details array and first available shift_id
+    availability_details = []
+    resolved_shift_id    = payload.shift_id
+    if su_doc:
+        avail_list = su_doc.get("availability_details") or []
+        if isinstance(avail_list, list):
+            availability_details = avail_list
+            if not resolved_shift_id and avail_list:
+                # Use first shift_id from availability_details
+                resolved_shift_id = str(avail_list[0].get("shift_id", "")) or None
+
+    # Resolve conversation_id from shifts_group_users if not provided
+    conv_id_to_use = payload.conversation_id or (su_doc.get("conversation_id") if su_doc else None)
+
+    if conv_id_to_use:
+        query = {"elevenlabs_conversation_id": conv_id_to_use}
+    else:
+        query = {"user_id": payload.user_id}
+        if resolved_shift_id:
+            query["shift_id"] = resolved_shift_id
+        if payload.outreach_id:
+            query["outreach_id"] = payload.outreach_id
+
+    conv = await db["shift_booking_bulk_conv"].find_one(query)
+    if not conv:
+        raise HTTPException(status_code=404, detail="No conversation found")
+
+    def _fmt(dt):
+        return dt.isoformat() if dt and hasattr(dt, "isoformat") else None
+
+    turns = [
+        {"role": t.get("role"), "message": t.get("message") or t.get("text"), "ts": _fmt(t.get("ts"))}
+        for t in conv.get("turns", [])
+    ]
+
+    return {
+        "success": True,
+        "data": {
+            "id":                           str(conv["_id"]),
+            "user_id":                      payload.user_id,
+            "shift_id":                     resolved_shift_id,
+            "outreach_id":                  payload.outreach_id,
+            "elevenlabs_conversation_id":   conv.get("elevenlabs_conversation_id"),
+            "conversation_id":              conv_id_to_use,
+            "started_at":                   _fmt(conv.get("started_at")),
+            "ended_at":                     _fmt(conv.get("ended_at")),
+            "turns":                        turns,
+            "has_audio":                    bool(conv.get("elevenlabs_conversation_id")),
+            "availability_details":         availability_details,
+        },
+    }
+
+
+# ── POST /outreach-group/transcription/audio ─────────────────────────────────
+
+@router.post("/transcription/audio", summary="Stream audio for a group staff call",
+             dependencies=[Depends(verify_api_key)])
+@limiter.limit("30/minute")
+async def group_transcription_audio_v2(request: Request, payload: GroupTranscriptionV2Request):
+    """
+    Body: { "user_id": "...", "shift_id"?: "...", "outreach_id"?: "...", "conversation_id"?: "..." }
+    Fetches from shift_booking_bulk_conv and streams MP3 from ElevenLabs.
+    """
+    import os
+    from fastapi.responses import StreamingResponse
+
+    db = _get_db()
+
+    # Resolve conversation_id from shifts_group_users
+    su_doc = None
+    if payload.user_id and ObjectId.is_valid(payload.user_id):
+        su_query = {"user_id": ObjectId(payload.user_id)}
+        if payload.group_id and ObjectId.is_valid(payload.group_id):
+            su_query["group_id"] = ObjectId(payload.group_id)
+        su_doc = await db["shifts_group_users"].find_one(
+            su_query,
+            sort=[("call_processed_at", -1)],
+        )
+
+    resolved_shift_id = payload.shift_id
+    if not resolved_shift_id and su_doc:
+        avail_list = su_doc.get("availability_details") or []
+        if isinstance(avail_list, list) and avail_list:
+            resolved_shift_id = str(avail_list[0].get("shift_id", "")) or None
+
+    conv_id_to_use = payload.conversation_id or (su_doc.get("conversation_id") if su_doc else None)
+
+    if conv_id_to_use:
+        query = {"elevenlabs_conversation_id": conv_id_to_use}
+    else:
+        query = {"user_id": payload.user_id}
+        if resolved_shift_id:
+            query["shift_id"] = resolved_shift_id
+        if payload.outreach_id:
+            query["outreach_id"] = payload.outreach_id
+
+    conv = await db["shift_booking_bulk_conv"].find_one(query, {"elevenlabs_conversation_id": 1})
+    if not conv:
+        raise HTTPException(status_code=404, detail="No conversation found")
+
+    el_id = conv.get("elevenlabs_conversation_id")
     if not el_id:
         raise HTTPException(status_code=404, detail="No audio available")
 
