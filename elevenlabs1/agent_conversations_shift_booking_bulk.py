@@ -13,6 +13,7 @@ from datetime import datetime
 import pytz
 from pymongo import MongoClient
 from bson import ObjectId
+import json
 
 load_dotenv()
 
@@ -50,6 +51,39 @@ CALL_STATUS_VALUES = {
     "user busy",
     "no required experience"
 }
+
+def merge_availability(existing_details, availability_result):
+    """
+    existing_details: [{"shift_id": "...", "date": "2026-06-16"}, ...]  (from DB)
+    availability_result: [{"date": "2026-06-16", "availability": 1}, ...] (from agent)
+    Returns merged list — shift_id preserved, availability added/updated by date.
+    """
+    # dc value may arrive as a JSON string
+    if isinstance(availability_result, str):
+        try:
+            availability_result = json.loads(availability_result)
+        except (json.JSONDecodeError, TypeError):
+            return existing_details
+
+    if not isinstance(availability_result, list):
+        return existing_details
+
+    # date -> availability lookup
+    avail_by_date = {
+        str(item.get("date")).strip(): item.get("availability")
+        for item in availability_result
+        if isinstance(item, dict) and item.get("date")
+    }
+
+    merged = []
+    for entry in (existing_details or []):
+        entry = dict(entry)  # don't mutate original
+        date_key = str(entry.get("date", "")).strip()
+        if date_key in avail_by_date:
+            entry["availability"] = avail_by_date[date_key]
+        merged.append(entry)
+
+    return merged
 
 # ==================== HELPERS ====================
 def extract_minimal_transcript(transcript):
@@ -194,13 +228,26 @@ def sync_agent_conversations_shift_bulk_booking():
                 )   
 
                 # ==================== website_leads ====================
+                # Fetch existing record to get current availability_details (with shift_ids)
+                existing_doc = leads_collection.find_one(
+                 {
+                  "user_id": ObjectId(user_id),
+                  "group_id": ObjectId(group_id),
+                  "conversation_id": conversation_id,
+                 },
+                 {"availability_details": 1}
+                )
+                existing_details = existing_doc.get("availability_details", []) if existing_doc else []
+
+                merged_details = merge_availability(existing_details, dc_map.get("availability"))
+
                 lead_doc = {
                     "agent_id": agent_id,
-                    "availability_details": dc_map.get("availability"),
+                    "availability_details": merged_details,
                     "call_summary_title": analysis.get("call_summary_title"),
                     "call_status": 1,
                     "updated_at": stored_at,
-                    "started_at":stored_at,
+                    "started_at": stored_at,
                     "ended_at": ended_at,
                 }
 
