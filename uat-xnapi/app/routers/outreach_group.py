@@ -806,43 +806,16 @@ async def group_transcription_v2(request: Request, payload: GroupTranscriptionV2
 @limiter.limit("30/minute")
 async def group_transcription_audio_v2(request: Request, payload: GroupTranscriptionV2Request):
     """
-    Body: { "user_id": "...", "shift_id"?: "...", "outreach_id"?: "...", "conversation_id"?: "..." }
+    Body: { "conversation_id": "conv_..." }
     Fetches from shift_booking_bulk_conv and streams MP3 from ElevenLabs.
     """
-    import os
     from fastapi.responses import StreamingResponse
-
     db = _get_db()
 
-    # Resolve conversation_id from shifts_group_users
-    su_doc = None
-    if payload.user_id and ObjectId.is_valid(payload.user_id):
-        su_query = {"user_id": ObjectId(payload.user_id)}
-        if payload.group_id and ObjectId.is_valid(payload.group_id):
-            su_query["group_id"] = ObjectId(payload.group_id)
-        su_doc = await db["shifts_group_users"].find_one(
-            su_query,
-            sort=[("call_processed_at", -1)],
-        )
-
-    resolved_shift_id = payload.shift_id
-    if not resolved_shift_id and su_doc:
-        avail_list = su_doc.get("availability_details") or []
-        if isinstance(avail_list, list) and avail_list:
-            resolved_shift_id = str(avail_list[0].get("shift_id", "")) or None
-
-    conv_id_to_use = payload.conversation_id or (su_doc.get("conversation_id") if su_doc else None)
-
-    if conv_id_to_use:
-        query = {"elevenlabs_conversation_id": conv_id_to_use}
-    else:
-        query = {"user_id": payload.user_id}
-        if resolved_shift_id:
-            query["shift_id"] = resolved_shift_id
-        if payload.outreach_id:
-            query["outreach_id"] = payload.outreach_id
-
-    conv = await db["shift_booking_bulk_conv"].find_one(query, {"elevenlabs_conversation_id": 1})
+    conv = await db["shift_booking_bulk_conv"].find_one(
+        {"elevenlabs_conversation_id": payload.conversation_id},
+        {"elevenlabs_conversation_id": 1}
+    )
     if not conv:
         raise HTTPException(status_code=404, detail="No conversation found")
 
