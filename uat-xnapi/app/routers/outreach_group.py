@@ -728,48 +728,24 @@ class GroupTranscriptionV2Request(BaseModel):
 @limiter.limit("60/minute")
 async def group_transcription_v2(request: Request, payload: GroupTranscriptionV2Request):
     """
-    Body: { "user_id": "...", "shift_id"?: "...", "outreach_id"?: "...", "conversation_id"?: "..." }
+    Body: { "conversation_id": "conv_..." }
     Fetches from shift_booking_bulk_conv collection.
-    shift_id is resolved from shifts_group_users.availability_details.shift_id if not provided.
     """
     db = _get_db()
 
-    # Resolve shift_id from shifts_group_users if not provided
-    # Resolve conversation from shifts_group_users
-    su_doc = None
-    if payload.user_id and ObjectId.is_valid(payload.user_id):
-        su_query = {"user_id": ObjectId(payload.user_id)}
-        if payload.group_id and ObjectId.is_valid(payload.group_id):
-            su_query["group_id"] = ObjectId(payload.group_id)
-        su_doc = await db["shifts_group_users"].find_one(
-            su_query,
-            sort=[("call_processed_at", -1)],
-        )
+    su_doc = await db["shifts_group_users"].find_one(
+        {"conversation_id": payload.conversation_id}
+    )
 
-    # Get availability_details array and first available shift_id
     availability_details = []
-    resolved_shift_id    = payload.shift_id
     if su_doc:
         avail_list = su_doc.get("availability_details") or []
         if isinstance(avail_list, list):
             availability_details = avail_list
-            if not resolved_shift_id and avail_list:
-                # Use first shift_id from availability_details
-                resolved_shift_id = str(avail_list[0].get("shift_id", "")) or None
 
-    # Resolve conversation_id from shifts_group_users if not provided
-    conv_id_to_use = payload.conversation_id or (su_doc.get("conversation_id") if su_doc else None)
-
-    if conv_id_to_use:
-        query = {"elevenlabs_conversation_id": conv_id_to_use}
-    else:
-        query = {"user_id": payload.user_id}
-        if resolved_shift_id:
-            query["shift_id"] = resolved_shift_id
-        if payload.outreach_id:
-            query["outreach_id"] = payload.outreach_id
-
-    conv = await db["shift_booking_bulk_conv"].find_one(query)
+    conv = await db["shift_booking_bulk_conv"].find_one(
+        {"elevenlabs_conversation_id": payload.conversation_id}
+    )
     if not conv:
         raise HTTPException(status_code=404, detail="No conversation found")
 
@@ -784,17 +760,16 @@ async def group_transcription_v2(request: Request, payload: GroupTranscriptionV2
     return {
         "success": True,
         "data": {
-            "id":                           str(conv["_id"]),
-            "user_id":                      payload.user_id,
-            "shift_id":                     resolved_shift_id,
-            "outreach_id":                  payload.outreach_id,
-            "elevenlabs_conversation_id":   conv.get("elevenlabs_conversation_id"),
-            "conversation_id":              conv_id_to_use,
-            "started_at":                   _fmt(conv.get("started_at")),
-            "ended_at":                     _fmt(conv.get("ended_at")),
-            "turns":                        turns,
-            "has_audio":                    bool(conv.get("elevenlabs_conversation_id")),
-            "availability_details":         availability_details,
+            "id":                          str(conv["_id"]),
+            "conversation_id":             payload.conversation_id,
+            "elevenlabs_conversation_id":  conv.get("elevenlabs_conversation_id"),
+            "user_id":                     str(su_doc["user_id"]) if su_doc and su_doc.get("user_id") else None,
+            "group_id":                    str(su_doc["group_id"]) if su_doc and su_doc.get("group_id") else None,
+            "started_at":                  _fmt(conv.get("started_at")),
+            "ended_at":                    _fmt(conv.get("ended_at")),
+            "turns":                       turns,
+            "has_audio":                   bool(conv.get("elevenlabs_conversation_id")),
+            "availability_details":        availability_details,
         },
     }
 
