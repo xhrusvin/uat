@@ -164,7 +164,7 @@ def sync_agent_conversations_shift_bulk_booking():
                 data_obj = client_data.get('dynamic_variables', {})
 
                 user_id  = data_obj.get("user_id")
-                shift_id = data_obj.get("shift_id")
+                group_id = data_obj.get("group_id")
                 
                 
                 # ==================== DATA COLLECTION ====================
@@ -196,7 +196,7 @@ def sync_agent_conversations_shift_bulk_booking():
                 # ==================== website_leads ====================
                 lead_doc = {
                     "agent_id": agent_id,
-                    "availability": dc_map.get("availability"),
+                    "availability_details": dc_map.get("availability"),
                     "call_summary_title": analysis.get("call_summary_title"),
                     "call_status": 1,
                     "updated_at": stored_at,
@@ -210,7 +210,7 @@ def sync_agent_conversations_shift_bulk_booking():
                 result = leads_collection.update_one(
     {
         "user_id": ObjectId(user_id),
-        "shift_id": ObjectId(shift_id),
+        "group_id": ObjectId(group_id),
         "conversation_id": conversation_id,
     },
     {
