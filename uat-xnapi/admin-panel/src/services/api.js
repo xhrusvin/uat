@@ -4,7 +4,7 @@ const BASE_URL = import.meta.env.VITE_API_URL || ''
 const API_KEY  = import.meta.env.VITE_API_KEY  || 'xh-uat-9f4a2c8b1d6e3f7a0b5c9d2e4f8a1b3c'
 
 // ── Auth client — JWT token ───────────────────────────────────────────────────
-const authClient = axios.create({ baseURL: BASE_URL, timeout: 15000 })
+const authClient   = axios.create({ baseURL: BASE_URL, timeout: 120000 })
 authClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('xh_admin_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
@@ -12,7 +12,7 @@ authClient.interceptors.request.use((config) => {
 })
 
 // ── Users client — API key for all /users/ calls ─────────────────────────────
-const usersClient = axios.create({ baseURL: BASE_URL, timeout: 15000 })
+const usersClient = axios.create({ baseURL: BASE_URL, timeout: 120000 })
 usersClient.interceptors.request.use((config) => {
   config.headers.Authorization = `Bearer ${API_KEY}`
   return config
@@ -30,7 +30,7 @@ export const shiftsDbApi = {
 }
 
 // No auth required
-const publicClient = axios.create({ baseURL: BASE_URL, timeout: 15000 })
+const publicClient = axios.create({ baseURL: BASE_URL, timeout: 120000 })
 
 export const recruitmentsApi = {
   detail: (id) => publicClient.post('/recruitments/detail', { _id: id }),
