@@ -384,8 +384,9 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         cid = s.get("client_id", "")
         cl  = client_map.get(cid)
         s["client_name"]  = _client_name(cl)
-        s["client_email"] = cl.get("email") if cl else None
-        s["client_phone"] = cl.get("phone") if cl else None
+        s["client_email"]      = cl.get("email")             if cl else None
+        s["client_phone"]      = cl.get("phone")             if cl else None
+        s["client_preference"] = cl.get("client_preference") or []  if cl else []
         shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
         s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l)
         outreach_info = await _get_outreach_status(db, shift_oid_l)
@@ -628,8 +629,9 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         cid = s.get("client_id", "")
         cl  = client_map.get(cid)
         s["client_name"]  = _client_name(cl)
-        s["client_email"] = cl.get("email") if cl else None
-        s["client_phone"] = cl.get("phone") if cl else None
+        s["client_email"]      = cl.get("email")             if cl else None
+        s["client_phone"]      = cl.get("phone")             if cl else None
+        s["client_preference"] = cl.get("client_preference") or []  if cl else []
 
         # Staff counts
         shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
@@ -660,7 +662,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         s["outreach_sequence_name"] = seq_name
         s["start_time"]             = start_time
         s["shift_preference"]       = None
-        s["client_preference"]      = None
+        s["client_preference"]      = cl.get("client_preference") or [] if cl else []
         s["ghost_booking"]          = 0
         results.append(s)
 
@@ -801,7 +803,7 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
             "outreach_status_text":     "Not Started",
             "outreach_sequence_name":   None,
             "shift_preference":         None,
-            "client_preference":        None,
+            "client_preference":        cl.get("client_preference") or [] if cl else [],
             "ghost_booking":            0,
         }
     status = latest.get("outreach_status", 0)

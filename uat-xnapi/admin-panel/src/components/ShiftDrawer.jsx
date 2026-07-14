@@ -108,6 +108,19 @@ export default function ShiftDrawer({ shiftId, onClose }) {
                 {shift.client_address && (
                   <div className="col-span-2"><Row label="Address" value={shift.client_address} /></div>
                 )}
+                {shift.client_preference && shift.client_preference.length > 0 && (
+                  <div className="col-span-2">
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">Client Tags</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {shift.client_preference.map((tag) => (
+                        <span key={tag.id || tag.name}
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Section>
 
               {/* Shift info */}
