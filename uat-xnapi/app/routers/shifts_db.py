@@ -394,7 +394,6 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["outreach_status_text"]   = outreach_info["outreach_status_text"]
         s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
         s["shift_preference"]       = outreach_info["shift_preference"]
-        s["client_preference"]      = outreach_info["client_preference"]
         s["ghost_booking"]          = 0
         results.append(s)
 
@@ -878,7 +877,6 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     s["outreach_status_text"]   = outreach_info["outreach_status_text"]
     s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
     s["shift_preference"]       = outreach_info["shift_preference"]
-    s["client_preference"]      = outreach_info["client_preference"]
     s["ghost_booking"]          = 0
     if "outreach_id" in outreach_info:
         s["outreach_id"] = outreach_info["outreach_id"]
