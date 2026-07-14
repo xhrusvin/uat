@@ -90,7 +90,7 @@ async def _build_client_map(db, client_ids: list) -> dict:
     if not client_ids:
         return client_map
 
-    projection = {"name": 1, "title": 1, "email": 1, "phone": 1, "xn_client_id": 1}
+    projection = {"name": 1, "title": 1, "email": 1, "phone": 1, "xn_client_id": 1, "client_preference": 1, "address": 1}
 
     # 1. Match by xn_client_id (primary join key)
     async for cl in db["clients"].find(
