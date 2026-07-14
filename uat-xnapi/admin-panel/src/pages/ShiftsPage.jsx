@@ -156,17 +156,25 @@ function ShiftRow({ shift, checked, onCheck, onView, onDetail }) {
       {/* User Type */}
       <td className="px-4 py-3.5 text-sm text-gray-700">{shift.user_type || 'Nurse'}</td>
 
-      {/* Client Tags — hardcoded from design */}
+      {/* Client Tags — from clients.client_preference */}
       <td className="px-4 py-3.5">
-        <div className="flex flex-wrap gap-1">
-          <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">Soft recruit</span>
-          <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">Previous staff reffered</span>
-          <div className="w-full flex flex-wrap gap-1 mt-0.5">
-            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Paper timesheet</span>
-            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Email confirmation</span>
-            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-500">+2 more</span>
+        {shift.client_preference && shift.client_preference.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {shift.client_preference.slice(0, 2).map((tag) => (
+              <span key={tag.id || tag.name}
+                    className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                {tag.name}
+              </span>
+            ))}
+            {shift.client_preference.length > 2 && (
+              <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-500">
+                +{shift.client_preference.length - 2} more
+              </span>
+            )}
           </div>
-        </div>
+        ) : (
+          <span className="text-xs text-gray-400">—</span>
+        )}
       </td>
 
       {/* Automation Status */}
