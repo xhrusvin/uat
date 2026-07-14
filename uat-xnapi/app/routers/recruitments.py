@@ -38,6 +38,7 @@ def _map_user_fields(data: dict, now: datetime) -> dict:
         ("email",       "email"),
         ("user_type",   "designation"),
         ("status",      "status"),
+        ("rating",      "rating"),
     ]:
         if data.get(field) is not None:
             doc[dest] = data[field]
