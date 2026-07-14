@@ -142,6 +142,7 @@ def _build_client_doc(item: dict, now: datetime) -> dict:
         "break_time_invoice":  item.get("break_time_invoice"),
         "break_time_payment":  item.get("break_time_payment"),
         "cancellation_time":   item.get("cancellation_time"),
+        "client_preference":   item.get("client_preference") or [],
     }
 
     # Capture any remaining upstream fields not yet mapped
