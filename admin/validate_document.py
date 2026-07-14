@@ -85,6 +85,7 @@ def validate_document():
         .limit(per_page)
     )
 
+
     BASE_URL = os.getenv('XN_PORTAL_BASE_URL')
     headers = {
         "Api-Key": os.getenv('XN_PORTAL_API_KEY'),
@@ -94,18 +95,32 @@ def validate_document():
 
     processed_results = []
 
+    
+
     for u in users_list:
         local_id = u['_id']
         xn_user_id = u.get('xn_user_id')
-       
+
+        
         try:
             api_url = f"{BASE_URL}/ai/recruitments/user-document-list"
-            response = requests.get(api_url, headers=headers, json={"_id": xn_user_id}, timeout=15)
+            payload = {"_id": xn_user_id}
+            if document_id_filter:
+                payload["document_id"] = document_id_filter
+            response = requests.get(api_url, headers=headers, json=payload, timeout=15)
 
             if response.status_code != 200:
                continue
 
-            docs_array = response.json().get('data', [])
+            resp_data = response.json().get('data', {}) or {}
+            if isinstance(resp_data, dict):
+                docs_array = resp_data.get('documents', []) or []
+                api_user_name = (resp_data.get('name') or '').strip()
+            else:
+                docs_array = resp_data
+                api_user_name = ''
+
+            
 
             # ── Filter or find pending docs based on document_id_filter ────
             if document_id_filter:
@@ -145,6 +160,7 @@ def validate_document():
                 ai_reason = "No URL"
                 ai_raw_response = ""
                 user_name = (
+                    api_user_name or
                     u.get('name') or
                     f"{u.get('first_name', '')} {u.get('last_name', '')}".strip()
                 )

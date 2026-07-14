@@ -192,12 +192,12 @@ function ShiftRow({ shift, checked, onCheck, onView, onDetail }) {
           <ActionButton shift={shift} onClick={() => {
             const status = shift.status
             if (status === 'To be assigned' || status === 'Completed' || status === 'Cancelled' || status === 'In Progress') {
-              onDetail(shift._id)
+              onDetail(shift._id || shift.id)
             } else {
-              onView(shift._id)
+              onView(shift._id || shift.id)
             }
           }} />
-          <button onClick={() => onView(shift._id)}
+          <button onClick={() => onView(shift._id || shift.id)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600
                              hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

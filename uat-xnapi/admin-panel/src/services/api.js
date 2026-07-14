@@ -26,7 +26,7 @@ export const authApi = {
 export const shiftsDbApi = {
   list:   (body)   => usersClient.post('/shifts-db/', body),
   get:    (id)     => usersClient.get(`/shifts-db/${id}`),
-  detail: (id)     => usersClient.get(`/shifts-db/${id}/detail`),
+  detail: (id)     => usersClient.post('/shifts-db/detail', { id }),
 }
 
 // No auth required
