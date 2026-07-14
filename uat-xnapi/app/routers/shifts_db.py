@@ -803,7 +803,7 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
             "outreach_status_text":     "Not Started",
             "outreach_sequence_name":   None,
             "shift_preference":         None,
-            "client_preference":        cl.get("client_preference") or [] if cl else [],
+            "client_preference":        [],
             "ghost_booking":            0,
         }
     status = latest.get("outreach_status", 0)
