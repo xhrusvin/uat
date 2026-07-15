@@ -657,6 +657,24 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1}
     ) or {}
 
+    # ── Batch: pool membership ─────────────────────────────────────────────────
+    user_oids_page = [u["_id"] for u in users]
+    pool_records   = await db["shifts_pool"].find(
+        {"shift_id": shift_oid, "user_id": {"$in": user_oids_page}},
+        {"user_id": 1}
+    ).to_list(5000)
+    pool_user_set = {str(p["user_id"]) for p in pool_records}
+
+    # ── Batch: prior shifts count ──────────────────────────────────────────────
+    prior_su_docs = await db["shifts_users"].find(
+        {"user_id": {"$in": user_oids_page}, "availability": 1},
+        {"user_id": 1}
+    ).to_list(50000)
+    prior_shifts_map: dict = {}
+    for psu in prior_su_docs:
+        uid = str(psu.get("user_id", ""))
+        prior_shifts_map[uid] = prior_shifts_map.get(uid, 0) + 1
+
     results = []
     for u in users:
         uid_str  = str(u["_id"])
@@ -715,21 +733,17 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift) if user_email and target_shift else []
         excluded = 1 if exclusion_tags else 0
 
-        # in_pool — check if user is in shifts_pool for this shift
-        pool_doc  = await db["shifts_pool"].find_one({"shift_id": shift_oid, "user_id": u["_id"]}, {"_id": 1})
-        in_pool   = 1 if pool_doc else 0
+        # in_pool — from batch
+        in_pool   = 1 if uid_str in pool_user_set else 0
         requested = 0
 
-        # Visa hours remaining — from user fields
+        # Visa hours remaining
         visa_used  = u.get("visa_hours_used")
         visa_total = u.get("visa_hours_total")
         visa_hours_remaining = f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
 
-        # Prior shifts count (work history) — count shifts_users where availability == 1
-        prior_shifts = await db["shifts_users"].count_documents({
-            "user_id":     u["_id"],
-            "availability": 1,
-        })
+        # Prior shifts count — from batch
+        prior_shifts = prior_shifts_map.get(uid_str, 0)
 
         # Work history display string
         work_history = None
