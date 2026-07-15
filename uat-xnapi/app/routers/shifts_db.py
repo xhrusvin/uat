@@ -1130,56 +1130,10 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 if ucoords:
                     distance_km = _hav(float(client_lat), float(client_lng), ucoords[0], ucoords[1])
 
-            # Response text + call details from conversation
-            response_text = None
-            response_time = None
+            # Response text + time — directly from shifts_users
+            response_text = su.get("response_text")
+            response_time = su.get("response_time")
             call_details  = None
-            conv = await db["shift_booking_conv"].find_one(
-                {"shift_id": str(shift_oid), "user_id": uid_str},
-                {"turns": 1, "started_at": 1, "ended_at": 1,
-                 "elevenlabs_conversation_id": 1, "round_number": 1,
-                 "phone": 1, "duration_seconds": 1, "confidence": 1}
-            )
-            if conv:
-                for turn in reversed(conv.get("turns") or []):
-                    if turn.get("role") in ("user", "human") and turn.get("message"):
-                        response_text = turn["message"]
-                        ts = turn.get("ts")
-                        if ts and hasattr(ts, "strftime"):
-                            response_time = ts.strftime("%H:%M")
-                        break
-
-                # Build call_details block
-                started = conv.get("started_at")
-                ended   = conv.get("ended_at")
-                duration_s = conv.get("duration_seconds")
-                if not duration_s and started and ended and hasattr(started, "timestamp"):
-                    duration_s = int((ended - started).total_seconds()) if ended else None
-                duration_label = f"{duration_s} seconds" if duration_s else None
-                placed_time = started.strftime("%H:%M:%S") if started and hasattr(started, "strftime") else None
-                round_num   = conv.get("round_number", 1)
-                placed_label = f"{placed_time} · Round {round_num}" if placed_time else None
-                phone_used   = conv.get("phone") or su.get("phone")
-                called_via   = f"{phone_used} (phone)" if phone_used else "Phone"
-                # AI heard — last user turn with timestamp and confidence
-                ai_heard = None
-                confidence = conv.get("confidence")
-                for turn in reversed(conv.get("turns") or []):
-                    if turn.get("role") in ("user", "human") and turn.get("message"):
-                        t_ts = turn.get("ts")
-                        t_time = t_ts.strftime("%H:%M") if t_ts and hasattr(t_ts, "strftime") else None
-                        conf_pct = f"{int(confidence * 100)}% confidence" if confidence else None
-                        parts = [f'"{turn["message"]}"']
-                        if t_time: parts.append(f"at {t_time}")
-                        if conf_pct: parts.append(f"· {conf_pct}")
-                        ai_heard = " ".join(parts)
-                        break
-                call_details = {
-                    "called_via":  called_via,
-                    "placed_at":   placed_label,
-                    "duration":    duration_label,
-                    "ai_heard":    ai_heard,
-                }
 
             available_staff.append({
                 "id":                  uid_str,
