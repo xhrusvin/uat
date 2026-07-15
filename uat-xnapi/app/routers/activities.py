@@ -138,6 +138,7 @@ ACTIVITY_TAB_MAP = {
 class ActivityListRequest(BaseModel):
     shift_id:      Optional[str] = None
     outreach_id:   Optional[str] = None
+    group_id:      Optional[str] = None   # for outreach_group activities
     activity_type: Optional[str] = None
     tab:           Optional[str] = None  # "all" | "system" | "ai" | "people"
     page:          int = 1
@@ -221,6 +222,8 @@ async def list_activities(request: Request, payload: ActivityListRequest):
         filters.append({"shift_id": ObjectId(payload.shift_id)})
     if payload.outreach_id and ObjectId.is_valid(payload.outreach_id):
         filters.append({"outreach_id": ObjectId(payload.outreach_id)})
+    if payload.group_id and ObjectId.is_valid(payload.group_id):
+        filters.append({"group_id": ObjectId(payload.group_id)})
     if payload.activity_type:
         filters.append({"activity_type": payload.activity_type})
 
@@ -245,6 +248,8 @@ async def list_activities(request: Request, payload: ActivityListRequest):
         count_base["shift_id"] = ObjectId(payload.shift_id)
     if payload.outreach_id and ObjectId.is_valid(payload.outreach_id):
         count_base["outreach_id"] = ObjectId(payload.outreach_id)
+    if payload.group_id and ObjectId.is_valid(payload.group_id):
+        count_base["group_id"] = ObjectId(payload.group_id)
 
     count_all    = await db["activities"].count_documents(count_base)
     count_system = await db["activities"].count_documents({**count_base, "activity_type": {"$in": ACTIVITY_TAB_MAP["system"]}})
