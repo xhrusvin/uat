@@ -197,6 +197,8 @@ def sync_agent_conversations_shift_booking():
                 lead_doc = {
                     "agent_id": agent_id,
                     "availability": dc_map.get("availability"),
+                    "response_text": dc_map.get("response_text"),
+                    "response_time": dc_map.get("response_time"),
                     "call_summary_title": analysis.get("call_summary_title"),
                     "call_status": 1,
                     "updated_at": stored_at,
