@@ -1030,9 +1030,9 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         })
     s["outreach_list"] = outreach_list
 
-    # Fetch available staff: shifts_users where shift_id AND availability == 1
+    # Fetch available staff: shifts_users where shift_id — all records with any availability
     available_su = await db["shifts_users"].find(
-        {"shift_id": shift_oid, "availability": 1},
+        {"shift_id": shift_oid},
         {"user_id": 1, "availability": 1, "call_processed_at": 1, "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "response_text": 1, "response_time": 1}
     ).to_list(length=500)
 
