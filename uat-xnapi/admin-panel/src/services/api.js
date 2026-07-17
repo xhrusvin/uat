@@ -98,6 +98,7 @@ export const usersApi = {
   get:              (id)             => usersClient.get(`/users/${id}`),
   update:           (id, data)       => usersClient.patch(`/users/${id}`, data),
   documentUploaded: (data)           => usersClient.post('/webhook/document-uploaded', data),
+  shiftUpdated:     (data)           => usersClient.post('/webhook/shift-updated', data),
 }
 
 export default authClient

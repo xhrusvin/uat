@@ -79,3 +79,58 @@ async def list_document_uploaded(request: Request, payload: WebhookListRequest):
         "per_page": payload.per_page,
         "data":     results,
     }
+
+
+@router.post(
+    "/shift-updated",
+    summary="List shift_updated webhook records",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def list_shift_updated(request: Request, payload: WebhookListRequest):
+    db   = _get_db()
+    skip = (payload.page - 1) * payload.per_page
+    total = await db["shift_updated"].count_documents({})
+    docs  = await db["shift_updated"].find({}) \
+        .sort("uploaded_at", -1) \
+        .skip(skip).limit(payload.per_page) \
+        .to_list(length=payload.per_page)
+
+    results = []
+    for d in docs:
+        # Parse shift data from sync_api_response
+        shift_data = {}
+        raw = d.get("sync_api_response", "")
+        try:
+            import json
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+            shift_data = parsed.get("data") or {}
+        except Exception:
+            pass
+
+        def _fmt(dt):
+            return dt.isoformat() if dt and hasattr(dt, "isoformat") else str(dt) if dt else None
+
+        results.append({
+            "id":               str(d["_id"]),
+            "shift_id":         str(d.get("shift_id", "")),
+            "shift_code":       shift_data.get("shift_code") or "",
+            "client":           shift_data.get("client") or "",
+            "date":             shift_data.get("date") or "",
+            "start_time":       shift_data.get("start_time") or "",
+            "end_time":         shift_data.get("end_time") or "",
+            "user_type":        shift_data.get("user_type") or "",
+            "status":           d.get("status"),
+            "country":          d.get("country"),
+            "sync_api_status":  d.get("sync_api_status"),
+            "sync_api_response": raw,
+            "uploaded_at":      _fmt(d.get("uploaded_at")),
+        })
+
+    return {
+        "success":  True,
+        "total":    total,
+        "page":     payload.page,
+        "per_page": payload.per_page,
+        "data":     results,
+    }
