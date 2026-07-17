@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { usersClient } from '../services/api'
+import { usersApi } from '../services/api'
 
 function timeAgo(ts) {
   if (!ts) return '—'
@@ -33,7 +33,7 @@ export default function DocumentUploadedPage() {
     setLoading(true)
     setError(null)
     try {
-      const { data } = await usersClient.post('/webhook/document-uploaded', {
+      const { data } = await usersApi.documentUploaded({
         page: p, per_page: perPage
       })
       setRows(data.data || [])

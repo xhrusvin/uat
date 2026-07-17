@@ -94,9 +94,10 @@ export const shiftsApi = {
 
 export const usersApi = {
   // signal is an AbortController.signal — cancels the request if a new one starts
-  list:   (params, signal) => usersClient.get('/users/', { params, signal }),
-  get:    (id)             => usersClient.get(`/users/${id}`),
-  update: (id, data)       => usersClient.patch(`/users/${id}`, data),
+  list:             (params, signal) => usersClient.get('/users/', { params, signal }),
+  get:              (id)             => usersClient.get(`/users/${id}`),
+  update:           (id, data)       => usersClient.patch(`/users/${id}`, data),
+  documentUploaded: (data)           => usersClient.post('/webhook/document-uploaded', data),
 }
 
 export default authClient
