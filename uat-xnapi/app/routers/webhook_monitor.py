@@ -134,3 +134,62 @@ async def list_shift_updated(request: Request, payload: WebhookListRequest):
         "per_page": payload.per_page,
         "data":     results,
     }
+
+
+@router.post(
+    "/staff-updated",
+    summary="List staff_updated webhook records with parsed staff data",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def list_staff_updated(request: Request, payload: WebhookListRequest):
+    db   = _get_db()
+    skip = (payload.page - 1) * payload.per_page
+    total = await db["staff_updated"].count_documents({})
+    docs  = await db["staff_updated"].find({}) \
+        .sort("uploaded_at", -1) \
+        .skip(skip).limit(payload.per_page) \
+        .to_list(length=payload.per_page)
+
+    results = []
+    for d in docs:
+        import json
+        raw  = d.get("staff_api_response", "")
+        parsed = {}
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            pass
+
+        staff = parsed.get("data") or {}
+        sync  = parsed.get("sync") or {}
+
+        def _fmt(dt):
+            return dt.isoformat() if dt and hasattr(dt, "isoformat") else str(dt) if dt else None
+
+        results.append({
+            "id":                  str(d["_id"]),
+            "user_id":             str(d.get("user_id", "")),
+            "uploaded_at":         _fmt(d.get("uploaded_at")),
+            "country":             d.get("country"),
+            "status":              d.get("status"),
+            "staff_api_status":    d.get("staff_api_status"),
+            "staff_api_response":  raw,
+            # Staff fields from response
+            "name":                f"{staff.get('first_name','')} {staff.get('last_name','')}".strip() or None,
+            "email":               staff.get("email"),
+            "user_type":           staff.get("user_type"),
+            "status_label":        staff.get("status"),
+            "recruitment_status":  staff.get("recruitment_status"),
+            "phone":               staff.get("phone_number"),
+            "sync_action":         sync.get("action"),
+            "fields_updated":      sync.get("fields_updated") or [],
+        })
+
+    return {
+        "success":  True,
+        "total":    total,
+        "page":     payload.page,
+        "per_page": payload.per_page,
+        "data":     results,
+    }
