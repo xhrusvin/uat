@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage'
 import UsersPage from './pages/UsersPage'
 import ShiftListPage from './pages/ShiftListPage'
 import ShiftSyncDetailPage from './pages/ShiftSyncDetailPage'
+import CronPage from './pages/CronPage'
 import ShiftsPage from './pages/ShiftsPage'
 import ClientTypeListPage from './pages/ClientTypeListPage'
 import ClientTypePage from './pages/ClientTypePage'
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="users"          element={<UsersPage />} />
           <Route path="shifts"         element={<ShiftsPage />} />
           <Route path="xn-api/shifts"            element={<ShiftListPage />} />
+          <Route path="cron/sync-shifts"             element={<CronPage />} />
           <Route path="xn-api/shift-details"     element={<ShiftSyncDetailPage />} />
           <Route path="xn-api/client-type-list"  element={<ClientTypeListPage />} />
           <Route path="master/client-type"        element={<ClientTypePage />} />
