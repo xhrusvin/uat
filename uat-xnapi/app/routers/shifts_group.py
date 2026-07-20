@@ -44,8 +44,9 @@ class ShiftGroupCreate(BaseModel):
 
 
 class AddShiftsRequest(BaseModel):
-    group_id:  str
-    shift_ids: list   # list of shifts._id strings to add
+    group_id:   Optional[str] = None  # if omitted, a new group is created
+    group_name: Optional[str] = None  # name for new group (optional)
+    shift_ids:  list   # list of shifts._id strings to add
 
 
 class RemoveShiftsRequest(BaseModel):
@@ -357,16 +358,12 @@ async def list_shift_groups(request: Request):
 @limiter.limit("30/minute")
 async def add_shifts_to_group(request: Request, payload: AddShiftsRequest):
     """
-    Body: { "group_id": "...", "shift_ids": ["<shift_id>", ...] }
-    Adds shifts to group (skips duplicates).
+    Body: { "group_id"?: "...", "group_name"?: "...", "shift_ids": [...] }
+    If group_id is missing → creates a new group.
+    If group_id is provided → adds shifts to existing group (skips duplicates).
     """
-    db = _get_db()
-    if not ObjectId.is_valid(payload.group_id):
-        raise HTTPException(status_code=422, detail="Invalid group_id")
-
-    group = await db["shifts_group"].find_one({"_id": ObjectId(payload.group_id)})
-    if not group:
-        raise HTTPException(status_code=404, detail="Shift group not found")
+    db  = _get_db()
+    now = datetime.now(timezone.utc)
 
     # Validate shift_ids
     shift_oids = []
@@ -376,15 +373,38 @@ async def add_shifts_to_group(request: Request, payload: AddShiftsRequest):
             shift_oids.append(ObjectId(str(sid)))
         else:
             invalid.append(sid)
-
     if invalid:
         raise HTTPException(status_code=422, detail=f"Invalid shift_ids: {invalid}")
-
     if not shift_oids:
         raise HTTPException(status_code=400, detail="No valid shift_ids provided")
 
-    now = datetime.now(timezone.utc)
-    result = await db["shifts_group"].update_one(
+    # ── Create new group if group_id not provided ─────────────────────────────
+    if not payload.group_id:
+        doc = {
+            "name":       payload.group_name or None,
+            "shift_ids":  shift_oids,
+            "created_at": now,
+            "updated_at": now,
+        }
+        result = await db["shifts_group"].insert_one(doc)
+        return {
+            "success":     True,
+            "action":      "created",
+            "message":     f"New group created with {len(shift_oids)} shift(s)",
+            "group_id":    str(result.inserted_id),
+            "group_name":  payload.group_name or None,
+            "shift_count": len(shift_oids),
+        }
+
+    # ── Add to existing group ─────────────────────────────────────────────────
+    if not ObjectId.is_valid(payload.group_id):
+        raise HTTPException(status_code=422, detail="Invalid group_id")
+
+    group = await db["shifts_group"].find_one({"_id": ObjectId(payload.group_id)})
+    if not group:
+        raise HTTPException(status_code=404, detail="Shift group not found")
+
+    await db["shifts_group"].update_one(
         {"_id": ObjectId(payload.group_id)},
         {
             "$addToSet": {"shift_ids": {"$each": shift_oids}},
@@ -395,8 +415,10 @@ async def add_shifts_to_group(request: Request, payload: AddShiftsRequest):
     updated = await db["shifts_group"].find_one({"_id": ObjectId(payload.group_id)})
     return {
         "success":     True,
+        "action":      "updated",
         "message":     f"{len(shift_oids)} shift(s) added to group",
         "group_id":    payload.group_id,
+        "group_name":  updated.get("name"),
         "shift_count": len(updated.get("shift_ids") or []),
     }
 
