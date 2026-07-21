@@ -393,7 +393,7 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["outreach_status"]        = outreach_info["outreach_status"]
         s["outreach_status_text"]   = outreach_info["outreach_status_text"]
         s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
-        s["shift_preference"]       = outreach_info["shift_preference"]
+        s["shift_preference"]       = doc.get("shift_preferences") or s.get("shift_preferences") or []
         s["shift_preferences"]      = doc.get("shift_preferences") or []
         s["ghost_booking"]          = 0
         results.append(s)
@@ -661,7 +661,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         s["outreach_status_text"]   = STATUS_TEXT.get(o_status, "Not Started")
         s["outreach_sequence_name"] = seq_name
         s["start_time"]             = start_time
-        s["shift_preference"]       = None
+        s["shift_preference"]       = doc.get("shift_preferences") or s.get("shift_preferences") or []
         s["shift_preferences"]      = doc.get("shift_preferences") or []
         s["client_preference"]      = cl.get("client_preference") or [] if cl else []
         s["ghost_booking"]          = 0
@@ -803,7 +803,8 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
             "outreach_status":          0,
             "outreach_status_text":     "Not Started",
             "outreach_sequence_name":   None,
-            "shift_preference":         None,
+            "shift_preference":         [],
+            "shift_preferences":        [],
             "client_preference":        [],
             "ghost_booking":            0,
         }
@@ -822,7 +823,8 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
         "outreach_status_text":     STATUS_TEXT.get(status, "Not Started"),
         "outreach_id":              str(latest["_id"]),
         "outreach_sequence_name":   sequence_name,
-        "shift_preference":         None,
+        "shift_preference":         [],
+            "shift_preferences":        [],
         "client_preference":        None,
         "ghost_booking":            0,
     }
@@ -878,7 +880,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     s["outreach_status"]        = outreach_info["outreach_status"]
     s["outreach_status_text"]   = outreach_info["outreach_status_text"]
     s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
-    s["shift_preference"]       = outreach_info["shift_preference"]
+    s["shift_preference"]       = doc.get("shift_preferences") or s.get("shift_preferences") or []
     s["ghost_booking"]          = 0
     if "outreach_id" in outreach_info:
         s["outreach_id"] = outreach_info["outreach_id"]
