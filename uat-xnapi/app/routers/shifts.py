@@ -92,6 +92,7 @@ def _build_doc(item: dict, now: datetime) -> dict:
         "created_by":         item.get("created_by"),
         "upstream_status":    item.get("status_name"),
         "upstream_status_id": item.get("status"),
+        "shift_preferences":  item.get("shift_preferences") or [],
         "updated_at":         now,
     }
 
@@ -301,6 +302,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         "upstream_status_id": data.get("status"),
         "round":              data.get("round"),
         "pay_rate":           data.get("pay_rate"),
+        "shift_preferences":  data.get("shift_preferences") or [],
         "client_id":          client_details.get("id", ""),
         "client_name":        client_details.get("name"),
         "client_county":      client_details.get("county"),
