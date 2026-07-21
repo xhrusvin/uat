@@ -394,6 +394,7 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["outreach_status_text"]   = outreach_info["outreach_status_text"]
         s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
         s["shift_preference"]       = outreach_info["shift_preference"]
+        s["shift_preferences"]      = doc.get("shift_preferences") or []
         s["ghost_booking"]          = 0
         results.append(s)
 
@@ -661,6 +662,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         s["outreach_sequence_name"] = seq_name
         s["start_time"]             = start_time
         s["shift_preference"]       = None
+        s["shift_preferences"]      = doc.get("shift_preferences") or []
         s["client_preference"]      = cl.get("client_preference") or [] if cl else []
         s["ghost_booking"]          = 0
         results.append(s)
