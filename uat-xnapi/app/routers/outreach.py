@@ -1388,7 +1388,41 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
 class FlagStaffRequest(BaseModel):
     outreach_id:     str
     shifts_users_id: str
-    flag:            int = 1   # 1 = flagged, 0 = unflag
+    flag:            int = 1          # 1 = flagged, 0 = unflag
+    reason:          Optional[str] = None   # e.g. "actually_declined"
+    reason_text:     Optional[str] = None   # display label
+    notes:           Optional[str] = None   # optional AI training notes
+    staff_id:        Optional[str] = None   # users._id for reference
+
+
+# ── Flag reasons list ─────────────────────────────────────────────────────────
+
+FLAG_REASONS = [
+    {
+        "id":          "actually_declined",
+        "title":       "Actually Declined",
+        "description": "They said no, even if it sounded ambiguous",
+    },
+    {
+        "id":          "unclear_follow_up",
+        "title":       "Unclear · needs follow-up",
+        "description": "Response was ambiguous; ops should call back",
+    },
+    {
+        "id":          "available_with_conditions",
+        "title":       "Available but with conditions",
+        "description": 'e.g. "yes if I can leave early"',
+    },
+]
+
+
+@router.get(
+    "/flag-reasons",
+    summary="Get list of flag reasons",
+    dependencies=[Depends(verify_api_key)],
+)
+async def get_flag_reasons(request: Request):
+    return {"success": True, "data": FLAG_REASONS}
 
 
 @router.post(
@@ -1399,9 +1433,9 @@ class FlagStaffRequest(BaseModel):
 @limiter.limit("60/minute")
 async def flag_staff(request: Request, payload: FlagStaffRequest):
     """
-    Body: { "outreach_id": "...", "shifts_users_id": "...", "flag": 1 }
-    Sets shifts_users.flag = 1 (flagged) or 0 (unflagged)
-    for the record matching both _id and outreach_id.
+    Body: { "outreach_id": "...", "shifts_users_id": "...", "flag": 1,
+            "reason": "actually_declined", "reason_text": "Actually Declined",
+            "notes": "...", "staff_id": "..." }
     """
     db = _get_db()
 
@@ -1421,10 +1455,19 @@ async def flag_staff(request: Request, payload: FlagStaffRequest):
         raise HTTPException(status_code=404, detail="shifts_users record not found for this outreach")
 
     now = datetime.now(timezone.utc)
-    await db["shifts_users"].update_one(
-        {"_id": su_oid},
-        {"$set": {"flag": payload.flag, "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S+00:00")}}
-    )
+    update_fields = {
+        "flag":       payload.flag,
+        "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+    }
+    if payload.reason:
+        update_fields["flag_reason"]      = payload.reason
+        update_fields["flag_reason_text"] = payload.reason_text or payload.reason
+    if payload.notes is not None:
+        update_fields["flag_notes"] = payload.notes
+    if payload.staff_id:
+        update_fields["flag_staff_id"] = payload.staff_id
+
+    await db["shifts_users"].update_one({"_id": su_oid}, {"$set": update_fields})
 
     return {
         "success":         True,
@@ -1432,6 +1475,10 @@ async def flag_staff(request: Request, payload: FlagStaffRequest):
         "outreach_id":     payload.outreach_id,
         "shifts_users_id": payload.shifts_users_id,
         "flag":            payload.flag,
+        "reason":          payload.reason,
+        "reason_text":     payload.reason_text,
+        "notes":           payload.notes,
+        "staff_id":        payload.staff_id,
     }
 
 
