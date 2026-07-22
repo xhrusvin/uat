@@ -1386,13 +1386,10 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
 # ── POST /outreach/flag ───────────────────────────────────────────────────────
 
 class FlagStaffRequest(BaseModel):
-    outreach_id:     str
-    shifts_users_id: str
-    flag:            int = 1          # 1 = flagged, 0 = unflag
-    reason:          Optional[str] = None   # e.g. "actually_declined"
-    reason_text:     Optional[str] = None   # display label
-    notes:           Optional[str] = None   # optional AI training notes
-    staff_id:        Optional[str] = None   # users._id for reference
+    outreach_id: str
+    staff_id:    str             # users._id (shifts_users.user_id)
+    reason:      Optional[str] = None   # e.g. "actually_declined"
+    notes:       Optional[str] = None   # optional AI training notes
 
 
 # ── Flag reasons list ─────────────────────────────────────────────────────────
@@ -1433,52 +1430,51 @@ async def get_flag_reasons(request: Request):
 @limiter.limit("60/minute")
 async def flag_staff(request: Request, payload: FlagStaffRequest):
     """
-    Body: { "outreach_id": "...", "shifts_users_id": "...", "flag": 1,
-            "reason": "actually_declined", "reason_text": "Actually Declined",
-            "notes": "...", "staff_id": "..." }
+    Body: { "outreach_id": "...", "staff_id": "...", "reason": "...", "notes": "..." }
+    Looks up shifts_users by outreach_id + user_id, sets flag=1 with reason and notes.
     """
     db = _get_db()
 
     if not ObjectId.is_valid(payload.outreach_id):
         raise HTTPException(status_code=422, detail="Invalid outreach_id")
-    if not ObjectId.is_valid(payload.shifts_users_id):
-        raise HTTPException(status_code=422, detail="Invalid shifts_users_id")
+    if not ObjectId.is_valid(payload.staff_id):
+        raise HTTPException(status_code=422, detail="Invalid staff_id")
 
     outreach_oid = ObjectId(payload.outreach_id)
-    su_oid       = ObjectId(payload.shifts_users_id)
+    user_oid     = ObjectId(payload.staff_id)
 
-    doc = await db["shifts_users"].find_one({
-        "_id":        su_oid,
+    su = await db["shifts_users"].find_one({
         "outreach_id": outreach_oid,
+        "user_id":     user_oid,
     }, {"_id": 1})
-    if not doc:
-        raise HTTPException(status_code=404, detail="shifts_users record not found for this outreach")
+    if not su:
+        raise HTTPException(status_code=404, detail="shifts_users record not found for this outreach and staff")
 
     now = datetime.now(timezone.utc)
     update_fields = {
-        "flag":       payload.flag,
-        "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        "flag":            1,
+        "flag_reason":     payload.reason,
+        "flag_notes":      payload.notes,
+        "flag_staff_id":   payload.staff_id,
+        "updated_at":      now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
     }
-    if payload.reason:
-        update_fields["flag_reason"]      = payload.reason
-        update_fields["flag_reason_text"] = payload.reason_text or payload.reason
-    if payload.notes is not None:
-        update_fields["flag_notes"] = payload.notes
-    if payload.staff_id:
-        update_fields["flag_staff_id"] = payload.staff_id
 
-    await db["shifts_users"].update_one({"_id": su_oid}, {"$set": update_fields})
+    # Resolve reason label
+    reason_label = next(
+        (r["title"] for r in FLAG_REASONS if r["id"] == payload.reason), payload.reason
+    )
+    update_fields["flag_reason_text"] = reason_label
+
+    await db["shifts_users"].update_one({"_id": su["_id"]}, {"$set": update_fields})
 
     return {
-        "success":         True,
-        "message":         "Flagged" if payload.flag else "Unflagged",
-        "outreach_id":     payload.outreach_id,
-        "shifts_users_id": payload.shifts_users_id,
-        "flag":            payload.flag,
-        "reason":          payload.reason,
-        "reason_text":     payload.reason_text,
-        "notes":           payload.notes,
-        "staff_id":        payload.staff_id,
+        "success":     True,
+        "message":     "Flagged",
+        "outreach_id": payload.outreach_id,
+        "staff_id":    payload.staff_id,
+        "reason":      payload.reason,
+        "reason_text": reason_label,
+        "notes":       payload.notes,
     }
 
 
