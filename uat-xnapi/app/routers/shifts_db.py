@@ -885,6 +885,103 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     if "outreach_id" in outreach_info:
         s["outreach_id"] = outreach_info["outreach_id"]
 
+    # ── Requested staff — from shifts.requested_staff_list ───────────────────
+    raw_requested = doc.get("requested_staff_list") or []
+    # Collect internal user_ids (staff_id field = users._id)
+    req_user_oids = []
+    for rs in raw_requested:
+        sid = rs.get("staff_id")
+        if sid and ObjectId.is_valid(str(sid)):
+            req_user_oids.append(ObjectId(str(sid)))
+
+    req_user_map: dict = {}
+    if req_user_oids:
+        async for u in db["users"].find(
+            {"_id": {"$in": req_user_oids}},
+            {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+             "xn_user_id": 1, "designation": 1, "rating": 1,
+             "county": 1, "county_id": 1, "tags": 1, "location": 1,
+             "latitude": 1, "longitude": 1}
+        ):
+            req_user_map[str(u["_id"])] = u
+
+    from app.routers.staff import _haversine_km as _hav_r, _user_coords as _uc_r
+
+    requested_staff = []
+    for rs in raw_requested:
+        sid     = str(rs.get("staff_id", ""))
+        u       = req_user_map.get(sid, {})
+        raw_tags = u.get("tags") or []
+        staff_tags = [
+            {"id": str(t.get("id","")), "name": t.get("name","")} if isinstance(t, dict)
+            else {"id": "", "name": str(t)} for t in raw_tags
+        ]
+
+        # Distance from client
+        dist_km = None
+        if cl and cl.get("latitude") and cl.get("longitude"):
+            ucoords = _uc_r(u)
+            if ucoords:
+                dist_km = _hav_r(float(cl["latitude"]), float(cl["longitude"]), ucoords[0], ucoords[1])
+        # Fallback to API distance string
+        dist_display = rs.get("distance") or (f"{round(dist_km, 1)}km" if dist_km is not None else None)
+
+        # Last contacted
+        last_contacted = None
+        lc_su = await db["shifts_users"].find_one(
+            {"user_id": ObjectId(sid) if sid and ObjectId.is_valid(sid) else None,
+             "call_processed_at": {"$ne": None}},
+            sort=[("call_processed_at", -1)], projection={"call_processed_at": 1}
+        ) if sid and ObjectId.is_valid(sid) else None
+        if lc_su and lc_su.get("call_processed_at"):
+            from datetime import timezone as _tz_r
+            lc = lc_su["call_processed_at"]
+            if hasattr(lc, "tzinfo") and lc.tzinfo is None:
+                lc = lc.replace(tzinfo=_tz_r.utc)
+            diff = int((datetime.now(_tz_r.utc) - lc).total_seconds())
+            if diff < 60:       last_contacted = "just now"
+            elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
+            elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
+            else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
+
+        # Prior shifts
+        prior_shifts = 0
+        if sid and ObjectId.is_valid(sid):
+            prior_shifts = await db["shifts_users"].count_documents({
+                "user_id":      ObjectId(sid),
+                "availability": 1,
+            })
+
+        work_history = None
+        if prior_shifts > 0 and last_contacted:
+            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_contacted}"
+        elif prior_shifts > 0:
+            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''}"
+
+        requested_staff.append({
+            "id":                sid,
+            "xn_staff_id":       rs.get("xn_staff_id"),
+            "xn_user_id":        u.get("xn_user_id"),
+            "name":              " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or rs.get("staff") or "—",
+            "email":             u.get("email") or rs.get("email"),
+            "phone":             u.get("phone") or rs.get("phone_number"),
+            "designation":       u.get("designation"),
+            "rating":            u.get("rating"),
+            "county":            u.get("county") or rs.get("location"),
+            "county_id":         str(u["county_id"]) if u.get("county_id") else None,
+            "staff_tags":        staff_tags,
+            "work_history":      work_history,
+            "prior_shifts":      prior_shifts,
+            "last_contacted":    last_contacted,
+            "distance_km":       dist_km,
+            "distance":          dist_display,
+            "status":            rs.get("status"),
+            "status_name":       rs.get("status_name"),
+            "requested_date":    rs.get("requested_date"),
+        })
+
+    s["requested_staff"] = requested_staff
+
     # Fetch pool users from shifts_pool collection
     pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid}).to_list(length=500)
     pool_user_oids = [p["user_id"] for p in pool_docs if p.get("user_id") and ObjectId.is_valid(str(p.get("user_id", "")))]
