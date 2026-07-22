@@ -1193,6 +1193,17 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     elif order_by == "name":
         results.sort(key=lambda r: r["name"].lower(), reverse=reverse)
 
+    # Count by designation across all results
+    designation_counts: dict = {}
+    for r in results:
+        d = r.get("designation") or "Unknown"
+        designation_counts[d] = designation_counts.get(d, 0) + 1
+
+    designation_list = [
+        {"designation": k, "count": v}
+        for k, v in sorted(designation_counts.items(), key=lambda x: -x[1])
+    ]
+
     return {
         "success":         True,
         "total":           len(results),
@@ -1203,5 +1214,6 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         "radius":          payload.radius,
         "order_by":        order_by,
         "sort":            payload.sort or "asc",
+        "by_designation":  designation_list,
         "data":            results,
     }
