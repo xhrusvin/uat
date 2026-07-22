@@ -36,8 +36,8 @@ HEADERS = {
 }
 TRIGGER_KEY = os.getenv("TRIGGER_KEY", "1234")
 MAX_LEADS = 10
-#BLOCKED_DESIGNATIONS = {"admin assistant", "support worker", "pharmacy technician", "pharmacist" }
-BLOCKED_DESIGNATIONS = {}
+BLOCKED_DESIGNATIONS = {"admin assistant", "support worker", "pharmacy technician", "pharmacist" }
+
 
 # ==================== HELPERS ====================
 def parse_date(date_str):
