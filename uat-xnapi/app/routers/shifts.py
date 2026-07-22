@@ -285,6 +285,38 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
     client_details = data.get("client_details") or {}
     staff_details  = data.get("staff") or {}
 
+    # ── Resolve requested_staff_list ─────────────────────────────────────────
+    from app.db.database import _client as _db_client
+    db = _db_client[settings.MONGODB_DB]
+
+    requested_staff_raw = data.get("requested_staff_list") or []
+    requested_staff_list = []
+    for rs in requested_staff_raw:
+        xn_staff_id = rs.get("staff_id")
+        # Look up users.xn_user_id == xn_staff_id → get users._id
+        internal_user_id = None
+        if xn_staff_id:
+            u = await db["users"].find_one(
+                {"xn_user_id": xn_staff_id},
+                {"_id": 1}
+            )
+            if u:
+                internal_user_id = str(u["_id"])
+        requested_staff_list.append({
+            "xn_staff_id":      xn_staff_id,
+            "staff_id":         internal_user_id,  # users._id
+            "shift_id":         rs.get("shift_id"),
+            "staff":            rs.get("staff"),
+            "status":           rs.get("status"),
+            "status_name":      rs.get("status_name"),
+            "email":            rs.get("email"),
+            "phone_number":     rs.get("phone_number"),
+            "location":         rs.get("location"),
+            "distance":         rs.get("distance"),
+            "requested_date":   rs.get("requested_date"),
+            "tags":             rs.get("tags") or [],
+        })
+
     doc = {
         "shift_id":           data.get("id", ""),
         "shift_code":         data.get("shift_code", ""),
@@ -307,8 +339,9 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         "client_name":        client_details.get("name"),
         "client_county":      client_details.get("county"),
         "unit":               client_details.get("unit"),
-        "assigned_staff":     staff_details.get("name"),
-        "staff_id":           staff_details.get("id"),
+        "assigned_staff":      staff_details.get("name"),
+        "staff_id":            staff_details.get("id"),
+        "requested_staff_list": requested_staff_list,
         "slots": [{
             "date":        date_obj,
             "start_time":  start_time,
