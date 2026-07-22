@@ -1193,16 +1193,16 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     elif order_by == "name":
         results.sort(key=lambda r: r["name"].lower(), reverse=reverse)
 
-    # Count by designation across all results
-    designation_counts: dict = {}
+    # Count by designation across all results — include user_type_id
+    desig_map: dict = {}
     for r in results:
-        d = r.get("designation") or "Unknown"
-        designation_counts[d] = designation_counts.get(d, 0) + 1
+        d  = r.get("designation") or "Unknown"
+        ut = r.get("user_type_id")
+        if d not in desig_map:
+            desig_map[d] = {"designation": d, "user_type_id": ut, "count": 0}
+        desig_map[d]["count"] += 1
 
-    designation_list = [
-        {"designation": k, "count": v}
-        for k, v in sorted(designation_counts.items(), key=lambda x: -x[1])
-    ]
+    designation_list = sorted(desig_map.values(), key=lambda x: -x["count"])
 
     return {
         "success":         True,
