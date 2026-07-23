@@ -729,3 +729,190 @@ async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
         "total":      len(staff),
         "data":       staff,
     }
+
+
+# ── POST /shifts-group/detail-full ───────────────────────────────────────────
+# Same as /shifts-db/detail but for group shifts.
+# Available staff taken from shifts_group_users.availability_details[].availability == 1
+
+@router.post(
+    "/detail-full",
+    summary="Full group shift detail with available staff from availability_details",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def get_shift_group_detail_full(request: Request, payload: ShiftGroupDetailRequest):
+    """
+    Body: { "group_id": "..." }
+    Returns full group detail including available_staff enriched from
+    shifts_group_users.availability_details[].availability == 1
+    """
+    db = _get_db()
+    if not ObjectId.is_valid(payload.group_id):
+        raise HTTPException(status_code=422, detail="Invalid group_id")
+
+    group_oid = ObjectId(payload.group_id)
+    group = await db["shifts_group"].find_one({"_id": group_oid})
+    if not group:
+        raise HTTPException(status_code=404, detail="Shift group not found")
+
+    shift_oids = group.get("shift_ids") or []
+
+    # ── Enrich shifts ─────────────────────────────────────────────────────────
+    shifts_data = []
+    if shift_oids:
+        async for sh in db["shifts"].find(
+            {"_id": {"$in": shift_oids}},
+            {"name": 1, "shift_code": 1, "date": 1, "start_time": 1,
+             "end_time": 1, "location": 1, "user_type": 1, "shift_timing": 1,
+             "client_id": 1, "client_name": 1, "is_premium": 1,
+             "shift_preferences": 1, "ghost_booking": 1}
+        ):
+            shifts_data.append(_serialize(sh))
+
+    # ── Pool users ────────────────────────────────────────────────────────────
+    pool_docs = await db["shifts_group_pool"].find({"group_id": group_oid}).to_list(5000)
+    pool_user_oids = [
+        p["user_id"] for p in pool_docs
+        if p.get("user_id") and ObjectId.is_valid(str(p.get("user_id","")))
+    ]
+    pool_user_map: dict = {}
+    if pool_user_oids:
+        async for u in db["users"].find(
+            {"_id": {"$in": pool_user_oids}},
+            {"first_name":1,"last_name":1,"email":1,"phone":1,
+             "xn_user_id":1,"designation":1,"rating":1,"status":1}
+        ):
+            pool_user_map[str(u["_id"])] = u
+
+    pool_users = []
+    for p in pool_docs:
+        uid = str(p.get("user_id",""))
+        u   = pool_user_map.get(uid, {})
+        pool_users.append({
+            "id":          str(p["_id"]),
+            "user_id":     uid,
+            "name":        " ".join(filter(None,[u.get("first_name",""),u.get("last_name","")])).strip() or "—",
+            "email":       u.get("email"),
+            "phone":       u.get("phone"),
+            "designation": u.get("designation"),
+            "rating":      u.get("rating"),
+            "added_at":    p["added_at"].isoformat() if p.get("added_at") and hasattr(p["added_at"],"isoformat") else None,
+        })
+
+    # ── Available staff from availability_details ─────────────────────────────
+    # A user is "available" if ANY entry in their availability_details has availability == 1
+    avail_su_docs = await db["shifts_group_users"].find(
+        {
+            "group_id":              group_oid,
+            "availability_details":  {"$elemMatch": {"availability": 1}},
+        },
+        {"user_id":1,"availability_details":1,"conversation_id":1,
+         "outreach_id":1,"call_processed_at":1,"response_text":1,"response_time":1}
+    ).to_list(length=500)
+
+    avail_user_oids = [
+        ObjectId(str(su["user_id"])) for su in avail_su_docs
+        if su.get("user_id") and ObjectId.is_valid(str(su.get("user_id","")))
+    ]
+    avail_user_map: dict = {}
+    if avail_user_oids:
+        async for u in db["users"].find(
+            {"_id": {"$in": avail_user_oids}},
+            {"first_name":1,"last_name":1,"email":1,"phone":1,
+             "xn_user_id":1,"designation":1,"rating":1,
+             "county":1,"county_id":1,"tags":1,"location":1}
+        ):
+            avail_user_map[str(u["_id"])] = u
+
+    AVAIL_TEXT = {1:"Available",0:"Not Available",3:"Voicemail",4:"Call Not Attended",5:"In Call",6:"Call Not Triggered"}
+    from app.routers.staff import _user_coords as _uc_gf
+
+    available_staff = []
+    for su in avail_su_docs:
+        uid_str = str(su.get("user_id",""))
+        u       = avail_user_map.get(uid_str, {})
+
+        raw_tags   = u.get("tags") or []
+        staff_tags = [
+            {"id": str(t.get("id","")), "name": t.get("name","")} if isinstance(t, dict)
+            else {"id":"","name":str(t)} for t in raw_tags
+        ]
+
+        # Last contacted
+        last_contacted = None
+        lc_dt = su.get("call_processed_at")
+        if lc_dt and hasattr(lc_dt,"tzinfo"):
+            if lc_dt.tzinfo is None:
+                lc_dt = lc_dt.replace(tzinfo=timezone.utc)
+            diff = int((datetime.now(timezone.utc) - lc_dt).total_seconds())
+            if diff < 60:       last_contacted = "just now"
+            elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
+            elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
+            else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
+
+        # availability_details — filter to available ones
+        avail_details = su.get("availability_details") or []
+        available_details = [
+            {
+                "shift_id":    str(d.get("shift_id","")),
+                "date":        d.get("date",""),
+                "availability": d.get("availability"),
+                "availability_text": AVAIL_TEXT.get(d.get("availability"), "Unknown"),
+            }
+            for d in avail_details
+        ]
+
+        raw_oid = su.get("outreach_id")
+        available_staff.append({
+            "id":                   uid_str,
+            "xn_user_id":           u.get("xn_user_id"),
+            "name":                 " ".join(filter(None,[u.get("first_name",""),u.get("last_name","")])).strip() or "—",
+            "email":                u.get("email"),
+            "phone":                u.get("phone"),
+            "designation":          u.get("designation"),
+            "rating":               u.get("rating"),
+            "county":               u.get("county"),
+            "county_id":            str(u["county_id"]) if u.get("county_id") else None,
+            "staff_tags":           staff_tags,
+            "visa_hours_remaining": "8/24",
+            "channel":              "Phone",
+            "last_contacted":       last_contacted,
+            "response_text":        su.get("response_text"),
+            "response_time":        su.get("response_time"),
+            "conversation_id":      su.get("conversation_id"),
+            "outreach_id":          str(raw_oid) if raw_oid else None,
+            "availability_details": available_details,
+            # For confirm modal
+            "confirm": {
+                "staff_label":   f"{' '.join(filter(None,[u.get('first_name',''),u.get('last_name','')])).strip()} · ★ {u.get('rating') or '—'}",
+                "rating":        u.get("rating"),
+                "confirmed_by":  "System",
+            },
+        })
+
+    # ── Outreach info ─────────────────────────────────────────────────────────
+    STATUS_TEXT = {0:"Not Started",1:"Live",2:"Paused",3:"Ended",10:"Completed"}
+    latest_outreach = await db["outreach_shift_group"].find_one(
+        {"group_id": group_oid}, sort=[("created_at",-1)]
+    )
+    o_status = latest_outreach.get("outreach_status",0) if latest_outreach else 0
+
+    return {
+        "success": True,
+        "data": {
+            "id":                   str(group["_id"]),
+            "name":                 group.get("name"),
+            "shift_count":          len(shifts_data),
+            "shifts":               shifts_data,
+            "pool_count":           len(pool_users),
+            "pool_users":           pool_users,
+            "available_count":      len(available_staff),
+            "available_staff":      available_staff,
+            "outreach_status":      o_status,
+            "outreach_status_text": STATUS_TEXT.get(o_status,"Not Started"),
+            "outreach_id":          str(latest_outreach["_id"]) if latest_outreach else None,
+            "ghost_booking":        1 if group.get("ghost_booking") else 0,
+            "created_at":           group["created_at"].isoformat() if group.get("created_at") and hasattr(group["created_at"],"isoformat") else None,
+        }
+    }
