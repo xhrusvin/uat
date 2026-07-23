@@ -69,6 +69,7 @@ def generate_twiml(user_doc: dict):
 import requests
 
 def make_contact_preference_call(app, phone: str, user_doc: dict, user_object_id):
+    return "hello"
     params = urllib.parse.urlencode(user_doc, doseq=True)
     try:
         with app.app_context():
