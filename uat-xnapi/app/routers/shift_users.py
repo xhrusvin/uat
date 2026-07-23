@@ -1328,7 +1328,7 @@ IGNORE_REASONS = [
 
 
 @router.get(
-    "/ignore-reasons",
+    "/reasons/ignore",
     summary="Get list of ignore reasons",
     dependencies=[Depends(verify_api_key)],
 )
