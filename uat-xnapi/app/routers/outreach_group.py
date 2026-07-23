@@ -154,9 +154,25 @@ async def create_group_outreach(request: Request, payload: GroupOutreachRequest)
 
     group_oid = ObjectId(payload.group_id)
     seq_oid   = ObjectId(payload.sequence_id)
-    outreach_count = await db["outreach_shift_group"].count_documents({"group_id": group_oid})
-    round_number   = outreach_count + 1
     now = datetime.now(timezone.utc)
+
+    # Check if latest outreach is Ended (3) — if so reset all and start fresh round 1
+    latest = await db["outreach_shift_group"].find_one(
+        {"group_id": group_oid}, sort=[("created_at", -1)]
+    )
+
+    if latest and latest.get("outreach_status") == 3:
+        # Delete all previous outreach records for this group
+        await db["outreach_shift_group"].delete_many({"group_id": group_oid})
+        # Delete all shifts_group_users for this group (except availability==1)
+        await db["shifts_group_users"].delete_many({
+            "group_id":    group_oid,
+            "availability": {"$ne": 1},
+        })
+        round_number = 1
+    else:
+        outreach_count = await db["outreach_shift_group"].count_documents({"group_id": group_oid})
+        round_number   = outreach_count + 1
 
     doc = {
         "group_id":       group_oid,
