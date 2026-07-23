@@ -986,8 +986,9 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         cl = client_map.get(cid)
         s["client_name"]    = _client_name(cl)
         s["client_email"]   = cl.get("email")   if cl else None
-        s["client_phone"]   = cl.get("phone")   if cl else None
-        s["client_address"] = cl.get("address") if cl else None
+        s["client_phone"]       = cl.get("phone")             if cl else None
+        s["client_address"]     = cl.get("address")           if cl else None
+        s["client_preference"]  = cl.get("client_preference") or [] if cl else []
         s["excluded_by_system"] = 0
         s["added_by_you"]       = 0
     else:
