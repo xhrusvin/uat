@@ -1270,9 +1270,25 @@ async def confirm_staff(request: Request, payload: ConfirmStaffRequest):
         "user_type":     shift.get("user_type"),
         "confirmed_by":  "System",
         "confirmed_at":  now,
-        "created_at":    now,
+        "updated_at":    now,
     }
-    result = await db["requested_confirm"].insert_one(doc)
+
+    # Upsert — update if same shift_id + staff_id already exists
+    existing = await db["requested_confirm"].find_one(
+        {"shift_id": shift_oid, "staff_id": user_oid}, {"_id": 1}
+    )
+    if existing:
+        await db["requested_confirm"].update_one(
+            {"_id": existing["_id"]},
+            {"$set": {**doc}}
+        )
+        record_id = str(existing["_id"])
+        action    = "updated"
+    else:
+        doc["created_at"] = now
+        result    = await db["requested_confirm"].insert_one(doc)
+        record_id = str(result.inserted_id)
+        action    = "created"
 
     # Also update shift with assigned staff
     await db["shifts"].update_one(
@@ -1288,8 +1304,9 @@ async def confirm_staff(request: Request, payload: ConfirmStaffRequest):
 
     return {
         "success":      True,
+        "action":       action,
         "message":      f"Confirmation call sent to {full_name}",
-        "id":           str(result.inserted_id),
+        "id":           record_id,
         "shift_id":     payload.shift_id,
         "staff_id":     payload.staff_id,
         "staff_name":   full_name,
