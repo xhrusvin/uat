@@ -13,6 +13,16 @@ log = logging.getLogger(__name__)
 ALLOWED_START_HOUR = 0
 ALLOWED_END_HOUR   = 23
 
+from bson import ObjectId
+
+def serialize_mongo(obj):
+    if isinstance(obj, dict):
+        return {k: serialize_mongo(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [serialize_mongo(i) for i in obj]
+    elif isinstance(obj, ObjectId):
+        return str(obj)
+    return obj
 
 def is_within_call_window():
     now     = datetime.utcnow()
@@ -111,7 +121,7 @@ def register_requested_confirm_call_routes(app):
 
         # ── Join users via staff_id ───────────────────────────────
         staff_user = _get_staff_user(app, record)
-        return jsonify(staff_user)
+        return jsonify(serialize_mongo(staff_user))
         if not staff_user:
             return jsonify({**response_base, "status": "no_user",
                             "message": "Staff user not found.",
