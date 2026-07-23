@@ -1427,3 +1427,64 @@ async def ignore_staff(request: Request, payload: IgnoreStaffRequest):
         "ignored_at":   now.isoformat(),
         "modified":     result.modified_count > 0,
     }
+
+
+# ── POST /shift-users/ghost-booking ──────────────────────────────────────────
+
+@router.post(
+    "/ghost-booking",
+    summary="Mark a shift as ghost booking and assign staff",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def ghost_booking(request: Request, payload: AssignStaffRequest):
+    """
+    Body: { "shift_id": "<shift._id>", "user_id": "<user._id>" }
+    Sets shifts.ghost_booking = true and shifts.staff = {id, name}.
+    """
+    db        = _get_db()
+    shift_oid = _resolve_oid(payload.shift_id, "shift_id")
+    user_oid  = _resolve_oid(payload.user_id,  "user_id")
+
+    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1})
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    user = await db["users"].find_one(
+        {"_id": user_oid},
+        {"first_name": 1, "last_name": 1, "email": 1, "designation": 1, "rating": 1}
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    full_name = " ".join(filter(None, [user.get("first_name",""), user.get("last_name","")])).strip() or "—"
+    now       = datetime.now(timezone.utc)
+
+    await db["shifts"].update_one(
+        {"_id": shift_oid},
+        {"$set": {
+            "ghost_booking": True,
+            "staff": {
+                "id":   payload.user_id,
+                "name": full_name,
+            },
+            "staff_email":    user.get("email", ""),
+            "assigned_staff": full_name,
+            "staff_id":       payload.user_id,
+            "assigned_at":    now,
+            "updated_at":     now,
+        }}
+    )
+
+    return {
+        "success":       True,
+        "message":       f"Ghost booking set for {full_name}",
+        "shift_id":      payload.shift_id,
+        "user_id":       payload.user_id,
+        "ghost_booking": True,
+        "staff": {
+            "id":   payload.user_id,
+            "name": full_name,
+        },
+        "assigned_at": now.isoformat(),
+    }
