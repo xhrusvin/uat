@@ -735,13 +735,18 @@ async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
 # Same as /shifts-db/detail but for group shifts.
 # Available staff taken from shifts_group_users.availability_details[].availability == 1
 
+class ShiftGroupDetailFullRequest(BaseModel):
+    group_id: str
+    shift_id: Optional[str] = None  # filter available_staff by this shift_id in availability_details
+
+
 @router.post(
     "/detail-full",
     summary="Full group shift detail with available staff from availability_details",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("60/minute")
-async def get_shift_group_detail_full(request: Request, payload: ShiftGroupDetailRequest):
+async def get_shift_group_detail_full(request: Request, payload: ShiftGroupDetailFullRequest):
     """
     Body: { "group_id": "..." }
     Returns full group detail including available_staff enriched from
@@ -801,12 +806,26 @@ async def get_shift_group_detail_full(request: Request, payload: ShiftGroupDetai
         })
 
     # ── Available staff from availability_details ─────────────────────────────
-    # A user is "available" if ANY entry in their availability_details has availability == 1
+    # If shift_id provided: filter to users who have availability==1 for that specific shift
+    # Otherwise: any availability_details entry with availability==1
+    if payload.shift_id:
+        avail_query = {
+            "group_id": group_oid,
+            "availability_details": {
+                "$elemMatch": {
+                    "shift_id":    payload.shift_id,
+                    "availability": 1,
+                }
+            },
+        }
+    else:
+        avail_query = {
+            "group_id":             group_oid,
+            "availability_details": {"$elemMatch": {"availability": 1}},
+        }
+
     avail_su_docs = await db["shifts_group_users"].find(
-        {
-            "group_id":              group_oid,
-            "availability_details":  {"$elemMatch": {"availability": 1}},
-        },
+        avail_query,
         {"user_id":1,"availability_details":1,"conversation_id":1,
          "outreach_id":1,"call_processed_at":1,"response_text":1,"response_time":1}
     ).to_list(length=500)
@@ -903,6 +922,8 @@ async def get_shift_group_detail_full(request: Request, payload: ShiftGroupDetai
         "data": {
             "id":                   str(group["_id"]),
             "name":                 group.get("name"),
+            "group_id":             str(group["_id"]),
+            "filter_shift_id":      payload.shift_id,
             "shift_count":          len(shifts_data),
             "shifts":               shifts_data,
             "pool_count":           len(pool_users),
