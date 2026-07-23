@@ -882,6 +882,43 @@ async def get_shift_group_detail_full(request: Request, payload: ShiftGroupDetai
             for d in avail_details
         ]
 
+        # call_details from shift_booking_bulk_conv via conversation_id
+        call_details = None
+        conv_id_val  = su.get("conversation_id")
+        if conv_id_val:
+            conv_gf = await db["shift_booking_bulk_conv"].find_one(
+                {"elevenlabs_conversation_id": conv_id_val},
+                {"turns":1,"started_at":1,"ended_at":1,"phone":1,
+                 "duration_seconds":1,"confidence":1,"round_number":1}
+            )
+            if conv_gf:
+                started_gf = conv_gf.get("started_at")
+                ended_gf   = conv_gf.get("ended_at")
+                dur_gf     = conv_gf.get("duration_seconds")
+                if not dur_gf and started_gf and ended_gf:
+                    dur_gf = int((ended_gf - started_gf).total_seconds())
+                pt_gf  = started_gf.strftime("%H:%M:%S") if started_gf and hasattr(started_gf,"strftime") else None
+                rn_gf  = conv_gf.get("round_number", 1)
+                ph_gf  = conv_gf.get("phone") or u.get("phone")
+                conf_gf = conv_gf.get("confidence")
+                ai_gf  = None
+                for turn in reversed(conv_gf.get("turns") or []):
+                    if turn.get("role") in ("user","human") and turn.get("message"):
+                        t_ts = turn.get("ts")
+                        t_t  = t_ts.strftime("%H:%M") if t_ts and hasattr(t_ts,"strftime") else None
+                        cp   = f"{int(conf_gf * 100)}% confidence" if conf_gf else None
+                        parts = [f'"{turn["message"]}"']
+                        if t_t: parts.append(f"at {t_t}")
+                        if cp:  parts.append(f"· {cp}")
+                        ai_gf = " ".join(parts)
+                        break
+                call_details = {
+                    "called_via": f"{ph_gf} (phone)" if ph_gf else "Phone",
+                    "placed_at":  f"{pt_gf} · Round {rn_gf}" if pt_gf else None,
+                    "duration":   f"{dur_gf} seconds" if dur_gf else None,
+                    "ai_heard":   ai_gf,
+                }
+
         raw_oid = su.get("outreach_id")
         available_staff.append({
             "id":                   uid_str,
@@ -901,6 +938,7 @@ async def get_shift_group_detail_full(request: Request, payload: ShiftGroupDetai
             "response_time":        su.get("response_time"),
             "conversation_id":      su.get("conversation_id"),
             "outreach_id":          str(raw_oid) if raw_oid else None,
+            "call_details":         call_details,
             "availability_details": available_details,
             # For confirm modal
             "confirm": {
