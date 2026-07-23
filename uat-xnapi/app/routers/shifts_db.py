@@ -1105,6 +1105,11 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "ignore_reason_text": rs.get("ignore_reason_text"),
             "ignore_notes":      rs.get("ignore_notes"),
             "ignored_at":        rs.get("ignored_at"),
+            "declined":           rs.get("declined", 0),
+            "decline_reason":     rs.get("decline_reason"),
+            "decline_reason_text": rs.get("decline_reason_text"),
+            "decline_notes":      rs.get("decline_notes"),
+            "declined_at":        rs.get("declined_at"),
             "confirm": {
                 "staff_label":   f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip() or rs.get('staff') or '—'} · ★ {u.get('rating') or '—'}",
                 "rating":        u.get("rating"),

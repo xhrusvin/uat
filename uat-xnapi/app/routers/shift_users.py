@@ -1488,3 +1488,93 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
         },
         "assigned_at": now.isoformat(),
     }
+
+
+# ── POST /shift-users/decline ─────────────────────────────────────────────────
+
+DECLINE_REASONS = [
+    {"id": "not_available",  "title": "Not Available",  "description": "Staff confirmed they cannot take the shift"},
+    {"id": "no_response",    "title": "No Response",    "description": "Staff did not respond after multiple attempts"},
+    {"id": "already_booked", "title": "Already Booked", "description": "Staff is already placed on another shift"},
+    {"id": "not_suitable",   "title": "Not Suitable",   "description": "Staff does not meet the shift requirements"},
+    {"id": "withdrew",       "title": "Withdrew",       "description": "Staff initially accepted but later withdrew"},
+]
+
+
+@router.get(
+    "/reasons/decline",
+    summary="Get list of decline reasons",
+    dependencies=[Depends(verify_api_key)],
+)
+async def get_decline_reasons(request: Request):
+    return {"success": True, "data": DECLINE_REASONS}
+
+
+class DeclineStaffRequest(BaseModel):
+    shift_id: str
+    staff_id: str
+    reason:   Optional[str] = None
+    notes:    Optional[str] = None
+
+
+@router.post(
+    "/decline",
+    summary="Decline a requested staff member for a shift",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def decline_staff(request: Request, payload: DeclineStaffRequest):
+    db        = _get_db()
+    shift_oid = _resolve_oid(payload.shift_id, "shift_id")
+    user_oid  = _resolve_oid(payload.staff_id,  "staff_id")
+
+    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1})
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    reason_label = next(
+        (r["title"] for r in DECLINE_REASONS if r["id"] == payload.reason), payload.reason
+    ) if payload.reason else None
+
+    now = datetime.now(timezone.utc)
+    update_set = {
+        "requested_staff_list.$.declined":            1,
+        "requested_staff_list.$.decline_reason":      payload.reason,
+        "requested_staff_list.$.decline_reason_text": reason_label,
+        "requested_staff_list.$.decline_notes":       payload.notes,
+        "requested_staff_list.$.declined_at":         now.isoformat(),
+        "updated_at": now,
+    }
+
+    result = await db["shifts"].update_one(
+        {"_id": shift_oid, "requested_staff_list.staff_id": payload.staff_id},
+        {"$set": update_set}
+    )
+    if result.modified_count == 0:
+        result = await db["shifts"].update_one(
+            {"_id": shift_oid, "requested_staff_list.xn_staff_id": payload.staff_id},
+            {"$set": update_set}
+        )
+
+    await db["shift_declined"].insert_one({
+        "shift_id":    shift_oid,
+        "staff_id":    user_oid,
+        "reason":      payload.reason,
+        "reason_text": reason_label,
+        "notes":       payload.notes,
+        "declined_at": now,
+        "created_at":  now,
+    })
+
+    return {
+        "success":     True,
+        "message":     "Staff declined",
+        "shift_id":    payload.shift_id,
+        "staff_id":    payload.staff_id,
+        "declined":    1,
+        "reason":      payload.reason,
+        "reason_text": reason_label,
+        "notes":       payload.notes,
+        "declined_at": now.isoformat(),
+        "modified":    result.modified_count > 0,
+    }
