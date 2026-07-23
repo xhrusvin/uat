@@ -119,7 +119,7 @@ async def list_user_types(request: Request, payload: UserTypeListRequest):
 # ── CREATE ────────────────────────────────────────────────────────────────────
 
 @router.post(
-    "/",
+    "/create",
     summary="Create a user type",
     dependencies=[Depends(verify_api_key)],
 )

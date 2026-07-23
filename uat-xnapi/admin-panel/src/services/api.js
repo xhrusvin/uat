@@ -61,10 +61,10 @@ export const activitiesApi = {
 }
 
 export const userTypesApi = {
-  list:    (body)   => usersClient.post('/user-types/', body),
-  create:  (data)   => usersClient.post('/user-types/', data),
+  list:    (body)     => usersClient.post('/user-types/', body),
+  create:  (data)     => usersClient.post('/user-types/create', data),
   update:  (id, data) => usersClient.patch(`/user-types/${id}`, data),
-  delete:  (id)     => usersClient.delete(`/user-types/${id}`),
+  delete:  (id)       => usersClient.delete(`/user-types/${id}`),
 }
 
 export const sequencesApi = {
