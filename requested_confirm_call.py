@@ -111,6 +111,7 @@ def register_requested_confirm_call_routes(app):
 
         # ── Join users via staff_id ───────────────────────────────
         staff_user = _get_staff_user(app, record)
+        return jsonify(staff_user)
         if not staff_user:
             return jsonify({**response_base, "status": "no_user",
                             "message": "Staff user not found.",
@@ -196,7 +197,6 @@ def register_requested_confirm_call_routes(app):
 
         # ── Join users via staff_id ───────────────────────────────
         staff_user = _get_staff_user(app, record)
-        return jsonify(staff_user)
         if not staff_user:
             return jsonify({**response_base, "status": "no_user",
                             "message": "Staff user not found."}), 200
