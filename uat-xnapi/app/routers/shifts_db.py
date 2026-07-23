@@ -322,6 +322,20 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         else:
             filters.append({"_id": {"$nin": avail_shift_ids}})
 
+    # Exclude shifts that belong to an active shifts_group outreach
+    group_shift_ids = []
+    async for grp in db["shifts_group"].find(
+        {"shift_ids": {"$exists": True, "$ne": []}}, {"shift_ids": 1}
+    ):
+        group_outreach = await db["outreach_shift_group"].find_one(
+            {"group_id": grp["_id"], "outreach_status": {"$in": [1, 2, 3, 10]}},
+            {"_id": 1}
+        )
+        if group_outreach:
+            group_shift_ids.extend(grp.get("shift_ids") or [])
+    if group_shift_ids:
+        filters.append({"_id": {"$nin": group_shift_ids}})
+
     # automation_status_multiple filter
     if payload.automation_status_multiple:
         asm = [int(s) for s in payload.automation_status_multiple if str(s).lstrip('-').isdigit()]
@@ -370,6 +384,23 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
             ]})
 
     mongo_filter = {"$and": filters} if filters else {}
+
+    # Exclude shifts that are part of an active group outreach
+    group_outreach_active = await db["outreach_shift_group"].find(
+        {"outreach_status": {"$gt": 0, "$ne": 10}}, {"group_id": 1}
+    ).to_list(length=5000)
+    if group_outreach_active:
+        active_group_ids = [go["group_id"] for go in group_outreach_active if go.get("group_id")]
+        if active_group_ids:
+            group_shift_ids = []
+            async for g in db["shifts_group"].find(
+                {"_id": {"$in": active_group_ids}}, {"shift_ids": 1}
+            ):
+                group_shift_ids.extend(g.get("shift_ids") or [])
+            if group_shift_ids:
+                excl = {"_id": {"$nin": group_shift_ids}}
+                mongo_filter = {"$and": [mongo_filter, excl]} if mongo_filter else excl
+
     total  = await db["shifts"].count_documents(mongo_filter)
     sort_dir = -1 if sort_order.lower() == "desc" else 1
     cursor = db["shifts"].find(mongo_filter).sort(sort_by, sort_dir).skip(skip).limit(limit)
@@ -461,19 +492,37 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     filter_outreach_status = payload.outreach_status  # optional specific status filter
 
     # ── Resolve outreach-active shift IDs from outreach collection ─────────────
-    # outreach_status input mapping:
-    #   1 or None → outreach_status > 0 AND != 10  (all active: Live/Paused/Ended)
-    #   2         → outreach_status == 10           (Completed)
     if filter_outreach_status == 2:
         outreach_query: dict = {"outreach_status": 10}
     else:
         outreach_query: dict = {"outreach_status": {"$gt": 0, "$ne": 10}}
 
-    # Get shift_ids that have matching outreach records
+    # Get shift_ids from regular outreach
     outreach_docs = await db["outreach"].find(
         outreach_query,
         {"shift_id": 1, "outreach_status": 1, "sequence_id": 1, "created_at": 1}
     ).to_list(length=10000)
+
+    # Also include shifts from group outreach (outreach_shift_group → shifts_group → shift_ids)
+    group_outreach_docs = await db["outreach_shift_group"].find(
+        outreach_query,
+        {"group_id": 1, "outreach_status": 1, "sequence_id": 1, "created_at": 1}
+    ).to_list(length=10000)
+
+    # Build group_id → shift_ids map and group outreach map
+    group_shift_map: dict = {}     # shift_id_str → group_id_str
+    group_outreach_map: dict = {}  # shift_id_str → outreach_shift_group doc
+    for go in group_outreach_docs:
+        goid = go.get("group_id")
+        if not goid:
+            continue
+        group = await db["shifts_group"].find_one({"_id": goid}, {"shift_ids": 1})
+        if group:
+            for sid in (group.get("shift_ids") or []):
+                sid_str = str(sid)
+                group_shift_map[sid_str] = str(goid)
+                if sid_str not in group_outreach_map:
+                    group_outreach_map[sid_str] = go
 
     if not outreach_docs:
         # Still return counts even when no data
@@ -494,12 +543,17 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             "data":               [],
         }
 
-    # Latest outreach per shift (keep most recent)
+    # Latest outreach per shift (keep most recent) — regular
     shift_outreach_map: dict = {}
     for o in outreach_docs:
         sid = str(o["shift_id"])
         if sid not in shift_outreach_map:
             shift_outreach_map[sid] = o
+
+    # Merge group outreach shifts
+    for sid_str, go in group_outreach_map.items():
+        if sid_str not in shift_outreach_map:
+            shift_outreach_map[sid_str] = go   # use group outreach doc as fallback
 
     active_shift_oids = [ObjectId(sid) for sid in shift_outreach_map]
 
@@ -665,7 +719,74 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         s["shift_preferences"]      = doc.get("shift_preferences") or []
         s["client_preference"]      = cl.get("client_preference") or [] if cl else []
         s["ghost_booking"]          = 0
+        s["group_id"]               = group_shift_map.get(str(shift_oid_l))
         results.append(s)
+
+    # ── Also include group outreach shifts ───────────────────────────────────
+    async for grp in db["shifts_group"].find(
+        {"shift_ids": {"$exists": True, "$ne": []}},
+        {"_id": 1, "name": 1, "shift_ids": 1}
+    ):
+        grp_outreach = await db["outreach_shift_group"].find_one(
+            {"group_id": grp["_id"]},
+            sort=[("created_at", -1)]
+        )
+        if not grp_outreach:
+            continue
+        grp_status = grp_outreach.get("outreach_status", 0)
+        if filter_outreach_status == 2:
+            if grp_status != 10:
+                continue
+        else:
+            if grp_status not in (1, 2, 3):
+                continue
+
+        grp_shift_oids = grp.get("shift_ids") or []
+        if not grp_shift_oids:
+            continue
+
+        grp_seq_name = None
+        grp_seq_oid  = grp_outreach.get("sequence_id")
+        if grp_seq_oid:
+            seq = await db["sequences"].find_one({"_id": grp_seq_oid}, {"name": 1})
+            if seq:
+                grp_seq_name = seq.get("name")
+
+        grp_created = grp_outreach.get("created_at")
+        grp_start   = grp_created.isoformat() if grp_created and hasattr(grp_created, "isoformat") else None
+
+        grp_client_ids = []
+        async for sh in db["shifts"].find({"_id": {"$in": grp_shift_oids}}, {"client_id": 1}):
+            if sh.get("client_id"):
+                grp_client_ids.append(sh["client_id"])
+        grp_client_map = await _build_client_map(db, list(set(grp_client_ids)))
+
+        async for doc in db["shifts"].find(
+            {"_id": {"$in": grp_shift_oids}},
+        ):
+            s   = _serialize(doc)
+            cid = s.get("client_id", "")
+            cl  = grp_client_map.get(cid)
+            s["client_name"]      = _client_name(cl)
+            s["client_email"]     = cl.get("email")  if cl else None
+            s["client_phone"]     = cl.get("phone")  if cl else None
+            s["client_preference"]= cl.get("client_preference") or [] if cl else []
+            s["shift_preference"] = doc.get("shift_preferences") or []
+            s["shift_preferences"]= doc.get("shift_preferences") or []
+
+            shift_oid_g = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
+            s["staff_counts"]           = await _get_staff_counts_light(db, shift_oid_g)
+            s["outreach_id"]            = str(grp_outreach["_id"])
+            s["group_outreach_id"]      = str(grp_outreach["_id"])
+            s["group_id"]               = str(grp["_id"])
+            s["group_name"]             = grp.get("name")
+            s["outreach_status"]        = grp_status
+            s["outreach_status_text"]   = STATUS_TEXT.get(grp_status, "Not Started")
+            s["outreach_sequence_name"] = grp_seq_name
+            s["start_time"]             = grp_start
+            s["ghost_booking"]          = 0
+            s["is_group_outreach"]      = True
+            results.append(s)
 
     # Aggregate outreach counts (across all shifts, not just filtered)
     automation_shift_ids = await db["outreach"].distinct("shift_id", {"outreach_status": {"$gt": 0}})
@@ -677,7 +798,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
 
     return {
         "success":            True,
-        "total":              total,
+        "total":              len(results),
         "automation_count":   automation_count,
         "to_be_filled_count": to_be_filled_count,
         "outreach_active":    outreach_active,
