@@ -319,7 +319,7 @@ async def get_shift_group(request: Request, payload: ShiftGroupDetailRequest):
                 "rating":        u.get("rating"),
                 "shift":         None,
                 "placed_at":     None,
-                "confirmed_by":  "System",
+                "confirmed_by":  None,
             },
         })
 
@@ -944,7 +944,7 @@ async def get_shift_group_detail_full(request: Request, payload: ShiftGroupDetai
             "confirm": {
                 "staff_label":   f"{' '.join(filter(None,[u.get('first_name',''),u.get('last_name','')])).strip()} · ★ {u.get('rating') or '—'}",
                 "rating":        u.get("rating"),
-                "confirmed_by":  "System",
+                "confirmed_by":  None,
             },
         })
 

@@ -1359,7 +1359,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
                 "rating":            u.get("rating"),
                 "shift":             shift_label_s,
                 "placed_at":         placed_at_s,
-                "confirmed_by":      "System",
+                "confirmed_by":      None,
             },
         })
 

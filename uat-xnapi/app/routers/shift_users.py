@@ -1268,7 +1268,7 @@ async def confirm_staff(request: Request, payload: ConfirmStaffRequest):
         "client_id":     shift.get("client_id"),
         "client_name":   shift.get("client_name"),
         "user_type":     shift.get("user_type"),
-        "confirmed_by":  "System",
+        "confirmed_by":  None,
         "confirmed_at":  now,
         "updated_at":    now,
     }
@@ -1311,7 +1311,7 @@ async def confirm_staff(request: Request, payload: ConfirmStaffRequest):
         "staff_id":     payload.staff_id,
         "staff_name":   full_name,
         "staff_email":  email,
-        "confirmed_by": "System",
+        "confirmed_by": None,
         "confirmed_at": now.isoformat(),
     }
 
