@@ -53,7 +53,7 @@ def register_requested_confirm_call_routes(app):
         # === Within allowed time → proceed ===
         if user_id:
             query = {
-                "_id": ObjectId(user_id)
+                "staff_id": ObjectId(user_id)
             }
         else:
             query = {
@@ -64,7 +64,7 @@ def register_requested_confirm_call_routes(app):
             ]
         }
 
-        user = app.db.users.find_one(
+        user = app.db.requested_confirm.find_one(
             query,
             sort=[("created_at", -1)]
         )
@@ -86,7 +86,7 @@ def register_requested_confirm_call_routes(app):
             
         user_id = user["_id"]
         # Mark as sent
-        result = app.db.users.update_one(
+        result = app.db.requested_confirm.update_one(
             {"_id": user_id},
             {"$set": {"requested_confirm_call": 1, "updated_at": datetime.utcnow()}}
         )
