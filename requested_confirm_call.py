@@ -121,7 +121,6 @@ def register_requested_confirm_call_routes(app):
 
         # ── Join users via staff_id ───────────────────────────────
         staff_user = _get_staff_user(app, record)
-        return jsonify(serialize_mongo(staff_user))
         if not staff_user:
             return jsonify({**response_base, "status": "no_user",
                             "message": "Staff user not found.",
@@ -132,6 +131,10 @@ def register_requested_confirm_call_routes(app):
         first_name = staff_user.get("first_name", "")
         last_name  = staff_user.get("last_name", "")
         full_name  = f"{first_name} {last_name}".strip() or record.get("staff_name", "")
+
+        record["full_name"] = full_name
+        record["first_name"] = first_name
+        record["last_name"] = last_name
 
         if not phone:
             return jsonify({**response_base, "status": "no_phone",
