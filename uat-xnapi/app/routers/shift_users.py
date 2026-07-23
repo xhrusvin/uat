@@ -1288,7 +1288,7 @@ async def confirm_staff(request: Request, payload: ConfirmStaffRequest):
 
     return {
         "success":      True,
-        "message":      f"{full_name} confirmed for shift",
+        "message":      f"Confirmation call sent to {full_name}",
         "id":           str(result.inserted_id),
         "shift_id":     payload.shift_id,
         "staff_id":     payload.staff_id,
