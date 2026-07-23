@@ -256,10 +256,24 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
 
-    # Round number
-    outreach_count = await db["outreach"].count_documents({"shift_id": shift_oid})
-    round_number   = outreach_count + 1
+    # Round number — check if latest outreach is Ended (3), if so reset all and start round 1
+    latest_outreach = await db["outreach"].find_one(
+        {"shift_id": shift_oid}, sort=[("created_at", -1)]
+    )
     now = datetime.now(timezone.utc)
+
+    if latest_outreach and latest_outreach.get("outreach_status") == 3:
+        # Delete all previous outreach records for this shift
+        await db["outreach"].delete_many({"shift_id": shift_oid})
+        # Delete all shifts_users for this shift (except availability == 1 — already confirmed)
+        await db["shifts_users"].delete_many({
+            "shift_id":    shift_oid,
+            "availability": {"$ne": 1},
+        })
+        round_number = 1
+    else:
+        outreach_count = await db["outreach"].count_documents({"shift_id": shift_oid})
+        round_number   = outreach_count + 1
 
     # Create outreach document
     doc = {
