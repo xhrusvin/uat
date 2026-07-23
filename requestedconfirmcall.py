@@ -68,7 +68,7 @@ def generate_twiml(user_doc: dict):
 
 import requests
 
-def make_requested_confirm_call(app, phone: str, user_doc: dict, user_object_id):
+def make_requested_confirm_call(app, phone: str, user_doc: dict, user_object_id, shift: dict):
     params = urllib.parse.urlencode(user_doc, doseq=True)
     try:
         with app.app_context():
