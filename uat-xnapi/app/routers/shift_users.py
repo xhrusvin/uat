@@ -1217,3 +1217,83 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         "by_designation":  designation_list,
         "data":            results,
     }
+
+
+# ── POST /shift-users/confirm ─────────────────────────────────────────────────
+
+class ConfirmStaffRequest(BaseModel):
+    shift_id: str   # shifts._id
+    staff_id: str   # users._id
+
+
+@router.post(
+    "/confirm",
+    summary="Save staff confirmation to requested_confirm collection",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def confirm_staff(request: Request, payload: ConfirmStaffRequest):
+    """
+    Body: { "shift_id": "<shift._id>", "staff_id": "<user._id>" }
+    Saves to requested_confirm collection and updates shifts.assigned_staff.
+    """
+    db = _get_db()
+
+    shift_oid = _resolve_oid(payload.shift_id, "shift_id")
+    user_oid  = _resolve_oid(payload.staff_id,  "staff_id")
+
+    shift = await db["shifts"].find_one({"_id": shift_oid},
+        {"_id": 1, "shift_code": 1, "name": 1, "date": 1,
+         "start_time": 1, "end_time": 1, "client_id": 1, "client_name": 1, "user_type": 1})
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    user = await db["users"].find_one({"_id": user_oid},
+        {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+         "xn_user_id": 1, "designation": 1, "rating": 1})
+    if not user:
+        raise HTTPException(status_code=404, detail="Staff not found")
+
+    now       = datetime.now(timezone.utc)
+    full_name = " ".join(filter(None, [user.get("first_name",""), user.get("last_name","")])).strip() or "—"
+    email     = user.get("email") or ""
+
+    doc = {
+        "shift_id":      shift_oid,
+        "staff_id":      user_oid,
+        "xn_user_id":    user.get("xn_user_id"),
+        "staff_name":    full_name,
+        "staff_email":   email,
+        "shift_code":    shift.get("shift_code") or shift.get("name") or "",
+        "client_id":     shift.get("client_id"),
+        "client_name":   shift.get("client_name"),
+        "user_type":     shift.get("user_type"),
+        "confirmed_by":  "System",
+        "confirmed_at":  now,
+        "created_at":    now,
+    }
+    result = await db["requested_confirm"].insert_one(doc)
+
+    # Also update shift with assigned staff
+    await db["shifts"].update_one(
+        {"_id": shift_oid},
+        {"$set": {
+            "staff_email":    email,
+            "assigned_staff": full_name,
+            "staff_id":       str(user_oid),
+            "assigned_at":    now,
+            "updated_at":     now,
+        }}
+    )
+
+    return {
+        "success":      True,
+        "message":      f"{full_name} confirmed for shift",
+        "id":           str(result.inserted_id),
+        "shift_id":     payload.shift_id,
+        "staff_id":     payload.staff_id,
+        "staff_name":   full_name,
+        "staff_email":  email,
+        "confirmed_by": "System",
+        "confirmed_at": now.isoformat(),
+    }
