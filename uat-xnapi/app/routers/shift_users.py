@@ -1314,3 +1314,116 @@ async def confirm_staff(request: Request, payload: ConfirmStaffRequest):
         "confirmed_by": "System",
         "confirmed_at": now.isoformat(),
     }
+
+
+# ── POST /shift-users/ignore ──────────────────────────────────────────────────
+
+IGNORE_REASONS = [
+    {"id": "actually_declined",        "title": "Actually Declined",             "description": "They said no, even if it sounded ambiguous"},
+    {"id": "unclear_follow_up",        "title": "Unclear · needs follow-up",     "description": "Response was ambiguous; ops should call back"},
+    {"id": "available_with_conditions","title": "Available but with conditions", "description": 'e.g. "yes if I can leave early"'},
+    {"id": "not_suitable",             "title": "Not Suitable",                  "description": "Staff does not meet shift requirements"},
+    {"id": "already_placed",           "title": "Already Placed",                "description": "Staff confirmed for another shift"},
+]
+
+
+@router.get(
+    "/ignore-reasons",
+    summary="Get list of ignore reasons",
+    dependencies=[Depends(verify_api_key)],
+)
+async def get_ignore_reasons(request: Request):
+    return {"success": True, "data": IGNORE_REASONS}
+
+
+class IgnoreStaffRequest(BaseModel):
+    shift_id: str   # shifts._id
+    staff_id: str   # users._id  (matches requested_staff_list.staff_id)
+    reason:   Optional[str] = None   # id from ignore-reasons
+    notes:    Optional[str] = None
+
+
+@router.post(
+    "/ignore",
+    summary="Ignore a requested staff member for a shift",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def ignore_staff(request: Request, payload: IgnoreStaffRequest):
+    """
+    Body: { "shift_id": "...", "staff_id": "...", "reason"?: "...", "notes"?: "..." }
+    Sets ignored=1 on matching entry in shifts.requested_staff_list.
+    Also saves to shift_ignored collection for audit.
+    """
+    db = _get_db()
+
+    shift_oid = _resolve_oid(payload.shift_id, "shift_id")
+    user_oid  = _resolve_oid(payload.staff_id,  "staff_id")
+
+    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1, "requested_staff_list": 1})
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    # Resolve reason label
+    reason_label = next(
+        (r["title"] for r in IGNORE_REASONS if r["id"] == payload.reason), payload.reason
+    ) if payload.reason else None
+
+    now = datetime.now(timezone.utc)
+
+    # Update the matching entry in requested_staff_list array
+    result = await db["shifts"].update_one(
+        {
+            "_id": shift_oid,
+            "requested_staff_list.staff_id": payload.staff_id,
+        },
+        {"$set": {
+            "requested_staff_list.$.ignored":       1,
+            "requested_staff_list.$.ignore_reason": payload.reason,
+            "requested_staff_list.$.ignore_reason_text": reason_label,
+            "requested_staff_list.$.ignore_notes":  payload.notes,
+            "requested_staff_list.$.ignored_at":    now.isoformat(),
+            "updated_at": now,
+        }}
+    )
+
+    # Also try matching by xn_staff_id
+    if result.modified_count == 0:
+        result = await db["shifts"].update_one(
+            {
+                "_id": shift_oid,
+                "requested_staff_list.xn_staff_id": payload.staff_id,
+            },
+            {"$set": {
+                "requested_staff_list.$.ignored":            1,
+                "requested_staff_list.$.ignore_reason":      payload.reason,
+                "requested_staff_list.$.ignore_reason_text": reason_label,
+                "requested_staff_list.$.ignore_notes":       payload.notes,
+                "requested_staff_list.$.ignored_at":         now.isoformat(),
+                "updated_at": now,
+            }}
+        )
+
+    # Save to audit collection
+    await db["shift_ignored"].insert_one({
+        "shift_id":     shift_oid,
+        "staff_id":     user_oid,
+        "reason":       payload.reason,
+        "reason_text":  reason_label,
+        "notes":        payload.notes,
+        "ignored_at":   now,
+        "created_at":   now,
+    })
+
+    return {
+        "success":      True,
+        "message":      "Staff ignored",
+        "shift_id":     payload.shift_id,
+        "staff_id":     payload.staff_id,
+        "ignored":      1,
+        "reason":       payload.reason,
+        "reason_text":  reason_label,
+        "notes":        payload.notes,
+        "ignored_at":   now.isoformat(),
+        "modified":     result.modified_count > 0,
+    }

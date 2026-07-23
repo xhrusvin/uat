@@ -978,6 +978,11 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "status":            rs.get("status"),
             "status_name":       rs.get("status_name"),
             "requested_date":    rs.get("requested_date"),
+            "ignored":           rs.get("ignored", 0),
+            "ignore_reason":     rs.get("ignore_reason"),
+            "ignore_reason_text": rs.get("ignore_reason_text"),
+            "ignore_notes":      rs.get("ignore_notes"),
+            "ignored_at":        rs.get("ignored_at"),
         })
 
     s["requested_staff"] = requested_staff
