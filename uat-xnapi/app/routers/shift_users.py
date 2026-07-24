@@ -1594,6 +1594,8 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
     xn_shift_id = shift.get("shift_id")
     xn_user_id  = user.get("xn_user_id")
 
+    print(f"[ghost-booking] xn_shift_id={xn_shift_id} xn_user_id={xn_user_id}", flush=True)
+
     # ── Call upstream ghost-booking API ──────────────────────────────────────
     upstream_result = None
     if xn_shift_id and xn_user_id:
