@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from slowapi import Limiter
