@@ -418,3 +418,173 @@ async def bulk_sync_shifts(request: Request, payload: ShiftsBulkSyncRequest):
         "skipped":  result["skipped"],
         "total":    len(payload.shifts),
     }
+
+
+# ── POST /shifts/available-staff ─────────────────────────────────────────────
+
+class AvailableStaffRequest(BaseModel):
+    shift_id: str   # xn shift id
+
+
+@router.post(
+    "/available-staff",
+    summary="Fetch available staff for a shift from upstream API, enriched with users._id",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def get_available_staff(request: Request, payload: AvailableStaffRequest):
+    """
+    Body: { "shift_id": "<xn_shift_id>" }
+    Calls SHIFT_URL/ai/shifts/available-staff-list and enriches each staff
+    with internal users._id by matching xn_user_id.
+    """
+    from app.db.database import _client as _db_client
+    db = _db_client[settings.MONGODB_DB]
+
+    url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list"
+    headers = {
+        "Api-Key":       settings.SHIFT_INTERNAL_API_KEY,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(url, json={"shift_id": payload.shift_id}, headers=headers)
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Upstream API error: {resp.text[:300]}"
+        )
+
+    body = resp.json()
+    if not body.get("success"):
+        raise HTTPException(status_code=502, detail=body.get("message", "Upstream error"))
+
+    staff_list = body.get("data") or []
+    if not staff_list:
+        return {"success": True, "total": 0, "data": []}
+
+    # Batch lookup users by xn_user_id
+    xn_ids = [str(s["id"]) for s in staff_list if s.get("id")]
+    user_map: dict = {}
+    if xn_ids:
+        async for u in db["users"].find(
+            {"xn_user_id": {"$in": xn_ids}},
+            {"_id": 1, "xn_user_id": 1, "designation": 1, "rating": 1,
+             "tags": 1, "county_id": 1}
+        ):
+            user_map[str(u.get("xn_user_id", ""))] = u
+
+    results = []
+    for s in staff_list:
+        xn_id   = str(s.get("id", ""))
+        u       = user_map.get(xn_id, {})
+        county  = s.get("county") or {}
+
+        results.append({
+            "xn_user_id":          xn_id,
+            "user_id":             str(u["_id"]) if u.get("_id") else None,
+            "name":                s.get("name"),
+            "email":               s.get("email"),
+            "dial_code":           s.get("dial_code"),
+            "phone_number":        s.get("phone_number"),
+            "staff_shift_distance": s.get("staff_shift_distance"),
+            "premium_shift":       s.get("premium_shift"),
+            "player_id":           s.get("player_id"),
+            "county": {
+                "id":   county.get("id"),
+                "name": county.get("name"),
+            },
+            "designation":         u.get("designation"),
+            "rating":              u.get("rating"),
+        })
+
+    return {
+        "success": True,
+        "total":   len(results),
+        "data":    results,
+    }
+
+
+# ── POST /shifts/ghost-booking-staff ─────────────────────────────────────────
+
+@router.post(
+    "/ghost-booking-staff",
+    summary="Fetch ghost booking staff list from upstream API, enriched with users._id",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def get_ghost_booking_staff(request: Request, payload: AvailableStaffRequest):
+    """
+    Body: { "shift_id": "<xn_shift_id>" }
+    Calls SHIFT_URL/ai/shifts/ghost-booking-staff-list and enriches each staff
+    with internal users._id by matching xn_user_id.
+    """
+    from app.db.database import _client as _db_client
+    db = _db_client[settings.MONGODB_DB]
+
+    url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/ghost-booking-staff-list"
+    headers = {
+        "Api-Key":      settings.SHIFT_INTERNAL_API_KEY,
+        "Content-Type": "application/json",
+        "Accept":       "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(url, json={"shift_id": payload.shift_id}, headers=headers)
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Upstream API error: {resp.text[:300]}"
+        )
+
+    body = resp.json()
+    if not body.get("success"):
+        raise HTTPException(status_code=502, detail=body.get("message", "Upstream error"))
+
+    staff_list = body.get("data") or []
+    if not staff_list:
+        return {"success": True, "total": 0, "data": []}
+
+    # Batch lookup users by xn_user_id
+    xn_ids = [str(s["id"]) for s in staff_list if s.get("id")]
+    user_map: dict = {}
+    if xn_ids:
+        async for u in db["users"].find(
+            {"xn_user_id": {"$in": xn_ids}},
+            {"_id": 1, "xn_user_id": 1, "designation": 1, "rating": 1,
+             "tags": 1, "county_id": 1}
+        ):
+            user_map[str(u.get("xn_user_id", ""))] = u
+
+    results = []
+    for s in staff_list:
+        xn_id  = str(s.get("id", ""))
+        u      = user_map.get(xn_id, {})
+        county = s.get("county") or {}
+
+        results.append({
+            "xn_user_id":           xn_id,
+            "user_id":              str(u["_id"]) if u.get("_id") else None,
+            "name":                 s.get("name"),
+            "email":                s.get("email"),
+            "dial_code":            s.get("dial_code"),
+            "phone_number":         s.get("phone_number"),
+            "staff_shift_distance": s.get("staff_shift_distance"),
+            "premium_shift":        s.get("premium_shift"),
+            "player_id":            s.get("player_id"),
+            "county": {
+                "id":   county.get("id"),
+                "name": county.get("name"),
+            },
+            "designation":          u.get("designation"),
+            "rating":               u.get("rating"),
+        })
+
+    return {
+        "success": True,
+        "total":   len(results),
+        "data":    results,
+    }
