@@ -803,7 +803,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     # Apply excluded filter
     if payload.excluded is not None:
-        results = [r for r in results if r["excluded"] == payload.excluded]
+        results = [r for r in results if (r.get("excluded") or 0) == payload.excluded]
 
     # Sort results
     order_by = payload.order_by or "name"
@@ -1190,12 +1190,21 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "in_pool":             in_pool_val,
         })
 
-    # by_designation — total count of ALL enabled users by designation (independent of filters)
+    # by_designation — count ALL enabled users by designation (respecting user_type_multiple if set)
+    desig_query: dict = {"status": "Enabled"}
+    if payload.user_type_multiple:
+        valid_type_oids_d = [ObjectId(t) for t in payload.user_type_multiple if ObjectId.is_valid(str(t))]
+        if valid_type_oids_d:
+            type_names_d = []
+            async for ut in db["user_types"].find({"_id": {"$in": valid_type_oids_d}}, {"name": 1}):
+                type_names_d.append(ut["name"])
+            desig_query["$or"] = [
+                {"user_type_id": {"$in": valid_type_oids_d}},
+                {"designation":  {"$in": type_names_d}},
+            ]
+
     desig_map: dict = {}
-    async for u in db["users"].find(
-        {"status": "Enabled"},
-        {"designation": 1, "user_type_id": 1}
-    ):
+    async for u in db["users"].find(desig_query, {"designation": 1, "user_type_id": 1}):
         d  = u.get("designation") or "Unknown"
         ut = str(u["user_type_id"]) if u.get("user_type_id") else None
         if d not in desig_map:
@@ -1208,7 +1217,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     if payload.radius is not None and client_coords:
         results = [r for r in results if r["distance_km"] is not None and r["distance_km"] <= payload.radius]
     if payload.excluded is not None:
-        results = [r for r in results if r["excluded"] == payload.excluded]
+        results = [r for r in results if (r.get("excluded") or 0) == payload.excluded]
     if payload.in_pool is not None:
         results = [r for r in results if r["in_pool"] == payload.in_pool]
 
@@ -1224,7 +1233,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     return {
         "success":         True,
-        "total":           await db["users"].count_documents({"status": "Enabled"}),
+        "total":           await db["users"].count_documents(desig_query),
         "filtered_total":  len(results),
         "page":            payload.page,
         "per_page":        payload.per_page,
