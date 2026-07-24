@@ -798,7 +798,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
 
     return {
         "success":            True,
-        "total":              len(results),
+        "total":              total,
         "automation_count":   automation_count,
         "to_be_filled_count": to_be_filled_count,
         "outreach_active":    outreach_active,
