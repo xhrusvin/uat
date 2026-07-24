@@ -1175,6 +1175,17 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "in_pool":             in_pool_val,
         })
 
+    # Count by designation across ALL results before pagination filters
+    desig_map: dict = {}
+    for r in results:
+        d  = r.get("designation") or "Unknown"
+        ut = r.get("user_type_id")
+        if d not in desig_map:
+            desig_map[d] = {"designation": d, "user_type_id": ut, "count": 0}
+        desig_map[d]["count"] += 1
+
+    designation_list = sorted(desig_map.values(), key=lambda x: -x["count"])
+
     # Filters
     if payload.radius is not None and client_coords:
         results = [r for r in results if r["distance_km"] is not None and r["distance_km"] <= payload.radius]
@@ -1192,17 +1203,6 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         results.sort(key=lambda r: r["rating"] if r["rating"] is not None else 0, reverse=reverse)
     elif order_by == "name":
         results.sort(key=lambda r: r["name"].lower(), reverse=reverse)
-
-    # Count by designation across all results — include user_type_id
-    desig_map: dict = {}
-    for r in results:
-        d  = r.get("designation") or "Unknown"
-        ut = r.get("user_type_id")
-        if d not in desig_map:
-            desig_map[d] = {"designation": d, "user_type_id": ut, "count": 0}
-        desig_map[d]["count"] += 1
-
-    designation_list = sorted(desig_map.values(), key=lambda x: -x["count"])
 
     return {
         "success":         True,
