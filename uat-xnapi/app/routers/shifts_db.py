@@ -234,14 +234,14 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
     skip = (payload.page - 1) * payload.per_page
     limit = payload.per_page
 
-    search            = payload.search or None
-    status            = payload.status
-    client_id         = payload.client_id
-    user_type         = payload.user_type
-    automation_status = payload.automation_status
-    criteria          = payload.criteria
-    effective_date_from = payload.start_date
-    effective_date_to   = payload.end_date
+    search            = payload.search.strip() or None if payload.search else None
+    status            = payload.status.strip() or None if payload.status else None
+    client_id         = payload.client_id.strip() or None if payload.client_id else None
+    user_type         = payload.user_type.strip() or None if payload.user_type else None
+    automation_status = payload.automation_status.strip() or None if payload.automation_status else None
+    criteria          = payload.criteria.strip() or None if payload.criteria else None
+    effective_date_from = payload.start_date.strip() or None if payload.start_date else None
+    effective_date_to   = payload.end_date.strip() or None if payload.end_date else None
     sort_by           = payload.sort_by or "date"
     sort_order        = payload.sort_order or "desc"
 
@@ -293,13 +293,13 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
     if user_type:
         filters.append({"user_type": {"$regex": user_type, "$options": "i"}})
 
-    user_type_multiple = payload.user_type_multiple
+    user_type_multiple = payload.user_type_multiple or []
     if user_type_multiple:
         type_names = await _resolve_user_type_names(db, user_type_multiple)
         if type_names:
             filters.append({"user_type": {"$in": type_names}})
 
-    county_multiple = payload.county_multiple
+    county_multiple = payload.county_multiple or []
     if county_multiple:
         county_names = await _resolve_county_names(db, county_multiple)
         if county_names:
@@ -337,7 +337,7 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         filters.append({"_id": {"$nin": group_shift_ids}})
 
     # automation_status_multiple filter
-    if payload.automation_status_multiple:
+    if payload.automation_status_multiple and len(payload.automation_status_multiple) > 0:
         asm = [int(s) for s in payload.automation_status_multiple if str(s).lstrip('-').isdigit()]
         if asm:
             include_not_started = 0 in asm
@@ -479,14 +479,14 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     skip = (payload.page - 1) * payload.per_page
     limit = payload.per_page
 
-    search            = payload.search or None
-    status            = payload.status
-    client_id         = payload.client_id
-    user_type         = payload.user_type
-    automation_status = payload.automation_status
-    criteria          = payload.criteria
-    effective_date_from = payload.start_date
-    effective_date_to   = payload.end_date
+    search            = payload.search.strip() or None if payload.search else None
+    status            = payload.status.strip() or None if payload.status else None
+    client_id         = payload.client_id.strip() or None if payload.client_id else None
+    user_type         = payload.user_type.strip() or None if payload.user_type else None
+    automation_status = payload.automation_status.strip() or None if payload.automation_status else None
+    criteria          = payload.criteria.strip() or None if payload.criteria else None
+    effective_date_from = payload.start_date.strip() or None if payload.start_date else None
+    effective_date_to   = payload.end_date.strip() or None if payload.end_date else None
     sort_by           = payload.sort_by or "date"
     sort_order        = payload.sort_order or "desc"
     filter_outreach_status = payload.outreach_status  # optional specific status filter
@@ -603,13 +603,13 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     if user_type:
         filters.append({"user_type": {"$regex": user_type, "$options": "i"}})
 
-    user_type_multiple = payload.user_type_multiple
+    user_type_multiple = payload.user_type_multiple or []
     if user_type_multiple:
         type_names = await _resolve_user_type_names(db, user_type_multiple)
         if type_names:
             filters.append({"user_type": {"$in": type_names}})
 
-    county_multiple = payload.county_multiple
+    county_multiple = payload.county_multiple or []
     if county_multiple:
         county_names = await _resolve_county_names(db, county_multiple)
         if county_names:
@@ -633,7 +633,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             filters.append({"_id": {"$nin": avail_shift_ids}})
 
     # automation_status_multiple: filter active_shift_oids by outreach status
-    if payload.automation_status_multiple:
+    if payload.automation_status_multiple and len(payload.automation_status_multiple) > 0:
         asm = [int(s) for s in payload.automation_status_multiple if str(s).lstrip('-').isdigit()]
         active_sts = [s for s in asm if s != 0]
         if active_sts:
