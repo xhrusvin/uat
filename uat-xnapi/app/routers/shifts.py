@@ -441,6 +441,15 @@ async def get_available_staff(request: Request, payload: AvailableStaffRequest):
     from app.db.database import _client as _db_client
     db = _db_client[settings.MONGODB_DB]
 
+    # Resolve xn_shift_id from shifts collection using internal _id
+    shift_doc = None
+    if ObjectId.is_valid(payload.shift_id):
+        shift_doc = await db["shifts"].find_one(
+            {"_id": ObjectId(payload.shift_id)},
+            {"xn_shift_id": 1, "shift_id": 1, "shift_code": 1}
+        )
+    xn_shift_id = shift_doc.get("shift_id") if shift_doc else payload.shift_id
+
     url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list"
     headers = {
         "Api-Key":       settings.SHIFT_INTERNAL_API_KEY,
@@ -449,13 +458,10 @@ async def get_available_staff(request: Request, payload: AvailableStaffRequest):
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(url, json={"shift_id": payload.shift_id}, headers=headers)
+        resp = await client.post(url, json={"shift_id": xn_shift_id}, headers=headers)
 
     if resp.status_code != 200:
-        raise HTTPException(
-            status_code=resp.status_code,
-            detail=f"Upstream API error: {resp.text[:300]}"
-        )
+        raise HTTPException(status_code=resp.status_code, detail=f"Upstream API error: {resp.text[:300]}")
 
     body = resp.json()
     if not body.get("success"):
@@ -465,49 +471,37 @@ async def get_available_staff(request: Request, payload: AvailableStaffRequest):
     if not staff_list:
         return {"success": True, "total": 0, "data": []}
 
-    # Batch lookup users by xn_user_id
     xn_ids = [str(s["id"]) for s in staff_list if s.get("id")]
     user_map: dict = {}
     if xn_ids:
         async for u in db["users"].find(
             {"xn_user_id": {"$in": xn_ids}},
-            {"_id": 1, "xn_user_id": 1, "designation": 1, "rating": 1,
-             "tags": 1, "county_id": 1}
+            {"_id": 1, "xn_user_id": 1, "designation": 1, "rating": 1, "tags": 1, "county_id": 1}
         ):
             user_map[str(u.get("xn_user_id", ""))] = u
 
     results = []
     for s in staff_list:
-        xn_id   = str(s.get("id", ""))
-        u       = user_map.get(xn_id, {})
-        county  = s.get("county") or {}
-
+        xn_id  = str(s.get("id", ""))
+        u      = user_map.get(xn_id, {})
+        county = s.get("county") or {}
         results.append({
-            "xn_user_id":          xn_id,
-            "user_id":             str(u["_id"]) if u.get("_id") else None,
-            "name":                s.get("name"),
-            "email":               s.get("email"),
-            "dial_code":           s.get("dial_code"),
-            "phone_number":        s.get("phone_number"),
+            "xn_user_id":           xn_id,
+            "user_id":              str(u["_id"]) if u.get("_id") else None,
+            "name":                 s.get("name"),
+            "email":                s.get("email"),
+            "dial_code":            s.get("dial_code"),
+            "phone_number":         s.get("phone_number"),
             "staff_shift_distance": s.get("staff_shift_distance"),
-            "premium_shift":       s.get("premium_shift"),
-            "player_id":           s.get("player_id"),
-            "county": {
-                "id":   county.get("id"),
-                "name": county.get("name"),
-            },
-            "designation":         u.get("designation"),
-            "rating":              u.get("rating"),
+            "premium_shift":        s.get("premium_shift"),
+            "player_id":            s.get("player_id"),
+            "county":               {"id": county.get("id"), "name": county.get("name")},
+            "designation":          u.get("designation"),
+            "rating":               u.get("rating"),
         })
 
-    return {
-        "success": True,
-        "total":   len(results),
-        "data":    results,
-    }
+    return {"success": True, "total": len(results), "data": results}
 
-
-# ── POST /shifts/ghost-booking-staff ─────────────────────────────────────────
 
 @router.post(
     "/ghost-booking-staff",
@@ -524,6 +518,15 @@ async def get_ghost_booking_staff(request: Request, payload: AvailableStaffReque
     from app.db.database import _client as _db_client
     db = _db_client[settings.MONGODB_DB]
 
+    # Resolve xn_shift_id from shifts collection
+    shift_doc = None
+    if ObjectId.is_valid(payload.shift_id):
+        shift_doc = await db["shifts"].find_one(
+            {"_id": ObjectId(payload.shift_id)},
+            {"xn_shift_id": 1, "shift_id": 1}
+        )
+    xn_shift_id = shift_doc.get("shift_id") if shift_doc else payload.shift_id
+
     url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/ghost-booking-staff-list"
     headers = {
         "Api-Key":      settings.SHIFT_INTERNAL_API_KEY,
@@ -532,7 +535,7 @@ async def get_ghost_booking_staff(request: Request, payload: AvailableStaffReque
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(url, json={"shift_id": payload.shift_id}, headers=headers)
+        resp = await client.post(url, json={"shift_id": xn_shift_id}, headers=headers)
 
     if resp.status_code != 200:
         raise HTTPException(
