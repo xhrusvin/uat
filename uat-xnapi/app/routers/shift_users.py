@@ -1200,9 +1200,23 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "in_pool":             in_pool_val,
         })
 
-    # by_designation — ALL enabled users grouped by designation (always, regardless of filters)
+    # by_designation — ALL enabled users grouped by designation (filtered to shift user_types)
+    desig_filter: dict = {"status": "Enabled"}
+    if not payload.user_type_multiple and shift_user_types:
+        desig_filter["designation"] = {"$in": shift_user_types}
+    elif payload.user_type_multiple:
+        valid_type_oids_d = [ObjectId(str(t)) for t in payload.user_type_multiple if ObjectId.is_valid(str(t))]
+        if valid_type_oids_d:
+            type_names_d = []
+            async for ut in db["user_types"].find({"_id": {"$in": valid_type_oids_d}}, {"name": 1}):
+                type_names_d.append(ut["name"])
+            desig_filter["$or"] = [
+                {"user_type_id": {"$in": valid_type_oids_d}},
+                {"designation":  {"$in": type_names_d}},
+            ]
+
     desig_map: dict = {}
-    async for u in db["users"].find({"status": "Enabled"}, {"designation": 1, "user_type_id": 1}):
+    async for u in db["users"].find(desig_filter, {"designation": 1, "user_type_id": 1}):
         d  = u.get("designation") or "Unknown"
         ut = str(u["user_type_id"]) if u.get("user_type_id") else None
         if d not in desig_map:
@@ -1231,7 +1245,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     return {
         "success":         True,
-        "total":           await db["users"].count_documents({"status": "Enabled"}),
+        "total":           await db["users"].count_documents(desig_filter),
         "filtered_total":  len(results),
         "page":            payload.page,
         "per_page":        payload.per_page,
