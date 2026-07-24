@@ -33,7 +33,7 @@ def is_within_call_window():
 
 
 def _get_staff_user(app, record):
-    """Join requested_confirm.staff_id → users._id → phone, first_name, last_name."""
+    """Join booking_confirmed_call.staff_id → users._id → phone, first_name, last_name."""
     staff_id = record.get("staff_id")
     if not staff_id:
         return None
@@ -70,7 +70,7 @@ def _serialize_shift(shift):
 
 
 def _get_shift_for_record(app, record):
-    """Join requested_confirm.shift_id → shifts._id, return string-safe dict."""
+    """Join booking_confirmed_call.shift_id → shifts._id, return string-safe dict."""
     shift_id = record.get("shift_id")
     if not shift_id:
         return None
@@ -107,7 +107,7 @@ def register_booking_confirmed_call_routes(app):
             {"$or": [{"call_sent": 0}, {"call_sent": {"$exists": False}}]}
         )
 
-        record = app.db.requested_confirm.find_one(query, sort=[("confirmed_at", -1)])
+        record = app.db.booking_confirmed_call.find_one(query, sort=[("confirmed_at", -1)])
 
         if not record:
             return jsonify({**response_base, "status": "no_pending",
@@ -146,7 +146,7 @@ def register_booking_confirmed_call_routes(app):
         shift = _get_shift_for_record(app, record)
 
         # Mark as sent
-        result = app.db.requested_confirm.update_one(
+        result = app.db.booking_confirmed_call.update_one(
             {"_id": confirm_id},
             {"$set": {"call_sent": 1, "call_sent_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
         )
@@ -200,7 +200,7 @@ def register_booking_confirmed_call_routes(app):
         except Exception:
             return jsonify({"status": "error", "message": "Invalid confirm_id"}), 400
 
-        record = app.db.requested_confirm.find_one({"_id": obj_id})
+        record = app.db.booking_confirmed_call.find_one({"_id": obj_id})
         if not record:
             return jsonify({"status": "error", "message": "Record not found"}), 404
 
@@ -226,7 +226,7 @@ def register_booking_confirmed_call_routes(app):
         # ── Fetch shift ───────────────────────────────────────────
         shift = _get_shift_for_record(app, record)
 
-        app.db.requested_confirm.update_one(
+        app.db.booking_confirmed_call.update_one(
             {"_id": obj_id},
             {"$set": {"call_sent": 1, "call_sent_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
         )
