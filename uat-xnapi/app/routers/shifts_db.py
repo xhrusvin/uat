@@ -323,18 +323,17 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
             filters.append({"_id": {"$nin": avail_shift_ids}})
 
     # Exclude shifts that belong to an active shifts_group outreach (Live or Paused only)
-    group_shift_ids = []
-    async for grp in db["shifts_group"].find(
-        {"shift_ids": {"$exists": True, "$ne": []}}, {"shift_ids": 1}
-    ):
-        group_outreach = await db["outreach_shift_group"].find_one(
-            {"group_id": grp["_id"], "outreach_status": {"$in": [1, 2]}},
-            {"_id": 1}
-        )
-        if group_outreach:
-            group_shift_ids.extend(grp.get("shift_ids") or [])
-    if group_shift_ids:
-        filters.append({"_id": {"$nin": group_shift_ids}})
+    active_group_outreaches = await db["outreach_shift_group"].distinct(
+        "group_id", {"outreach_status": {"$in": [1, 2]}}
+    )
+    if active_group_outreaches:
+        group_shift_ids = []
+        async for g in db["shifts_group"].find(
+            {"_id": {"$in": active_group_outreaches}}, {"shift_ids": 1}
+        ):
+            group_shift_ids.extend(g.get("shift_ids") or [])
+        if group_shift_ids:
+            filters.append({"_id": {"$nin": group_shift_ids}})
 
     # automation_status_multiple filter
     if payload.automation_status_multiple and len(payload.automation_status_multiple) > 0:
