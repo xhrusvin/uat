@@ -971,15 +971,16 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     # ── User filters ────────────────────────────────────────────────────────
     user_filter: dict = {"status": "Enabled"}
 
-    # Auto-fetch user_types from all provided shifts if user_type_multiple not given
-    if not payload.user_type_multiple:
-        shift_docs = await db["shifts"].find(
-            {"_id": {"$in": shift_oids}},
-            {"user_type": 1}
-        ).to_list(length=100)
-        shift_user_types = list({s["user_type"] for s in shift_docs if s.get("user_type")})
-        if shift_user_types:
-            user_filter["designation"] = {"$in": shift_user_types}
+    # Always fetch user_types from all provided shifts (used for by_designation + auto-filter)
+    shift_docs = await db["shifts"].find(
+        {"_id": {"$in": shift_oids}},
+        {"user_type": 1}
+    ).to_list(length=100)
+    shift_user_types = list({s["user_type"] for s in shift_docs if s.get("user_type")})
+
+    # Auto-filter by shift user_types only if user_type_multiple not provided
+    if not payload.user_type_multiple and shift_user_types:
+        user_filter["designation"] = {"$in": shift_user_types}
 
     if payload.county_multiple:
         county_values = []
