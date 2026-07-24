@@ -652,8 +652,8 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     mongo_filter = {"$and": filters}
     total    = await db["shifts"].count_documents(mongo_filter)
     sort_dir = -1 if sort_order.lower() == "desc" else 1
-    cursor   = db["shifts"].find(mongo_filter).sort(sort_by, sort_dir).skip(skip).limit(limit)
-    docs     = await cursor.to_list(length=limit)
+    cursor   = db["shifts"].find(mongo_filter).sort(sort_by, sort_dir)
+    docs     = await cursor.to_list(length=10000)
 
     client_ids = list({d.get("client_id") for d in docs if d.get("client_id")})
     client_map = await _build_client_map(db, client_ids)
@@ -779,16 +779,20 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     outreach_completed   = await db["outreach"].count_documents({"outreach_status": 10})
     to_be_filled_count   = total_shifts - automation_count
 
+    # Apply pagination to combined results (regular + group outreach)
+    combined_total = total + len([r for r in results if r.get("is_group_outreach")])
+    paginated_results = results[skip:skip + limit]
+
     return {
         "success":            True,
-        "total":              total,
+        "total":              combined_total,
         "automation_count":   automation_count,
         "to_be_filled_count": to_be_filled_count,
         "outreach_active":    outreach_active,
         "outreach_completed": outreach_completed,
         "page":               payload.page,
         "per_page":           payload.per_page,
-        "data":               results,
+        "data":               paginated_results,
     }
 
 class ShiftDetailRequest(BaseModel):
