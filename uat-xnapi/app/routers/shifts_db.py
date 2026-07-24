@@ -1258,7 +1258,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     # Fetch available staff: shifts_users where shift_id — all records with any availability
     available_su = await db["shifts_users"].find(
         {"shift_id": shift_oid},
-        {"user_id": 1, "availability": 1, "call_processed_at": 1, "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "response_text": 1, "response_time": 1}
+        {"user_id": 1, "availability": 1, "call_processed_at": 1, "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "response_text": 1, "response_time": 1, "ignored": 1}
     ).to_list(length=500)
 
     available_staff = []
@@ -1384,6 +1384,8 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "conversation_id":     su.get("conversation_id"),
                 "distance_km":         distance_km,
                 "call_details":        call_details,
+                "ignored":             su.get("ignored", 0),
+                "confirmed":           1 if str(uid_str) == str(doc.get("staff_id", "")) or u.get("email") == doc.get("staff_email") else 0,
                 # Confirm staff modal fields (Image 2)
                 "confirm": {
                     "staff_label":       f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip()} · ★ {u.get('rating') or '—'} · {prior_shifts_here} prior shifts here",
