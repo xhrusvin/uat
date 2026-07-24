@@ -1419,6 +1419,24 @@ async def ignore_staff(request: Request, payload: IgnoreStaffRequest):
         "created_at":   now,
     })
 
+    # Also update shifts_users so available_staff shows ignored=1 (all outreach rounds)
+    await db["shifts_users"].update_many(
+        {"shift_id": shift_oid, "user_id": user_oid},
+        {"$set": {
+            "ignored":       1,
+            "ignore_reason": payload.reason,
+            "ignore_notes":  payload.notes,
+            "ignored_at":    now.isoformat(),
+            "updated_at":    now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        }}
+    )
+
+    # Also update shifts_pool record if exists
+    await db["shifts_pool"].update_many(
+        {"shift_id": shift_oid, "user_id": user_oid},
+        {"$set": {"ignored": 1, "updated_at": now}}
+    )
+
     return {
         "success":      True,
         "message":      "Staff ignored",
