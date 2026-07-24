@@ -1175,11 +1175,14 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "in_pool":             in_pool_val,
         })
 
-    # Count by designation across ALL results before pagination filters
+    # by_designation — total count of ALL enabled users by designation (independent of filters)
     desig_map: dict = {}
-    for r in results:
-        d  = r.get("designation") or "Unknown"
-        ut = r.get("user_type_id")
+    async for u in db["users"].find(
+        {"status": "Enabled"},
+        {"designation": 1, "user_type_id": 1}
+    ):
+        d  = u.get("designation") or "Unknown"
+        ut = str(u["user_type_id"]) if u.get("user_type_id") else None
         if d not in desig_map:
             desig_map[d] = {"designation": d, "user_type_id": ut, "count": 0}
         desig_map[d]["count"] += 1
@@ -1206,7 +1209,8 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     return {
         "success":         True,
-        "total":           len(results),
+        "total":           await db["users"].count_documents({"status": "Enabled"}),
+        "filtered_total":  len(results),
         "page":            payload.page,
         "per_page":        payload.per_page,
         "shift_ids":       [str(o) for o in shift_oids],
