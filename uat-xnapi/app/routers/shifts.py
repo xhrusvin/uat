@@ -536,13 +536,14 @@ async def get_ghost_booking_staff(request: Request, payload: AvailableStaffReque
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(url, json={"shift_id": xn_shift_id}, headers=headers)
+        resp = await client.get(
+            url,
+            params={"shift_id": xn_shift_id},
+            headers=headers
+        )
 
     if resp.status_code != 200:
-        raise HTTPException(
-            status_code=resp.status_code,
-            detail=f"Upstream API error: {resp.text[:300]}"
-        )
+        raise HTTPException(status_code=resp.status_code, detail=f"Upstream API error: {resp.text[:300]}")
 
     body = resp.json()
     if not body.get("success"):
@@ -552,14 +553,12 @@ async def get_ghost_booking_staff(request: Request, payload: AvailableStaffReque
     if not staff_list:
         return {"success": True, "total": 0, "data": []}
 
-    # Batch lookup users by xn_user_id
     xn_ids = [str(s["id"]) for s in staff_list if s.get("id")]
     user_map: dict = {}
     if xn_ids:
         async for u in db["users"].find(
             {"xn_user_id": {"$in": xn_ids}},
-            {"_id": 1, "xn_user_id": 1, "designation": 1, "rating": 1,
-             "tags": 1, "county_id": 1}
+            {"_id": 1, "xn_user_id": 1, "designation": 1, "rating": 1, "tags": 1, "county_id": 1}
         ):
             user_map[str(u.get("xn_user_id", ""))] = u
 
@@ -568,7 +567,6 @@ async def get_ghost_booking_staff(request: Request, payload: AvailableStaffReque
         xn_id  = str(s.get("id", ""))
         u      = user_map.get(xn_id, {})
         county = s.get("county") or {}
-
         results.append({
             "xn_user_id":           xn_id,
             "user_id":              str(u["_id"]) if u.get("_id") else None,
@@ -579,16 +577,9 @@ async def get_ghost_booking_staff(request: Request, payload: AvailableStaffReque
             "staff_shift_distance": s.get("staff_shift_distance"),
             "premium_shift":        s.get("premium_shift"),
             "player_id":            s.get("player_id"),
-            "county": {
-                "id":   county.get("id"),
-                "name": county.get("name"),
-            },
+            "county":               {"id": county.get("id"), "name": county.get("name")},
             "designation":          u.get("designation"),
             "rating":               u.get("rating"),
         })
 
-    return {
-        "success": True,
-        "total":   len(results),
-        "data":    results,
-    }
+    return {"success": True, "total": len(results), "data": results}
