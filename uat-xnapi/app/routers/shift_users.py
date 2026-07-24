@@ -537,8 +537,29 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     skip  = (payload.page - 1) * payload.per_page
     limit = payload.per_page
 
+    # Fetch shift early — needed for user_type filter and exclusion check
+    target_shift = await db["shifts"].find_one(
+        {"_id": shift_oid},
+        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
+         "shift_type": 1, "slots": 1, "user_type": 1, "client_id": 1}
+    ) or {}
+
     # Query only Enabled users — no shifts_users join
     user_filter: dict = {"status": "Enabled"}
+
+    # Auto-filter by shift's user_type if no explicit user_type_multiple provided
+    if not payload.user_type_multiple:
+        shift_user_type = target_shift.get("user_type") if target_shift else None
+        if shift_user_type:
+            # Match by designation name or user_type_id name
+            ut_doc = await db["user_types"].find_one({"name": shift_user_type}, {"_id": 1})
+            if ut_doc:
+                user_filter["$or"] = [
+                    {"user_type_id": ut_doc["_id"]},
+                    {"designation":  shift_user_type},
+                ]
+            else:
+                user_filter["designation"] = shift_user_type
 
     # county_multiple filter — match both string and ObjectId stored county_id
     if payload.county_multiple:
@@ -650,12 +671,6 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "latitude":  client_coords[0],
             "longitude": client_coords[1],
         }
-
-    # Fetch target shift for exclusion checks
-    target_shift = await db["shifts"].find_one(
-        {"_id": shift_oid},
-        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1}
-    ) or {}
 
     # ── Batch: pool membership ─────────────────────────────────────────────────
     user_oids_page = [u["_id"] for u in users]
