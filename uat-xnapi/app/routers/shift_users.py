@@ -1622,10 +1622,12 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
             print(f"[ghost-booking upstream] status={resp.status_code} body={upstream_body}", flush=True)
 
             if resp.status_code != 200 or not upstream_body.get("success"):
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Upstream ghost-booking failed: {upstream_body.get('message', resp.text[:200])}"
-                )
+                # Don't expose HTML error pages — give a clean message
+                if "<!DOCTYPE" in str(upstream_body.get("raw", "")):
+                    detail = f"Upstream server returned {resp.status_code} — shift API may be temporarily down"
+                else:
+                    detail = upstream_body.get("message") or f"Upstream ghost-booking failed (status {resp.status_code})"
+                raise HTTPException(status_code=502, detail=detail)
         except HTTPException:
             raise
         except Exception as e:
