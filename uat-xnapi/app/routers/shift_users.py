@@ -1614,9 +1614,12 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
                     json={"shift_id": xn_shift_id, "staff_id": xn_user_id},
                     headers=headers
                 )
-            upstream_body = resp.json() if resp.content else {}
+            try:
+                upstream_body = resp.json()
+            except Exception:
+                upstream_body = {"raw": resp.text[:300]}
             upstream_result = {"status": resp.status_code, "body": upstream_body}
-            logger.info(f"[ghost-booking upstream] status={resp.status_code} body={upstream_body}")
+            print(f"[ghost-booking upstream] status={resp.status_code} body={upstream_body}", flush=True)
 
             if resp.status_code != 200 or not upstream_body.get("success"):
                 raise HTTPException(
