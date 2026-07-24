@@ -1335,7 +1335,87 @@ async def confirm_staff(request: Request, payload: ConfirmStaffRequest):
     }
 
 
-# ── POST /shift-users/ignore ──────────────────────────────────────────────────
+# ── POST /shift-users/booking-confirmed-call ──────────────────────────────────
+
+@router.post(
+    "/booking-confirmed-call",
+    summary="Save booking confirmed call record to booking_confirmed_call collection",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def booking_confirmed_call(request: Request, payload: ConfirmStaffRequest):
+    """
+    Body: { "shift_id": "<shift._id>", "staff_id": "<user._id>" }
+    Upserts to booking_confirmed_call collection.
+    """
+    db = _get_db()
+
+    shift_oid = _resolve_oid(payload.shift_id, "shift_id")
+    user_oid  = _resolve_oid(payload.staff_id,  "staff_id")
+
+    shift = await db["shifts"].find_one({"_id": shift_oid},
+        {"_id": 1, "shift_code": 1, "name": 1, "date": 1,
+         "start_time": 1, "end_time": 1, "client_id": 1, "client_name": 1,
+         "user_type": 1, "shift_id": 1})
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    user = await db["users"].find_one({"_id": user_oid},
+        {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+         "xn_user_id": 1, "designation": 1, "rating": 1})
+    if not user:
+        raise HTTPException(status_code=404, detail="Staff not found")
+
+    now       = datetime.now(timezone.utc)
+    full_name = " ".join(filter(None, [user.get("first_name",""), user.get("last_name","")])).strip() or "—"
+    email     = user.get("email") or ""
+
+    doc = {
+        "shift_id":      shift_oid,
+        "staff_id":      user_oid,
+        "xn_user_id":    user.get("xn_user_id"),
+        "xn_shift_id":   shift.get("shift_id"),
+        "staff_name":    full_name,
+        "staff_email":   email,
+        "staff_phone":   user.get("phone"),
+        "shift_code":    shift.get("shift_code") or shift.get("name") or "",
+        "client_id":     shift.get("client_id"),
+        "client_name":   shift.get("client_name"),
+        "user_type":     shift.get("user_type"),
+        "call_status":   "pending",
+        "confirmed_by":  "System",
+        "confirmed_at":  now,
+        "updated_at":    now,
+    }
+
+    # Upsert — update if same shift_id + staff_id already exists
+    existing = await db["booking_confirmed_call"].find_one(
+        {"shift_id": shift_oid, "staff_id": user_oid}, {"_id": 1}
+    )
+    if existing:
+        await db["booking_confirmed_call"].update_one(
+            {"_id": existing["_id"]},
+            {"$set": {**doc}}
+        )
+        record_id = str(existing["_id"])
+        action    = "updated"
+    else:
+        doc["created_at"] = now
+        result    = await db["booking_confirmed_call"].insert_one(doc)
+        record_id = str(result.inserted_id)
+        action    = "created"
+
+    return {
+        "success":      True,
+        "action":       action,
+        "message":      f"Booking confirmed call saved for {full_name}",
+        "id":           record_id,
+        "shift_id":     payload.shift_id,
+        "staff_id":     payload.staff_id,
+        "staff_name":   full_name,
+        "staff_email":  email,
+        "confirmed_at": now.isoformat(),
+    }
 
 IGNORE_REASONS = [
     {"id": "actually_declined",        "title": "Actually Declined",             "description": "They said no, even if it sounded ambiguous"},
