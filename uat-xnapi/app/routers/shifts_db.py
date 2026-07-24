@@ -322,13 +322,13 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         else:
             filters.append({"_id": {"$nin": avail_shift_ids}})
 
-    # Exclude shifts that belong to an active shifts_group outreach
+    # Exclude shifts that belong to an active shifts_group outreach (Live or Paused only)
     group_shift_ids = []
     async for grp in db["shifts_group"].find(
         {"shift_ids": {"$exists": True, "$ne": []}}, {"shift_ids": 1}
     ):
         group_outreach = await db["outreach_shift_group"].find_one(
-            {"group_id": grp["_id"], "outreach_status": {"$in": [1, 2, 3, 10]}},
+            {"group_id": grp["_id"], "outreach_status": {"$in": [1, 2]}},
             {"_id": 1}
         )
         if group_outreach:
@@ -384,22 +384,6 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
             ]})
 
     mongo_filter = {"$and": filters} if filters else {}
-
-    # Exclude shifts that are part of an active group outreach
-    group_outreach_active = await db["outreach_shift_group"].find(
-        {"outreach_status": {"$gt": 0, "$ne": 10}}, {"group_id": 1}
-    ).to_list(length=5000)
-    if group_outreach_active:
-        active_group_ids = [go["group_id"] for go in group_outreach_active if go.get("group_id")]
-        if active_group_ids:
-            group_shift_ids = []
-            async for g in db["shifts_group"].find(
-                {"_id": {"$in": active_group_ids}}, {"shift_ids": 1}
-            ):
-                group_shift_ids.extend(g.get("shift_ids") or [])
-            if group_shift_ids:
-                excl = {"_id": {"$nin": group_shift_ids}}
-                mongo_filter = {"$and": [mongo_filter, excl]} if mongo_filter else excl
 
     total  = await db["shifts"].count_documents(mongo_filter)
     sort_dir = -1 if sort_order.lower() == "desc" else 1
