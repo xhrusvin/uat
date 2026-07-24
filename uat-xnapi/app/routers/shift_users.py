@@ -1605,6 +1605,7 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
                 "Content-Type": "application/json",
                 "Accept":       "application/json",
             }
+            logger.info(f"[ghost-booking] calling upstream: {url} shift_id={xn_shift_id} staff_id={xn_user_id}")
             async with _httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
                     url,
@@ -1613,6 +1614,7 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
                 )
             upstream_body = resp.json() if resp.content else {}
             upstream_result = {"status": resp.status_code, "body": upstream_body}
+            logger.info(f"[ghost-booking upstream] status={resp.status_code} body={upstream_body}")
 
             if resp.status_code != 200 or not upstream_body.get("success"):
                 raise HTTPException(
