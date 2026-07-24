@@ -1569,22 +1569,65 @@ async def ignore_staff(request: Request, payload: IgnoreStaffRequest):
 async def ghost_booking(request: Request, payload: AssignStaffRequest):
     """
     Body: { "shift_id": "<shift._id>", "user_id": "<user._id>" }
-    Sets shifts.ghost_booking = true and shifts.staff = {id, name}.
+    Calls upstream /ai/shifts/ghost-booking with shifts.shift_id + users.xn_user_id,
+    then sets shifts.ghost_booking = true and shifts.staff = {id, name}.
     """
     db        = _get_db()
     shift_oid = _resolve_oid(payload.shift_id, "shift_id")
     user_oid  = _resolve_oid(payload.user_id,  "user_id")
 
-    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1})
+    shift = await db["shifts"].find_one(
+        {"_id": shift_oid},
+        {"_id": 1, "shift_id": 1}
+    )
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
 
     user = await db["users"].find_one(
         {"_id": user_oid},
-        {"first_name": 1, "last_name": 1, "email": 1, "designation": 1, "rating": 1}
+        {"first_name": 1, "last_name": 1, "email": 1,
+         "designation": 1, "rating": 1, "xn_user_id": 1}
     )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    xn_shift_id = shift.get("shift_id")
+    xn_user_id  = user.get("xn_user_id")
+
+    # ── Call upstream ghost-booking API ──────────────────────────────────────
+    upstream_result = None
+    if xn_shift_id and xn_user_id:
+        try:
+            import httpx as _httpx
+            url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/ghost-booking"
+            headers = {
+                "Api-Key":      settings.SHIFT_INTERNAL_API_KEY,
+                "Content-Type": "application/json",
+                "Accept":       "application/json",
+            }
+            async with _httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    url,
+                    json={"shift_id": xn_shift_id, "staff_id": xn_user_id},
+                    headers=headers
+                )
+            upstream_body = resp.json() if resp.content else {}
+            upstream_result = {"status": resp.status_code, "body": upstream_body}
+
+            if resp.status_code != 200 or not upstream_body.get("success"):
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Upstream ghost-booking failed: {upstream_body.get('message', resp.text[:200])}"
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Upstream ghost-booking error: {str(e)}")
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot call upstream: shift_id={xn_shift_id} staff_id={xn_user_id} missing"
+        )
 
     full_name = " ".join(filter(None, [user.get("first_name",""), user.get("last_name","")])).strip() or "—"
     now       = datetime.now(timezone.utc)
@@ -1606,16 +1649,17 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
     )
 
     return {
-        "success":       True,
-        "message":       f"Ghost booking set for {full_name}",
-        "shift_id":      payload.shift_id,
-        "user_id":       payload.user_id,
-        "ghost_booking": True,
+        "success":         True,
+        "message":         f"Ghost booking set for {full_name}",
+        "shift_id":        payload.shift_id,
+        "user_id":         payload.user_id,
+        "ghost_booking":   True,
         "staff": {
             "id":   payload.user_id,
             "name": full_name,
         },
-        "assigned_at": now.isoformat(),
+        "upstream":        upstream_result,
+        "assigned_at":     now.isoformat(),
     }
 
 
