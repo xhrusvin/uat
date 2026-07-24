@@ -1097,6 +1097,8 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "decline_reason_text": rs.get("decline_reason_text"),
             "decline_notes":      rs.get("decline_notes"),
             "declined_at":        rs.get("declined_at"),
+            "flag":              rs.get("flag", 0),
+            "confirmed":         1 if str(sid) == str(doc.get("staff_id", "")) or u.get("email") == doc.get("staff_email") else 0,
             "confirm": {
                 "staff_label":   f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip() or rs.get('staff') or '—'} · ★ {u.get('rating') or '—'}",
                 "rating":        u.get("rating"),
