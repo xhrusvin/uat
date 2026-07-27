@@ -866,9 +866,54 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
         raise HTTPException(status_code=404, detail=f"User {payload.user_id} not found")
 
     # Fetch shift
-    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1, "shift_code": 1, "name": 1})
+    shift = await db["shifts"].find_one({"_id": shift_oid}, {"_id": 1, "shift_code": 1, "name": 1, "shift_id": 1})
     if not shift:
         raise HTTPException(status_code=404, detail=f"Shift {payload.shift_id} not found")
+
+    xn_shift_id = shift.get("shift_id")
+    xn_user_id  = user.get("xn_user_id")
+
+    # ── Call upstream assign-staff-with-checks ────────────────────────────────
+    if not xn_shift_id or not xn_user_id:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Missing upstream IDs — shift_id={xn_shift_id} staff_id={xn_user_id}"
+        )
+
+    import httpx as _httpx
+    upstream_url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/assign-staff-with-checks"
+    upstream_headers = {
+        "Api-Key":      settings.SHIFT_INTERNAL_API_KEY,
+        "Content-Type": "application/json",
+        "Accept":       "application/json",
+    }
+    print(f"[assign] upstream={upstream_url} shift_id={xn_shift_id} staff_id={xn_user_id}", flush=True)
+
+    try:
+        async with _httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                upstream_url,
+                json={"shift_id": xn_shift_id, "staff_id": xn_user_id},
+                headers=upstream_headers
+            )
+        try:
+            upstream_body = resp.json()
+        except Exception:
+            upstream_body = {}
+        print(f"[assign] upstream status={resp.status_code} body={upstream_body}", flush=True)
+
+        if resp.status_code != 200 or not upstream_body.get("success"):
+            msg = upstream_body.get("message") or f"Upstream failed (status {resp.status_code})"
+            return {
+                "success":         False,
+                "message":         msg,
+                "upstream_status": resp.status_code,
+                "upstream_data":   upstream_body.get("data"),
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Upstream error: {str(e)}")
 
     email      = user.get("email") or ""
     full_name  = " ".join(filter(None, [user.get("first_name",""), user.get("last_name","")])).strip() or "—"
