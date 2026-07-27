@@ -1618,7 +1618,7 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
         "Accept":       "application/json",
     }
     print(f"[ghost-booking] upstream={upstream_url} shift_id={xn_shift_id} staff_id={xn_user_id}", flush=True)
-
+    return upstream_url
     try:
         async with _httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
