@@ -1625,7 +1625,7 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
                 headers=upstream_headers
             )
     upstream_body = resp.json()
-    return upstream_body
+    return {"success": True, "data": upstream_body, "shift_id": xn_shift_id, "staff_id": xn_user_id}
     try:
         async with _httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
