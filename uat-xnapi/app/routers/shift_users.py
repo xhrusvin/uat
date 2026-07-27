@@ -1618,14 +1618,7 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
         "Accept":       "application/json",
     }
     print(f"[ghost-booking] upstream={upstream_url} shift_id={xn_shift_id} staff_id={xn_user_id}", flush=True)
-    async with _httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                upstream_url,
-                json={"shift_id": xn_shift_id, "staff_id": xn_user_id},
-                headers=upstream_headers
-            )
-    upstream_body = resp.json()
-    return {"success": True, "data": upstream_body, "shift_id": xn_shift_id, "staff_id": xn_user_id}
+
     try:
         async with _httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
@@ -1641,7 +1634,12 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
 
         if resp.status_code != 200 or not upstream_body.get("success"):
             msg = upstream_body.get("message") or f"Upstream failed (status {resp.status_code})"
-            raise HTTPException(status_code=502, detail=msg)
+            return {
+                "success": False,
+                "message": msg,
+                "upstream_status": resp.status_code,
+                "upstream_data": upstream_body.get("data"),
+            }
 
     except HTTPException:
         raise
