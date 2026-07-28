@@ -145,10 +145,13 @@ async def update_user(request: Request, user_id: str, payload: UserUpdate):
     dependencies=[Depends(verify_api_key)],
 )
 async def delete_user(request: Request, user_id: str):
-    db = _get_db()
-    if not ObjectId.is_valid(user_id):
+    try:
+        from beanie import PydanticObjectId
+        oid = PydanticObjectId(user_id)
+    except Exception:
         raise HTTPException(status_code=422, detail="Invalid user_id")
-    result = await db["users"].delete_one({"_id": ObjectId(user_id)})
-    if result.deleted_count == 0:
+    user = await User.get(oid)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    await user.delete()
     return {"success": True, "message": "User deleted", "id": user_id}
