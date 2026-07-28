@@ -26,6 +26,7 @@ def _user_to_response(user: User) -> UserResponse:
         xn_user_id=user.xn_user_id,
         designation=user.designation,
         created_at=user.created_at,
+        tags=user.tags or [],
     )
 
 
