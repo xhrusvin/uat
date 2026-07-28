@@ -220,10 +220,10 @@ export default function UsersPage() {
               <tr className="border-b border-gray-200 bg-gray-50">
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">User</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Email</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Tags</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Phone</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Designation</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Tags</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
                   <div className="flex items-center gap-1">
                     Joined
@@ -258,9 +258,6 @@ export default function UsersPage() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-gray-600 cursor-pointer" onClick={() => setSelectedId(u.id)}>{u.email}</td>
-                    <td className="px-5 py-3.5 text-gray-500 cursor-pointer" onClick={() => setSelectedId(u.id)}>{u.phone || '—'}</td>
-                    <td className="px-5 py-3.5 text-gray-500 text-xs cursor-pointer" onClick={() => setSelectedId(u.id)}>{u.designation || '—'}</td>
-                    <td className="px-5 py-3.5 cursor-pointer" onClick={() => setSelectedId(u.id)}><StatusBadge status={u.status} /></td>
                     <td className="px-5 py-3.5 cursor-pointer" onClick={() => setSelectedId(u.id)}>
                       <div className="flex flex-wrap gap-1">
                         {(u.tags || []).map((t, i) => (
@@ -270,6 +267,9 @@ export default function UsersPage() {
                         ))}
                       </div>
                     </td>
+                    <td className="px-5 py-3.5 text-gray-500 cursor-pointer" onClick={() => setSelectedId(u.id)}>{u.phone || '—'}</td>
+                    <td className="px-5 py-3.5 text-gray-500 text-xs cursor-pointer" onClick={() => setSelectedId(u.id)}>{u.designation || '—'}</td>
+                    <td className="px-5 py-3.5 cursor-pointer" onClick={() => setSelectedId(u.id)}><StatusBadge status={u.status} /></td>
                     <td className="px-5 py-3.5 text-gray-400 text-xs cursor-pointer" onClick={() => setSelectedId(u.id)}>
                       {u.created_at ? new Date(u.created_at).toLocaleDateString('en-GB', {
                         day: '2-digit', month: 'short', year: 'numeric'
