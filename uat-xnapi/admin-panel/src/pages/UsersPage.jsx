@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useUsersStore } from '../store/usersStore'
 import { usersService } from '../services/usersService'
+import { usersApi } from '../services/api'
 import Pagination from '../components/Pagination'
 import UserDrawer from '../components/UserDrawer'
 import DateRangePicker from '../components/DateRangePicker'
@@ -20,6 +21,54 @@ function Avatar({ user }) {
   )
 }
 
+function DeleteModal({ user, onConfirm, onCancel, loading }) {
+  if (!user) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">Delete User</h2>
+        </div>
+        <div className="px-6 py-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                 style={{ backgroundColor: '#fee2e2', color: '#dc2626' }}>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Are you sure you want to delete this user?</p>
+              <p className="text-xs text-gray-500 mt-0.5">This action cannot be undone.</p>
+            </div>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-sm">
+            <p className="font-medium text-gray-800">{user.full_name || '—'}</p>
+            <p className="text-gray-500 text-xs mt-0.5">{user.email}</p>
+            {user.designation && <p className="text-gray-400 text-xs">{user.designation}</p>}
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+          <button onClick={onCancel} disabled={loading}
+            className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white disabled:opacity-50">
+            {loading
+              ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+              : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+            }
+            {loading ? 'Deleting…' : 'Delete User'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function UsersPage() {
   const users       = useUsersStore((s) => s.users)
   const total       = useUsersStore((s) => s.total)
@@ -31,13 +80,14 @@ export default function UsersPage() {
   const listLoading = useUsersStore((s) => s.listLoading)
   const error       = useUsersStore((s) => s.error)
 
-  const [searchInput, setSearchInput] = useState(search)
-  const [selectedId, setSelectedId]   = useState(null)
-  const debounceRef                   = useRef(null)
+  const [searchInput, setSearchInput]   = useState(search)
+  const [selectedId, setSelectedId]     = useState(null)
+  const [deleteUser, setDeleteUser]     = useState(null)
+  const [deleting, setDeleting]         = useState(false)
+  const [deleteError, setDeleteError]   = useState(null)
+  const debounceRef                     = useRef(null)
 
-  useEffect(() => {
-    usersService.init()
-  }, [])
+  useEffect(() => { usersService.init() }, [])
 
   const handleSearchChange = (val) => {
     setSearchInput(val)
@@ -54,6 +104,21 @@ export default function UsersPage() {
   const handleClearAll = () => {
     setSearchInput('')
     usersService.clearFilters()
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteUser) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await usersApi.delete(deleteUser.id)
+      setDeleteUser(null)
+      usersService.refresh()
+    } catch (err) {
+      setDeleteError(err?.response?.data?.detail || 'Failed to delete user')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const hasFilters = search || dateFrom || dateTo
@@ -184,26 +249,36 @@ export default function UsersPage() {
                 </td></tr>
               ) : (
                 users.map((u) => (
-                  <tr key={u.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedId(u.id)}>
-                    <td className="px-5 py-3.5">
+                  <tr key={u.id} className="hover:bg-gray-50">
+                    <td className="px-5 py-3.5 cursor-pointer" onClick={() => setSelectedId(u.id)}>
                       <div className="flex items-center gap-3">
                         <Avatar user={u} />
                         <span className="font-medium text-gray-900">{u.full_name || '—'}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3.5 text-gray-600">{u.email}</td>
-                    <td className="px-5 py-3.5 text-gray-500">{u.phone || '—'}</td>
-                    <td className="px-5 py-3.5 text-gray-500 text-xs">{u.designation || '—'}</td>
-                    <td className="px-5 py-3.5"><StatusBadge status={u.status} /></td>
-                    <td className="px-5 py-3.5 text-gray-400 text-xs">
+                    <td className="px-5 py-3.5 text-gray-600 cursor-pointer" onClick={() => setSelectedId(u.id)}>{u.email}</td>
+                    <td className="px-5 py-3.5 text-gray-500 cursor-pointer" onClick={() => setSelectedId(u.id)}>{u.phone || '—'}</td>
+                    <td className="px-5 py-3.5 text-gray-500 text-xs cursor-pointer" onClick={() => setSelectedId(u.id)}>{u.designation || '—'}</td>
+                    <td className="px-5 py-3.5 cursor-pointer" onClick={() => setSelectedId(u.id)}><StatusBadge status={u.status} /></td>
+                    <td className="px-5 py-3.5 text-gray-400 text-xs cursor-pointer" onClick={() => setSelectedId(u.id)}>
                       {u.created_at ? new Date(u.created_at).toLocaleDateString('en-GB', {
                         day: '2-digit', month: 'short', year: 'numeric'
                       }) : '—'}
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <svg className="w-4 h-4 text-gray-400 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteUser(u); setDeleteError(null) }}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Delete user">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                          </svg>
+                        </button>
+                        <svg className="w-4 h-4 text-gray-400 cursor-pointer" onClick={() => setSelectedId(u.id)} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -215,6 +290,19 @@ export default function UsersPage() {
       </div>
 
       {selectedId && <UserDrawer userId={selectedId} onClose={() => setSelectedId(null)} />}
+
+      {deleteError && (
+        <div className="fixed bottom-4 right-4 z-50 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 shadow-lg">
+          {deleteError}
+        </div>
+      )}
+
+      <DeleteModal
+        user={deleteUser}
+        loading={deleting}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => { setDeleteUser(null); setDeleteError(null) }}
+      />
     </div>
   )
 }

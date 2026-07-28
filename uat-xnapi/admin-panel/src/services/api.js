@@ -97,6 +97,7 @@ export const usersApi = {
   list:             (params, signal) => usersClient.get('/users/', { params, signal }),
   get:              (id)             => usersClient.get(`/users/${id}`),
   update:           (id, data)       => usersClient.patch(`/users/${id}`, data),
+  delete:           (id)             => usersClient.delete(`/users/${id}`),
   documentUploaded: (data)           => usersClient.post('/webhook/document-uploaded', data),
   shiftUpdated:     (data)           => usersClient.post('/webhook/shift-updated', data),
   staffUpdated:     (data)           => usersClient.post('/webhook/staff-updated', data),

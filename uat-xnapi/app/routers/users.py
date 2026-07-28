@@ -137,3 +137,18 @@ async def update_user(request: Request, user_id: str, payload: UserUpdate):
     user.updated_at = datetime.now(timezone.utc)
     await user.save()
     return _user_to_response(user)
+
+
+@router.delete(
+    "/{user_id}",
+    summary="Delete a user by ID",
+    dependencies=[Depends(verify_api_key)],
+)
+async def delete_user(request: Request, user_id: str):
+    db = _get_db()
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status_code=422, detail="Invalid user_id")
+    result = await db["users"].delete_one({"_id": ObjectId(user_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"success": True, "message": "User deleted", "id": user_id}
