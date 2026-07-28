@@ -414,12 +414,31 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict) -> l
     target_end    = target_shift.get("end_time", "")
     target_type   = _shift_type(target_shift.get("shift_timing") or target_shift.get("shift_type") or "")
 
-    # Find all shifts where staff_email matches
+    # Build ±10 day date window around target shift date
+    date_filter: dict = {}
+    if target_date:
+        try:
+            from datetime import timedelta
+            if hasattr(target_date, "date"):
+                td = target_date
+            else:
+                from datetime import datetime as _dt
+                td = _dt.strptime(str(target_date)[:10], "%Y-%m-%d")
+            date_filter = {
+                "date": {
+                    "$gte": td - timedelta(days=10),
+                    "$lte": td + timedelta(days=10),
+                }
+            }
+        except Exception:
+            pass  # fallback: no date filter
+
+    # Find shifts where staff_email matches within ±10 days
     existing_shifts = await db["shifts"].find(
-        {"staff_email": user_email},
+        {"staff_email": user_email, **date_filter},
         {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
          "shift_type": 1, "slots": 1}
-    ).to_list(length=500)
+    ).to_list(length=200)
 
     tags = []
 
