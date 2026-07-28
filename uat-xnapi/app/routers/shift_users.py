@@ -587,6 +587,16 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             ]
 
     total = await db["users"].count_documents(user_filter)
+
+    # When filtering by excluded, fetch all users first (exclusion is computed per-user)
+    needs_post_filter = (payload.excluded is not None or payload.radius is not None or payload.in_pool is not None)
+    if needs_post_filter:
+        fetch_limit  = 50000
+        fetch_skip   = 0
+    else:
+        fetch_limit  = limit
+        fetch_skip   = skip
+
     users = await db["users"].find(
         user_filter,
         {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
@@ -594,7 +604,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
          "location": 1, "latitude": 1, "longitude": 1, "status": 1,
          "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
          "visa_hours_used": 1, "visa_hours_total": 1}
-    ).sort("first_name", 1).skip(skip).limit(limit).to_list(length=limit)
+    ).sort("first_name", 1).skip(fetch_skip).limit(fetch_limit).to_list(length=fetch_limit)
 
     # Fetch latest shifts_users.call_processed_at per user for last_contacted
     user_ids_page = [u["_id"] for u in users]
@@ -818,6 +828,10 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         results.sort(key=lambda r: r["last_contacted"] or "", reverse=reverse)
 
     filtered_total = len(results)
+
+    # Apply pagination after filtering (only when post-filter was active)
+    if needs_post_filter:
+        results = results[skip: skip + limit]
 
     return {
         "success":         True,
