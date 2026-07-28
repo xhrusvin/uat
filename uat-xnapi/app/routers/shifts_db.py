@@ -1402,6 +1402,34 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
 
     s["available_staff"] = available_staff
 
+    # excluded_by_system — count Enabled users with exclusion_tags for this shift
+    # Matches users that would appear with excluded=1 in /shift-users/list
+    target_shift_data = await db["shifts"].find_one(
+        {"_id": shift_oid},
+        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "user_type": 1}
+    ) or {}
+
+    excluded_by_system = 0
+    if target_shift_data:
+        # Sample enabled users for this shift's designation to count excluded
+        shift_user_type = target_shift_data.get("user_type")
+        user_filter_ex: dict = {"status": "Enabled"}
+        if shift_user_type:
+            user_filter_ex["designation"] = shift_user_type
+        sample_users = await db["users"].find(
+            user_filter_ex,
+            {"email": 1, "first_name": 1}
+        ).to_list(length=5000)
+
+        for u_ex in sample_users:
+            email_ex = u_ex.get("email", "")
+            if email_ex:
+                tags_ex = await _get_user_exclusion_tags(db, email_ex, target_shift_data)
+                if tags_ex:
+                    excluded_by_system += 1
+
+    s["excluded_by_system"] = excluded_by_system
+
     return {"success": True, "data": s}
 
 
