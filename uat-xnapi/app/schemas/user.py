@@ -35,6 +35,7 @@ class UserResponse(BaseModel):
     xn_user_id: Optional[str] = None
     designation: Optional[str] = None
     created_at: Optional[datetime] = None
+    tags: Optional[list] = []
 
     model_config = {"from_attributes": True}
 

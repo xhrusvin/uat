@@ -24,6 +24,7 @@ class User(Document):
     # ── XpressHealth portal fields ────────────────────────────────────────────
     xn_user_id: Optional[str] = None
     designation: Optional[str] = None
+    tags: Optional[list] = []
 
     # ── Timestamps ────────────────────────────────────────────────────────────
     created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))

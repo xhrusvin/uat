@@ -81,6 +81,7 @@ async def list_users(
             {"phone":       {"$regex": search, "$options": "i"}},
             {"xn_user_id":  {"$regex": search, "$options": "i"}},
             {"designation": {"$regex": search, "$options": "i"}},
+            {"tags.name":   {"$regex": search, "$options": "i"}},
         ]})
 
     date_filter = _build_date_filter(date_from, date_to)
