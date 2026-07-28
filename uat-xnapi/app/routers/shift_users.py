@@ -395,11 +395,12 @@ def _shift_type(timing: str) -> str:
     return ""
 
 
-async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, banned_clients: list = None) -> list:
+async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, banned_clients: list = None, user_tags: list = None) -> list:
     """
     Returns list of exclusion tag strings for a user against a target shift.
     Checks:
-      0. Client banned by staff (banned_clients)
+      0. User has exclusion staff tags (Last-Resort Booking, Avoid Booking)
+      0b. Client banned by staff (banned_clients)
       1. Same-day overlapping shift
       2. No overlapping shifts (time)
       3. Consecutive day/night shift conflict
@@ -410,7 +411,15 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
     if not user_email:
         return []
 
-    # ── 0. Check if client is banned by this staff ────────────────────────────
+    # ── 0. Check user staff tags ──────────────────────────────────────────────
+    EXCLUDED_TAG_NAMES = {"last-resort booking", "avoid booking"}
+    if user_tags:
+        for tag in user_tags:
+            tag_name = (tag.get("name", "") if isinstance(tag, dict) else str(tag)).lower().strip()
+            if tag_name in EXCLUDED_TAG_NAMES:
+                return [f"tag:{tag.get('name', tag_name) if isinstance(tag, dict) else tag_name}"]
+
+    # ── 0b. Check if client is banned by this staff ───────────────────────────
     if banned_clients:
         shift_client_id = str(target_shift.get("client_id", ""))
         for bc in banned_clients:
@@ -783,7 +792,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
         # Exclusion tags — check user's existing shifts against target shift
         user_email = u.get("email")
-        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or []) if user_email and target_shift else []
+        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or [], u.get("tags") or []) if user_email and target_shift else []
         excluded = 1 if exclusion_tags else 0
 
         # in_pool — from batch
@@ -966,7 +975,7 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
         {"_id": shift_oid},
         {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1, "client_id": 1}
     ) or {}
-    exclusion_tags = await _get_user_exclusion_tags(db, email, target_shift, user.get("banned_clients") or []) if email and target_shift else []
+    exclusion_tags = await _get_user_exclusion_tags(db, email, target_shift, user.get("banned_clients") or [], user.get("tags") or []) if email and target_shift else []
 
     if exclusion_tags:
         tag_messages = {
@@ -978,7 +987,10 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
             "exceeds_16h":              "Assignment would exceed 16 consecutive hours",
             "under_6h_gap":             "Less than 6 hours gap between shifts",
         }
-        reasons = [tag_messages.get(t, t) for t in exclusion_tags]
+        reasons = [
+            tag_messages.get(t, t.replace("tag:", "Staff tag: ") if t.startswith("tag:") else t)
+            for t in exclusion_tags
+        ]
         raise HTTPException(
             status_code=409,
             detail={
@@ -1257,7 +1269,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
         # Exclusion check against primary shift
         user_email     = u.get("email")
-        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or []) if user_email and target_shift else []
+        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or [], u.get("tags") or []) if user_email and target_shift else []
         excluded       = 1 if exclusion_tags else 0
         in_pool_val    = 1 if uid_str in pool_user_ids else 0
 
