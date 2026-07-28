@@ -395,10 +395,11 @@ def _shift_type(timing: str) -> str:
     return ""
 
 
-async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict) -> list:
+async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, banned_clients: list = None) -> list:
     """
     Returns list of exclusion tag strings for a user against a target shift.
     Checks:
+      0. Client banned by staff (banned_clients)
       1. Same-day overlapping shift
       2. No overlapping shifts (time)
       3. Consecutive day/night shift conflict
@@ -408,6 +409,14 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict) -> l
     """
     if not user_email:
         return []
+
+    # ── 0. Check if client is banned by this staff ────────────────────────────
+    if banned_clients:
+        shift_client_id = str(target_shift.get("client_id", ""))
+        for bc in banned_clients:
+            bc_id = str(bc.get("id", "")) if isinstance(bc, dict) else str(bc)
+            if bc_id and bc_id == shift_client_id:
+                return ["banned_client"]
 
     target_date   = target_shift.get("date")
     target_start  = target_shift.get("start_time", "")
@@ -622,7 +631,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
          "xn_user_id": 1, "designation": 1, "rating": 1,
          "location": 1, "latitude": 1, "longitude": 1, "status": 1,
          "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
-         "visa_hours_used": 1, "visa_hours_total": 1}
+         "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1}
     ).sort("first_name", 1).skip(fetch_skip).limit(fetch_limit).to_list(length=fetch_limit)
 
     # Fetch latest shifts_users.call_processed_at per user for last_contacted
@@ -774,7 +783,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
         # Exclusion tags — check user's existing shifts against target shift
         user_email = u.get("email")
-        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift) if user_email and target_shift else []
+        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or []) if user_email and target_shift else []
         excluded = 1 if exclusion_tags else 0
 
         # in_pool — from batch
@@ -955,18 +964,19 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
     # Check exclusion conditions before assigning
     target_shift = await db["shifts"].find_one(
         {"_id": shift_oid},
-        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1}
+        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1, "client_id": 1}
     ) or {}
-    exclusion_tags = await _get_user_exclusion_tags(db, email, target_shift) if email and target_shift else []
+    exclusion_tags = await _get_user_exclusion_tags(db, email, target_shift, user.get("banned_clients") or []) if email and target_shift else []
 
     if exclusion_tags:
         tag_messages = {
-            "overlap":              "User has an overlapping shift on the same day",
-            "duplicate_day":        "User already has a day shift on this date",
-            "duplicate_night":      "User already has a night shift on this date",
-            "consecutive_day_night": "User has both day and night shifts on this date",
-            "exceeds_16h":          "Assignment would exceed 16 consecutive hours",
-            "under_6h_gap":         "Less than 6 hours gap between shifts",
+            "banned_client":            "Staff has banned this client",
+            "overlap":                  "User has an overlapping shift on the same day",
+            "duplicate_day":            "User already has a day shift on this date",
+            "duplicate_night":          "User already has a night shift on this date",
+            "consecutive_day_night":    "User has both day and night shifts on this date",
+            "exceeds_16h":              "Assignment would exceed 16 consecutive hours",
+            "under_6h_gap":             "Less than 6 hours gap between shifts",
         }
         reasons = [tag_messages.get(t, t) for t in exclusion_tags]
         raise HTTPException(
@@ -1088,7 +1098,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
          "xn_user_id": 1, "designation": 1, "rating": 1,
          "location": 1, "latitude": 1, "longitude": 1, "status": 1,
          "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
-         "visa_hours_used": 1, "visa_hours_total": 1}
+         "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1}
     ).sort("first_name", 1).skip(skip).limit(payload.per_page).to_list(length=payload.per_page)
 
     # Last contacted across all provided shifts
@@ -1247,7 +1257,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
         # Exclusion check against primary shift
         user_email     = u.get("email")
-        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift) if user_email and target_shift else []
+        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or []) if user_email and target_shift else []
         excluded       = 1 if exclusion_tags else 0
         in_pool_val    = 1 if uid_str in pool_user_ids else 0
 
