@@ -153,7 +153,6 @@ def validate_document():
             verify_resp = None   
 
             for doc in docs_to_process:
-                return json.dumps({"doc": docs_to_process, "message": "Document validation completed successfully"})
                 doc_url = doc.get('url')
                 doc_name = doc.get('document_type_name', 'Unknown')
                 prompt = ""
@@ -173,6 +172,8 @@ def validate_document():
                         prompt_record = current_app.db.prompts.find_one({
                             "document_type_code": {"$regex": re.escape(doc_name), "$options": "i"}
                         })
+
+                        return json.dumps({"prompt_record": prompt_record, "message": "Document validation completed successfully"})
 
                         base_prompt = (
                             prompt_record['prompt_text']
