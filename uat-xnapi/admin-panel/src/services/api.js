@@ -103,4 +103,11 @@ export const usersApi = {
   staffUpdated:     (data)           => usersClient.post('/webhook/staff-updated', data),
 }
 
+export const promptsApi = {
+  list:   (body)     => usersClient.post('/prompts/', body),
+  create: (data)     => usersClient.post('/prompts/create', data),
+  update: (id, data) => usersClient.patch(`/prompts/${id}`, data),
+  delete: (id)       => usersClient.delete(`/prompts/${id}`),
+}
+
 export default authClient

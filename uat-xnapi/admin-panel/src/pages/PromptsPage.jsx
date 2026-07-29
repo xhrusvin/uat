@@ -1,12 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { usersClient } from '../services/api'
+import { promptsApi } from '../services/api'
 
-const api = {
-  list:   (body)      => usersClient.post('/prompts/', body),
-  create: (data)      => usersClient.post('/prompts/create', data),
-  update: (id, data)  => usersClient.patch(`/prompts/${id}`, data),
-  delete: (id)        => usersClient.delete(`/prompts/${id}`),
-}
+const api = promptsApi
 
 function Badge({ active }) {
   return active
