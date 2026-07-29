@@ -12,6 +12,7 @@ import requests
 import google.generativeai as genai
 import json
 import re
+from bson.json_util import dumps
 
 # Configure Gemini
 # Using the stable 1.5 Flash model which is widely supported for generateContent with multimodal data
