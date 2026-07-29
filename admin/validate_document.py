@@ -168,13 +168,11 @@ def validate_document():
                 
                 date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                prompt_record = current_app.db.prompts.find_one({
-                            "document_type_code": {"$regex": re.escape(doc_name), "$options": "i"}
-                        })
-                return dumps({
-                    "prompt_record": prompt_record,
-                    "message": "Document validation completed successfully"
-                })
+                
+                # return dumps({
+                #     "prompt_record": prompt_record,
+                #     "message": "Document validation completed successfully"
+                # })
                 if doc_url:
                     try:
                         prompt_record = current_app.db.prompts.find_one({
@@ -187,6 +185,7 @@ def validate_document():
                             else "Analise and find document name"
                         )
                         prompt = f"{base_prompt}\n\nName : {user_name}\nDate and time now : {date_str}"
+                        level = prompt_record.get('level')
 
                         file_resp = requests.get(doc_url, timeout=10)
                         if file_resp.status_code == 200:
@@ -232,7 +231,8 @@ def validate_document():
                     "xn_user_id": xn_user_id,
                     "ai_status": ai_status,
                     "ai_reason": ai_reason,
-                    "prompt": prompt,
+                    "level": level,
+                    #"prompt": prompt,
                     "url_status": url_flag,
                     "ai_attempted": True,
                     "ai_raw_response": ai_raw_response,
