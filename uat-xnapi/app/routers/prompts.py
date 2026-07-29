@@ -28,6 +28,7 @@ def _serialize(doc: dict) -> dict:
         "prompt_text":        doc.get("prompt_text", ""),
         "version":            doc.get("version", 1),
         "is_active":          doc.get("is_active", True),
+        "level":              doc.get("level", 1),
         "created_at":         doc["created_at"].isoformat() if doc.get("created_at") and hasattr(doc["created_at"], "isoformat") else None,
         "updated_at":         doc["updated_at"].isoformat() if doc.get("updated_at") and hasattr(doc["updated_at"], "isoformat") else None,
     }
@@ -44,6 +45,7 @@ class PromptCreate(BaseModel):
     prompt_text:        str
     version:            int = 1
     is_active:          bool = True
+    level:              int = 1   # 1-5
 
 
 class PromptUpdate(BaseModel):
@@ -51,6 +53,7 @@ class PromptUpdate(BaseModel):
     prompt_text:        Optional[str] = None
     version:            Optional[int] = None
     is_active:          Optional[bool] = None
+    level:              Optional[int] = None  # 1-5
 
 
 @router.post("/", summary="List prompts", dependencies=[Depends(verify_api_key)])
@@ -81,6 +84,7 @@ async def create_prompt(request: Request, payload: PromptCreate):
         "prompt_text":        payload.prompt_text.strip(),
         "version":            payload.version,
         "is_active":          payload.is_active,
+        "level":              max(1, min(5, payload.level)),
         "created_at":         now,
         "updated_at":         now,
     }
@@ -116,6 +120,8 @@ async def update_prompt(request: Request, prompt_id: str, payload: PromptUpdate)
         update["version"] = payload.version
     if payload.is_active is not None:
         update["is_active"] = payload.is_active
+    if payload.level is not None:
+        update["level"] = max(1, min(5, payload.level))
     result = await db["prompts"].update_one({"_id": ObjectId(prompt_id)}, {"$set": update})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Prompt not found")

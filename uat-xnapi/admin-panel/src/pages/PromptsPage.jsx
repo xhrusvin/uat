@@ -15,6 +15,7 @@ function Modal({ item, onClose, onSave, saving }) {
     prompt_text:        item?.prompt_text        || '',
     version:            item?.version            ?? 1,
     is_active:          item?.is_active          ?? true,
+    level:              item?.level              ?? 1,
   })
   const isEdit = !!item?.id
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -49,6 +50,14 @@ function Modal({ item, onClose, onSave, saving }) {
               <input type="number" min={1} className="input"
                 value={form.version}
                 onChange={e => set('version', parseInt(e.target.value) || 1)} />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-500 mb-1">Level</label>
+              <select className="input" value={form.level} onChange={e => set('level', parseInt(e.target.value))}>
+                {[1,2,3,4,5].map(l => (
+                  <option key={l} value={l}>Level {l}</option>
+                ))}
+              </select>
             </div>
             <div className="flex items-end pb-1">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -219,7 +228,7 @@ export default function PromptsPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
-              {['Document Type Code', 'Version', 'Status', 'Created', ''].map(h => (
+              {['Document Type Code', 'Version', 'Level', 'Status', 'Created', ''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{h}</th>
               ))}
             </tr>
@@ -234,6 +243,9 @@ export default function PromptsPage() {
                 <tr key={item.id} className="hover:bg-gray-50/50 cursor-pointer" onClick={() => setExpanded(expanded === item.id ? null : item.id)}>
                   <td className="px-4 py-3 font-medium text-gray-900 font-mono text-xs">{item.document_type_code}</td>
                   <td className="px-4 py-3 text-gray-500">v{item.version}</td>
+                  <td className="px-4 py-3">
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">L{item.level ?? 1}</span>
+                  </td>
                   <td className="px-4 py-3"><Badge active={item.is_active}/></td>
                   <td className="px-4 py-3 text-gray-400 text-xs">
                     {item.created_at ? new Date(item.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
