@@ -167,13 +167,16 @@ def validate_document():
                 
                 date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+                prompt_record = current_app.db.prompts.find_one({
+                            "document_type_code": {"$regex": re.escape(doc_name), "$options": "i"}
+                        })
+                return json.dumps({"prompt_record": prompt_record, "message": "Document validation completed successfully"})
+
                 if doc_url:
                     try:
                         prompt_record = current_app.db.prompts.find_one({
                             "document_type_code": {"$regex": re.escape(doc_name), "$options": "i"}
                         })
-
-                        return json.dumps({"prompt_record": prompt_record, "message": "Document validation completed successfully"})
 
                         base_prompt = (
                             prompt_record['prompt_text']
