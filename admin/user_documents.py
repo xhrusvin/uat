@@ -116,8 +116,8 @@ def user_documents():
     search = request.args.get('search', '').strip()
 
     query = {
-        "is_admin": {"$ne": True},
-        "status": {"$ne": "Enabled"}            
+        "is_admin": {"$ne": True}
+        #"status": {"$ne": "Enabled"}            
     }
 
     if search:
