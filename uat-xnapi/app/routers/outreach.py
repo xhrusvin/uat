@@ -297,8 +297,75 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
     # Skip only if user already in shifts_users with availability == 1
     pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid}).to_list(length=5000)
 
+    # ── Sort pool users based on sequence name ────────────────────────────────
+    seq_name = (sequence.get("name") or "").strip().lower()
+
+    if pool_docs:
+        user_oids_pool = [pd["user_id"] for pd in pool_docs if pd.get("user_id")]
+
+        if "previously worked here" in seq_name:
+            # Sort by number of prior shifts at this shift's client
+            client_id = shift.get("client_id")
+            prior_map: dict = {}
+            if client_id:
+                async for s in db["shifts"].find(
+                    {"client_id": client_id, "staff_email": {"$exists": True, "$ne": None}},
+                    {"staff_email": 1}
+                ):
+                    prior_map[s.get("staff_email", "")] = prior_map.get(s.get("staff_email", ""), 0) + 1
+            # Get emails for pool users
+            email_map: dict = {}
+            async for u in db["users"].find(
+                {"_id": {"$in": user_oids_pool}}, {"email": 1}
+            ):
+                email_map[str(u["_id"])] = u.get("email", "")
+            pool_docs.sort(
+                key=lambda pd: prior_map.get(email_map.get(str(pd.get("user_id", "")), ""), 0),
+                reverse=True
+            )
+
+        elif "by rating" in seq_name or "by favourites" in seq_name:
+            # Sort by users.rating descending
+            rating_map: dict = {}
+            async for u in db["users"].find(
+                {"_id": {"$in": user_oids_pool}}, {"rating": 1}
+            ):
+                rating_map[str(u["_id"])] = u.get("rating") or 0
+            pool_docs.sort(
+                key=lambda pd: rating_map.get(str(pd.get("user_id", "")), 0),
+                reverse=True
+            )
+
+        elif "by distance" in seq_name:
+            # Sort by distance ascending using client location
+            client_loc = None
+            if shift.get("client_id"):
+                cl = await db["clients"].find_one(
+                    {"_id": shift["client_id"]}, {"latitude": 1, "longitude": 1}
+                )
+                if cl and cl.get("latitude") and cl.get("longitude"):
+                    client_loc = (float(cl["latitude"]), float(cl["longitude"]))
+
+            if client_loc:
+                from app.routers.staff import _haversine_km as _hav_o, _user_coords as _uc_o
+                loc_map: dict = {}
+                async for u in db["users"].find(
+                    {"_id": {"$in": user_oids_pool}},
+                    {"location": 1, "latitude": 1, "longitude": 1}
+                ):
+                    coords = _uc_o(u)
+                    if coords:
+                        dist = _hav_o(client_loc[0], client_loc[1], coords[0], coords[1])
+                        loc_map[str(u["_id"])] = dist
+                    else:
+                        loc_map[str(u["_id"])] = 99999
+                pool_docs.sort(
+                    key=lambda pd: loc_map.get(str(pd.get("user_id", "")), 99999)
+                )
+
     inserted_count = 0
     skipped        = 0
+    call_order     = 1
     for pd in pool_docs:
         user_oid_pool = pd.get("user_id")
         if not user_oid_pool:
@@ -327,10 +394,12 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
             "call_summary_title": None,
             "ended_at":           None,
             "started_at":         None,
+            "call_order":         call_order,
             "updated_at":         now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
         }
         await db["shifts_users"].insert_one(su_doc)
         inserted_count += 1
+        call_order     += 1
 
     class _Result:
         def __init__(self, n): self.modified_count = n
