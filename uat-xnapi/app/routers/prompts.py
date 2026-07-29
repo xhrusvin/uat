@@ -120,8 +120,8 @@ async def update_prompt(request: Request, prompt_id: str, payload: PromptUpdate)
         update["version"] = payload.version
     if payload.is_active is not None:
         update["is_active"] = payload.is_active
-    if payload.level is not None:
-        update["level"] = max(1, min(5, payload.level))
+    # Always update level (can be null to clear it)
+    update["level"] = max(1, min(5, payload.level)) if payload.level is not None else None
     result = await db["prompts"].update_one({"_id": ObjectId(prompt_id)}, {"$set": update})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Prompt not found")
