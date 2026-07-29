@@ -28,7 +28,7 @@ def _serialize(doc: dict) -> dict:
         "prompt_text":        doc.get("prompt_text", ""),
         "version":            doc.get("version", 1),
         "is_active":          doc.get("is_active", True),
-        "level":              doc.get("level", 1),
+        "level":              doc.get("level"),
         "created_at":         doc["created_at"].isoformat() if doc.get("created_at") and hasattr(doc["created_at"], "isoformat") else None,
         "updated_at":         doc["updated_at"].isoformat() if doc.get("updated_at") and hasattr(doc["updated_at"], "isoformat") else None,
     }
