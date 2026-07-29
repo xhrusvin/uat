@@ -45,7 +45,7 @@ class PromptCreate(BaseModel):
     prompt_text:        str
     version:            int = 1
     is_active:          bool = True
-    level:              int = 1   # 1-5
+    level:              Optional[int] = None  # 1-5, optional
 
 
 class PromptUpdate(BaseModel):
@@ -84,7 +84,7 @@ async def create_prompt(request: Request, payload: PromptCreate):
         "prompt_text":        payload.prompt_text.strip(),
         "version":            payload.version,
         "is_active":          payload.is_active,
-        "level":              max(1, min(5, payload.level)),
+        "level":              max(1, min(5, payload.level)) if payload.level is not None else None,
         "created_at":         now,
         "updated_at":         now,
     }

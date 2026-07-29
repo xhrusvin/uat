@@ -15,7 +15,7 @@ function Modal({ item, onClose, onSave, saving }) {
     prompt_text:        item?.prompt_text        || '',
     version:            item?.version            ?? 1,
     is_active:          item?.is_active          ?? true,
-    level:              item?.level              ?? 1,
+    level:              item?.level              ?? null,
   })
   const isEdit = !!item?.id
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -52,8 +52,9 @@ function Modal({ item, onClose, onSave, saving }) {
                 onChange={e => set('version', parseInt(e.target.value) || 1)} />
             </div>
             <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Level</label>
-              <select className="input" value={form.level} onChange={e => set('level', parseInt(e.target.value))}>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Level <span className="text-gray-400">(optional)</span></label>
+              <select className="input" value={form.level ?? ''} onChange={e => set('level', e.target.value === '' ? null : parseInt(e.target.value))}>
+                <option value="">— No level —</option>
                 {[1,2,3,4,5].map(l => (
                   <option key={l} value={l}>Level {l}</option>
                 ))}
@@ -244,7 +245,10 @@ export default function PromptsPage() {
                   <td className="px-4 py-3 font-medium text-gray-900 font-mono text-xs">{item.document_type_code}</td>
                   <td className="px-4 py-3 text-gray-500">v{item.version}</td>
                   <td className="px-4 py-3">
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">L{item.level ?? 1}</span>
+                    {item.level != null
+                      ? <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">L{item.level}</span>
+                      : <span className="text-gray-300 text-xs">—</span>
+                    }
                   </td>
                   <td className="px-4 py-3"><Badge active={item.is_active}/></td>
                   <td className="px-4 py-3 text-gray-400 text-xs">
