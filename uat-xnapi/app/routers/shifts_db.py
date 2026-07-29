@@ -991,6 +991,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
     s["shift_preference"]       = doc.get("shift_preferences") or s.get("shift_preferences") or []
     s["ghost_booking"]          = 1 if doc.get("ghost_booking") else 0
+    s["radius"]                 = doc.get("radius")
     if "outreach_id" in outreach_info:
         s["outreach_id"] = outreach_info["outreach_id"]
 

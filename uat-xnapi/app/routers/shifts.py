@@ -14,6 +14,20 @@ from app.core.security import verify_api_key
 from app.schemas.shift import ShiftListRequest
 
 logger = logging.getLogger(__name__)
+
+def _clean_radius(val):
+    """Strip 'Km' or 'km' suffix and return int/float."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return val
+    s = str(val).replace("Km", "").replace("km", "").replace("KM", "").strip()
+    try:
+        return float(s) if "." in s else int(s)
+    except Exception:
+        return None
+
+
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/shifts", tags=["Shifts"])
 
@@ -94,6 +108,7 @@ def _build_doc(item: dict, now: datetime) -> dict:
         "upstream_status":    item.get("status_name"),
         "upstream_status_id": item.get("status"),
         "shift_preferences":  item.get("shift_preferences") or [],
+        "radius":             _clean_radius(item.get("radius")),
         "updated_at":         now,
     }
 
@@ -336,6 +351,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         "round":              data.get("round"),
         "pay_rate":           data.get("pay_rate"),
         "shift_preferences":  data.get("shift_preferences") or [],
+        "radius":             _clean_radius(data.get("radius")),
         "client_id":          client_details.get("id", ""),
         "client_name":        client_details.get("name"),
         "client_county":      client_details.get("county"),
