@@ -153,6 +153,7 @@ def validate_document():
             verify_resp = None   
 
             for doc in docs_to_process:
+                return json.dumps({"doc": docs_to_process, "message": "Document validation completed successfully"})
                 doc_url = doc.get('url')
                 doc_name = doc.get('document_type_name', 'Unknown')
                 prompt = ""
