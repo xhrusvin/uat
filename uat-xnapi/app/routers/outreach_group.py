@@ -193,7 +193,75 @@ async def create_group_outreach(request: Request, payload: GroupOutreachRequest)
 
     # Copy shifts_group_pool → shifts_group_users (skip availability == 1)
     pool_docs = await db["shifts_group_pool"].find({"group_id": group_oid}).to_list(5000)
+
+    # ── Sort pool users based on sequence name ────────────────────────────────
+    seq_name = (sequence.get("name") or "").strip().lower()
+
+    if pool_docs:
+        user_oids_pool = [pd["user_id"] for pd in pool_docs if pd.get("user_id")]
+
+        if "previously worked here" in seq_name:
+            # Sort by number of prior shifts at any client in this group
+            shift_ids = group.get("shift_ids") or []
+            client_ids = set()
+            async for s in db["shifts"].find(
+                {"_id": {"$in": shift_ids}}, {"client_id": 1}
+            ):
+                if s.get("client_id"):
+                    client_ids.add(s["client_id"])
+            prior_map: dict = {}
+            if client_ids:
+                async for s in db["shifts"].find(
+                    {"client_id": {"$in": list(client_ids)}, "staff_email": {"$exists": True, "$ne": None}},
+                    {"staff_email": 1}
+                ):
+                    e = s.get("staff_email", "")
+                    prior_map[e] = prior_map.get(e, 0) + 1
+            email_map: dict = {}
+            async for u in db["users"].find({"_id": {"$in": user_oids_pool}}, {"email": 1}):
+                email_map[str(u["_id"])] = u.get("email", "")
+            pool_docs.sort(
+                key=lambda pd: prior_map.get(email_map.get(str(pd.get("user_id", "")), ""), 0),
+                reverse=True
+            )
+
+        elif "by rating" in seq_name or "by favourites" in seq_name:
+            rating_map: dict = {}
+            async for u in db["users"].find({"_id": {"$in": user_oids_pool}}, {"rating": 1}):
+                rating_map[str(u["_id"])] = u.get("rating") or 0
+            pool_docs.sort(
+                key=lambda pd: rating_map.get(str(pd.get("user_id", "")), 0),
+                reverse=True
+            )
+
+        elif "by distance" in seq_name:
+            # Use first shift's client location
+            shift_ids = group.get("shift_ids") or []
+            client_loc = None
+            if shift_ids:
+                first_shift = await db["shifts"].find_one(
+                    {"_id": {"$in": shift_ids}}, {"client_id": 1}
+                )
+                if first_shift and first_shift.get("client_id"):
+                    cl = await db["clients"].find_one(
+                        {"_id": first_shift["client_id"]}, {"latitude": 1, "longitude": 1}
+                    )
+                    if cl and cl.get("latitude") and cl.get("longitude"):
+                        client_loc = (float(cl["latitude"]), float(cl["longitude"]))
+
+            if client_loc:
+                from app.routers.staff import _haversine_km as _hav_og, _user_coords as _uc_og
+                loc_map: dict = {}
+                async for u in db["users"].find(
+                    {"_id": {"$in": user_oids_pool}},
+                    {"location": 1, "latitude": 1, "longitude": 1}
+                ):
+                    coords = _uc_og(u)
+                    loc_map[str(u["_id"])] = _hav_og(client_loc[0], client_loc[1], coords[0], coords[1]) if coords else 99999
+                pool_docs.sort(key=lambda pd: loc_map.get(str(pd.get("user_id", "")), 99999))
+
     inserted_count = skipped = 0
+    call_order = 1
     for pd in pool_docs:
         user_oid = pd.get("user_id")
         if not user_oid:
@@ -217,9 +285,11 @@ async def create_group_outreach(request: Request, payload: GroupOutreachRequest)
             "call_processed_at":  now,
             "conversation_id":    None,
             "call_status":        0,
+            "call_order":         call_order,
             "updated_at":         now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
         })
         inserted_count += 1
+        call_order     += 1
 
     # Activity log
     await db["activities"].insert_one({
