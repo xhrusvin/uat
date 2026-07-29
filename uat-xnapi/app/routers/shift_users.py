@@ -289,21 +289,31 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 async def _get_shift_client_coords(db, shift_oid: ObjectId):
-    """shifts._id → shifts.client_id → clients.xn_client_id → lat/lng"""
-    shift = await db["shifts"].find_one({"_id": shift_oid}, {"client_id": 1})
+    """shifts._id → shifts.client_id → clients.xn_client_id → lat/lng + name"""
+    shift = await db["shifts"].find_one({"_id": shift_oid}, {"client_id": 1, "client_name": 1})
     if not shift or not shift.get("client_id"):
         return None
     client = await db["clients"].find_one(
         {"xn_client_id": shift["client_id"]},
-        {"latitude": 1, "longitude": 1}
+        {"latitude": 1, "longitude": 1, "location": 1, "name": 1, "address": 1}
     )
     if not client:
         return None
+    # Check top-level lat/lng first, then nested location dict
     lat = client.get("latitude")
     lng = client.get("longitude")
+    if (lat is None or lng is None):
+        loc = client.get("location") or {}
+        lat = loc.get("latitude") or loc.get("lat")
+        lng = loc.get("longitude") or loc.get("lng") or loc.get("lon")
     if lat is None or lng is None:
         return None
-    return (float(lat), float(lng))
+    return {
+        "latitude":  float(lat),
+        "longitude": float(lng),
+        "name":      client.get("name") or shift.get("client_name"),
+        "address":   client.get("address"),
+    }
 
 
 def _user_location_coords(u: dict):
@@ -703,20 +713,23 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             type_id_to_name[str(ut["_id"])] = ut["name"]
 
     # Get shift client coords for distance calculation
-    client_coords = await _get_shift_client_coords(db, shift_oid)
+    client_data   = await _get_shift_client_coords(db, shift_oid)
+    client_coords = (client_data["latitude"], client_data["longitude"]) if client_data else None
     shift_client_info = None
-    if client_coords:
+    if client_data:
         shift_client_info = {
-            "client_latitude":  client_coords[0],
-            "client_longitude": client_coords[1],
+            "name":             client_data.get("name"),
+            "address":          client_data.get("address"),
+            "client_latitude":  client_data["latitude"],
+            "client_longitude": client_data["longitude"],
         }
 
     # Full client location object
     client_location = None
-    if client_coords:
+    if client_data:
         client_location = {
-            "latitude":  client_coords[0],
-            "longitude": client_coords[1],
+            "latitude":  client_data["latitude"],
+            "longitude": client_data["longitude"],
         }
 
     # ── Batch: pool membership ─────────────────────────────────────────────────
