@@ -171,8 +171,10 @@ def validate_document():
                 prompt_record = current_app.db.prompts.find_one({
                             "document_type_code": {"$regex": re.escape(doc_name), "$options": "i"}
                         })
-                return json.dumps({"prompt_record": prompt_record, "message": "Document validation completed successfully"})
-
+                return dumps({
+                    "prompt_record": prompt_record,
+                    "message": "Document validation completed successfully"
+                })
                 if doc_url:
                     try:
                         prompt_record = current_app.db.prompts.find_one({
