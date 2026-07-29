@@ -405,18 +405,15 @@ def _shift_type(timing: str) -> str:
     return ""
 
 
-async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, banned_clients: list = None, user_tags: list = None) -> list:
+async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, banned_clients: list = None, user_tags: list = None, user_oid=None) -> list:
     """
     Returns list of exclusion tag strings for a user against a target shift.
     Checks:
       0. User has exclusion staff tags (Last-Resort Booking, Avoid Booking)
       0b. Client banned by staff (banned_clients)
+      0c. Level 1 document expired/pending/not_approved
       1. Same-day overlapping shift
-      2. No overlapping shifts (time)
-      3. Consecutive day/night shift conflict
-      4. Duplicate shift type same day
-      5. Exceeds 16 consecutive hours
-      6. Minimum 6h gap violation (under_6)
+      ...
     """
     if not user_email:
         return []
@@ -436,6 +433,21 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
             bc_id = str(bc.get("id", "")) if isinstance(bc, dict) else str(bc)
             if bc_id and bc_id == shift_client_id:
                 return ["banned_client"]
+
+    # ── 0c. Check Level 1 documents ──────────────────────────────────────────
+    if user_oid:
+        BAD_STATUSES = {"expired", "pending", "not_approved"}
+        level1_doc = await db["documents_new"].find_one(
+            {
+                "user_id": user_oid,
+                "level":   1,
+                "status":  {"$in": list(BAD_STATUSES)},
+            },
+            {"status": 1}
+        )
+        if level1_doc:
+            status = level1_doc.get("status", "invalid")
+            return [f"level1_doc_{status}"]
 
     target_date   = target_shift.get("date")
     target_start  = target_shift.get("start_time", "")
@@ -805,7 +817,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
         # Exclusion tags — check user's existing shifts against target shift
         user_email = u.get("email")
-        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or [], u.get("tags") or []) if user_email and target_shift else []
+        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or [], u.get("tags") or [], u.get("_id")) if user_email and target_shift else []
         excluded = 1 if exclusion_tags else 0
 
         # in_pool — from batch
@@ -988,11 +1000,14 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
         {"_id": shift_oid},
         {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1, "client_id": 1}
     ) or {}
-    exclusion_tags = await _get_user_exclusion_tags(db, email, target_shift, user.get("banned_clients") or [], user.get("tags") or []) if email and target_shift else []
+    exclusion_tags = await _get_user_exclusion_tags(db, email, target_shift, user.get("banned_clients") or [], user.get("tags") or [], user_oid) if email and target_shift else []
 
     if exclusion_tags:
         tag_messages = {
             "banned_client":            "Staff has banned this client",
+            "level1_doc_expired":       "Level 1 certificate is expired",
+            "level1_doc_pending":       "Level 1 certificate is pending approval",
+            "level1_doc_not_approved":  "Level 1 certificate is not approved",
             "overlap":                  "User has an overlapping shift on the same day",
             "duplicate_day":            "User already has a day shift on this date",
             "duplicate_night":          "User already has a night shift on this date",
@@ -1282,7 +1297,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
         # Exclusion check against primary shift
         user_email     = u.get("email")
-        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or [], u.get("tags") or []) if user_email and target_shift else []
+        exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or [], u.get("tags") or [], u.get("_id")) if user_email and target_shift else []
         excluded       = 1 if exclusion_tags else 0
         in_pool_val    = 1 if uid_str in pool_user_ids else 0
 

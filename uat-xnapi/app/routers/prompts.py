@@ -80,7 +80,7 @@ async def create_prompt(request: Request, payload: PromptCreate):
     db  = _get_db()
     now = datetime.now(timezone.utc)
     doc = {
-        "document_type_code": payload.document_type_code.strip().upper(),
+        "document_type_code": payload.document_type_code.strip(),
         "prompt_text":        payload.prompt_text.strip(),
         "version":            payload.version,
         "is_active":          payload.is_active,
@@ -113,7 +113,7 @@ async def update_prompt(request: Request, prompt_id: str, payload: PromptUpdate)
     now    = datetime.now(timezone.utc)
     update = {"updated_at": now}
     if payload.document_type_code is not None:
-        update["document_type_code"] = payload.document_type_code.strip().upper()
+        update["document_type_code"] = payload.document_type_code.strip()
     if payload.prompt_text is not None:
         update["prompt_text"] = payload.prompt_text.strip()
     if payload.version is not None:
