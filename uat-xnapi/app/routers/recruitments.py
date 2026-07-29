@@ -38,10 +38,12 @@ def _map_user_fields(data: dict, now: datetime) -> dict:
         ("email",       "email"),
         ("user_type",   "designation"),
         ("status",      "status"),
-        ("rating",      "rating"),
     ]:
         if data.get(field) is not None:
             doc[dest] = data[field]
+
+    # Save rating — default to 0 if null
+    doc["rating"] = data.get("rating") or 0
 
     phone = data.get("phone_number") or data.get("phone")
     if phone is not None:
