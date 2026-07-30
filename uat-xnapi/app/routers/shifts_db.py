@@ -1281,6 +1281,11 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             ):
                 avail_user_map[str(u["_id"])] = u
 
+        # Build user_types name → _id map
+        user_type_map: dict = {}
+        async for ut in db["user_types"].find({}, {"name": 1}):
+            user_type_map[ut.get("name", "").lower()] = str(ut["_id"])
+
         # Get shift client_id for prior shifts count
         shift_client_id   = s.get("client_id")
         shift_user_type   = s.get("user_type") or s.get("shift_timing") or ""
@@ -1370,6 +1375,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "email":               u.get("email"),
                 "phone":               u.get("phone"),
                 "designation":         u.get("designation"),
+                "user_type_id":        user_type_map.get((u.get("designation") or "").lower()),
                 "rating":              u.get("rating"),
                 "county":              u.get("county"),
                 "county_id":           str(u["county_id"]) if u.get("county_id") else None,
