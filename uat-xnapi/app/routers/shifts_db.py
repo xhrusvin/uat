@@ -1375,7 +1375,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "email":               u.get("email"),
                 "phone":               u.get("phone"),
                 "designation":         u.get("designation"),
-                "user_type_id":        user_type_map.get((u.get("designation") or "").lower()),
+                "user_type_id":        user_type_map.get((s.get("user_type") or "").lower()),
                 "rating":              u.get("rating"),
                 "county":              u.get("county"),
                 "county_id":           str(u["county_id"]) if u.get("county_id") else None,
