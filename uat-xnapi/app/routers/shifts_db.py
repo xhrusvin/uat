@@ -1276,7 +1276,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 {"_id": {"$in": avail_user_oids}},
                 {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
                  "xn_user_id": 1, "designation": 1, "rating": 1,
-                 "county": 1, "county_id": 1, "tags": 1,
+                 "county": 1, "county_id": 1, "tags": 1, "user_type_id": 1,
                  "visa_hours_used": 1, "visa_hours_total": 1, "location": 1}
             ):
                 avail_user_map[str(u["_id"])] = u
@@ -1375,7 +1375,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "email":               u.get("email"),
                 "phone":               u.get("phone"),
                 "designation":         u.get("designation"),
-                "user_type_id":        user_type_map.get((s.get("user_type") or "").lower()),
+                "user_type_id":        str(u["user_type_id"]) if u.get("user_type_id") and ObjectId.is_valid(str(u.get("user_type_id",""))) else user_type_map.get((u.get("designation") or "").lower()),
                 "rating":              u.get("rating"),
                 "county":              u.get("county"),
                 "county_id":           str(u["county_id"]) if u.get("county_id") else None,
