@@ -1146,17 +1146,16 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         })
     s["pool_users"] = pool_users
 
-    # Resolve user_type_id — use cached value or join and save
+    # Resolve user_type_id — always look up from user_types by shifts.user_type name
     user_type_id = None
-    if doc.get("user_type_id"):
-        user_type_id = str(doc["user_type_id"])
-    elif s.get("user_type"):
+    if s.get("user_type"):
         ut = await db["user_types"].find_one(
             {"name": {"$regex": f"^{s['user_type']}$", "$options": "i"}},
             {"_id": 1}
         )
         if ut:
             user_type_id = str(ut["_id"])
+            # Cache the correct id back to shifts collection
             await db["shifts"].update_one(
                 {"_id": doc["_id"]}, {"$set": {"user_type_id": ut["_id"]}}
             )
