@@ -142,11 +142,19 @@ def register_shift_booking_call_routes(app):
             # time.sleep(0.4)   # uncomment if needed
 
             # Trigger the AI call in background
-            threading.Thread(
-                target=make_shiftbooking_ai_call,
-                args=(current_app._get_current_object(), user.get("phone"), user, str(user_id), str(shift_id)),
-                daemon=True
-            ).start()
+            # threading.Thread(
+            #     target=make_shiftbooking_ai_call,
+            #     args=(current_app._get_current_object(), user.get("phone"), user, str(user_id), str(shift_id)),
+            #     daemon=True
+            # ).start()
+
+            result = make_shiftbooking_ai_call(
+    current_app._get_current_object(),
+    user.get("phone"),
+    user,
+    str(user_id),
+    str(shift_id),
+)
 
             name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or "Unknown"
             created_at_str = (
@@ -160,7 +168,8 @@ def register_shift_booking_call_routes(app):
                 "shift_id": str(shift_id),
                 "phone": user.get("phone"),
                 "name": name,
-                "created_at": created_at_str
+                "created_at": created_at_str,
+                "call_result": result,
             })
 
         triggered_count = len(triggered)
