@@ -9,4 +9,3 @@ venv/
 .pytest_cache/
 htmlcov/
 .coverage
-docker-compose.yml
