@@ -10,4 +10,5 @@ uat-xnapi/node_modules/.env
 uat-xnapi/admin-panel/.env.local
 uat-xnapi/admin-panel/.env.production
 uat-xnapi/admin-panel/docker-compose.yml
+uat-xnapi/docker-compose.yml
 
