@@ -382,8 +382,8 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
                 {"date": {"$regex": regex_val.replace("-", "[-/]"), "$options": "i"}}
             ]})
 
-    # Only show "To be assigned" shifts
-    filters.append({"upstream_status": {"$regex": "^to be assigned$", "$options": "i"}})
+    # Only show unfilled shifts
+    filters.append({"upstream_status": {"$in": ["To Be Filled", "Un Filled", "To be assigned", "To Be Assigned"]}})
     mongo_filter = {"$and": filters} if filters else {}
 
     total  = await db["shifts"].count_documents(mongo_filter)
@@ -651,8 +651,8 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
                 {"date": {"$regex": regex_val.replace("-", "[-/]"), "$options": "i"}}
             ]})
 
-    # Only show "To be assigned" shifts
-    filters.append({"upstream_status": {"$regex": "^to be assigned$", "$options": "i"}})
+    # Only show unfilled shifts
+    filters.append({"upstream_status": {"$in": ["To Be Filled", "Un Filled", "To be assigned", "To Be Assigned"]}})
     mongo_filter = {"$and": filters}
     total    = await db["shifts"].count_documents(mongo_filter)
     sort_dir = -1 if sort_order.lower() == "desc" else 1
