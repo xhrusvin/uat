@@ -420,7 +420,7 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
     outreach_active     = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
     outreach_completed  = await db["outreach"].count_documents({"outreach_status": 10})
     automation_total    = len(set(str(s) for s in automation_count))
-    to_be_filled_count  = await db["shifts"].count_documents({"upstream_status": {"$in": ["To Be Filled", "Un Filled", "To be assigned", "To Be Assigned"]}})
+    to_be_filled_count  = total  # same as total after all filters applied
 
     return {
         "success":            True,
@@ -520,7 +520,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             "success":            True,
             "total":              0,
             "automation_count":   automation_count_all,
-            "to_be_filled_count": await db["shifts"].count_documents({"upstream_status": {"$in": ["To Be Filled", "Un Filled", "To be assigned", "To Be Assigned"]}}),
+            "to_be_filled_count": total,
             "outreach_active":    outreach_active_all,
             "outreach_completed": outreach_completed_all,
             "page":               payload.page,
@@ -781,7 +781,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     total_shifts         = await db["shifts"].count_documents({})
     outreach_active      = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
     outreach_completed   = await db["outreach"].count_documents({"outreach_status": 10})
-    to_be_filled_count   = await db["shifts"].count_documents({"upstream_status": {"$in": ["To Be Filled", "Un Filled", "To be assigned", "To Be Assigned"]}})
+    to_be_filled_count   = total  # same as total after all filters applied
 
     # Apply pagination to combined results (regular + group outreach)
     combined_total = total + len([r for r in results if r.get("is_group_outreach")])
