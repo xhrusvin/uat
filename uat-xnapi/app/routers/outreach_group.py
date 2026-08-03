@@ -121,12 +121,6 @@ async def group_outreach_detail(request: Request, payload: GroupOutreachRequest)
                 "email":       0,
                 "summary":     pool_summary,
             },
-            "plan": {
-                "rounds":          3,
-                "staff_per_round": 6,
-                "delay_seconds":   90,
-                "summary":         "3 rounds of 6 staff, 90s delay between",
-            },
             "pause_on": "First Available Staff",
         },
     }

@@ -99,15 +99,6 @@ async def outreach_detail(request: Request, payload: OutreachDetailRequest):
         f"WhatsApp {whatsapp_count}, email {email_count}"
     )
 
-    # ── Plan — default: 3 rounds of 6 staff, 90s delay ───────────────────────
-    rounds_per_plan    = 3
-    staff_per_round    = 6
-    delay_seconds      = 90
-    plan_summary = (
-        f"{rounds_per_plan} rounds of {staff_per_round} staff, "
-        f"{delay_seconds}s delay between"
-    )
-
     # ── Pause on ─────────────────────────────────────────────────────────────
     pause_on = "First Available Staff"
 
@@ -138,12 +129,6 @@ async def outreach_detail(request: Request, payload: OutreachDetailRequest):
                 "whatsapp":      whatsapp_count,
                 "email":         email_count,
                 "summary":       pool_summary,
-            },
-            "plan": {
-                "rounds":         rounds_per_plan,
-                "staff_per_round": staff_per_round,
-                "delay_seconds":  delay_seconds,
-                "summary":        plan_summary,
             },
             "pause_on": pause_on,
         },
