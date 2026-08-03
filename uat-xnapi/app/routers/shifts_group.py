@@ -625,7 +625,7 @@ async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
         raise HTTPException(status_code=422, detail="Invalid group_id")
 
     group_oid = ObjectId(payload.group_id)
-    group = await db["shifts_group"].find_one({"_id": group_oid}, {"_id": 1, "name": 1})
+    group = await db["shifts_group"].find_one({"_id": group_oid}, {"_id": 1, "name": 1, "shift_ids": 1})
     if not group:
         raise HTTPException(status_code=404, detail="Shift group not found")
 
@@ -683,12 +683,31 @@ async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
         visa_total = u.get("visa_hours_total")
         visa_hours_remaining = f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
 
-        prior_shifts = await db["shifts_group_users"].count_documents({
-            "user_id": p.get("user_id"), "availability": 1
-        })
+        # Prior shifts at clients of shifts in this group
+        prior_shifts = 0
+        last_at_client = None
+        shift_ids_in_group = group.get("shift_ids") or []
+        if shift_ids_in_group:
+            client_ids_in_group = await db["shifts"].distinct("client_id", {"_id": {"$in": shift_ids_in_group}})
+            if client_ids_in_group:
+                client_shift_ids_g = await db["shifts"].distinct(
+                    "_id", {"client_id": {"$in": client_ids_in_group}, "staff_email": {"$exists": True, "$ne": None}}
+                )
+                if client_shift_ids_g:
+                    async for psu in db["shifts_users"].find(
+                        {"user_id": p.get("user_id"), "shift_id": {"$in": client_shift_ids_g}, "availability": 1},
+                        {"assigned_at": 1}
+                    ).sort("assigned_at", -1).limit(1):
+                        prior_shifts += 1
+                        last_at_client = _time_ago(psu.get("assigned_at"))
+                    # Count total
+                    prior_shifts = await db["shifts_users"].count_documents(
+                        {"user_id": p.get("user_id"), "shift_id": {"$in": client_shift_ids_g}, "availability": 1}
+                    )
+
         work_history = None
-        if prior_shifts > 0 and last_contacted:
-            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_contacted}"
+        if prior_shifts > 0 and last_at_client:
+            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_at_client}"
         elif prior_shifts > 0:
             work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''}"
         elif last_contacted:

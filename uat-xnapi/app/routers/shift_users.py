@@ -752,15 +752,38 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     ).to_list(5000)
     pool_user_set = {str(p["user_id"]) for p in pool_records}
 
-    # ── Batch: prior shifts count ──────────────────────────────────────────────
-    prior_su_docs = await db["shifts_users"].find(
-        {"user_id": {"$in": user_oids_page}, "availability": 1},
-        {"user_id": 1}
-    ).to_list(50000)
-    prior_shifts_map: dict = {}
-    for psu in prior_su_docs:
-        uid = str(psu.get("user_id", ""))
-        prior_shifts_map[uid] = prior_shifts_map.get(uid, 0) + 1
+    # ── Batch: prior shifts count at same client ──────────────────────────────
+    # Get client_id for this shift
+    shift_client_id = target_shift.get("client_id") if target_shift else None
+
+    prior_shifts_map: dict = {}       # uid → count of shifts at this client
+    last_shift_at_client_map: dict = {}  # uid → last shift date at this client
+
+    if shift_client_id:
+        # Find all shifts at this client where staff was assigned (staff_email set)
+        client_shift_ids = await db["shifts"].distinct(
+            "_id", {"client_id": shift_client_id, "staff_email": {"$exists": True, "$ne": None}}
+        )
+        if client_shift_ids:
+            # Find shifts_users for pool users at this client's shifts
+            async for psu in db["shifts_users"].find(
+                {"user_id": {"$in": user_oids_page}, "shift_id": {"$in": client_shift_ids}, "availability": 1},
+                {"user_id": 1, "assigned_at": 1}
+            ):
+                uid = str(psu.get("user_id", ""))
+                prior_shifts_map[uid] = prior_shifts_map.get(uid, 0) + 1
+                # Track most recent shift date at this client
+                assigned = psu.get("assigned_at")
+                if assigned and (uid not in last_shift_at_client_map or assigned > last_shift_at_client_map[uid]):
+                    last_shift_at_client_map[uid] = assigned
+    else:
+        # Fallback: count all prior shifts if no client_id
+        async for psu in db["shifts_users"].find(
+            {"user_id": {"$in": user_oids_page}, "availability": 1},
+            {"user_id": 1}
+        ):
+            uid = str(psu.get("user_id", ""))
+            prior_shifts_map[uid] = prior_shifts_map.get(uid, 0) + 1
 
     results = []
     for u in users:
@@ -832,14 +855,18 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         # Prior shifts count — from batch
         prior_shifts = prior_shifts_map.get(uid_str, 0)
 
+        # Time ago of last shift at this client
+        last_at_client_dt = last_shift_at_client_map.get(uid_str) if shift_client_id else None
+        last_at_client    = _format_time_ago(last_at_client_dt) if last_at_client_dt else None
+
         # Work history display string
         work_history = None
-        if prior_shifts > 0 and last_contacted:
-            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_contacted}"
+        if prior_shifts > 0 and last_at_client:
+            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_at_client}"
         elif prior_shifts > 0:
             work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''}"
-        elif last_contacted:
-            work_history = last_contacted
+        elif last_at_client:
+            work_history = last_at_client
 
         results.append({
             "id":                  uid_str,
