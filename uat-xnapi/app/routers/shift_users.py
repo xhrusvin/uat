@@ -650,12 +650,21 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     if payload.search:
         s = payload.search.strip()
         if s:
-            search_or = {"$or": [
+            # Split multi-word search into parts for first+last name matching
+            parts = s.split()
+            name_conditions = [
                 {"first_name": {"$regex": s, "$options": "i"}},
                 {"last_name":  {"$regex": s, "$options": "i"}},
                 {"email":      {"$regex": s, "$options": "i"}},
                 {"phone":      {"$regex": s, "$options": "i"}},
-            ]}
+            ]
+            if len(parts) >= 2:
+                # "Kavita Babu" → match first=Kavita AND last=Babu
+                name_conditions.append({"$and": [
+                    {"first_name": {"$regex": parts[0], "$options": "i"}},
+                    {"last_name":  {"$regex": parts[-1], "$options": "i"}},
+                ]})
+            search_or = {"$or": name_conditions}
             if "$and" in user_filter:
                 user_filter["$and"].append(search_or)
             else:
