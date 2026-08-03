@@ -859,14 +859,15 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         last_at_client_dt = last_shift_at_client_map.get(uid_str) if shift_client_id else None
         last_at_client    = _format_time_ago(last_at_client_dt) if last_at_client_dt else None
 
-        # Work history display string
-        work_history = None
+        # Work history — always show, even if 0 at this client
         if prior_shifts > 0 and last_at_client:
             work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_at_client}"
         elif prior_shifts > 0:
             work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''}"
         elif last_at_client:
-            work_history = last_at_client
+            work_history = f"0 Shifts · {last_at_client}"
+        else:
+            work_history = "0 Shifts"
 
         results.append({
             "id":                  uid_str,
