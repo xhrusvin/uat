@@ -87,14 +87,10 @@ async def outreach_detail(request: Request, payload: OutreachDetailRequest):
     round_number   = outreach_count + 1
     is_first       = outreach_count == 0
 
-    # ── Pool composition from shifts_users (exclude already-assigned) ────────
-    no_outreach_filter = {
+    # ── Pool composition from shifts_pool (staff added via /shift-users/bulk) ─
+    total_staff = await db["shifts_pool"].count_documents({"shift_id": shift_oid})
+    phone_count = await db["shifts_pool"].count_documents({
         "shift_id": shift_oid,
-        "$or": [{"outreach_id": {"$exists": False}}, {"outreach_id": None}],
-    }
-    total_staff = await db["shifts_users"].count_documents(no_outreach_filter)
-    phone_count = await db["shifts_users"].count_documents({
-        **no_outreach_filter,
         "call_enabled": {"$gt": 0},
     })
     # whatsapp and email are placeholders until those fields are added
