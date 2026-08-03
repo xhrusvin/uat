@@ -89,10 +89,7 @@ async def outreach_detail(request: Request, payload: OutreachDetailRequest):
 
     # ── Pool composition from shifts_pool (staff added via /shift-users/bulk) ─
     total_staff = await db["shifts_pool"].count_documents({"shift_id": shift_oid})
-    phone_count = await db["shifts_pool"].count_documents({
-        "shift_id": shift_oid,
-        "call_enabled": {"$gt": 0},
-    })
+    phone_count = total_staff  # all pool staff are called via phone
     # whatsapp and email are placeholders until those fields are added
     whatsapp_count = 0
     email_count    = 0
