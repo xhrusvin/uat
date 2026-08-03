@@ -355,6 +355,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         "round":              data.get("round"),
         "pay_rate":           data.get("pay_rate"),
         "shift_preferences":  data.get("shift_preferences") or [],
+        "radius":             _clean_radius(data.get("radius")),
         "client_id":          client_details.get("id", ""),
         "client_name":        client_details.get("name"),
         "client_county":      client_details.get("county"),
@@ -373,11 +374,6 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
     }
 
     collection = _get_collection()
-    # Only set radius if upstream provides it
-    cleaned_radius = _clean_radius(data.get("radius"))
-    if cleaned_radius is not None:
-        doc["radius"] = cleaned_radius
-
     # Match on shift_id (xn id string)
     existing = await collection.find_one({"shift_id": data["id"]})
     if existing:
