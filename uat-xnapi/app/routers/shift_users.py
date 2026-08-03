@@ -597,6 +597,44 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     skip  = (payload.page - 1) * payload.per_page
     limit = payload.per_page
 
+    # ── Fetch upstream available-staff-list ──────────────────────────────────
+    # Get the shift's xn_shift_id to call upstream
+    shift_doc_for_xn = await db["shifts"].find_one({"_id": shift_oid}, {"shift_id": 1})
+    xn_shift_id = shift_doc_for_xn.get("shift_id") if shift_doc_for_xn else None
+    upstream_xn_ids: list = []   # xn_user_ids from upstream
+    upstream_distance_map: dict = {}  # xn_user_id → staff_shift_distance
+
+    if xn_shift_id:
+        try:
+            import httpx as _httpx
+            upstream_url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list"
+            upstream_headers = {
+                "Api-Key":      settings.SHIFT_INTERNAL_API_KEY,
+                "Content-Type": "application/json",
+                "Accept":       "application/json",
+            }
+            async with _httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    upstream_url,
+                    json={"shift_id": xn_shift_id},
+                    headers=upstream_headers
+                )
+            if resp.status_code == 200:
+                body = resp.json()
+                for s in (body.get("data") or []):
+                    xn_id = str(s.get("id", ""))
+                    if xn_id:
+                        upstream_xn_ids.append(xn_id)
+                        upstream_distance_map[xn_id] = s.get("staff_shift_distance")
+        except Exception as e:
+            logger.warning(f"[list] upstream available-staff-list failed: {e}")
+
+    # If upstream returned staff, filter users to only those matching xn_user_id
+    # If upstream failed/returned empty, fall through to show all eligible users
+    upstream_filter = {}
+    if upstream_xn_ids:
+        upstream_filter = {"xn_user_id": {"$in": upstream_xn_ids}}
+
     # Fetch shift early — needed for user_type filter and exclusion check
     target_shift = await db["shifts"].find_one(
         {"_id": shift_oid},
@@ -606,20 +644,8 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     # Query only Enabled users — no shifts_users join
     user_filter: dict = {"status": "Enabled"}
-
-    # Auto-filter by shift's user_type if no explicit user_type_multiple provided
-    if not payload.user_type_multiple:
-        shift_user_type = target_shift.get("user_type") if target_shift else None
-        if shift_user_type:
-            # Match by designation name or user_type_id name
-            ut_doc = await db["user_types"].find_one({"name": shift_user_type}, {"_id": 1})
-            if ut_doc:
-                user_filter["$or"] = [
-                    {"user_type_id": ut_doc["_id"]},
-                    {"designation":  shift_user_type},
-                ]
-            else:
-                user_filter["designation"] = shift_user_type
+    if upstream_filter:
+        user_filter.update(upstream_filter)
 
     # county_multiple filter — match both string and ObjectId stored county_id
     if payload.county_multiple:
@@ -821,6 +847,10 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                 client_coords[0], client_coords[1],
                 ucoords[0],       ucoords[1],
             )
+        # Override with upstream distance if available
+        xn_uid = u.get("xn_user_id", "")
+        if xn_uid and upstream_distance_map.get(xn_uid) is not None:
+            distance_km = upstream_distance_map[xn_uid]
 
         # staff_tags from user.tags array
         raw_tags = u.get("tags") or []
