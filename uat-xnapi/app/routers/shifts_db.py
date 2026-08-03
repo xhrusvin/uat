@@ -382,6 +382,8 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
                 {"date": {"$regex": regex_val.replace("-", "[-/]"), "$options": "i"}}
             ]})
 
+    # Only show "To Be Filled" shifts
+    filters.append({"upstream_status": "To Be Filled"})
     mongo_filter = {"$and": filters} if filters else {}
 
     total  = await db["shifts"].count_documents(mongo_filter)
