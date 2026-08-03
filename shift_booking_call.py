@@ -162,8 +162,7 @@ def register_shift_booking_call_routes(app):
                 "shift_id": str(shift_id),
                 "phone": user.get("phone"),
                 "name": name,
-                "created_at": created_at_str,
-                "call_result": result,
+                "created_at": created_at_str
             })
 
         triggered_count = len(triggered)
