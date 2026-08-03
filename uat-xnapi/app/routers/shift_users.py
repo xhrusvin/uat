@@ -574,9 +574,10 @@ class ListShiftUsersRequest(BaseModel):
     radius:             Optional[float] = None
     order_by:           Optional[str]   = None
     sort:               Optional[str]   = "asc"
-    county_multiple:    Optional[list]  = None  # list of county _id strings
-    user_type_multiple: Optional[list]  = None  # list of user_type _id strings
-    excluded:           Optional[int]   = None  # 0 = not excluded only, 1 = excluded only, None = all
+    county_multiple:    Optional[list]  = None
+    user_type_multiple: Optional[list]  = None
+    excluded:           Optional[int]   = None
+    search:             Optional[str]   = None  # search by name, email or phone
 
 
 @router.post(
@@ -644,6 +645,21 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                 {"user_type_id": {"$in": valid_type_oids}},
                 {"designation":  {"$in": type_names_filter}},
             ]
+
+    # Search by name, email or phone
+    if payload.search:
+        s = payload.search.strip()
+        if s:
+            search_or = {"$or": [
+                {"first_name": {"$regex": s, "$options": "i"}},
+                {"last_name":  {"$regex": s, "$options": "i"}},
+                {"email":      {"$regex": s, "$options": "i"}},
+                {"phone":      {"$regex": s, "$options": "i"}},
+            ]}
+            if "$and" in user_filter:
+                user_filter["$and"].append(search_or)
+            else:
+                user_filter = {"$and": [user_filter, search_or]} if user_filter else search_or
 
     total = await db["users"].count_documents(user_filter)
 
