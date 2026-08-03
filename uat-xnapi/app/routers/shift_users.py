@@ -1090,6 +1090,8 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
             "staff_id":        str(user_oid),
             "assigned_at":     now,
             "updated_at":      now,
+            "status":          "Upcoming",
+            "upstream_status": "Upcoming",
         }}
     )
 
