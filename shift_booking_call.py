@@ -141,20 +141,14 @@ def register_shift_booking_call_routes(app):
             # Optional: small delay to avoid rate-limiting your telephony provider
             # time.sleep(0.4)   # uncomment if needed
 
-            # Trigger the AI call in background
-            # threading.Thread(
-            #     target=make_shiftbooking_ai_call,
-            #     args=(current_app._get_current_object(), user.get("phone"), user, str(user_id), str(shift_id)),
-            #     daemon=True
-            # ).start()
+           # Trigger the AI call in background
+            threading.Thread(
+                target=make_shiftbooking_ai_call,
+                args=(current_app._get_current_object(), user.get("phone"), user, str(user_id), str(shift_id)),
+                daemon=True
+            ).start()
 
-            result = make_shiftbooking_ai_call(
-    current_app._get_current_object(),
-    user.get("phone"),
-    user,
-    str(user_id),
-    str(shift_id),
-)
+          
 
             name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or "Unknown"
             created_at_str = (
