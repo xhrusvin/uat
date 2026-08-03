@@ -1087,7 +1087,7 @@ async def get_outreach_detail(request: Request, payload: OutreachDetailIdRequest
         uid_str = str(su.get("user_id", ""))
         u = user_map.get(uid_str, {})
         shifts_users_list.append({
-            "id":              str(su["_id"]),
+            "id":              str(su.get("user_id", su["_id"])),
             "user_id":         uid_str,
             "xn_user_id":      u.get("xn_user_id"),
             "name":            " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
@@ -1374,7 +1374,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             }
 
         shifts_users_list.append({
-            "id":                  str(su["_id"]),
+            "id":                  str(su.get("user_id", su["_id"])),
             "user_id":             uid_str,
             "xn_user_id":          u.get("xn_user_id"),
             "name":                " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
