@@ -722,7 +722,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
          "xn_user_id": 1, "designation": 1, "rating": 1,
          "location": 1, "latitude": 1, "longitude": 1, "status": 1,
          "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
-         "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1}
+         "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1, "gender_id": 1}
     ).sort("first_name", 1).skip(fetch_skip).limit(fetch_limit).to_list(length=fetch_limit)
 
     # Fetch latest shifts_users.call_processed_at per user for last_contacted
@@ -945,6 +945,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "staff_tags":          staff_tags,
             "last_contacted":      last_contacted,
             "visa_hours_remaining": visa_hours_remaining,
+            "gender_id":           str(u["gender_id"]) if u.get("gender_id") else None,
             "prior_shifts":        prior_shifts,
             "work_history":        work_history,
             "status":              u.get("status"),
@@ -1238,7 +1239,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
          "xn_user_id": 1, "designation": 1, "rating": 1,
          "location": 1, "latitude": 1, "longitude": 1, "status": 1,
          "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
-         "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1}
+         "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1, "gender_id": 1}
     ).sort("first_name", 1).skip(skip).limit(payload.per_page).to_list(length=payload.per_page)
 
     # Last contacted across all provided shifts
@@ -1413,6 +1414,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "staff_tags":          staff_tags,
             "last_contacted":      last_contacted,
             "visa_hours_remaining": visa_hours_remaining,
+            "gender_id":           str(u["gender_id"]) if u.get("gender_id") else None,
             "prior_shifts":        prior_shifts,
             "work_history":        work_history,
             "status":              u.get("status"),
