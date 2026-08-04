@@ -110,6 +110,14 @@ export const promptsApi = {
   delete: (id)       => usersClient.delete(`/prompts/${id}`),
 }
 
+export const userSubTypesApi = {
+  list:      ()          => usersClient.get('/user-sub-types/'),
+  userTypes: ()          => usersClient.get('/user-sub-types/user-types'),
+  create:    (data)      => usersClient.post('/user-sub-types/create', data),
+  update:    (id, data)  => usersClient.patch(`/user-sub-types/${id}`, data),
+  delete:    (id)        => usersClient.delete(`/user-sub-types/${id}`),
+}
+
 export const gendersApi = {
   list:   ()          => usersClient.get('/genders/'),
   create: (data)      => usersClient.post('/genders/create', data),
