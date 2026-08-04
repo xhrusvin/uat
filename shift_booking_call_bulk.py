@@ -3,7 +3,7 @@ import threading
 import logging
 from flask import current_app, jsonify, request
 from bson import ObjectId
-from make_shift_booking_bulk_call import make_shift_booking_bulk_call
+from shiftbookingbulkcall import make_shiftbooking_ai_call_bulk
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
@@ -172,7 +172,7 @@ def register_shift_booking_bulk_call_routes(app):
 
         # Trigger bulk call in background
         threading.Thread(
-            target=make_shift_booking_bulk_call,
+            target=make_shiftbooking_ai_call_bulk,
             args=(current_app._get_current_object(), phone, record, shifts_group_users_id, shift_doc),
             daemon=True
         ).start()
@@ -265,7 +265,7 @@ def register_shift_booking_bulk_call_routes(app):
         )
 
         threading.Thread(
-            target=make_shift_booking_bulk_call,
+            target=make_shiftbooking_ai_call_bulk,
             args=(current_app._get_current_object(), phone, record, obj_id, shift_doc),
             daemon=True
         ).start()
