@@ -110,4 +110,11 @@ export const promptsApi = {
   delete: (id)       => usersClient.delete(`/prompts/${id}`),
 }
 
+export const gendersApi = {
+  list:   ()          => usersClient.get('/genders/'),
+  create: (data)      => usersClient.post('/genders/create', data),
+  update: (id, data)  => usersClient.patch(`/genders/${id}`, data),
+  delete: (id)        => usersClient.delete(`/genders/${id}`),
+}
+
 export default authClient
