@@ -3,7 +3,7 @@ import threading
 import logging
 from flask import current_app, jsonify, request
 from bson import ObjectId
-from shiftbookingbulkcall import make_shiftbooking_ai_call_bulk
+from shiftbookingcallbulk import make_shiftbooking_ai_call_bulk
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
