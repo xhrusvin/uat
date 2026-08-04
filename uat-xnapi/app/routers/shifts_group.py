@@ -631,6 +631,48 @@ async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
 
     pool_docs = await db["shifts_group_pool"].find({"group_id": group_oid}).to_list(5000)
 
+    # ── Fetch upstream available-staff for all shifts in group ─────────────────
+    from app.core.config import settings as _settings
+    import httpx as _httpx
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    upstream_xn_ids_pool: set = set()
+    upstream_dist_pool: dict = {}
+    shift_ids_group = group.get("shift_ids") or []
+
+    if shift_ids_group:
+        xn_shift_docs_p = await db["shifts"].find(
+            {"_id": {"$in": shift_ids_group}}, {"shift_id": 1}
+        ).to_list(length=100)
+        try:
+            _url = f"{_settings.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list"
+            _headers = {"Api-Key": _settings.SHIFT_INTERNAL_API_KEY, "Content-Type": "application/json", "Accept": "application/json"}
+            async with _httpx.AsyncClient(timeout=30.0) as _client:
+                for _sd in xn_shift_docs_p:
+                    _xn_sid = _sd.get("shift_id")
+                    if not _xn_sid:
+                        continue
+                    try:
+                        _resp = await _client.post(_url, json={"shift_id": _xn_sid}, headers=_headers)
+                        if _resp.status_code == 200:
+                            for _s in (_resp.json().get("data") or []):
+                                _xn_id = str(_s.get("id", ""))
+                                if _xn_id:
+                                    upstream_xn_ids_pool.add(_xn_id)
+                                    if _xn_id not in upstream_dist_pool:
+                                        upstream_dist_pool[_xn_id] = _s.get("staff_shift_distance")
+                    except Exception:
+                        continue
+        except Exception as _e:
+            _log.warning(f"[pool/list] upstream failed: {_e}")
+
+    if upstream_xn_ids_pool:
+        _pool_xn: dict = {}
+        _pool_uoids = [p["user_id"] for p in pool_docs if p.get("user_id")]
+        async for _u in db["users"].find({"_id": {"$in": _pool_uoids}}, {"xn_user_id": 1}):
+            _pool_xn[str(_u["_id"])] = _u.get("xn_user_id", "")
+        pool_docs = [p for p in pool_docs if _pool_xn.get(str(p.get("user_id", ""))) in upstream_xn_ids_pool]
+
     user_oids = [p["user_id"] for p in pool_docs if p.get("user_id") and ObjectId.is_valid(str(p.get("user_id", "")))]
     user_map: dict = {}
     if user_oids:

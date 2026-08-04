@@ -184,7 +184,7 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
 
     return {
         "success": True,
-        "message": f"{inserted} user(s) added to shift pool",
+        "message": f"{inserted + skipped_dup} user(s) added to shift pool",
         "data": {
             "shift_id":             payload.shift_id,
             "inserted":             inserted,
