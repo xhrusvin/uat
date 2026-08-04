@@ -1559,3 +1559,73 @@ async def cursor_list_shifts(request: Request, payload: ShiftCursorListRequest):
         "next_after_id": next_after_id,
         "data":          results,
     }
+
+
+# ── GET /shifts-db/cron-sync ──────────────────────────────────────────────────
+
+@router.get(
+    "/cron-sync",
+    summary="Cron: fetch latest 10 shifts from upstream and sync-detail each",
+    dependencies=[Depends(verify_api_key)],
+)
+async def cron_sync_shifts(request: Request):
+    """
+    GET /shifts-db/cron-sync
+    - Calls /shifts/list (page=1, per_page=10, sort_by=id, sort_order=desc)
+    - For each shift, calls /shifts/sync-detail
+    - No auth headers needed in the cron — all handled here
+    Returns summary of synced shifts.
+    """
+    import httpx as _httpx
+
+    # Use the same API base as the current server
+    base    = "https://uat.expresshealth.ie/xnapi"
+    api_key = settings.API_KEY
+    headers = {
+        "Content-Type":  "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+
+    synced  = []
+    failed  = []
+
+    async with _httpx.AsyncClient(timeout=60.0) as client:
+        # Step 1: fetch latest shifts
+        list_resp = await client.post(
+            f"{base}/shifts/list",
+            json={"page": 1, "per_page": 10, "sort_by": "id", "sort_order": "desc"},
+            headers=headers,
+        )
+        if list_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"shifts/list failed: {list_resp.text[:200]}")
+
+        shifts = list_resp.json().get("data") or []
+
+        # Step 2: sync-detail for each shift
+        for s in shifts:
+            xn_id = s.get("shift_id") or s.get("id") or s.get("shift_code")
+            if not xn_id:
+                continue
+            try:
+                detail_resp = await client.post(
+                    f"{base}/shifts/sync-detail",
+                    json={"shift_id": str(xn_id)},
+                    headers=headers,
+                )
+                body = detail_resp.json() if detail_resp.content else {}
+                if detail_resp.status_code == 200 and body.get("success"):
+                    synced.append({"shift_id": xn_id, "action": body.get("action", "ok")})
+                else:
+                    failed.append({"shift_id": xn_id, "status": detail_resp.status_code, "msg": body.get("message", "")})
+            except Exception as e:
+                failed.append({"shift_id": xn_id, "error": str(e)})
+
+    return {
+        "success":       True,
+        "total_fetched": len(shifts),
+        "synced":        len(synced),
+        "failed":        len(failed),
+        "synced_list":   synced,
+        "failed_list":   failed,
+        "synced_at":     datetime.now(timezone.utc).isoformat(),
+    }
