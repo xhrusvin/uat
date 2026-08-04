@@ -290,7 +290,6 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         raise HTTPException(status_code=502, detail=body.get("message", "Upstream error"))
 
     data = body.get("data", {})
-    return data
     if not data:
         raise HTTPException(status_code=404, detail="No shift data returned")
 
@@ -338,6 +337,9 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
             "tags":             rs.get("tags") or [],
         })
 
+    logger.info(f"[sync-detail] keys from upstream: {list(data.keys())}")
+    logger.info(f"[sync-detail] shift_preferences raw: {data.get('shift_preferences')} | shift_preference: {data.get('shift_preference')} | preferences: {data.get('preferences')}")
+
     doc = {
         "shift_id":           data.get("id", ""),
         "shift_code":         data.get("shift_code", ""),
@@ -355,7 +357,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         "upstream_status_id": data.get("status"),
         "round":              data.get("round"),
         "pay_rate":           data.get("pay_rate"),
-        "shift_preferences":  data.get("shift_preferences") or [],
+        "shift_preferences":  data.get("shift_preferences") or data.get("shift_preference") or data.get("preferences") or [],
         "radius":             _clean_radius(data.get("radius")),
         "client_id":          client_details.get("id", ""),
         "client_name":        client_details.get("name"),
