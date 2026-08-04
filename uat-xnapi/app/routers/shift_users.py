@@ -651,10 +651,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     # Gender filter
     if payload.gender_id:
         gid = payload.gender_id.strip()
-        if ObjectId.is_valid(gid):
-            user_filter["gender_id"] = ObjectId(gid)
-        else:
-            user_filter["gender_id"] = gid
+        user_filter["gender_id"] = gid
 
     # county_multiple filter — match both string and ObjectId stored county_id
     if payload.county_multiple:
@@ -1198,7 +1195,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     # Gender filter
     if payload.gender_id:
         gid = payload.gender_id.strip()
-        user_filter["gender_id"] = ObjectId(gid) if ObjectId.is_valid(gid) else gid
+        user_filter["gender_id"] = gid
 
     # Always fetch user_types from all provided shifts (used for by_designation + auto-filter)
     shift_docs = await db["shifts"].find(
