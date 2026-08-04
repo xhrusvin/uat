@@ -48,6 +48,8 @@ def register_shift_booking_call_routes(app):
         allowed, server_time = is_within_call_window()
         db = current_app.db
 
+        exit()
+
         response_base = {
             "server_time": server_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
             "allowed_window": f"{ALLOWED_START_HOUR}:00 - {ALLOWED_END_HOUR}:00 UTC",
