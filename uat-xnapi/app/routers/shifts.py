@@ -339,6 +339,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
 
     logger.info(f"[sync-detail] keys from upstream: {list(data.keys())}")
     logger.info(f"[sync-detail] shift_preferences raw: {data.get('shift_preferences')} | shift_preference: {data.get('shift_preference')} | preferences: {data.get('preferences')}")
+    logger.info(f"[sync-detail] allowances: {data.get('allowances')} | admin_comments: {data.get('admin_comments')} | sub_types: {data.get('sub_types')}")
 
     doc = {
         "shift_id":           data.get("id", ""),
@@ -358,6 +359,10 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         "round":              data.get("round"),
         "pay_rate":           data.get("pay_rate"),
         "shift_preferences":  data.get("shift_preferences") or data.get("shift_preference") or data.get("preferences") or [],
+        "allowances":         data.get("allowances") or [],
+        "admin_comments":     data.get("admin_comments"),
+        "manager_comments":   data.get("manager_comments"),
+        "sub_types":          data.get("sub_types") or [],
         "radius":             _clean_radius(data.get("radius")),
         "client_id":          client_details.get("id", ""),
         "client_name":        client_details.get("name"),
