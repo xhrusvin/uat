@@ -647,6 +647,14 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     if upstream_filter:
         user_filter.update(upstream_filter)
 
+    # Gender filter
+    if payload.gender_id:
+        gid = payload.gender_id.strip()
+        if ObjectId.is_valid(gid):
+            user_filter["gender_id"] = ObjectId(gid)
+        else:
+            user_filter["gender_id"] = gid
+
     # county_multiple filter — match both string and ObjectId stored county_id
     if payload.county_multiple:
         county_values = []
@@ -1154,6 +1162,7 @@ class ListMultiShiftUsersRequest(BaseModel):
     user_type_multiple: Optional[list]  = None
     excluded:           Optional[int]   = None
     in_pool:            Optional[int]   = None  # 1 = in pool for ANY shift or the group
+    gender_id:          Optional[str]   = None  # filter by users.gender_id
 
 
 @router.post(
@@ -1183,6 +1192,11 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     # ── User filters ────────────────────────────────────────────────────────
     user_filter: dict = {"status": "Enabled"}
+
+    # Gender filter
+    if payload.gender_id:
+        gid = payload.gender_id.strip()
+        user_filter["gender_id"] = ObjectId(gid) if ObjectId.is_valid(gid) else gid
 
     # Always fetch user_types from all provided shifts (used for by_designation + auto-filter)
     shift_docs = await db["shifts"].find(
