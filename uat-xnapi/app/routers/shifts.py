@@ -290,7 +290,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         raise HTTPException(status_code=502, detail=body.get("message", "Upstream error"))
 
     data = body.get("data", {})
-    return json.dumps(data)
+    return data
     if not data:
         raise HTTPException(status_code=404, detail="No shift data returned")
 
