@@ -90,7 +90,7 @@ def _get_shift_details(app, shift_id: str) -> dict:
         return {}
 
 
-def register_shift_booking_bulk_call_routes(app):
+def register_shift_booking_call_bulk_routes(app):
 
     # ------------------------------------------------------------------
     # 1. AUTO-TRIGGER: GET /shift_booking_bulk_call
