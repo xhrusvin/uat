@@ -3,7 +3,7 @@ import threading
 import logging
 from flask import current_app, jsonify, request
 from bson import ObjectId
-from make_shift_booking_call import make_shift_booking_call
+from shiftbookingcall import make_shiftbooking_ai_call
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
@@ -257,7 +257,7 @@ def register_shift_booking_call_routes(app):
         )
 
         threading.Thread(
-            target=make_shift_booking_call,
+            target=make_shiftbooking_ai_call,
             args=(current_app._get_current_object(), phone, record, obj_id, shift_doc),
             daemon=True
         ).start()
