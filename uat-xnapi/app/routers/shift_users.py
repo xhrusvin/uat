@@ -577,7 +577,8 @@ class ListShiftUsersRequest(BaseModel):
     county_multiple:    Optional[list]  = None
     user_type_multiple: Optional[list]  = None
     excluded:           Optional[int]   = None
-    search:             Optional[str]   = None  # search by name, email or phone
+    search:             Optional[str]   = None
+    gender_id:          Optional[str]   = None
 
 
 @router.post(
