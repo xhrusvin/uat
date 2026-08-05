@@ -1369,6 +1369,36 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             response_time = su.get("response_time")
             call_details  = None
 
+            # Work history — prior shifts at this client + time ago
+            last_at_client_str = None
+            if user_oid_val and shift_client_id and prior_shifts_here > 0:
+                last_su_client = await db["shifts_users"].find_one(
+                    {
+                        "user_id":  user_oid_val if isinstance(user_oid_val, ObjectId) else ObjectId(str(user_oid_val)),
+                        "shift_id": {"$in": await db["shifts"].distinct("_id", {"client_id": shift_client_id})},
+                        "availability": 1,
+                    },
+                    sort=[("assigned_at", -1)],
+                    projection={"assigned_at": 1}
+                )
+                if last_su_client and last_su_client.get("assigned_at"):
+                    from datetime import timezone as _tz2
+                    lc2 = last_su_client["assigned_at"]
+                    if hasattr(lc2, "tzinfo") and lc2.tzinfo is None:
+                        lc2 = lc2.replace(tzinfo=_tz2.utc)
+                    diff2 = int((datetime.now(_tz2.utc) - lc2).total_seconds())
+                    if diff2 < 60:       last_at_client_str = "just now"
+                    elif diff2 < 3600:   last_at_client_str = f"{diff2//60} minute{'s' if diff2//60!=1 else ''} ago"
+                    elif diff2 < 86400:  last_at_client_str = f"{diff2//3600} hour{'s' if diff2//3600!=1 else ''} ago"
+                    else:                last_at_client_str = f"{diff2//86400} day{'s' if diff2//86400!=1 else ''} ago"
+
+            if prior_shifts_here > 0 and last_at_client_str:
+                work_history = f"{prior_shifts_here} Shift{'s' if prior_shifts_here != 1 else ''} · {last_at_client_str}"
+            elif prior_shifts_here > 0:
+                work_history = f"{prior_shifts_here} Shift{'s' if prior_shifts_here != 1 else ''}"
+            else:
+                work_history = "0 Shifts"
+
             available_staff.append({
                 "id":                  uid_str,
                 "xn_user_id":          u.get("xn_user_id"),
@@ -1394,6 +1424,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "conversation_id":     su.get("conversation_id"),
                 "distance_km":         distance_km,
                 "call_details":        call_details,
+                "work_history":        work_history,
                 "ignored":             su.get("ignored", 0),
                 "flag":                su.get("flag", 0),
                 "confirmed":           1 if str(uid_str) == str(doc.get("staff_id", "")) or u.get("email") == doc.get("staff_email") else 0,
