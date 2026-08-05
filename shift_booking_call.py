@@ -82,8 +82,7 @@ def register_shift_booking_call_routes(app):
             "allowed_window": f"{ALLOWED_START_HOUR}:00 - {ALLOWED_END_HOUR}:00 UTC",
             "call_allowed":   allowed,
         }
-        exit()
-
+        
         if not allowed:
             return jsonify({**response_base, "status": "outside_hours",
                             "message": "Calls only allowed during allowed hours."}), 200
