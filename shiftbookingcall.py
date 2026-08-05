@@ -95,11 +95,7 @@ def make_shiftbooking_ai_call(app, phone: str, user_doc: dict, user_object_id, s
             print(f"[Shift Booking] Telnyx call initiated successfully. Call ID: {call_id} for {e164_phone}")
 
             # Mark as sent
-            app.db.users.update_one(
-                {"_id": user_object_id},
-                {"$set": {"call_sent": 1, "updated_at": datetime.utcnow()}}
-            )
-            print(f"call_sent = 1 for user {user_object_id}")
+            
 
     except requests.exceptions.RequestException as e:
         print(f"[Shift Booking] Telnyx API request failed for {phone}: {e}")

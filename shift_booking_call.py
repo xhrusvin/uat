@@ -124,6 +124,7 @@ def register_shift_booking_call_routes(app):
         first_name = user.get("first_name", "")
         last_name  = user.get("last_name",  "")
         full_name  = f"{first_name} {last_name}".strip()
+        
 
         if not phone:
             return jsonify({**response_base, "status": "no_phone",
@@ -153,7 +154,13 @@ def register_shift_booking_call_routes(app):
                     "client_name": s.get("client_name", ""),
                     "location":    s.get("location", ""),
                     "user_type":   s.get("user_type", ""),
+
                 }
+
+        record["phone"] = phone
+        record["first_name"] = first_name
+        record["last_name"] = last_name
+        record["full_name"] = full_name
 
         # Trigger call in background
         threading.Thread(
