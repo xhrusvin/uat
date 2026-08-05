@@ -157,7 +157,7 @@ def register_shift_booking_call_routes(app):
 
         # Trigger call in background
         threading.Thread(
-            target=make_shift_booking_call,
+            target=make_shiftbooking_ai_call,
             args=(current_app._get_current_object(), phone, record, shifts_users_id, shift_doc),
             daemon=True
         ).start()
