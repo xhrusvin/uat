@@ -180,6 +180,7 @@ def sync_agent_conversations_shift_booking():
 
                 start_time_unix_secs = conv.get("start_time_unix_secs")
                 call_duration_secs = conv.get("call_duration_secs")
+                customer_feedback = conv.get("customer_feedback", "")
 
                 stored_at = (
                   datetime.fromtimestamp(start_time_unix_secs, tz=pytz.UTC).isoformat()
@@ -204,6 +205,7 @@ def sync_agent_conversations_shift_booking():
                     "updated_at": stored_at,
                     "started_at":stored_at,
                     "ended_at": ended_at,
+                    "customer_feedback": customer_feedback,
                 }
 
 
