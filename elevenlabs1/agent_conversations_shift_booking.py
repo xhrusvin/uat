@@ -205,7 +205,7 @@ def sync_agent_conversations_shift_booking():
                     "updated_at": stored_at,
                     "started_at":stored_at,
                     "ended_at": ended_at,
-                    "customer_feedback": customer_feedback,
+                    "customer_feedback": dc_map.get("customer_feedback"),
                 }
 
 
