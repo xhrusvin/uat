@@ -256,9 +256,7 @@ def sync_agent_conversations_shift_bulk_booking():
 
                 result = leads_collection.update_one(
     {
-        "user_id": ObjectId(user_id),
-        "group_id": ObjectId(group_id),
-        "conversation_id": conversation_id,
+        "_id": ObjectId(user_id)
     },
     {
         "$set": lead_doc,
