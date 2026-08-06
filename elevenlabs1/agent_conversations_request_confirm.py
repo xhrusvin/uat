@@ -213,7 +213,7 @@ def sync_agent_conversations_request_confirm():
 
                 result = leads_collection.update_one(
     {
-        "user_id": ObjectId(user_id),
+        "staff_id": ObjectId(user_id),
         "shift_id": ObjectId(shift_id)
     },
     {
