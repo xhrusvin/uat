@@ -1220,7 +1220,8 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         {"outreach_id": outreach_oid},
         {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
          "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1,
-         "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "ignored": 1}
+         "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "ignored": 1,
+         "customer_feedback": 1}
     ).to_list(length=2000)
 
     # Batch user lookup — include all fields needed for available_staff structure
@@ -1401,6 +1402,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             "flag":                su.get("flag", 0),
             "ignored":             su.get("ignored", 0),
             "confirmed":           1 if str(uid_str) == shift_staff_id or u.get("email") == shift_staff_email else 0,
+            "customer_feedback":   su.get("customer_feedback"),
             "call_status":         su.get("call_status"),
             "call_processed_at":   su["call_processed_at"].isoformat() if su.get("call_processed_at") and hasattr(su["call_processed_at"], "isoformat") else None,
             "assigned_at":         su["assigned_at"].isoformat() if su.get("assigned_at") and hasattr(su["assigned_at"], "isoformat") else None,
