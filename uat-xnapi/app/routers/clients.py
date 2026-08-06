@@ -101,7 +101,7 @@ def _build_client_doc(item: dict, now: datetime) -> dict:
         "phone":          item.get("phone_number") or item.get("phone") or item.get("mobile"),
         "dial_code":      item.get("dial_code"),
         "address":        item.get("address") or item.get("full_address") or "",
-        "county":         item.get("county") or item.get("county_name") or item.get("city") or "",
+        "county":         item.get("county") or item.get("county_name") or "",
         "notes":          item.get("notes") or item.get("description") or "",
         "client_type":    item.get("client_type") or item.get("client_type_name") or item.get("type") or "",
         "type_of_client": item.get("type_of_client"),

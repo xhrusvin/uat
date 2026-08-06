@@ -188,7 +188,13 @@ async def client_detail(request: Request, payload: ClientDetailRequest):
                 {"xn_client_id": payload.client_id.strip()},
             ]})
             if existing:
-                await db["clients"].update_one({"_id": existing["_id"]}, {"$set": doc})
+                # Only update fields that upstream actually provided (don't overwrite with empty)
+                update_doc = {k: v for k, v in doc.items() if v is not None and v != "" and v != []}
+                # Always update these even if empty
+                for always in ["updated_at", "synced_at", "status", "status_name", "name", "is_active"]:
+                    if always in doc:
+                        update_doc[always] = doc[always]
+                await db["clients"].update_one({"_id": existing["_id"]}, {"$set": update_doc})
                 sync = {"action": "updated", "xn_client_id": xn_id,
                         "client_db_id": str(existing["_id"]),
                         "longitude": doc.get("longitude"),
