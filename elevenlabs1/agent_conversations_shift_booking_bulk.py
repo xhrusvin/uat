@@ -231,9 +231,7 @@ def sync_agent_conversations_shift_bulk_booking():
                 # Fetch existing record to get current availability_details (with shift_ids)
                 existing_doc = leads_collection.find_one(
                  {
-                  "user_id": ObjectId(user_id),
-                  "group_id": ObjectId(group_id),
-                  "conversation_id": conversation_id,
+                  "_id": ObjectId(user_id)
                  },
                  {"availability_details": 1}
                 )
