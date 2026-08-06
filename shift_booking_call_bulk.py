@@ -170,6 +170,11 @@ def register_shift_booking_call_bulk_routes(app):
             if shift_id:
                 shift_doc = _get_shift_details(app, shift_id)
 
+        record["phone"] = phone
+        record["first_name"] = first_name
+        record["last_name"] = last_name
+        record["full_name"] = full_name
+
         # Trigger bulk call in background
         threading.Thread(
             target=make_shiftbooking_ai_call_bulk,
