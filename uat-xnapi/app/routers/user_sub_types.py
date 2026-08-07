@@ -47,9 +47,15 @@ class UserSubTypeUpdate(BaseModel):
 
 
 @router.get("/", summary="List all user sub types", dependencies=[Depends(verify_api_key)])
-async def list_user_sub_types(request: Request):
-    db   = _get_db()
-    docs = await db["user_sub_types"].find({}).sort("name", 1).to_list(500)
+async def list_user_sub_types(request: Request, user_type_id: str = None):
+    db    = _get_db()
+    filt: dict = {}
+    if user_type_id:
+        if ObjectId.is_valid(user_type_id):
+            filt["user_type_id"] = ObjectId(user_type_id)
+        else:
+            filt["user_type_id"] = user_type_id
+    docs = await db["user_sub_types"].find(filt).sort("name", 1).to_list(500)
     # Build user_type name map
     ut_ids = list({str(d["user_type_id"]) for d in docs if d.get("user_type_id")})
     ut_map: dict = {}
