@@ -238,8 +238,10 @@ async def client_detail(request: Request, payload: ClientDetailRequest):
 async def qqi_status_list(request: Request):
     """
     Calls USER_API_URL/ai/common/qqi-status-list and returns the result.
+    Also upserts each status into qqi_statuses collection.
     """
     import httpx as _httpx
+    from app.db.database import _client
 
     url = f"{settings.USER_API_URL.rstrip('/')}/ai/common/qqi-status-list"
     headers = {
@@ -256,11 +258,35 @@ async def qqi_status_list(request: Request):
         except Exception:
             body = {"raw": resp.text[:300]}
 
+        # Upsert each status into qqi_statuses collection
+        data_list = body.get("data") or []
+        if data_list and isinstance(data_list, list):
+            from datetime import datetime, timezone
+            db  = _client[settings.MONGODB_DB]
+            now = datetime.now(timezone.utc)
+            synced = 0
+            for item in data_list:
+                name = item.get("name") or item.get("title") or str(item)
+                if not name:
+                    continue
+                await db["qqi_statuses"].update_one(
+                    {"name": {"$regex": f"^{name}$", "$options": "i"}},
+                    {"$set": {
+                        "name":       name,
+                        "code":       item.get("code") or item.get("id") or None,
+                        "is_active":  True,
+                        "updated_at": now,
+                    }, "$setOnInsert": {"created_at": now}},
+                    upsert=True
+                )
+                synced += 1
+
         return {
             "success":         resp.status_code == 200,
             "upstream_status": resp.status_code,
             "data":            body.get("data") or body,
             "message":         body.get("message", ""),
+            "synced_to_db":    synced if data_list else 0,
         }
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Upstream error: {str(e)}")
