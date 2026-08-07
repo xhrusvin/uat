@@ -160,6 +160,7 @@ def validate_document():
                 ai_status = False
                 ai_reason = "No URL"
                 ai_raw_response = ""
+                level = None
                 user_name = (
                     api_user_name or
                     u.get('name') or
