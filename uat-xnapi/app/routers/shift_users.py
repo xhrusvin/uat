@@ -580,7 +580,8 @@ class ListShiftUsersRequest(BaseModel):
     search:             Optional[str]   = None
     gender_id:          Optional[str]   = None
 
-    qqi_status_number:  Optional[int]   = None
+    qqi_status_number:      Optional[int]   = None
+    user_sub_type_multiple: Optional[list]  = None
 
 @router.post(
     "/list",
@@ -1176,7 +1177,8 @@ class ListMultiShiftUsersRequest(BaseModel):
     gender_id:          Optional[str]   = None  # filter by users.gender_id
 
 
-    qqi_status_number:  Optional[int]   = None
+    qqi_status_number:      Optional[int]   = None
+    user_sub_type_multiple: Optional[list]  = None
 @router.post(
     "/list-multi",
     summary="List users for multiple shifts with same enrichment as /list",
