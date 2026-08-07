@@ -12,6 +12,7 @@ import DocumentUploadedPage from './pages/DocumentUploadedPage'
 import PromptsPage from './pages/PromptsPage'
 import GendersPage from './pages/GendersPage'
 import UserSubTypesPage from './pages/UserSubTypesPage'
+import QQIStatusListPage from './pages/QQIStatusListPage'
 import ShiftUpdatedPage from './pages/ShiftUpdatedPage'
 import StaffUpdatedPage from './pages/StaffUpdatedPage'
 import ShiftsPage from './pages/ShiftsPage'
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="master/prompts"             element={<PromptsPage />} />
           <Route path="master/genders"            element={<GendersPage />} />
           <Route path="master/user-sub-types"      element={<UserSubTypesPage />} />
+          <Route path="xn-api/qqi-status-list"       element={<QQIStatusListPage />} />
           <Route path="webhook/document-uploaded"  element={<DocumentUploadedPage />} />
           <Route path="cron/sync-shifts"             element={<CronPage />} />
           <Route path="xn-api/shift-details"     element={<ShiftSyncDetailPage />} />

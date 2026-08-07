@@ -226,3 +226,41 @@ async def client_detail(request: Request, payload: ClientDetailRequest):
         logger.error(f"client-detail error: {e}", exc_info=True)
         return {"success": False, "status_code": 500, "upstream_url": url,
                 "message": str(e), "data": None}
+
+
+# ── GET /common/qqi-status-list ───────────────────────────────────────────────
+
+@router.get(
+    "/qqi-status-list",
+    summary="Fetch QQI status list from upstream user API",
+    dependencies=[Depends(verify_api_key)],
+)
+async def qqi_status_list(request: Request):
+    """
+    Calls USER_API_URL/ai/common/qqi-status-list and returns the result.
+    """
+    import httpx as _httpx
+
+    url = f"{settings.USER_API_URL.rstrip('/')}/ai/common/qqi-status-list"
+    headers = {
+        "Api-Key":      settings.USER_INTERNAL_API_KEY,
+        "Content-Type": "application/json",
+        "Accept":       "application/json",
+    }
+
+    try:
+        async with _httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(url, headers=headers)
+        try:
+            body = resp.json()
+        except Exception:
+            body = {"raw": resp.text[:300]}
+
+        return {
+            "success":         resp.status_code == 200,
+            "upstream_status": resp.status_code,
+            "data":            body.get("data") or body,
+            "message":         body.get("message", ""),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Upstream error: {str(e)}")
