@@ -195,7 +195,7 @@ async def sync_user_types_from_upstream(request: Request):
                     {"$set": {"name": name, "xn_id": xn_id, "updated_at": now}}
                 )
                 local_ut_id = existing["_id"]
-                results.append({"xn_id": xn_id, "name": name, "action": "updated"})
+                results.append({"xn_id": xn_id, "local_id": str(local_ut_id) if local_ut_id else None, "name": name, "action": "updated"})
                 updated += 1
             else:
                 existing_name = await db["user_types"].find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
@@ -205,7 +205,7 @@ async def sync_user_types_from_upstream(request: Request):
                         {"$set": {"xn_id": xn_id, "updated_at": now}}
                     )
                     local_ut_id = existing_name["_id"]
-                    results.append({"xn_id": xn_id, "name": name, "action": "matched_by_name"})
+                    results.append({"xn_id": xn_id, "local_id": str(local_ut_id) if local_ut_id else None, "name": name, "action": "matched_by_name"})
                     updated += 1
                 else:
                     result = await db["user_types"].insert_one({
@@ -218,7 +218,7 @@ async def sync_user_types_from_upstream(request: Request):
                         "updated_at": now,
                     })
                     local_ut_id = result.inserted_id
-                    results.append({"xn_id": xn_id, "name": name, "action": "inserted"})
+                    results.append({"xn_id": xn_id, "local_id": str(local_ut_id) if local_ut_id else None, "name": name, "action": "inserted"})
                     inserted += 1
 
             # sub types synced separately via /user-types/sync-sub-types/{xn_id}
@@ -357,10 +357,15 @@ async def sync_sub_types(request: Request, xn_id: str):
     db  = _client[settings.MONGODB_DB]
     now = datetime.now(timezone.utc)
 
-    # Find local user_type by xn_id
-    ut = await db["user_types"].find_one({"xn_id": xn_id}, {"_id": 1, "name": 1})
+    # Find local user_type by xn_id or local _id
+    ut = await db["user_types"].find_one({"xn_id": xn_id}, {"_id": 1, "name": 1, "xn_id": 1})
+    if not ut and ObjectId.is_valid(xn_id):
+        ut = await db["user_types"].find_one({"_id": ObjectId(xn_id)}, {"_id": 1, "name": 1, "xn_id": 1})
     if not ut:
-        raise HTTPException(status_code=404, detail=f"User type with xn_id={xn_id} not found locally")
+        raise HTTPException(status_code=404, detail=f"User type not found: {xn_id}")
+
+    local_ut_id    = ut["_id"]
+    upstream_xn_id = ut.get("xn_id") or xn_id  # always use the upstream xn_id for the API call
 
     local_ut_id = ut["_id"]
 
@@ -372,7 +377,7 @@ async def sync_sub_types(request: Request, xn_id: str):
     }
 
     async with _httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(url, json={"user_type_id": xn_id}, headers=headers)
+        resp = await client.post(url, json={"user_type_id": upstream_xn_id}, headers=headers)
 
     if resp.status_code != 200:
         return {

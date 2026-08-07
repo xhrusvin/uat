@@ -18,15 +18,15 @@ export default function UserTypeListPage() {
     } finally { setLoading(false) }
   }
 
-  const syncSubTypes = async (xn_id, name) => {
-    setSubLoading(p => ({ ...p, [xn_id]: true }))
+  const syncSubTypes = async (key, name) => {
+    setSubLoading(p => ({ ...p, [key]: true }))
     try {
-      const { data } = await userTypeListApi.syncSubTypes(xn_id)
-      setSubResults(p => ({ ...p, [xn_id]: data }))
+      const { data } = await userTypeListApi.syncSubTypes(key)
+      setSubResults(p => ({ ...p, [key]: data }))
     } catch (err) {
-      setSubResults(p => ({ ...p, [xn_id]: { error: err?.response?.data?.detail || 'Failed' } }))
+      setSubResults(p => ({ ...p, [key]: { error: err?.response?.data?.detail || 'Failed' } }))
     } finally {
-      setSubLoading(p => ({ ...p, [xn_id]: false }))
+      setSubLoading(p => ({ ...p, [key]: false }))
     }
   }
 
@@ -94,7 +94,7 @@ export default function UserTypeListPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {(result.results || []).map((r, i) => {
-                  const sr = subResults[r.xn_id]
+                  const sr = subResults[r.local_id || r.xn_id]
                   return (
                     <tr key={i} className="hover:bg-gray-50/50">
                       <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
@@ -113,16 +113,16 @@ export default function UserTypeListPage() {
                           </span>
                         ) : (
                           <button
-                            onClick={() => syncSubTypes(r.xn_id, r.name)}
-                            disabled={subLoading[r.xn_id]}
+                            onClick={() => syncSubTypes(r.local_id || r.xn_id, r.name)}
+                            disabled={subLoading[r.local_id || r.xn_id]}
                             className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-100 hover:bg-blue-50 hover:text-blue-700 text-gray-600 disabled:opacity-50">
-                            {subLoading[r.xn_id]
+                            {subLoading[r.local_id || r.xn_id]
                               ? <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"/>
                               : <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                                 </svg>
                             }
-                            {subLoading[r.xn_id] ? 'Fetching…' : 'Get Sub Types'}
+                            {subLoading[r.local_id || r.xn_id] ? 'Fetching…' : 'Get Sub Types'}
                           </button>
                         )}
                       </td>
