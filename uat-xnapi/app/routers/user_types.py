@@ -146,6 +146,87 @@ async def create_user_type(request: Request, payload: UserTypeCreate):
 
 # ── GET single ────────────────────────────────────────────────────────────────
 
+# ── GET /user-types/sync-from-upstream ───────────────────────────────────────
+
+@router.get(
+    "/sync-from-upstream",
+    summary="Fetch user types from upstream and sync to user_types collection",
+    dependencies=[Depends(verify_api_key)],
+)
+async def sync_user_types_from_upstream(request: Request):
+    import httpx as _httpx
+    from app.db.database import _client
+    from datetime import datetime, timezone
+
+    url = f"{settings.USER_API_URL.rstrip('/')}/ai/common/user-type-list"
+    headers = {
+        "Api-Key":      settings.USER_INTERNAL_API_KEY,
+        "Content-Type": "application/json",
+        "Accept":       "application/json",
+    }
+
+    async with _httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, headers=headers)
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Upstream failed: {resp.status_code}")
+
+    body      = resp.json()
+    data_list = body.get("data") or []
+    db        = _client[settings.MONGODB_DB]
+    now       = datetime.now(timezone.utc)
+
+    updated = inserted = 0
+    results = []
+
+    for item in data_list:
+        xn_id = str(item.get("_id") or "").strip()
+        name  = (item.get("name") or "").strip()
+        if not xn_id or not name:
+            continue
+
+        # Check if already exists by xn_id
+        existing = await db["user_types"].find_one({"xn_id": xn_id})
+        if existing:
+            await db["user_types"].update_one(
+                {"xn_id": xn_id},
+                {"$set": {"name": name, "xn_id": xn_id, "updated_at": now}}
+            )
+            results.append({"xn_id": xn_id, "name": name, "action": "updated"})
+            updated += 1
+        else:
+            # Also check by name
+            existing_name = await db["user_types"].find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
+            if existing_name:
+                await db["user_types"].update_one(
+                    {"_id": existing_name["_id"]},
+                    {"$set": {"xn_id": xn_id, "updated_at": now}}
+                )
+                results.append({"xn_id": xn_id, "name": name, "action": "matched_by_name"})
+                updated += 1
+            else:
+                await db["user_types"].insert_one({
+                    "name":       name,
+                    "xn_id":      xn_id,
+                    "is_active":  True,
+                    "is_default": False,
+                    "sort_order": 99,
+                    "created_at": now,
+                    "updated_at": now,
+                })
+                results.append({"xn_id": xn_id, "name": name, "action": "inserted"})
+                inserted += 1
+
+    return {
+        "success":         True,
+        "upstream_status": resp.status_code,
+        "total":           len(data_list),
+        "updated":         updated,
+        "inserted":        inserted,
+        "results":         results,
+    }
+
+
 @router.get(
     "/{type_id}",
     summary="Get a user type by ID",
@@ -252,85 +333,4 @@ async def list_counties(request: Request, payload: CountyListRequest):
         "page":     payload.page,
         "per_page": payload.per_page,
         "data":     [_serialize(d) for d in docs],
-    }
-
-
-# ── GET /user-types/sync-from-upstream ───────────────────────────────────────
-
-@router.get(
-    "/sync-from-upstream",
-    summary="Fetch user types from upstream and sync to user_types collection",
-    dependencies=[Depends(verify_api_key)],
-)
-async def sync_user_types_from_upstream(request: Request):
-    import httpx as _httpx
-    from app.db.database import _client
-    from datetime import datetime, timezone
-
-    url = f"{settings.USER_API_URL.rstrip('/')}/ai/common/user-type-list"
-    headers = {
-        "Api-Key":      settings.USER_INTERNAL_API_KEY,
-        "Content-Type": "application/json",
-        "Accept":       "application/json",
-    }
-
-    async with _httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url, headers=headers)
-
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Upstream failed: {resp.status_code}")
-
-    body      = resp.json()
-    data_list = body.get("data") or []
-    db        = _client[settings.MONGODB_DB]
-    now       = datetime.now(timezone.utc)
-
-    updated = inserted = 0
-    results = []
-
-    for item in data_list:
-        xn_id = str(item.get("_id") or "").strip()
-        name  = (item.get("name") or "").strip()
-        if not xn_id or not name:
-            continue
-
-        # Check if already exists by xn_id
-        existing = await db["user_types"].find_one({"xn_id": xn_id})
-        if existing:
-            await db["user_types"].update_one(
-                {"xn_id": xn_id},
-                {"$set": {"name": name, "xn_id": xn_id, "updated_at": now}}
-            )
-            results.append({"xn_id": xn_id, "name": name, "action": "updated"})
-            updated += 1
-        else:
-            # Also check by name
-            existing_name = await db["user_types"].find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
-            if existing_name:
-                await db["user_types"].update_one(
-                    {"_id": existing_name["_id"]},
-                    {"$set": {"xn_id": xn_id, "updated_at": now}}
-                )
-                results.append({"xn_id": xn_id, "name": name, "action": "matched_by_name"})
-                updated += 1
-            else:
-                await db["user_types"].insert_one({
-                    "name":       name,
-                    "xn_id":      xn_id,
-                    "is_active":  True,
-                    "is_default": False,
-                    "sort_order": 99,
-                    "created_at": now,
-                    "updated_at": now,
-                })
-                results.append({"xn_id": xn_id, "name": name, "action": "inserted"})
-                inserted += 1
-
-    return {
-        "success":         True,
-        "upstream_status": resp.status_code,
-        "total":           len(data_list),
-        "updated":         updated,
-        "inserted":        inserted,
-        "results":         results,
     }
