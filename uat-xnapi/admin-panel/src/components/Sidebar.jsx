@@ -170,7 +170,7 @@ function SubSidebar({ group, onClose }) {
   return (
     <div
       ref={ref}
-      className="fixed left-16 top-0 h-full w-56 bg-white border-r border-gray-200
+      className="left-16 top-0 h-full w-56 bg-white border-r border-gray-200
                  shadow-xl z-30 flex flex-col"
       style={{ animation: 'slideIn 0.15s ease-out' }}
     >
