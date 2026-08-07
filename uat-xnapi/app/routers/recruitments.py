@@ -176,14 +176,23 @@ async def recruitment_detail(request: Request, payload: RecruitmentDetailRequest
         if raw_sub_ids and isinstance(raw_sub_ids, list):
             db = _get_db()
             resolved_ids = []
+            import re as _re
             for item in raw_sub_ids:
                 name = item.strip() if isinstance(item, str) else None
                 if not name:
                     continue
+                # Escape special regex chars (apostrophes, brackets etc)
+                escaped = _re.escape(name)
                 sub = await db["user_sub_types"].find_one(
-                    {"name": {"$regex": f"^{name}$", "$options": "i"}},
+                    {"name": {"$regex": f"^{escaped}$", "$options": "i"}},
                     {"_id": 1}
                 )
+                if not sub:
+                    # Fallback: partial match
+                    sub = await db["user_sub_types"].find_one(
+                        {"name": {"$regex": escaped, "$options": "i"}},
+                        {"_id": 1}
+                    )
                 if sub:
                     resolved_ids.append(sub["_id"])
             if resolved_ids:
