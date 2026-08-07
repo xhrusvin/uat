@@ -45,6 +45,12 @@ def _map_user_fields(data: dict, now: datetime) -> dict:
     # Save rating — default to 0 if null
     doc["rating"] = data.get("rating") or 0
 
+    # QQI status fields
+    if data.get("qqi_status_number") is not None:
+        doc["qqi_status_number"] = data.get("qqi_status_number")
+    if data.get("qqi_status_name") is not None:
+        doc["qqi_status_name"] = data.get("qqi_status_name")
+
     phone = data.get("phone_number") or data.get("phone")
     if phone is not None:
         doc["phone"] = phone
