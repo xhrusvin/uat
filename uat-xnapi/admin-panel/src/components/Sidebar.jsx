@@ -281,7 +281,7 @@ export default function Sidebar() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-2 py-3 space-y-0.5">
+        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
           {NAV.map((item) => {
 
             // ── Group with children ───────────────────────────────────────────
@@ -318,7 +318,7 @@ export default function Sidebar() {
 
                   {/* Inline accordion — expanded sidebar only */}
                   {!collapsed && ((item.id === 'master' ? masterExpanded : xnExpanded) || active) && (
-                    <div className={`ml-4 mt-0.5 pl-3 border-l-2 border-gray-100 ${item.id === 'master' ? 'max-h-72 overflow-y-auto space-y-0.5 pr-1' : 'space-y-0.5'}`}>
+                    <div className="ml-4 mt-0.5 space-y-0.5 pl-3 border-l-2 border-gray-100">
                       {item.children.map((child) => (
                         <NavLink
                           key={child.id}
