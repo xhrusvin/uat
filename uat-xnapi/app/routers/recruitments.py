@@ -170,6 +170,25 @@ async def recruitment_detail(request: Request, payload: RecruitmentDetailRequest
 
         now         = datetime.now(timezone.utc)
         update_doc  = _map_user_fields(data, now)
+
+        # Resolve user_sub_type_ids names → ObjectIds from user_sub_types collection
+        raw_sub_ids = update_doc.get("user_sub_type_ids") or []
+        if raw_sub_ids and isinstance(raw_sub_ids, list):
+            db = _get_db()
+            resolved_ids = []
+            for item in raw_sub_ids:
+                name = item.strip() if isinstance(item, str) else None
+                if not name:
+                    continue
+                sub = await db["user_sub_types"].find_one(
+                    {"name": {"$regex": f"^{name}$", "$options": "i"}},
+                    {"_id": 1}
+                )
+                if sub:
+                    resolved_ids.append(sub["_id"])
+            if resolved_ids:
+                update_doc["user_sub_type_oids"] = resolved_ids
+
         sync_result = await _upsert_user(xn_user_id, update_doc, now)
 
         logger.info(f"Recruitment sync: xn_user_id={xn_user_id} {sync_result['action']}")
