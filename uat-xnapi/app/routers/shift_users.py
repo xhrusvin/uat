@@ -658,6 +658,13 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     if payload.qqi_status_number is not None:
         user_filter["qqi_status_number"] = payload.qqi_status_number
 
+    # User sub type filter
+    if payload.user_sub_type_multiple:
+        from bson import ObjectId as _OID
+        sub_oids = [_OID(i) for i in payload.user_sub_type_multiple if ObjectId.is_valid(str(i))]
+        if sub_oids:
+            user_filter["user_sub_type_oids"] = {"$in": sub_oids}
+
     # county_multiple filter — match both string and ObjectId stored county_id
     if payload.county_multiple:
         county_values = []
@@ -1206,6 +1213,12 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     # QQI status filter
     if payload.qqi_status_number is not None:
         user_filter["qqi_status_number"] = payload.qqi_status_number
+
+    # User sub type filter
+    if payload.user_sub_type_multiple:
+        sub_oids_m = [ObjectId(i) for i in payload.user_sub_type_multiple if ObjectId.is_valid(str(i))]
+        if sub_oids_m:
+            user_filter["user_sub_type_oids"] = {"$in": sub_oids_m}
 
     # Always fetch user_types from all provided shifts (used for by_designation + auto-filter)
     shift_docs = await db["shifts"].find(
