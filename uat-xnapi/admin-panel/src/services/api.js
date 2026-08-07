@@ -118,6 +118,10 @@ export const userSubTypesApi = {
   delete:    (id)        => usersClient.delete(`/user-sub-types/${id}`),
 }
 
+export const qqiApi = {
+  list: () => usersClient.get('/common/qqi-status-list'),
+}
+
 export const gendersApi = {
   list:   ()          => usersClient.get('/genders/'),
   create: (data)      => usersClient.post('/genders/create', data),

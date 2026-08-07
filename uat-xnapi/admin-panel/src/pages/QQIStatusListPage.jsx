@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { usersClient } from '../services/api'
+import { qqiApi } from '../services/api'
 
 export default function QQIStatusListPage() {
   const [items, setItems]     = useState([])
@@ -10,7 +10,7 @@ export default function QQIStatusListPage() {
   const load = async () => {
     setLoading(true); setError(null)
     try {
-      const { data } = await usersClient.get('/common/qqi-status-list')
+      const { data } = await qqiApi.list()
       const list = Array.isArray(data.data) ? data.data : []
       setItems(list)
       setMeta({ status: data.upstream_status, total: list.length })
