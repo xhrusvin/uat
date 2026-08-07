@@ -378,13 +378,16 @@ async def sync_sub_types(request: Request, xn_id: str):
 
     async with _httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(url, json={"user_type_id": upstream_xn_id}, headers=headers)
+        # Fallback to GET with params if POST not supported
+        if resp.status_code == 405:
+            resp = await client.get(url, params={"user_type_id": upstream_xn_id}, headers=headers)
 
     if resp.status_code != 200:
         return {
             "success":   False,
             "user_type": ut.get("name"),
             "xn_id":     xn_id,
-            "message":   f"Upstream returned {resp.status_code}",
+            "message":   f"Upstream returned {resp.status_code}: {resp.text[:500]}",
             "total": 0, "updated": 0, "inserted": 0, "results": [],
         }
 
