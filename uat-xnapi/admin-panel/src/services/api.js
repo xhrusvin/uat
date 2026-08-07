@@ -118,6 +118,10 @@ export const userSubTypesApi = {
   delete:    (id)        => usersClient.delete(`/user-sub-types/${id}`),
 }
 
+export const userTypeListApi = {
+  sync: () => usersClient.get('/user-types/sync-from-upstream'),
+}
+
 export const qqiStatusesApi = {
   list:   ()          => usersClient.get('/qqi-statuses/'),
   create: (data)      => usersClient.post('/qqi-statuses/create', data),

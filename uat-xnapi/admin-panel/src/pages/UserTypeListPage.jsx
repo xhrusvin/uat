@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { usersClient } from '../services/api'
+import { userTypeListApi } from '../services/api'
 
 export default function UserTypeListPage() {
   const [loading, setLoading] = useState(false)
@@ -9,7 +9,7 @@ export default function UserTypeListPage() {
   const sync = async () => {
     setLoading(true); setError(null); setResult(null)
     try {
-      const { data } = await usersClient.get('/user-types/sync-from-upstream')
+      const { data } = await userTypeListApi.sync()
       setResult(data)
     } catch (err) {
       setError(err?.response?.data?.detail || 'Failed to sync user types')
