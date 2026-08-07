@@ -119,7 +119,8 @@ export const userSubTypesApi = {
 }
 
 export const userTypeListApi = {
-  sync: () => usersClient.get('/user-types/sync-from-upstream'),
+  sync:         ()       => usersClient.get('/user-types/sync-from-upstream'),
+  syncSubTypes: (xn_id)  => usersClient.get(`/user-types/sync-sub-types/${xn_id}`),
 }
 
 export const qqiStatusesApi = {

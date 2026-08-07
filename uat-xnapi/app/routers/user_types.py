@@ -177,10 +177,7 @@ async def sync_user_types_from_upstream(request: Request):
     now       = datetime.now(timezone.utc)
 
     updated = inserted = 0
-    sub_updated = sub_inserted = 0
     results = []
-
-    sub_url = f"{settings.USER_API_URL.rstrip('/')}/ai/common/user-sub-type-list"
 
     async with _httpx.AsyncClient(timeout=30.0) as client:
         for item in data_list:
@@ -224,54 +221,15 @@ async def sync_user_types_from_upstream(request: Request):
                     results.append({"xn_id": xn_id, "name": name, "action": "inserted"})
                     inserted += 1
 
-            # ── Fetch and upsert sub types for this user type ─────────────────
-            if not local_ut_id:
-                continue
-            try:
-                sub_resp = await client.post(
-                    sub_url,
-                    json={"user_type_id": xn_id},
-                    headers=headers,
-                )
-                if sub_resp.status_code == 200:
-                    sub_list = sub_resp.json().get("data") or []
-                    for sub in sub_list:
-                        sub_name  = (sub.get("name") or "").strip()
-                        sub_xn_id = str(sub.get("_id") or "").strip()
-                        if not sub_name:
-                            continue
-                        existing_sub = await db["user_sub_types"].find_one({
-                            "user_type_id": local_ut_id,
-                            "name": {"$regex": f"^{sub_name}$", "$options": "i"}
-                        })
-                        if existing_sub:
-                            await db["user_sub_types"].update_one(
-                                {"_id": existing_sub["_id"]},
-                                {"$set": {"xn_id": sub_xn_id, "updated_at": now}}
-                            )
-                            sub_updated += 1
-                        else:
-                            await db["user_sub_types"].insert_one({
-                                "name":         sub_name,
-                                "xn_id":        sub_xn_id,
-                                "user_type_id": local_ut_id,
-                                "is_active":    True,
-                                "created_at":   now,
-                                "updated_at":   now,
-                            })
-                            sub_inserted += 1
-            except Exception as e:
-                logger.warning(f"[sub-types] Failed for {xn_id}: {e}")
+            # sub types synced separately via /user-types/sync-sub-types/{xn_id}
 
     return {
-        "success":          True,
-        "upstream_status":  resp.status_code,
-        "total":            len(data_list),
-        "updated":          updated,
-        "inserted":         inserted,
-        "sub_updated":      sub_updated,
-        "sub_inserted":     sub_inserted,
-        "results":          results,
+        "success":         True,
+        "upstream_status": resp.status_code,
+        "total":           len(data_list),
+        "updated":         updated,
+        "inserted":        inserted,
+        "results":         results,
     }
 
 
@@ -381,4 +339,82 @@ async def list_counties(request: Request, payload: CountyListRequest):
         "page":     payload.page,
         "per_page": payload.per_page,
         "data":     [_serialize(d) for d in docs],
+    }
+
+
+# ── GET /user-types/sync-sub-types/{xn_id} ───────────────────────────────────
+
+@router.get(
+    "/sync-sub-types/{xn_id}",
+    summary="Fetch sub types for a user type from upstream",
+    dependencies=[Depends(verify_api_key)],
+)
+async def sync_sub_types(request: Request, xn_id: str):
+    import httpx as _httpx
+    from app.db.database import _client
+    from datetime import datetime, timezone
+
+    db  = _client[settings.MONGODB_DB]
+    now = datetime.now(timezone.utc)
+
+    # Find local user_type by xn_id
+    ut = await db["user_types"].find_one({"xn_id": xn_id}, {"_id": 1, "name": 1})
+    if not ut:
+        raise HTTPException(status_code=404, detail=f"User type with xn_id={xn_id} not found locally")
+
+    local_ut_id = ut["_id"]
+
+    url = f"{settings.USER_API_URL.rstrip('/')}/ai/common/user-sub-type-list"
+    headers = {
+        "Api-Key":      settings.USER_INTERNAL_API_KEY,
+        "Content-Type": "application/json",
+        "Accept":       "application/json",
+    }
+
+    async with _httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(url, json={"user_type_id": xn_id}, headers=headers)
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Upstream failed: {resp.status_code}")
+
+    sub_list    = resp.json().get("data") or []
+    updated = inserted = 0
+    results = []
+
+    for sub in sub_list:
+        sub_name  = (sub.get("name") or "").strip()
+        sub_xn_id = str(sub.get("_id") or "").strip()
+        if not sub_name:
+            continue
+        existing = await db["user_sub_types"].find_one({
+            "user_type_id": local_ut_id,
+            "name": {"$regex": f"^{sub_name}$", "$options": "i"}
+        })
+        if existing:
+            await db["user_sub_types"].update_one(
+                {"_id": existing["_id"]},
+                {"$set": {"xn_id": sub_xn_id, "updated_at": now}}
+            )
+            results.append({"name": sub_name, "action": "updated"})
+            updated += 1
+        else:
+            await db["user_sub_types"].insert_one({
+                "name":         sub_name,
+                "xn_id":        sub_xn_id,
+                "user_type_id": local_ut_id,
+                "is_active":    True,
+                "created_at":   now,
+                "updated_at":   now,
+            })
+            results.append({"name": sub_name, "action": "inserted"})
+            inserted += 1
+
+    return {
+        "success":      True,
+        "user_type":    ut.get("name"),
+        "xn_id":        xn_id,
+        "total":        len(sub_list),
+        "updated":      updated,
+        "inserted":     inserted,
+        "results":      results,
     }
