@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -37,16 +36,18 @@ def _serialize(doc: dict) -> dict:
     }
 
 
+from typing import Optional, Union
+
 class QQIStatusCreate(BaseModel):
     name:      str
-    code:      Optional[str] = None
+    code:      Optional[Union[str, int]] = None
     is_active: bool = True
 
 
 class QQIStatusUpdate(BaseModel):
-    name:      Optional[str]  = None
-    code:      Optional[str]  = None
-    is_active: Optional[bool] = None
+    name:      Optional[str]            = None
+    code:      Optional[Union[str, int]] = None
+    is_active: Optional[bool]           = None
 
 
 @router.get("/", summary="List all QQI statuses", dependencies=[Depends(verify_api_key)])
@@ -68,7 +69,7 @@ async def create_qqi_status(request: Request, payload: QQIStatusCreate):
         raise HTTPException(status_code=409, detail="QQI status already exists")
     doc = {
         "name":      payload.name.strip(),
-        "code":      payload.code.strip() if payload.code else None,
+        "code":      str(payload.code).strip() if payload.code is not None else None,
         "is_active": payload.is_active,
         "created_at": now,
         "updated_at": now,
@@ -87,7 +88,7 @@ async def update_qqi_status(request: Request, status_id: str, payload: QQIStatus
     now    = datetime.now(timezone.utc)
     update = {"updated_at": now}
     if payload.name      is not None: update["name"]      = payload.name.strip()
-    if payload.code      is not None: update["code"]      = payload.code.strip()
+    if payload.code      is not None: update["code"]      = str(payload.code).strip()
     if payload.is_active is not None: update["is_active"] = payload.is_active
     result = await db["qqi_statuses"].update_one({"_id": ObjectId(status_id)}, {"$set": update})
     if result.matched_count == 0:
