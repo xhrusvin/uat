@@ -104,7 +104,8 @@ async def create_shift_group(request: Request, payload: ShiftGroupCreate):
 # ── GET group ─────────────────────────────────────────────────────────────────
 
 class ShiftGroupDetailRequest(BaseModel):
-    group_id: str
+    group_id:          str
+    qqi_status_number: Optional[int] = None  # filter by users.qqi_status_number
 
 
 @router.post(
@@ -676,8 +677,11 @@ async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
     user_oids = [p["user_id"] for p in pool_docs if p.get("user_id") and ObjectId.is_valid(str(p.get("user_id", "")))]
     user_map: dict = {}
     if user_oids:
+        user_query: dict = {"_id": {"$in": user_oids}}
+        if payload.qqi_status_number is not None:
+            user_query["qqi_status_number"] = payload.qqi_status_number
         async for u in db["users"].find(
-            {"_id": {"$in": user_oids}},
+            user_query,
             {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
              "xn_user_id": 1, "designation": 1, "rating": 1, "status": 1,
              "county": 1, "county_id": 1, "country_id": 1, "tags": 1,

@@ -580,6 +580,7 @@ class ListShiftUsersRequest(BaseModel):
     search:             Optional[str]   = None
     gender_id:          Optional[str]   = None
 
+    qqi_status_number:  Optional[int]   = None
 
 @router.post(
     "/list",
@@ -652,6 +653,10 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     if payload.gender_id:
         gid = payload.gender_id.strip()
         user_filter["gender_id"] = gid
+
+    # QQI status filter
+    if payload.qqi_status_number is not None:
+        user_filter["qqi_status_number"] = payload.qqi_status_number
 
     # county_multiple filter — match both string and ObjectId stored county_id
     if payload.county_multiple:
@@ -1164,6 +1169,7 @@ class ListMultiShiftUsersRequest(BaseModel):
     gender_id:          Optional[str]   = None  # filter by users.gender_id
 
 
+    qqi_status_number:  Optional[int]   = None
 @router.post(
     "/list-multi",
     summary="List users for multiple shifts with same enrichment as /list",
@@ -1196,6 +1202,10 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     if payload.gender_id:
         gid = payload.gender_id.strip()
         user_filter["gender_id"] = gid
+
+    # QQI status filter
+    if payload.qqi_status_number is not None:
+        user_filter["qqi_status_number"] = payload.qqi_status_number
 
     # Always fetch user_types from all provided shifts (used for by_designation + auto-filter)
     shift_docs = await db["shifts"].find(
