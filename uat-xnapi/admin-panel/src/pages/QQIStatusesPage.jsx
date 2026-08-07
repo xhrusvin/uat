@@ -106,11 +106,23 @@ export default function QQIStatusesPage() {
   const handleSave = async (form) => {
     setSaving(true)
     try {
-      if (editItem) { await api.update(editItem.id, form); showToast('Updated'); setEditItem(null) }
-      else          { await api.create(form);              showToast('Created'); setShowAdd(false) }
-      load()
-    } catch (err) { showToast(err?.response?.data?.detail || 'Failed to save', 'error') }
-    finally { setSaving(false) }
+      if (editItem) {
+        await api.update(editItem.id, form)
+        showToast('Updated')
+        setEditItem(null)
+        setShowAdd(false)
+      } else {
+        await api.create(form)
+        showToast('Created')
+        setShowAdd(false)
+        setEditItem(null)
+      }
+      await load()
+    } catch (err) {
+      showToast(err?.response?.data?.detail || 'Failed to save', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDelete = async () => {
