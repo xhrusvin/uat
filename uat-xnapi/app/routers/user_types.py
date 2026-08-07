@@ -177,53 +177,101 @@ async def sync_user_types_from_upstream(request: Request):
     now       = datetime.now(timezone.utc)
 
     updated = inserted = 0
+    sub_updated = sub_inserted = 0
     results = []
 
-    for item in data_list:
-        xn_id = str(item.get("_id") or "").strip()
-        name  = (item.get("name") or "").strip()
-        if not xn_id or not name:
-            continue
+    sub_url = f"{settings.USER_API_URL.rstrip('/')}/ai/common/user-sub-type-list"
 
-        # Check if already exists by xn_id
-        existing = await db["user_types"].find_one({"xn_id": xn_id})
-        if existing:
-            await db["user_types"].update_one(
-                {"xn_id": xn_id},
-                {"$set": {"name": name, "xn_id": xn_id, "updated_at": now}}
-            )
-            results.append({"xn_id": xn_id, "name": name, "action": "updated"})
-            updated += 1
-        else:
-            # Also check by name
-            existing_name = await db["user_types"].find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
-            if existing_name:
+    async with _httpx.AsyncClient(timeout=30.0) as client:
+        for item in data_list:
+            xn_id = str(item.get("_id") or "").strip()
+            name  = (item.get("name") or "").strip()
+            if not xn_id or not name:
+                continue
+
+            # ── Upsert user type ──────────────────────────────────────────────
+            local_ut_id = None
+            existing = await db["user_types"].find_one({"xn_id": xn_id})
+            if existing:
                 await db["user_types"].update_one(
-                    {"_id": existing_name["_id"]},
-                    {"$set": {"xn_id": xn_id, "updated_at": now}}
+                    {"xn_id": xn_id},
+                    {"$set": {"name": name, "xn_id": xn_id, "updated_at": now}}
                 )
-                results.append({"xn_id": xn_id, "name": name, "action": "matched_by_name"})
+                local_ut_id = existing["_id"]
+                results.append({"xn_id": xn_id, "name": name, "action": "updated"})
                 updated += 1
             else:
-                await db["user_types"].insert_one({
-                    "name":       name,
-                    "xn_id":      xn_id,
-                    "is_active":  True,
-                    "is_default": False,
-                    "sort_order": 99,
-                    "created_at": now,
-                    "updated_at": now,
-                })
-                results.append({"xn_id": xn_id, "name": name, "action": "inserted"})
-                inserted += 1
+                existing_name = await db["user_types"].find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
+                if existing_name:
+                    await db["user_types"].update_one(
+                        {"_id": existing_name["_id"]},
+                        {"$set": {"xn_id": xn_id, "updated_at": now}}
+                    )
+                    local_ut_id = existing_name["_id"]
+                    results.append({"xn_id": xn_id, "name": name, "action": "matched_by_name"})
+                    updated += 1
+                else:
+                    result = await db["user_types"].insert_one({
+                        "name":       name,
+                        "xn_id":      xn_id,
+                        "is_active":  True,
+                        "is_default": False,
+                        "sort_order": 99,
+                        "created_at": now,
+                        "updated_at": now,
+                    })
+                    local_ut_id = result.inserted_id
+                    results.append({"xn_id": xn_id, "name": name, "action": "inserted"})
+                    inserted += 1
+
+            # ── Fetch and upsert sub types for this user type ─────────────────
+            if not local_ut_id:
+                continue
+            try:
+                sub_resp = await client.post(
+                    sub_url,
+                    json={"user_type_id": xn_id},
+                    headers=headers,
+                )
+                if sub_resp.status_code == 200:
+                    sub_list = sub_resp.json().get("data") or []
+                    for sub in sub_list:
+                        sub_name  = (sub.get("name") or "").strip()
+                        sub_xn_id = str(sub.get("_id") or "").strip()
+                        if not sub_name:
+                            continue
+                        existing_sub = await db["user_sub_types"].find_one({
+                            "user_type_id": local_ut_id,
+                            "name": {"$regex": f"^{sub_name}$", "$options": "i"}
+                        })
+                        if existing_sub:
+                            await db["user_sub_types"].update_one(
+                                {"_id": existing_sub["_id"]},
+                                {"$set": {"xn_id": sub_xn_id, "updated_at": now}}
+                            )
+                            sub_updated += 1
+                        else:
+                            await db["user_sub_types"].insert_one({
+                                "name":         sub_name,
+                                "xn_id":        sub_xn_id,
+                                "user_type_id": local_ut_id,
+                                "is_active":    True,
+                                "created_at":   now,
+                                "updated_at":   now,
+                            })
+                            sub_inserted += 1
+            except Exception as e:
+                logger.warning(f"[sub-types] Failed for {xn_id}: {e}")
 
     return {
-        "success":         True,
-        "upstream_status": resp.status_code,
-        "total":           len(data_list),
-        "updated":         updated,
-        "inserted":        inserted,
-        "results":         results,
+        "success":          True,
+        "upstream_status":  resp.status_code,
+        "total":            len(data_list),
+        "updated":          updated,
+        "inserted":         inserted,
+        "sub_updated":      sub_updated,
+        "sub_inserted":     sub_inserted,
+        "results":          results,
     }
 
 

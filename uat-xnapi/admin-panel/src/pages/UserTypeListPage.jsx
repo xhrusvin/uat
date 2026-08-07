@@ -59,9 +59,11 @@ export default function UserTypeListPage() {
         <>
           <div className="grid grid-cols-3 gap-4 mb-5">
             {[
-              { label: 'Total from upstream', value: result.total, color: 'bg-gray-50' },
-              { label: 'Updated',             value: result.updated,  color: 'bg-blue-50' },
-              { label: 'Inserted',            value: result.inserted, color: 'bg-green-50' },
+              { label: 'Total user types', value: result.total,        color: 'bg-gray-50' },
+              { label: 'Types updated',    value: result.updated,      color: 'bg-blue-50' },
+              { label: 'Types inserted',   value: result.inserted,     color: 'bg-green-50' },
+              { label: 'Sub types updated',  value: result.sub_updated ?? 0,  color: 'bg-purple-50' },
+              { label: 'Sub types inserted', value: result.sub_inserted ?? 0, color: 'bg-yellow-50' },
             ].map(s => (
               <div key={s.label} className={`card p-4 text-center ${s.color}`}>
                 <div className="text-2xl font-bold text-gray-900">{s.value}</div>
