@@ -109,15 +109,13 @@ export default function QQIStatusesPage() {
       if (editItem) {
         await api.update(editItem.id, form)
         showToast('Updated')
-        setEditItem(null)
-        setShowAdd(false)
       } else {
         await api.create(form)
         showToast('Created')
-        setShowAdd(false)
-        setEditItem(null)
       }
-      await load()
+      setShowAdd(false)
+      setEditItem(null)
+      load()
     } catch (err) {
       showToast(err?.response?.data?.detail || 'Failed to save', 'error')
     } finally {
