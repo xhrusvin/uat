@@ -117,7 +117,9 @@ export default function QQIStatusesPage() {
       setEditItem(null)
       load()
     } catch (err) {
-      showToast(err?.response?.data?.detail || 'Failed to save', 'error')
+      const detail = err?.response?.data?.detail
+      const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(e => e.msg).join(', ') : 'Failed to save'
+      showToast(msg, 'error')
     } finally {
       setSaving(false)
     }
@@ -126,7 +128,10 @@ export default function QQIStatusesPage() {
   const handleDelete = async () => {
     setDeleting(true)
     try { await api.delete(deleteItem.id); showToast('Deleted'); setDeleteItem(null); load() }
-    catch { showToast('Failed to delete', 'error') }
+    catch (err) {
+      const detail = err?.response?.data?.detail
+      showToast(typeof detail === 'string' ? detail : 'Failed to delete', 'error')
+    }
     finally { setDeleting(false) }
   }
 

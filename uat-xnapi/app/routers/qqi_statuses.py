@@ -22,13 +22,18 @@ def _get_db():
 
 
 def _serialize(doc: dict) -> dict:
+    def _dt(v):
+        try:
+            return v.isoformat() if v and hasattr(v, "isoformat") else None
+        except Exception:
+            return None
     return {
         "id":         str(doc["_id"]),
         "name":       doc.get("name", ""),
         "code":       doc.get("code"),
         "is_active":  doc.get("is_active", True),
-        "created_at": doc["created_at"].isoformat() if doc.get("created_at") and hasattr(doc["created_at"], "isoformat") else None,
-        "updated_at": doc["updated_at"].isoformat() if doc.get("updated_at") and hasattr(doc["updated_at"], "isoformat") else None,
+        "created_at": _dt(doc.get("created_at")),
+        "updated_at": _dt(doc.get("updated_at")),
     }
 
 
