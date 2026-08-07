@@ -118,6 +118,13 @@ export const userSubTypesApi = {
   delete:    (id)        => usersClient.delete(`/user-sub-types/${id}`),
 }
 
+export const qqiStatusesApi = {
+  list:   ()          => usersClient.get('/qqi-statuses/'),
+  create: (data)      => usersClient.post('/qqi-statuses/create', data),
+  update: (id, data)  => usersClient.patch(`/qqi-statuses/${id}`, data),
+  delete: (id)        => usersClient.delete(`/qqi-statuses/${id}`),
+}
+
 export const qqiApi = {
   list: () => usersClient.get('/common/qqi-status-list'),
 }
