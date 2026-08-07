@@ -375,7 +375,13 @@ async def sync_sub_types(request: Request, xn_id: str):
         resp = await client.post(url, json={"user_type_id": xn_id}, headers=headers)
 
     if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Upstream failed: {resp.status_code}")
+        return {
+            "success":   False,
+            "user_type": ut.get("name"),
+            "xn_id":     xn_id,
+            "message":   f"Upstream returned {resp.status_code}",
+            "total": 0, "updated": 0, "inserted": 0, "results": [],
+        }
 
     sub_list    = resp.json().get("data") or []
     updated = inserted = 0

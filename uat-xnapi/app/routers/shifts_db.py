@@ -1608,6 +1608,7 @@ async def cron_sync_shifts(request: Request):
     Returns summary of synced shifts.
     """
     import httpx as _httpx
+    from datetime import datetime, timezone as _tz
 
     # Use the same API base as the current server
     base    = "https://uat.expresshealth.ie/xnapi"
@@ -1658,5 +1659,5 @@ async def cron_sync_shifts(request: Request):
         "failed":        len(failed),
         "synced_list":   synced,
         "failed_list":   failed,
-        "synced_at":     datetime.now(timezone.utc).isoformat(),
+        "synced_at":     datetime.now(_tz.utc).isoformat(),
     }
