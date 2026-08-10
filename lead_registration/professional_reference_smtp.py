@@ -174,7 +174,7 @@ def send_reference_email(first_name, last_name, email, lead_id, designation):
         designation=designation,
         current_year=current_year
     )
-
+    
     msg.attach(MIMEText(html_content, "html"))
 
     try:

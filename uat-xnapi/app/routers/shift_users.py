@@ -633,11 +633,9 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         except Exception as e:
             logger.warning(f"[list] upstream available-staff-list failed: {e}")
 
-    # If upstream returned staff, filter users to only those matching xn_user_id
-    # If upstream failed/returned empty, fall through to show all eligible users
+    # Upstream filter disabled - local DB may not have all upstream users synced
+    # Use upstream distance_map for enrichment only
     upstream_filter = {}
-    if upstream_xn_ids:
-        upstream_filter = {"xn_user_id": {"$in": upstream_xn_ids}}
 
     # Fetch shift early — needed for user_type filter and exclusion check
     target_shift = await db["shifts"].find_one(
