@@ -757,7 +757,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                     xn_uid = u.get("xn_user_id")
                     uid_str = str(u["_id"])
                     try:
-                        _vr = await client.post(_visa_url, json={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid}, headers=_visa_headers)
+                        _vr = await client.get(_visa_url, params={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid}, headers=_visa_headers)
                         logger.info(f"[visa] {xn_uid} status={_vr.status_code} body={_vr.text[:200]}")
                         if _vr.status_code == 200:
                             _vd = _vr.json().get("data") or {}
