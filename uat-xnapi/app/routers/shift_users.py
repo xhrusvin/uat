@@ -745,45 +745,42 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     if xn_shift_id_for_visa:
         try:
             import httpx as _httpx_v
+            import asyncio as _asyncio
             _visa_url = f"{settings.USER_API_URL.rstrip('/')}/ai/recruitments/visa-hours"
             _visa_headers = {
                 "Api-Key":      settings.USER_INTERNAL_API_KEY,
                 "Content-Type": "application/json",
                 "Accept":       "application/json",
             }
-            async with _httpx_v.AsyncClient(timeout=20.0) as _vc:
-                for u in users:
-                    xn_uid = u.get("xn_user_id")
-                    if not xn_uid:
-                        logger.info(f"[visa] skip user {u['_id']} — no xn_user_id")
-                        continue
-                    # Skip only if consumed_hours is already stored (0 counts as stored)
-                    if u.get("consumed_hours") is not None:
-                        logger.info(f"[visa] skip user {xn_uid} — already stored wp={u.get('work_permit_exemption')} ch={u.get('consumed_hours')}")
-                        continue
-                    try:
-                        logger.info(f"[visa] calling upstream for xn_uid={xn_uid} shift_id={xn_shift_id_for_visa}")
-                        _vr = await _vc.post(
-                            _visa_url,
-                            json={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid},
-                            headers=_visa_headers
-                        )
-                        logger.info(f"[visa] response status={_vr.status_code} body={_vr.text[:200]}")
-                        if _vr.status_code == 200:
-                            _vd = _vr.json().get("data") or {}
-                            _update = {}
-                            if "work_permit_exemption" in _vd:
-                                _update["work_permit_exemption"] = _vd["work_permit_exemption"]
-                            if "consumed_hours" in _vd:
-                                _update["consumed_hours"] = _vd["consumed_hours"]
-                            if _update:
-                                await db["users"].update_one({"_id": u["_id"]}, {"$set": _update})
-                                u.update(_update)
-                                logger.info(f"[visa] saved to user {xn_uid}: {_update}")
-                            else:
-                                logger.warning(f"[visa] no fields to update for {xn_uid}, data={_vd}")
-                    except Exception as _ve:
-                        logger.error(f"[visa] error for {xn_uid}: {_ve}")
+
+            async def _fetch_visa(client, u):
+                xn_uid = u.get("xn_user_id")
+                if not xn_uid or u.get("consumed_hours") is not None:
+                    return
+                try:
+                    _vr = await client.post(
+                        _visa_url,
+                        json={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid},
+                        headers=_visa_headers
+                    )
+                    logger.info(f"[visa] {xn_uid} status={_vr.status_code} body={_vr.text[:150]}")
+                    if _vr.status_code == 200:
+                        _vd = _vr.json().get("data") or {}
+                        _update = {}
+                        if "work_permit_exemption" in _vd:
+                            _update["work_permit_exemption"] = _vd["work_permit_exemption"]
+                        if "consumed_hours" in _vd:
+                            _update["consumed_hours"] = _vd["consumed_hours"]
+                        if _update:
+                            await db["users"].update_one({"_id": u["_id"]}, {"$set": _update})
+                            u.update(_update)
+                            logger.info(f"[visa] saved {xn_uid}: {_update}")
+                except Exception as _ve:
+                    logger.error(f"[visa] error {xn_uid}: {_ve}")
+
+            async with _httpx_v.AsyncClient(timeout=15.0) as _vc:
+                await _asyncio.gather(*[_fetch_visa(_vc, u) for u in users])
+
         except Exception as _ve2:
             logger.error(f"[visa] outer error: {_ve2}")
     last_contacted_map: dict = {}
