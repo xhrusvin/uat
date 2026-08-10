@@ -752,7 +752,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             try:
                 import httpx as _httpx_v, asyncio as _asyncio
                 _visa_url = f"{settings.USER_API_URL.rstrip('/')}/ai/recruitments/visa-hours"
-                _visa_headers = {"Api-Key": settings.USER_INTERNAL_API_KEY, "Content-Type": "application/json"}
+                _visa_headers = {"Api-Key": settings.USER_EXTERNAL_API_KEY, "Content-Type": "application/json"}
 
                 async def _fetch_visa(client, u):
                     xn_uid = u.get("xn_user_id")
