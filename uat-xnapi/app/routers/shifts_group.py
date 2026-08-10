@@ -686,7 +686,8 @@ async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
              "xn_user_id": 1, "designation": 1, "rating": 1, "status": 1,
              "county": 1, "county_id": 1, "country_id": 1, "tags": 1,
              "location": 1, "latitude": 1, "longitude": 1,
-             "visa_hours_used": 1, "visa_hours_total": 1, "user_type_id": 1}
+             "visa_hours_used": 1, "visa_hours_total": 1, "user_type_id": 1,
+             "work_permit_exemption": 1, "consumed_hours": 1}
         ):
             user_map[str(u["_id"])] = u
 
@@ -700,6 +701,49 @@ async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
             uid = str(su.get("user_id", ""))
             if uid not in last_contacted_map:
                 last_contacted_map[uid] = su.get("call_processed_at")
+
+    # ── Fetch visa hours for up to 2 users missing consumed_hours ─────────────
+    visa_info_map_g: dict = {}
+    try:
+        # Get xn_shift_id from first shift in group
+        _xn_shift_id_g = None
+        _sids = group.get("shift_ids") or []
+        if _sids:
+            _sd = await db["shifts"].find_one({"_id": {"$in": _sids}}, {"shift_id": 1})
+            if _sd:
+                _xn_shift_id_g = _sd.get("shift_id")
+
+        if _xn_shift_id_g:
+            _users_list_g = list(user_map.values())
+            _missing_g = [u for u in _users_list_g if u.get("xn_user_id") and u.get("consumed_hours") is None][:2]
+            if _missing_g:
+                import httpx as _httpx_g, asyncio as _asyncio_g
+                _visa_url_g = f"{settings.USER_API_URL.rstrip('/')}/ai/recruitments/visa-hours"
+                _visa_h_g   = {"Api-Key": settings.USER_EXTERNAL_API_KEY, "Content-Type": "application/json"}
+
+                async def _fetch_visa_g(client, u):
+                    xn_uid = u.get("xn_user_id")
+                    uid_str = str(u["_id"])
+                    try:
+                        _vr = await client.get(_visa_url_g, params={"shift_id": _xn_shift_id_g, "staff_id": xn_uid}, headers=_visa_h_g)
+                        if _vr.status_code == 200:
+                            _vd = _vr.json().get("data") or {}
+                            _upd = {k: _vd[k] for k in ("work_permit_exemption", "consumed_hours") if k in _vd}
+                            if _upd:
+                                await db["users"].update_one({"_id": u["_id"]}, {"$set": _upd})
+                                u.update(_upd)
+                                visa_info_map_g[uid_str] = {"status": "fetched", "data": _vd}
+                            else:
+                                visa_info_map_g[uid_str] = {"status": "empty_response"}
+                        else:
+                            visa_info_map_g[uid_str] = {"status": f"http_{_vr.status_code}", "error": _vr.text[:150]}
+                    except Exception as _e:
+                        visa_info_map_g[uid_str] = {"status": "error", "error": str(_e)}
+
+                async with _httpx_g.AsyncClient(timeout=10.0) as _vc_g:
+                    await _asyncio_g.gather(*[_fetch_visa_g(_vc_g, u) for u in _missing_g])
+    except Exception as _eg:
+        pass
 
     def _time_ago(dt):
         if not dt: return None
@@ -775,7 +819,10 @@ async def list_group_pool(request: Request, payload: ShiftGroupDetailRequest):
             "channel":             "Phone",
             "staff_tags":          staff_tags,
             "last_contacted":      last_contacted,
-            "visa_hours_remaining": visa_hours_remaining,
+            "visa_hours_remaining":  u.get("consumed_hours") or visa_hours_remaining,
+            "work_permit_exemption": u.get("work_permit_exemption"),
+            "consumed_hours":        u.get("consumed_hours"),
+            "visa_info":             visa_info_map_g.get(str(p.get("user_id", "")), {"status": "cached"} if u.get("consumed_hours") is not None else {"status": "not_called"}),
             "prior_shifts":        prior_shifts,
             "work_history":        work_history,
             "county_id":           county_id,
