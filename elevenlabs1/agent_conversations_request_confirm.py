@@ -209,15 +209,11 @@ def sync_agent_conversations_request_confirm():
                 }
 
 
-                return jsonify({
-                    "user_id": user_id,
-                    "shift_id": shift_id
-                }), 200
+                
 
                 result = leads_collection.update_one(
     {
-        "staff_id": ObjectId(user_id),
-        "shift_id": ObjectId(shift_id)
+        "_id": ObjectId(user_id)
     },
     {
         "$set": lead_doc,
