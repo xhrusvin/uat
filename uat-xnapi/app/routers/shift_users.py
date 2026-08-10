@@ -739,50 +739,33 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     # Fetch latest shifts_users.call_processed_at per user for last_contacted
     user_ids_page = [u["_id"] for u in users]
 
-    # ── Fetch visa hours from upstream for users missing it ──────────────────
+    # ── Fetch visa hours — only for up to 2 users missing consumed_hours ─────
     xn_shift_id_for_visa = shift_doc_for_xn.get("shift_id") if shift_doc_for_xn else None
-    logger.info(f"[visa] shift_doc_for_xn={shift_doc_for_xn} xn_shift_id_for_visa={xn_shift_id_for_visa} users_count={len(users)}")
     if xn_shift_id_for_visa:
-        try:
-            import httpx as _httpx_v
-            import asyncio as _asyncio
-            _visa_url = f"{settings.USER_API_URL.rstrip('/')}/ai/recruitments/visa-hours"
-            _visa_headers = {
-                "Api-Key":      settings.USER_INTERNAL_API_KEY,
-                "Content-Type": "application/json",
-                "Accept":       "application/json",
-            }
+        missing = [u for u in users if u.get("xn_user_id") and u.get("consumed_hours") is None][:2]
+        if missing:
+            try:
+                import httpx as _httpx_v, asyncio as _asyncio
+                _visa_url = f"{settings.USER_API_URL.rstrip('/')}/ai/recruitments/visa-hours"
+                _visa_headers = {"Api-Key": settings.USER_INTERNAL_API_KEY, "Content-Type": "application/json"}
 
-            async def _fetch_visa(client, u):
-                xn_uid = u.get("xn_user_id")
-                if not xn_uid or u.get("consumed_hours") is not None:
-                    return
-                try:
-                    _vr = await client.post(
-                        _visa_url,
-                        json={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid},
-                        headers=_visa_headers
-                    )
-                    logger.info(f"[visa] {xn_uid} status={_vr.status_code} body={_vr.text[:150]}")
-                    if _vr.status_code == 200:
-                        _vd = _vr.json().get("data") or {}
-                        _update = {}
-                        if "work_permit_exemption" in _vd:
-                            _update["work_permit_exemption"] = _vd["work_permit_exemption"]
-                        if "consumed_hours" in _vd:
-                            _update["consumed_hours"] = _vd["consumed_hours"]
-                        if _update:
-                            await db["users"].update_one({"_id": u["_id"]}, {"$set": _update})
-                            u.update(_update)
-                            logger.info(f"[visa] saved {xn_uid}: {_update}")
-                except Exception as _ve:
-                    logger.error(f"[visa] error {xn_uid}: {_ve}")
+                async def _fetch_visa(client, u):
+                    xn_uid = u.get("xn_user_id")
+                    try:
+                        _vr = await client.post(_visa_url, json={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid}, headers=_visa_headers)
+                        if _vr.status_code == 200:
+                            _vd = _vr.json().get("data") or {}
+                            _upd = {k: _vd[k] for k in ("work_permit_exemption", "consumed_hours") if k in _vd}
+                            if _upd:
+                                await db["users"].update_one({"_id": u["_id"]}, {"$set": _upd})
+                                u.update(_upd)
+                    except Exception as _e:
+                        logger.error(f"[visa] {xn_uid}: {_e}")
 
-            async with _httpx_v.AsyncClient(timeout=15.0) as _vc:
-                await _asyncio.gather(*[_fetch_visa(_vc, u) for u in users])
-
-        except Exception as _ve2:
-            logger.error(f"[visa] outer error: {_ve2}")
+                async with _httpx_v.AsyncClient(timeout=10.0) as _vc:
+                    await _asyncio.gather(*[_fetch_visa(_vc, u) for u in missing])
+            except Exception as _e2:
+                logger.error(f"[visa] outer: {_e2}")
     last_contacted_map: dict = {}
     if user_ids_page:
         async for su in db["shifts_users"].find(
