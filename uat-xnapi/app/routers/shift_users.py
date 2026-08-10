@@ -965,7 +965,8 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         # Visa hours remaining
         visa_used  = u.get("visa_hours_used")
         visa_total = u.get("visa_hours_total")
-        visa_hours_remaining = f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
+        consumed   = u.get("consumed_hours")
+        visa_hours_remaining = consumed if consumed is not None else (f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None)
 
         # Prior shifts count — from batch
         prior_shifts = prior_shifts_map.get(uid_str, 0)
