@@ -732,11 +732,52 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
          "xn_user_id": 1, "designation": 1, "rating": 1,
          "location": 1, "latitude": 1, "longitude": 1, "status": 1,
          "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
-         "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1, "gender_id": 1}
+         "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1, "gender_id": 1,
+         "work_permit_exemption": 1, "consumed_hours": 1}
     ).sort("first_name", 1).skip(fetch_skip).limit(fetch_limit).to_list(length=fetch_limit)
 
     # Fetch latest shifts_users.call_processed_at per user for last_contacted
     user_ids_page = [u["_id"] for u in users]
+
+    # ── Fetch visa hours from upstream for users missing it ──────────────────
+    xn_shift_id_for_visa = shift_doc_for_xn.get("shift_id") if shift_doc_for_xn else None
+    if xn_shift_id_for_visa:
+        try:
+            import httpx as _httpx_v
+            _visa_url = f"{settings.USER_API_URL.rstrip('/')}/ai/recruitments/visa-hours"
+            _visa_headers = {
+                "Api-Key":      settings.USER_INTERNAL_API_KEY,
+                "Content-Type": "application/json",
+                "Accept":       "application/json",
+            }
+            async with _httpx_v.AsyncClient(timeout=20.0) as _vc:
+                for u in users:
+                    xn_uid = u.get("xn_user_id")
+                    if not xn_uid:
+                        continue
+                    # Skip if already stored
+                    if u.get("work_permit_exemption") is not None and u.get("consumed_hours") is not None:
+                        continue
+                    try:
+                        _vr = await _vc.post(
+                            _visa_url,
+                            json={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid},
+                            headers=_visa_headers
+                        )
+                        if _vr.status_code == 200:
+                            _vd = _vr.json().get("data") or {}
+                            _update = {}
+                            if "work_permit_exemption" in _vd:
+                                _update["work_permit_exemption"] = _vd["work_permit_exemption"]
+                            if "consumed_hours" in _vd:
+                                _update["consumed_hours"] = _vd["consumed_hours"]
+                            if _update:
+                                await db["users"].update_one({"_id": u["_id"]}, {"$set": _update})
+                                u.update(_update)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
     last_contacted_map: dict = {}
     if user_ids_page:
         async for su in db["shifts_users"].find(
@@ -955,6 +996,8 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "staff_tags":          staff_tags,
             "last_contacted":      last_contacted,
             "visa_hours_remaining": visa_hours_remaining,
+            "work_permit_exemption": u.get("work_permit_exemption"),
+            "consumed_hours":       u.get("consumed_hours"),
             "gender_id":           str(u["gender_id"]) if u.get("gender_id") else None,
             "prior_shifts":        prior_shifts,
             "work_history":        work_history,
@@ -1436,6 +1479,8 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "staff_tags":          staff_tags,
             "last_contacted":      last_contacted,
             "visa_hours_remaining": visa_hours_remaining,
+            "work_permit_exemption": u.get("work_permit_exemption"),
+            "consumed_hours":       u.get("consumed_hours"),
             "gender_id":           str(u["gender_id"]) if u.get("gender_id") else None,
             "prior_shifts":        prior_shifts,
             "work_history":        work_history,
