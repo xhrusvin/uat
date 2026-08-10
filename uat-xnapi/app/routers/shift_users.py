@@ -741,6 +741,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     # ── Fetch visa hours from upstream for users missing it ──────────────────
     xn_shift_id_for_visa = shift_doc_for_xn.get("shift_id") if shift_doc_for_xn else None
+    logger.info(f"[visa] shift_doc_for_xn={shift_doc_for_xn} xn_shift_id_for_visa={xn_shift_id_for_visa} users_count={len(users)}")
     if xn_shift_id_for_visa:
         try:
             import httpx as _httpx_v
@@ -756,8 +757,8 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                     if not xn_uid:
                         logger.info(f"[visa] skip user {u['_id']} — no xn_user_id")
                         continue
-                    # Skip if already stored
-                    if u.get("work_permit_exemption") is not None and u.get("consumed_hours") is not None:
+                    # Skip only if consumed_hours is already stored (0 counts as stored)
+                    if u.get("consumed_hours") is not None:
                         logger.info(f"[visa] skip user {xn_uid} — already stored wp={u.get('work_permit_exemption')} ch={u.get('consumed_hours')}")
                         continue
                     try:
