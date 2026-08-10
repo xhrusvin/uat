@@ -193,3 +193,44 @@ async def list_staff_updated(request: Request, payload: WebhookListRequest):
         "per_page": payload.per_page,
         "data":     results,
     }
+
+
+# ── GET /webhook/client-updated ───────────────────────────────────────────────
+
+@router.get(
+    "/client-updated",
+    summary="List client_updated webhook records",
+    dependencies=[Depends(verify_api_key)],
+)
+async def list_client_updated(
+    request: Request,
+    page: int = 1,
+    per_page: int = 20,
+):
+    from app.db.database import _client as _mc
+    db    = _mc[settings.MONGODB_DB]
+    skip  = (page - 1) * per_page
+    total = await db["client_updated"].count_documents({})
+    docs  = await db["client_updated"].find({}).sort("uploaded_at", -1).skip(skip).limit(per_page).to_list(per_page)
+
+    results = []
+    for d in docs:
+        client_id = str(d.get("client_id", ""))
+        client    = await db["clients"].find_one({"xn_client_id": client_id}, {"name": 1, "address": 1, "county": 1, "client_type": 1, "xn_client_id": 1})
+        results.append({
+            "id":                 str(d["_id"]),
+            "client_id":          client_id,
+            "uploaded_at":        d["uploaded_at"].isoformat() if d.get("uploaded_at") and hasattr(d["uploaded_at"], "isoformat") else None,
+            "country":            d.get("country"),
+            "status":             d.get("status"),
+            "sync_api_status":    d.get("sync_api_status"),
+            "sync_api_response":  d.get("sync_api_response"),
+            "client":             {
+                "name":       client.get("name")       if client else None,
+                "address":    client.get("address")    if client else None,
+                "county":     client.get("county")     if client else None,
+                "client_type": client.get("client_type") if client else None,
+            } if client else None,
+        })
+
+    return {"success": True, "total": total, "page": page, "per_page": per_page, "data": results}

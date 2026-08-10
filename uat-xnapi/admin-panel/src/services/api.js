@@ -118,6 +118,10 @@ export const userSubTypesApi = {
   delete:    (id)        => usersClient.delete(`/user-sub-types/${id}`),
 }
 
+export const webhookApi = {
+  clientUpdated: (params) => usersClient.get('/webhook/client-updated', { params }),
+}
+
 export const userTypeListApi = {
   sync:         ()       => usersClient.get('/user-types/sync-from-upstream'),
   syncSubTypes: (xn_id)  => usersClient.get(`/user-types/sync-sub-types/${xn_id}`),
