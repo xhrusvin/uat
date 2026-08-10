@@ -1192,6 +1192,12 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
         }}
     )
 
+    # Clear cached visa hours so fresh data is fetched next time
+    await db["users"].update_one(
+        {"_id": user_oid},
+        {"$unset": {"work_permit_exemption": "", "consumed_hours": ""}}
+    )
+
     logger.info(f"Assigned user={payload.user_id} ({email}) to shift={payload.shift_id}")
 
     return {
