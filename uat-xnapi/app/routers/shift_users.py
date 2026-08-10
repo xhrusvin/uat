@@ -742,6 +742,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     # ── Fetch visa hours — only for up to 2 users missing consumed_hours ─────
     xn_shift_id_for_visa = shift_doc_for_xn.get("shift_id") if shift_doc_for_xn else None
+    visa_info_map: dict = {}  # uid → visa response info
     if xn_shift_id_for_visa:
         missing = [u for u in users if u.get("xn_user_id") and u.get("consumed_hours") is None][:2]
         if missing:
@@ -752,6 +753,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
                 async def _fetch_visa(client, u):
                     xn_uid = u.get("xn_user_id")
+                    uid_str = str(u["_id"])
                     try:
                         _vr = await client.post(_visa_url, json={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid}, headers=_visa_headers)
                         logger.info(f"[visa] {xn_uid} status={_vr.status_code} body={_vr.text[:200]}")
@@ -762,10 +764,14 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                                 res = await db["users"].update_one({"_id": u["_id"]}, {"$set": _upd})
                                 logger.info(f"[visa] saved {xn_uid} matched={res.matched_count} modified={res.modified_count} upd={_upd}")
                                 u.update(_upd)
+                                visa_info_map[uid_str] = {"status": "fetched", "data": _vd}
                             else:
-                                logger.warning(f"[visa] no fields in response for {xn_uid}: {_vd}")
+                                visa_info_map[uid_str] = {"status": "empty_response", "data": _vd}
+                        else:
+                            visa_info_map[uid_str] = {"status": f"http_{_vr.status_code}", "error": _vr.text[:200]}
                     except Exception as _e:
                         logger.error(f"[visa] {xn_uid}: {_e}")
+                        visa_info_map[uid_str] = {"status": "error", "error": str(_e)}
 
                 async with _httpx_v.AsyncClient(timeout=10.0) as _vc:
                     await _asyncio.gather(*[_fetch_visa(_vc, u) for u in missing])
@@ -992,6 +998,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "visa_hours_remaining": visa_hours_remaining,
             "work_permit_exemption": u.get("work_permit_exemption"),
             "consumed_hours":       u.get("consumed_hours"),
+            "visa_info":            visa_info_map.get(uid_str, {"status": "cached"} if u.get("consumed_hours") is not None else {"status": "not_called"}),
             "gender_id":           str(u["gender_id"]) if u.get("gender_id") else None,
             "prior_shifts":        prior_shifts,
             "work_history":        work_history,
