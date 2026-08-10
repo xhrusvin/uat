@@ -1017,9 +1017,9 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "in_pool":             in_pool,
         })
 
-    # Apply radius filter
+    # Apply radius filter — only filter out users with known distance > radius
     if payload.radius is not None and client_coords:
-        results = [r for r in results if r["distance_km"] is not None and r["distance_km"] <= payload.radius]
+        results = [r for r in results if r["distance_km"] is None or r["distance_km"] <= payload.radius]
 
     # Apply excluded filter
     if payload.excluded is not None:
