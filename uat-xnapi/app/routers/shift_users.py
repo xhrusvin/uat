@@ -577,6 +577,7 @@ class ListShiftUsersRequest(BaseModel):
     county_multiple:    Optional[list]  = None
     user_type_multiple: Optional[list]  = None
     excluded:           Optional[int]   = None
+    in_pool:            Optional[int]   = None
     search:             Optional[str]   = None
     gender_id:          Optional[str]   = None
 
