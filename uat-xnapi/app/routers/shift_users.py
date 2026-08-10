@@ -741,10 +741,12 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     user_ids_page = [u["_id"] for u in users]
 
     # ── Fetch visa hours — only for up to 2 users missing consumed_hours ─────
+    # Use paginated slice so we only call for users visible on this page
     xn_shift_id_for_visa = shift_doc_for_xn.get("shift_id") if shift_doc_for_xn else None
-    visa_info_map: dict = {}  # uid → visa response info
+    visa_info_map: dict = {}
     if xn_shift_id_for_visa:
-        missing = [u for u in users if u.get("xn_user_id") and u.get("consumed_hours") is None][:2]
+        page_users = users[skip: skip + limit] if needs_post_filter else users
+        missing = [u for u in page_users if u.get("xn_user_id") and u.get("consumed_hours") is None][:2]
         if missing:
             try:
                 import httpx as _httpx_v, asyncio as _asyncio
