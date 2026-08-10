@@ -754,16 +754,20 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                 for u in users:
                     xn_uid = u.get("xn_user_id")
                     if not xn_uid:
+                        logger.info(f"[visa] skip user {u['_id']} — no xn_user_id")
                         continue
                     # Skip if already stored
                     if u.get("work_permit_exemption") is not None and u.get("consumed_hours") is not None:
+                        logger.info(f"[visa] skip user {xn_uid} — already stored wp={u.get('work_permit_exemption')} ch={u.get('consumed_hours')}")
                         continue
                     try:
+                        logger.info(f"[visa] calling upstream for xn_uid={xn_uid} shift_id={xn_shift_id_for_visa}")
                         _vr = await _vc.post(
                             _visa_url,
                             json={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid},
                             headers=_visa_headers
                         )
+                        logger.info(f"[visa] response status={_vr.status_code} body={_vr.text[:200]}")
                         if _vr.status_code == 200:
                             _vd = _vr.json().get("data") or {}
                             _update = {}
@@ -774,10 +778,13 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                             if _update:
                                 await db["users"].update_one({"_id": u["_id"]}, {"$set": _update})
                                 u.update(_update)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                                logger.info(f"[visa] saved to user {xn_uid}: {_update}")
+                            else:
+                                logger.warning(f"[visa] no fields to update for {xn_uid}, data={_vd}")
+                    except Exception as _ve:
+                        logger.error(f"[visa] error for {xn_uid}: {_ve}")
+        except Exception as _ve2:
+            logger.error(f"[visa] outer error: {_ve2}")
     last_contacted_map: dict = {}
     if user_ids_page:
         async for su in db["shifts_users"].find(
