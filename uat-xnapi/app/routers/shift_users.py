@@ -733,7 +733,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
          "location": 1, "latitude": 1, "longitude": 1, "status": 1,
          "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
          "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1, "gender_id": 1,
-         "work_permit_exemption": 1, "consumed_hours": 1}
+         "work_permit_exemption": 1, "consumed_hours": 1, "qqi_status_number": 1, "user_sub_type_oids": 1}
     ).sort("first_name", 1).skip(fetch_skip).limit(fetch_limit).to_list(length=fetch_limit)
 
     # Fetch latest shifts_users.call_processed_at per user for last_contacted
@@ -753,12 +753,16 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                     xn_uid = u.get("xn_user_id")
                     try:
                         _vr = await client.post(_visa_url, json={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid}, headers=_visa_headers)
+                        logger.info(f"[visa] {xn_uid} status={_vr.status_code} body={_vr.text[:200]}")
                         if _vr.status_code == 200:
                             _vd = _vr.json().get("data") or {}
                             _upd = {k: _vd[k] for k in ("work_permit_exemption", "consumed_hours") if k in _vd}
                             if _upd:
-                                await db["users"].update_one({"_id": u["_id"]}, {"$set": _upd})
+                                res = await db["users"].update_one({"_id": u["_id"]}, {"$set": _upd})
+                                logger.info(f"[visa] saved {xn_uid} matched={res.matched_count} modified={res.modified_count} upd={_upd}")
                                 u.update(_upd)
+                            else:
+                                logger.warning(f"[visa] no fields in response for {xn_uid}: {_vd}")
                     except Exception as _e:
                         logger.error(f"[visa] {xn_uid}: {_e}")
 
