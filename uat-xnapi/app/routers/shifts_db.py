@@ -1278,7 +1278,8 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
                  "xn_user_id": 1, "designation": 1, "rating": 1,
                  "county": 1, "county_id": 1, "tags": 1, "user_type_id": 1,
-                 "visa_hours_used": 1, "visa_hours_total": 1, "location": 1}
+                 "visa_hours_used": 1, "visa_hours_total": 1, "location": 1,
+                 "consumed_hours": 1, "work_permit_exemption": 1}
             ):
                 avail_user_map[str(u["_id"])] = u
 
@@ -1355,7 +1356,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             ]
 
             # Visa hours — static 8/24
-            visa_hours_remaining = "8/24"
+            visa_hours_remaining = u.get("consumed_hours") or None
 
             # Distance km
             distance_km = None
