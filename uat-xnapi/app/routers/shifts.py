@@ -393,10 +393,36 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         if existing_code:
             await collection.update_one({"shift_xn_id": data["shift_code"]}, {"$set": doc})
             action = "updated"
+            existing = existing_code
         else:
             doc["created_at"] = now
             await collection.insert_one(doc)
             action = "inserted"
+
+    # ── If status changed away from "To Be Filled" → end live outreach ────────
+    status_name = data.get("status_name", "")
+    if status_name and status_name.lower() != "to be filled" and existing:
+        shift_oid = existing["_id"]
+        from app.db.database import _client as _mc2
+        _db2 = _mc2[settings.MONGODB_DB]
+
+        # End any live/paused outreach for this shift (status 1=Live, 2=Paused)
+        await _db2["outreach"].update_many(
+            {"shift_id": shift_oid, "outreach_status": {"$in": [1, 2]}},
+            {"$set": {
+                "outreach_status": 3,
+                "ended_at":        now,
+                "updated_at":      now,
+                "end_reason":      f"shift_status_changed:{status_name}",
+            }}
+        )
+
+        # Disable calls for unprocessed shifts_users
+        await _db2["shifts_users"].update_many(
+            {"shift_id": shift_oid, "call_processed": {"$ne": 1}},
+            {"$set": {"call_enabled": 0, "updated_at": now}}
+        )
+        logger.info(f"[sync-detail] shift {data.get('shift_code')} status={status_name} → ended outreach, disabled calls")
 
     return {
         "success": True,
