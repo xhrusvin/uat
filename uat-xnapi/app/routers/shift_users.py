@@ -646,6 +646,17 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     # Query only Enabled users — no shifts_users join
     user_filter: dict = {"status": "Enabled"}
+
+    # Filter by shift's user_type if no explicit user_type_multiple provided
+    if not payload.user_type_multiple:
+        shift_user_type = target_shift.get("user_type") if target_shift else None
+        if shift_user_type:
+            user_filter["$or"] = [
+                {"designation":  shift_user_type},
+                {"user_type_id": {"$exists": True}},
+            ]
+            # Use designation match only
+            user_filter = {"status": "Enabled", "designation": shift_user_type}
     if upstream_filter:
         user_filter.update(upstream_filter)
 
