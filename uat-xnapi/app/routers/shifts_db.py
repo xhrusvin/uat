@@ -1059,10 +1059,11 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         # Prior shifts at this client — count shifts where this user was assigned (same as available_staff)
         prior_shifts = 0
         last_at_client_req = None
-        if u and shift_client_id:
+        _req_client_id = doc.get("client_id") if doc else None
+        if u and _req_client_id:
             user_email_req   = u.get("email")
             user_name_req    = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip()
-            _req_shift_filter = {"client_id": shift_client_id, "assigned_staff": {"$exists": True, "$ne": None}}
+            _req_shift_filter = {"client_id": _req_client_id, "assigned_staff": {"$exists": True, "$ne": None}}
             if user_email_req:
                 _req_shift_filter["staff_email"] = user_email_req
             elif user_name_req:
