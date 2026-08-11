@@ -828,9 +828,11 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
         "call_enabled":  1,
         "call_processed": 0,
     })
+    requested = await db["requested_confirm"].count_documents({"shift_id": shift_oid})
     return {
         "available":     available,
-        "requested":     0,
+        "requested":     requested,
+        "requested_flag": 1 if requested > 0 else 0,
         "with_outreach": with_outreach,
         "declined":      declined,
         "no_reply":      no_reply,
@@ -874,6 +876,7 @@ async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
         "number_of_staff":    total,
         "available":          available,
         "requested":          requested,
+        "requested_flag":     1 if requested > 0 else 0,
         "declined":           declined,
         "no_reply":           no_reply,
         "phone":              phone,
