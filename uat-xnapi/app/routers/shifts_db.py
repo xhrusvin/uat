@@ -1056,19 +1056,39 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
             else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
 
-        # Prior shifts
+        # Prior shifts at this client — count shifts where this user was assigned (same as available_staff)
         prior_shifts = 0
-        if sid and ObjectId.is_valid(sid):
-            prior_shifts = await db["shifts_users"].count_documents({
-                "user_id":      ObjectId(sid),
-                "availability": 1,
-            })
+        last_at_client_req = None
+        if u and shift_client_id:
+            user_email_req   = u.get("email")
+            user_name_req    = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip()
+            _req_shift_filter = {"client_id": shift_client_id, "assigned_staff": {"$exists": True, "$ne": None}}
+            if user_email_req:
+                _req_shift_filter["staff_email"] = user_email_req
+            elif user_name_req:
+                _req_shift_filter["assigned_staff"] = {"$regex": f"^{user_name_req}$", "$options": "i"}
+            prior_shifts = await db["shifts"].count_documents(_req_shift_filter)
+            if prior_shifts > 0:
+                last_req_shift = await db["shifts"].find_one(
+                    _req_shift_filter, sort=[("assigned_at", -1)], projection={"assigned_at": 1}
+                )
+                if last_req_shift and last_req_shift.get("assigned_at"):
+                    from datetime import datetime as _dt_rq, timezone as _tz_rq
+                    lc_rq = last_req_shift["assigned_at"]
+                    if hasattr(lc_rq, "tzinfo") and lc_rq.tzinfo is None:
+                        lc_rq = lc_rq.replace(tzinfo=_tz_rq.utc)
+                    diff_rq = int((_dt_rq.now(_tz_rq.utc) - lc_rq).total_seconds())
+                    if diff_rq < 60:       last_at_client_req = "just now"
+                    elif diff_rq < 3600:   last_at_client_req = f"{diff_rq//60} minute{'s' if diff_rq//60!=1 else ''} ago"
+                    elif diff_rq < 86400:  last_at_client_req = f"{diff_rq//3600} hour{'s' if diff_rq//3600!=1 else ''} ago"
+                    else:                  last_at_client_req = f"{diff_rq//86400} day{'s' if diff_rq//86400!=1 else ''} ago"
 
-        work_history = None
-        if prior_shifts > 0 and last_contacted:
-            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_contacted}"
+        if prior_shifts > 0 and last_at_client_req:
+            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_at_client_req}"
         elif prior_shifts > 0:
             work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''}"
+        else:
+            work_history = "0 Shifts"
 
         requested_staff.append({
             "id":                sid,
