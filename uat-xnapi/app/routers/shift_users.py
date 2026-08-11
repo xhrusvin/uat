@@ -755,7 +755,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     visa_info_map: dict = {}
     if xn_shift_id_for_visa:
         page_users = users[skip: skip + limit] if needs_post_filter else users
-        missing = [u for u in page_users if u.get("xn_user_id") and u.get("consumed_hours") is None][:2]
+        missing = [u for u in page_users if u.get("xn_user_id") and u.get("consumed_hours") is None]
         logger.info(f"[visa] page_users={len(page_users)} missing={len(missing)} shift_xn={xn_shift_id_for_visa}")
         if missing:
             try:
