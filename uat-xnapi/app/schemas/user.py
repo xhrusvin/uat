@@ -19,8 +19,10 @@ class Token(BaseModel):
 # ── User ──────────────────────────────────────────────────────────────────────
 
 class UserUpdate(BaseModel):
-    xn_user_id: Optional[str] = Field(None, description="XpressHealth portal user ID")
-    designation: Optional[str] = Field(None, description="User job designation/role")
+    xn_user_id:          Optional[str]  = Field(None, description="XpressHealth portal user ID")
+    designation:         Optional[str]  = Field(None, description="User job designation/role")
+    consumed_hours:      Optional[str]  = None
+    work_permit_exemption: Optional[bool] = None
 
 
 class UserResponse(BaseModel):

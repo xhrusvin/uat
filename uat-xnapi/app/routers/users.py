@@ -136,6 +136,18 @@ async def update_user(request: Request, user_id: str, payload: UserUpdate):
     if "designation" in update_data:
         user.designation = update_data["designation"]
 
+    # Save visa fields directly via Motor (not in Beanie model)
+    extra = {}
+    if "consumed_hours" in update_data:
+        extra["consumed_hours"] = update_data["consumed_hours"]
+    if "work_permit_exemption" in update_data:
+        extra["work_permit_exemption"] = update_data["work_permit_exemption"]
+    if extra:
+        from app.db.database import _client
+        from app.core.config import settings as _settings
+        _db = _client[_settings.MONGODB_DB]
+        await _db["users"].update_one({"_id": oid}, {"$set": extra})
+
     user.updated_at = datetime.now(timezone.utc)
     await user.save()
     return _user_to_response(user)
