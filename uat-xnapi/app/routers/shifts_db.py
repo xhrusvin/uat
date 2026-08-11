@@ -1317,35 +1317,40 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             raw_outreach_oid = su.get("outreach_id")
             user_oid_val = su.get("user_id")
 
-            # Prior shifts at this client
+            # Prior shifts at this client — count shifts where this user was assigned_staff
             prior_shifts_here = 0
+            last_at_client_str = None
             if user_oid_val and shift_client_id:
-                prior_client_shift_ids = await db["shifts"].distinct("_id", {"client_id": shift_client_id})
-                if prior_client_shift_ids:
-                    prior_shifts_here = await db["shifts_users"].count_documents({
-                        "user_id":  user_oid_val if isinstance(user_oid_val, ObjectId) else ObjectId(str(user_oid_val)),
-                        "shift_id": {"$in": prior_client_shift_ids},
-                        "availability": 1,
-                    })
+                user_email = u.get("email")
+                user_full_name = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip()
+                # Count shifts at this client where this user was assigned
+                _shift_filter = {
+                    "client_id": shift_client_id,
+                    "assigned_staff": {"$exists": True, "$ne": None}
+                }
+                if user_email:
+                    _shift_filter["staff_email"] = user_email
+                elif user_full_name:
+                    _shift_filter["assigned_staff"] = {"$regex": f"^{user_full_name}$", "$options": "i"}
 
-            # Last contacted (latest call_processed_at across all shifts)
-            last_su = await db["shifts_users"].find_one(
-                {"user_id": user_oid_val, "call_processed_at": {"$ne": None}},
-                sort=[("call_processed_at", -1)],
-                projection={"call_processed_at": 1}
-            )
-            last_contacted = None
-            if last_su and last_su.get("call_processed_at"):
-                from datetime import timezone as _tz
-                lc = last_su["call_processed_at"]
-                if hasattr(lc, "tzinfo") and lc.tzinfo is None:
-                    lc = lc.replace(tzinfo=_tz.utc)
-                now_utc = datetime.now(_tz.utc)
-                diff = int((now_utc - lc).total_seconds())
-                if diff < 60:       last_contacted = "just now"
-                elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
-                elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
-                else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
+                prior_shifts_here = await db["shifts"].count_documents(_shift_filter)
+
+                if prior_shifts_here > 0:
+                    last_shift = await db["shifts"].find_one(
+                        _shift_filter,
+                        sort=[("assigned_at", -1)],
+                        projection={"assigned_at": 1}
+                    )
+                    if last_shift and last_shift.get("assigned_at"):
+                        from datetime import timezone as _tz2
+                        lc2 = last_shift["assigned_at"]
+                        if hasattr(lc2, "tzinfo") and lc2.tzinfo is None:
+                            lc2 = lc2.replace(tzinfo=_tz2.utc)
+                        diff2 = int((datetime.now(_tz2.utc) - lc2).total_seconds())
+                        if diff2 < 60:       last_at_client_str = "just now"
+                        elif diff2 < 3600:   last_at_client_str = f"{diff2//60} minute{'s' if diff2//60!=1 else ''} ago"
+                        elif diff2 < 86400:  last_at_client_str = f"{diff2//3600} hour{'s' if diff2//3600!=1 else ''} ago"
+                        else:                last_at_client_str = f"{diff2//86400} day{'s' if diff2//86400!=1 else ''} ago"
 
             # Staff tags
             raw_tags = u.get("tags") or []
@@ -1369,29 +1374,6 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             response_text = su.get("response_text")
             response_time = su.get("response_time")
             call_details  = None
-
-            # Work history — prior shifts at this client + time ago
-            last_at_client_str = None
-            if user_oid_val and shift_client_id and prior_shifts_here > 0:
-                last_su_client = await db["shifts_users"].find_one(
-                    {
-                        "user_id":  user_oid_val if isinstance(user_oid_val, ObjectId) else ObjectId(str(user_oid_val)),
-                        "shift_id": {"$in": await db["shifts"].distinct("_id", {"client_id": shift_client_id})},
-                        "availability": 1,
-                    },
-                    sort=[("assigned_at", -1)],
-                    projection={"assigned_at": 1}
-                )
-                if last_su_client and last_su_client.get("assigned_at"):
-                    from datetime import timezone as _tz2
-                    lc2 = last_su_client["assigned_at"]
-                    if hasattr(lc2, "tzinfo") and lc2.tzinfo is None:
-                        lc2 = lc2.replace(tzinfo=_tz2.utc)
-                    diff2 = int((datetime.now(_tz2.utc) - lc2).total_seconds())
-                    if diff2 < 60:       last_at_client_str = "just now"
-                    elif diff2 < 3600:   last_at_client_str = f"{diff2//60} minute{'s' if diff2//60!=1 else ''} ago"
-                    elif diff2 < 86400:  last_at_client_str = f"{diff2//3600} hour{'s' if diff2//3600!=1 else ''} ago"
-                    else:                last_at_client_str = f"{diff2//86400} day{'s' if diff2//86400!=1 else ''} ago"
 
             if prior_shifts_here > 0 and last_at_client_str:
                 work_history = f"{prior_shifts_here} Shift{'s' if prior_shifts_here != 1 else ''} · {last_at_client_str}"
