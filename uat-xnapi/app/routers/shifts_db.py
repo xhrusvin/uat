@@ -1104,21 +1104,24 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             if not v: return None
             if hasattr(v, "isoformat"): return v.isoformat()
             return str(v)
+        _avail_map = {0: "Not Available", 1: "Available", 3: "Voicemail", 4: "Call Not Attended", 5: "In Call", 6: "Call Not Triggered"}
+        _avail_val = rc.get("availability") if rc else None
         confirm_details = {
-            "confirmed":          1 if rc else 0,
-            "confirmed_at":       _iso(rc.get("confirmed_at"))  if rc else None,
-            "confirmed_by":       rc.get("confirmed_by")        if rc else None,
-            "call_sent":          rc.get("call_sent")           if rc else None,
-            "call_sent_at":       _iso(rc.get("call_sent_at"))  if rc else None,
-            "agent_id":           rc.get("agent_id")            if rc else None,
-            "availability":       rc.get("availability")        if rc else None,
-            "call_status":        rc.get("call_status")         if rc else None,
-            "call_summary_title": rc.get("call_summary_title")  if rc else None,
-            "customer_feedback":  rc.get("customer_feedback")   if rc else None,
-            "response_text":      rc.get("response_text")       if rc else None,
-            "response_time":      rc.get("response_time")       if rc else None,
-            "started_at":         _iso(rc.get("started_at"))    if rc else None,
-            "ended_at":           _iso(rc.get("ended_at"))      if rc else None,
+            "confirmed":               1 if rc else 0,
+            "confirmed_at":            _iso(rc.get("confirmed_at"))  if rc else None,
+            "confirmed_by":            rc.get("confirmed_by")        if rc else None,
+            "call_sent":               rc.get("call_sent")           if rc else None,
+            "call_sent_at":            _iso(rc.get("call_sent_at"))  if rc else None,
+            "agent_id":                rc.get("agent_id")            if rc else None,
+            "availability":            _avail_val,
+            "availability_status_text": _avail_map.get(_avail_val, "Unknown") if _avail_val is not None else None,
+            "call_status":             rc.get("call_status")         if rc else None,
+            "call_summary_title":      rc.get("call_summary_title")  if rc else None,
+            "customer_feedback":       rc.get("customer_feedback")   if rc else None,
+            "response_text":           rc.get("response_text")       if rc else None,
+            "response_time":           rc.get("response_time")       if rc else None,
+            "started_at":              _iso(rc.get("started_at"))    if rc else None,
+            "ended_at":                _iso(rc.get("ended_at"))      if rc else None,
         }
 
         requested_staff.append({

@@ -1722,3 +1722,101 @@ async def get_transcription_audio(request: Request, payload: TranscriptionReques
         media_type="audio/mpeg",
         headers={"Content-Disposition": "inline; filename=call_audio.mp3"},
     )
+
+
+# ── POST /outreach/confirm-transcription ─────────────────────────────────────
+
+class ConfirmTranscriptionRequest(BaseModel):
+    conversation_id: str   # requested_confirm.elevenlabs_conversation_id
+
+
+@router.post(
+    "/confirm-transcription",
+    summary="Get transcription for a confirm call (requested_confirm collection)",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def get_confirm_transcription(request: Request, payload: ConfirmTranscriptionRequest):
+    db   = _get_db()
+
+    # Find in requested_confirm by elevenlabs_conversation_id
+    rc = await db["requested_confirm"].find_one(
+        {"elevenlabs_conversation_id": payload.conversation_id}
+    )
+    if not rc:
+        raise HTTPException(status_code=404, detail="No confirm record found for this conversation_id")
+
+    # Fetch transcript from shift_booking_conv using same conversation_id
+    conv = await db["shift_booking_conv"].find_one(
+        {"elevenlabs_conversation_id": payload.conversation_id}
+    )
+
+    def _fmt(dt):
+        return dt.isoformat() if dt and hasattr(dt, "isoformat") else None
+
+    turns = []
+    if conv:
+        for turn in conv.get("turns", []):
+            turns.append({
+                "role":    turn.get("role"),
+                "message": turn.get("message") or turn.get("text"),
+                "ts":      _fmt(turn.get("ts")),
+            })
+
+    return {
+        "success": True,
+        "data": {
+            "id":                         str(rc["_id"]),
+            "conversation_id":            payload.conversation_id,
+            "shift_id":                   str(rc.get("shift_id", "")),
+            "staff_id":                   str(rc.get("staff_id", "")),
+            "staff_name":                 rc.get("staff_name"),
+            "staff_email":                rc.get("staff_email"),
+            "shift_code":                 rc.get("shift_code"),
+            "availability":               rc.get("availability"),
+            "call_status":                rc.get("call_status"),
+            "response_text":              rc.get("response_text"),
+            "response_time":              rc.get("response_time"),
+            "started_at":                 _fmt(rc.get("started_at")),
+            "ended_at":                   _fmt(rc.get("ended_at")),
+            "call_summary_title":         rc.get("call_summary_title"),
+            "customer_feedback":          rc.get("customer_feedback"),
+            "turns":                      turns,
+            "has_audio":                  bool(payload.conversation_id),
+        },
+    }
+
+
+# ── POST /outreach/confirm-transcription/audio ───────────────────────────────
+
+@router.post(
+    "/confirm-transcription/audio",
+    summary="Get audio for a confirm call",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def get_confirm_transcription_audio(request: Request, payload: ConfirmTranscriptionRequest):
+    import os
+    from fastapi.responses import StreamingResponse
+
+    el_conv_id = payload.conversation_id
+    if not el_conv_id:
+        raise HTTPException(status_code=400, detail="conversation_id is required")
+
+    api_key = settings.ELEVENLABS_API_KEY or ""
+    url     = f"https://api.elevenlabs.io/v1/convai/conversations/{el_conv_id}/audio"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, headers={"xi-api-key": api_key})
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Failed to fetch audio: {resp.text[:200]}"
+        )
+
+    return StreamingResponse(
+        iter([resp.content]),
+        media_type="audio/mpeg",
+        headers={"Content-Disposition": f"attachment; filename=confirm_{el_conv_id}.mp3"}
+    )
