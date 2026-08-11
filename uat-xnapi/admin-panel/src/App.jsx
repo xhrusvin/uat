@@ -16,6 +16,7 @@ import QQIStatusListPage from './pages/QQIStatusListPage'
 import QQIStatusesPage from './pages/QQIStatusesPage'
 import UserTypeListPage from './pages/UserTypeListPage'
 import ClientUpdatedPage from './pages/ClientUpdatedPage'
+import WatiPage from './pages/WatiPage'
 import ShiftUpdatedPage from './pages/ShiftUpdatedPage'
 import StaffUpdatedPage from './pages/StaffUpdatedPage'
 import ShiftsPage from './pages/ShiftsPage'
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="xn-api/qqi-status-list"       element={<QQIStatusListPage />} />
           <Route path="xn-api/user-type-list"          element={<UserTypeListPage />} />
           <Route path="webhook/client-updated"          element={<ClientUpdatedPage />} />
+          <Route path="whatsapp/broadcast"             element={<WatiPage />} />
           <Route path="master/qqi-statuses"          element={<QQIStatusesPage />} />
           <Route path="webhook/document-uploaded"  element={<DocumentUploadedPage />} />
           <Route path="cron/sync-shifts"             element={<CronPage />} />

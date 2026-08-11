@@ -118,6 +118,14 @@ export const userSubTypesApi = {
   delete:    (id)        => usersClient.delete(`/user-sub-types/${id}`),
 }
 
+export const watiApi = {
+  broadcasts:  (p)    => usersClient.get('/wati/broadcasts', { params: p }),
+  messages:    (p)    => usersClient.get('/wati/messages', { params: p }),
+  responses:   (p)    => usersClient.get('/wati/responses', { params: p }),
+  usersList:   (p)    => usersClient.get('/users/', { params: p }),
+  broadcast:   (data) => usersClient.post('/wati/broadcast', data),
+}
+
 export const webhookApi = {
   clientUpdated: (params) => usersClient.get('/webhook/client-updated', { params }),
 }
