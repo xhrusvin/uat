@@ -1426,7 +1426,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "distance_km":         distance_km,
                 "call_details":        call_details,
                 "work_history":        work_history,
-                "ignored":             su.get("ignored", 0),
+                "workfat_new":         0,
                 "flag":                su.get("flag", 0),
                 "confirmed":           1 if str(uid_str) == str(doc.get("staff_id", "")) or u.get("email") == doc.get("staff_email") else 0,
                 # Confirm staff modal fields (Image 2)
