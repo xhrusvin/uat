@@ -869,10 +869,11 @@ async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
         "shift_id":    shift_oid,
         "outreach_id": {"$exists": True, "$ne": None},
     })
+    requested = await db["requested_confirm"].count_documents({"shift_id": shift_oid})
     return {
         "number_of_staff":    total,
         "available":          available,
-        "requested":          0,
+        "requested":          requested,
         "declined":           declined,
         "no_reply":           no_reply,
         "phone":              phone,
