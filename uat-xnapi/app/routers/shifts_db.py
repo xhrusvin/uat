@@ -1046,11 +1046,11 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             sort=[("call_processed_at", -1)], projection={"call_processed_at": 1}
         ) if sid and ObjectId.is_valid(sid) else None
         if lc_su and lc_su.get("call_processed_at"):
-            from datetime import timezone as _tz_r
+            from datetime import datetime as _dt_r, timezone as _tz_r
             lc = lc_su["call_processed_at"]
             if hasattr(lc, "tzinfo") and lc.tzinfo is None:
                 lc = lc.replace(tzinfo=_tz_r.utc)
-            diff = int((datetime.now(_tz_r.utc) - lc).total_seconds())
+            diff = int((_dt_r.now(_tz_r.utc) - lc).total_seconds())
             if diff < 60:       last_contacted = "just now"
             elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
             elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
