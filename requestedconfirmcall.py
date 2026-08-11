@@ -72,8 +72,8 @@ def make_requested_confirm_call(app, phone: str, user_doc: dict, user_object_id,
     params = urllib.parse.urlencode(user_doc, doseq=True)
     try:
         with app.app_context():
-            #e164_phone = phone.replace(" ", "")
-            e164_phone = "+917034526952"
+            e164_phone = phone.replace(" ", "")
+            #e164_phone = "+917034526952"
             connection_id = os.getenv('TELNYX_CONNECTION_ID')
             socket_uri = os.getenv('SOCKET_URI_REQUESTED_CONFIRM')
             
