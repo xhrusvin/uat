@@ -1017,6 +1017,14 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         ):
             req_user_map[str(u["_id"])] = u
 
+    # Load requested_confirm docs for this shift
+    req_confirm_map: dict = {}
+    if req_user_oids:
+        async for rc in db["requested_confirm"].find(
+            {"shift_id": shift_oid, "staff_id": {"$in": req_user_oids}},
+        ):
+            req_confirm_map[str(rc.get("staff_id", ""))] = rc
+
     from app.routers.staff import _haversine_km as _hav_r, _user_coords as _uc_r
 
     requested_staff = []
@@ -1091,6 +1099,28 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         else:
             work_history = "0 Shifts"
 
+        rc = req_confirm_map.get(sid)
+        def _iso(v):
+            if not v: return None
+            if hasattr(v, "isoformat"): return v.isoformat()
+            return str(v)
+        confirm_details = {
+            "confirmed":          1 if rc else 0,
+            "confirmed_at":       _iso(rc.get("confirmed_at"))  if rc else None,
+            "confirmed_by":       rc.get("confirmed_by")        if rc else None,
+            "call_sent":          rc.get("call_sent")           if rc else None,
+            "call_sent_at":       _iso(rc.get("call_sent_at"))  if rc else None,
+            "agent_id":           rc.get("agent_id")            if rc else None,
+            "availability":       rc.get("availability")        if rc else None,
+            "call_status":        rc.get("call_status")         if rc else None,
+            "call_summary_title": rc.get("call_summary_title")  if rc else None,
+            "customer_feedback":  rc.get("customer_feedback")   if rc else None,
+            "response_text":      rc.get("response_text")       if rc else None,
+            "response_time":      rc.get("response_time")       if rc else None,
+            "started_at":         _iso(rc.get("started_at"))    if rc else None,
+            "ended_at":           _iso(rc.get("ended_at"))      if rc else None,
+        }
+
         requested_staff.append({
             "id":                sid,
             "xn_staff_id":       rs.get("xn_staff_id"),
@@ -1104,6 +1134,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "county_id":         str(u["county_id"]) if u.get("county_id") else None,
             "staff_tags":        staff_tags,
             "work_history":      work_history,
+            "confirm_details":   confirm_details,
             "prior_shifts":      prior_shifts,
             "last_contacted":    last_contacted,
             "distance_km":       dist_km,
