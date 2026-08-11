@@ -1732,57 +1732,52 @@ class ConfirmTranscriptionRequest(BaseModel):
 
 @router.post(
     "/confirm-transcription",
-    summary="Get transcription for a confirm call (requested_confirm collection)",
+    summary="Get transcription for a confirm call",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("60/minute")
 async def get_confirm_transcription(request: Request, payload: ConfirmTranscriptionRequest):
-    db   = _get_db()
+    db = _get_db()
 
-    # Find in requested_confirm by elevenlabs_conversation_id
-    rc = await db["requested_confirm"].find_one(
+    # Find in requested_confirm_call_conversations by elevenlabs_conversation_id
+    conv = await db["requested_confirm_call_conversations"].find_one(
         {"elevenlabs_conversation_id": payload.conversation_id}
     )
-    if not rc:
-        raise HTTPException(status_code=404, detail="No confirm record found for this conversation_id")
-
-    # Fetch transcript from shift_booking_conv using same conversation_id
-    conv = await db["shift_booking_conv"].find_one(
-        {"elevenlabs_conversation_id": payload.conversation_id}
-    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="No conversation found for this conversation_id")
 
     def _fmt(dt):
         return dt.isoformat() if dt and hasattr(dt, "isoformat") else None
 
     turns = []
-    if conv:
-        for turn in conv.get("turns", []):
-            turns.append({
-                "role":    turn.get("role"),
-                "message": turn.get("message") or turn.get("text"),
-                "ts":      _fmt(turn.get("ts")),
-            })
+    for turn in conv.get("turns", []):
+        turns.append({
+            "role":    turn.get("role"),
+            "message": turn.get("message") or turn.get("text"),
+            "ts":      _fmt(turn.get("ts")),
+        })
 
     return {
         "success": True,
         "data": {
-            "id":                         str(rc["_id"]),
-            "conversation_id":            payload.conversation_id,
-            "shift_id":                   str(rc.get("shift_id", "")),
-            "staff_id":                   str(rc.get("staff_id", "")),
-            "staff_name":                 rc.get("staff_name"),
-            "staff_email":                rc.get("staff_email"),
-            "shift_code":                 rc.get("shift_code"),
-            "availability":               rc.get("availability"),
-            "call_status":                rc.get("call_status"),
-            "response_text":              rc.get("response_text"),
-            "response_time":              rc.get("response_time"),
-            "started_at":                 _fmt(rc.get("started_at")),
-            "ended_at":                   _fmt(rc.get("ended_at")),
-            "call_summary_title":         rc.get("call_summary_title"),
-            "customer_feedback":          rc.get("customer_feedback"),
+            "id":                         str(conv["_id"]),
+            "conversation_id":            conv.get("elevenlabs_conversation_id"),
+            "shift_id":                   conv.get("shift_id"),
+            "shift_code":                 conv.get("shift_code"),
+            "shift_date":                 conv.get("shift_date"),
+            "start_time":                 conv.get("start_time"),
+            "end_time":                   conv.get("end_time"),
+            "client_name":                conv.get("client_name"),
+            "location":                   conv.get("location"),
+            "user_type":                  conv.get("user_type"),
+            "name":                       conv.get("name"),
+            "phone":                      conv.get("phone"),
+            "designation":                conv.get("designation"),
+            "call_sid":                   conv.get("call_sid"),
+            "started_at":                 _fmt(conv.get("started_at")),
+            "ended_at":                   _fmt(conv.get("ended_at")),
             "turns":                      turns,
-            "has_audio":                  bool(payload.conversation_id),
+            "has_audio":                  bool(conv.get("elevenlabs_conversation_id")),
         },
     }
 
@@ -1802,6 +1797,13 @@ async def get_confirm_transcription_audio(request: Request, payload: ConfirmTran
     el_conv_id = payload.conversation_id
     if not el_conv_id:
         raise HTTPException(status_code=400, detail="conversation_id is required")
+
+    # Verify conversation exists
+    conv = await _get_db()["requested_confirm_call_conversations"].find_one(
+        {"elevenlabs_conversation_id": el_conv_id}, {"_id": 1}
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="No conversation found for this conversation_id")
 
     api_key = settings.ELEVENLABS_API_KEY or ""
     url     = f"https://api.elevenlabs.io/v1/convai/conversations/{el_conv_id}/audio"
