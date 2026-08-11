@@ -1165,7 +1165,8 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             },
         })
 
-    s["requested_staff"] = []
+    s["requested_staff"] = requested_staff
+    s.pop("requested_staff_list", None)
 
     # Fetch pool users from shifts_pool collection
     pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid}).to_list(length=500)
