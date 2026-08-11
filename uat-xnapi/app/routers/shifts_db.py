@@ -1320,6 +1320,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             # Prior shifts at this client — count shifts where this user was assigned_staff
             prior_shifts_here = 0
             last_at_client_str = None
+            last_contacted = None
             if user_oid_val and shift_client_id:
                 user_email = u.get("email")
                 user_full_name = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip()
