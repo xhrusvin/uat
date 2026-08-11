@@ -29,8 +29,9 @@ class Settings(BaseSettings):
     SHIFT_INTERNAL_API_KEY: str = "ZDGnj76YJDfg56Ij7YNBkm7Yvfh67B"
 
     # ── ElevenLabs ────────────────────────────────────────────────────────────
-    WATI_API_URL:    str = ""   # e.g. https://live-server.wati.io
-    WATI_API_TOKEN:  str = ""   # Bearer token from WATI
+    ELEVENLABS_API_KEY: str = ""
+    WATI_API_URL:    str = ""
+    WATI_API_TOKEN:  str = ""
 
 
 settings = Settings()
