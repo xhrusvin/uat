@@ -1122,6 +1122,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "response_time":           rc.get("response_time")       if rc else None,
             "started_at":              _iso(rc.get("started_at"))    if rc else None,
             "ended_at":                _iso(rc.get("ended_at"))      if rc else None,
+            "conversation_id":         rc.get("elevenlabs_conversation_id") if rc else None,
         }
 
         requested_staff.append({
