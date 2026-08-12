@@ -240,18 +240,8 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
     )
     now = datetime.now(timezone.utc)
 
-    if latest_outreach and latest_outreach.get("outreach_status") == 3:
-        # Delete all previous outreach records for this shift
-        await db["outreach"].delete_many({"shift_id": shift_oid})
-        # Delete all shifts_users for this shift (except availability == 1 — already confirmed)
-        await db["shifts_users"].delete_many({
-            "shift_id":    shift_oid,
-            "availability": {"$ne": 1},
-        })
-        round_number = 1
-    else:
-        outreach_count = await db["outreach"].count_documents({"shift_id": shift_oid})
-        round_number   = outreach_count + 1
+    outreach_count = await db["outreach"].count_documents({"shift_id": shift_oid})
+    round_number   = outreach_count + 1
 
     # Create outreach document
     doc = {
