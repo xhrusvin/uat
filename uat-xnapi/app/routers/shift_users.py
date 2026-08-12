@@ -157,6 +157,20 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
         )
     }
 
+    # Remove users from pool that are NOT in the new payload (sync pool to payload)
+    all_pool_users = {
+        str(su["user_id"])
+        async for su in db["shifts_pool"].find({"shift_id": shift_oid}, {"user_id": 1})
+    }
+    to_remove = all_pool_users - {str(oid) for oid in user_oids}
+    removed = 0
+    if to_remove:
+        remove_oids = [ObjectId(uid) for uid in to_remove if ObjectId.is_valid(uid)]
+        if remove_oids:
+            res = await db["shifts_pool"].delete_many({"shift_id": shift_oid, "user_id": {"$in": remove_oids}})
+            removed = res.deleted_count
+            logger.info(f"shifts_pool bulk: removed {removed} users not in new payload")
+
     inserted = skipped_dup = skipped_missing = 0
     inserted_ids = []
 
@@ -188,6 +202,7 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
         "data": {
             "shift_id":             payload.shift_id,
             "inserted":             inserted,
+            "removed":              removed,
             "skipped_duplicate":    skipped_dup,
             "skipped_missing_user": skipped_missing,
             "inserted_ids":         inserted_ids,
