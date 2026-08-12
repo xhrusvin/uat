@@ -1004,7 +1004,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
         # in_pool — from batch
         in_pool   = 1 if uid_str in pool_user_set else 0
-        requested = 0
+        requested = 1 if uid_str in requested_user_ids else 0
 
         # Visa hours remaining
         visa_used  = u.get("visa_hours_used")
