@@ -4,6 +4,9 @@ import logging
 from flask import current_app, jsonify, request
 from bson import ObjectId
 from datetime import datetime
+from bson import json_util
+import json
+from flask import jsonify
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -161,10 +164,10 @@ def register_shift_booking_whatsapp_routes(app):
         record["last_name"] = last_name
         record["full_name"] = full_name
 
-        return jsonify({
+        return jsonify(json.loads(json_util.dumps({
             "record": record,
             "shift": shift_doc,
-        }), 200
+        }))), 200
 
         # Check if all calls processed → end outreach (run in background)
         threading.Thread(
