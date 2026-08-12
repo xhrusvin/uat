@@ -1047,6 +1047,12 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             ucoords = _uc_r(u)
             if ucoords:
                 dist_km = _hav_r(float(cl["latitude"]), float(cl["longitude"]), ucoords[0], ucoords[1])
+        # Parse distance_km from rs.distance string if no coords e.g. "9.1 Km" → 9.1
+        if dist_km is None and rs.get("distance"):
+            try:
+                dist_km = round(float(str(rs["distance"]).lower().replace("km","").replace(",","").strip()), 2)
+            except Exception:
+                pass
         # Fallback to API distance string
         dist_display = rs.get("distance") or (f"{round(dist_km, 1)}km" if dist_km is not None else None)
 
@@ -1425,18 +1431,17 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             # Visa hours — static 8/24
             visa_hours_remaining = u.get("consumed_hours") or None
 
-            # Distance km — calculate from coords or parse from stored distance string
+            # Distance km — calculate from coords or parse from rs.distance string
             distance_km = None
             if client_lat is not None and client_lng is not None:
                 ucoords = _uc(u)
                 if ucoords:
                     distance_km = _hav(float(client_lat), float(client_lng), ucoords[0], ucoords[1])
             if distance_km is None:
-                # Fallback: parse from shifts_users.distance or su.distance field e.g. "9.1 Km"
-                dist_raw = su.get("distance") or su.get("distance_km")
+                dist_raw = rs.get("distance") or rs.get("distance_km") or su.get("distance") or su.get("distance_km")
                 if dist_raw is not None:
                     try:
-                        distance_km = float(str(dist_raw).lower().replace("km", "").replace(",", "").strip())
+                        distance_km = round(float(str(dist_raw).lower().replace("km", "").replace(",", "").strip()), 2)
                     except Exception:
                         pass
 
