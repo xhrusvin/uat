@@ -403,7 +403,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
     status_name = data.get("status_name", "")
     status_val  = data.get("status", "")
     _unfilled = {"to be filled", "to be assigned"}
-    _is_unfilled = (status_name.lower() in _unfilled) or (status_val.lower() in _unfilled)
+    _is_unfilled = (status_name.lower() in _unfilled) or (str(status_val).lower() in _unfilled)
     if not _is_unfilled and existing:
         shift_oid = existing["_id"]
         from app.db.database import _client as _mc2
