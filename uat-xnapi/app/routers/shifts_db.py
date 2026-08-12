@@ -1425,12 +1425,20 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             # Visa hours — static 8/24
             visa_hours_remaining = u.get("consumed_hours") or None
 
-            # Distance km
+            # Distance km — calculate from coords or parse from stored distance string
             distance_km = None
             if client_lat is not None and client_lng is not None:
                 ucoords = _uc(u)
                 if ucoords:
                     distance_km = _hav(float(client_lat), float(client_lng), ucoords[0], ucoords[1])
+            if distance_km is None:
+                # Fallback: parse from shifts_users.distance or su.distance field e.g. "9.1 Km"
+                dist_raw = su.get("distance") or su.get("distance_km")
+                if dist_raw is not None:
+                    try:
+                        distance_km = float(str(dist_raw).lower().replace("km", "").replace(",", "").strip())
+                    except Exception:
+                        pass
 
             # Response text + time — directly from shifts_users
             response_text = su.get("response_text")
