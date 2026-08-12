@@ -1467,7 +1467,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "shift_id":            str(su.get("shift_id", "")) if su.get("shift_id") else None,
                 "outreach_id":         str(raw_outreach_oid) if raw_outreach_oid else None,
                 "conversation_id":     su.get("conversation_id"),
-                "distance_km":         distance_km,
+                "distance_km":         round(float(distance_km), 2) if distance_km is not None else None,
                 "call_details":        call_details,
                 "work_history":        work_history,
                 "workfat_new":         0,
