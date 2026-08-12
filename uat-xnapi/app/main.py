@@ -7,7 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.db.database import close_db, connect_db
-from app.routers import auth, users, shifts, shifts_db, common, clients, recruitments, criteria, shift_users, staff, sequences, outreach, user_types, activities, outreach_end_reasons, shifts_group, outreach_group, webhook_monitor, prompts, genders, user_sub_types, qqi_statuses, wati
+from app.routers import auth, users, shifts, shifts_db, common, clients, recruitments, criteria, shift_users, staff, sequences, outreach, user_types, activities, outreach_end_reasons, shifts_group, outreach_group, webhook_monitor, prompts, genders, user_sub_types, qqi_statuses, wati, visa_types
 from app.routers.user_types import county_router
 
 limiter = Limiter(key_func=get_remote_address)
@@ -75,6 +75,7 @@ app.include_router(genders.router)
 app.include_router(user_sub_types.router)
 app.include_router(qqi_statuses.router)
 app.include_router(wati.router)
+app.include_router(visa_types.router)
 app.include_router(county_router)
 
 

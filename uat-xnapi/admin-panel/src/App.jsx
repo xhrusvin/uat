@@ -14,6 +14,7 @@ import GendersPage from './pages/GendersPage'
 import UserSubTypesPage from './pages/UserSubTypesPage'
 import QQIStatusListPage from './pages/QQIStatusListPage'
 import QQIStatusesPage from './pages/QQIStatusesPage'
+import VisaTypesPage from './pages/VisaTypesPage'
 import UserTypeListPage from './pages/UserTypeListPage'
 import ClientUpdatedPage from './pages/ClientUpdatedPage'
 import WatiPage from './pages/WatiPage'
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="webhook/client-updated"          element={<ClientUpdatedPage />} />
           <Route path="whatsapp/broadcast"             element={<WatiPage />} />
           <Route path="master/qqi-statuses"          element={<QQIStatusesPage />} />
+          <Route path="master/visa-types"             element={<VisaTypesPage />} />
           <Route path="webhook/document-uploaded"  element={<DocumentUploadedPage />} />
           <Route path="cron/sync-shifts"             element={<CronPage />} />
           <Route path="xn-api/shift-details"     element={<ShiftSyncDetailPage />} />

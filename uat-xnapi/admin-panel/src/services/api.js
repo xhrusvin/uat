@@ -135,6 +135,13 @@ export const userTypeListApi = {
   syncSubTypes: (xn_id)  => usersClient.get(`/user-types/sync-sub-types/${xn_id}`),
 }
 
+export const visaTypesApi = {
+  list:   ()          => usersClient.get('/visa-types/'),
+  create: (data)      => usersClient.post('/visa-types/create', data),
+  update: (id, data)  => usersClient.patch(`/visa-types/${id}`, data),
+  delete: (id)        => usersClient.delete(`/visa-types/${id}`),
+}
+
 export const qqiStatusesApi = {
   list:   ()          => usersClient.get('/qqi-statuses/'),
   create: (data)      => usersClient.post('/qqi-statuses/create', data),
