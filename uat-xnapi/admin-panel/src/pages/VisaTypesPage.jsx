@@ -58,7 +58,7 @@ function DeleteModal({ item, onConfirm, onCancel, loading }) {
   )
 }
 
-export default function Visa TypesPage() {
+export default function VisaTypesPage() {
   const [items, setItems]       = useState([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState(null)
