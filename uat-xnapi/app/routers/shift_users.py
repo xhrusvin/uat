@@ -580,6 +580,7 @@ class ListShiftUsersRequest(BaseModel):
     in_pool:            Optional[int]   = None
     search:             Optional[str]   = None
     gender_id:          Optional[str]   = None
+    visa_type_id:       Optional[str]   = None
 
     qqi_status_number:      Optional[int]   = None
     user_sub_type_multiple: Optional[list]  = None
@@ -665,6 +666,10 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         gid = payload.gender_id.strip()
         user_filter["gender_id"] = gid
 
+    # Visa type filter
+    if payload.visa_type_id:
+        user_filter["visa_type_id"] = payload.visa_type_id.strip()
+
     # QQI status filter
     if payload.qqi_status_number is not None:
         user_filter["qqi_status_number"] = payload.qqi_status_number
@@ -743,7 +748,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
          "location": 1, "latitude": 1, "longitude": 1, "status": 1,
          "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
          "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1, "gender_id": 1,
-         "work_permit_exemption": 1, "consumed_hours": 1, "qqi_status_number": 1, "user_sub_type_oids": 1, "user_sub_type_ids": 1}
+         "work_permit_exemption": 1, "consumed_hours": 1, "qqi_status_number": 1, "user_sub_type_oids": 1, "user_sub_type_ids": 1, "visa_type_id": 1}
     ).sort("first_name", 1).skip(fetch_skip).limit(fetch_limit).to_list(length=fetch_limit)
 
     # Fetch latest shifts_users.call_processed_at per user for last_contacted
@@ -759,6 +764,16 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     if all_sub_oids:
         async for st in db["user_sub_types"].find({"_id": {"$in": all_sub_oids}}, {"name": 1}):
             sub_type_name_map[str(st["_id"])] = st.get("name", "")
+
+    # ── Build visa type map ───────────────────────────────────────────────────
+    visa_type_ids = list({u.get("visa_type_id") for u in users if u.get("visa_type_id")})
+    visa_type_name_map: dict = {}
+    if visa_type_ids:
+        async for vt in db["visa_types"].find(
+            {"_id": {"$in": [ObjectId(i) for i in visa_type_ids if ObjectId.is_valid(str(i))]}},
+            {"name": 1}
+        ):
+            visa_type_name_map[str(vt["_id"])] = vt.get("name", "")
 
     # ── Fetch visa hours — only for up to 2 users missing consumed_hours ─────
     # Use paginated slice so we only call for users visible on this page
@@ -1027,6 +1042,8 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "user_sub_type_oids":  [str(oid) for oid in (u.get("user_sub_type_oids") or [])],
             "user_sub_types":      ([{"id": str(oid), "name": sub_type_name_map.get(str(oid))} for oid in (u.get("user_sub_type_oids") or []) if ObjectId.is_valid(str(oid))]) or ([{"id": None, "name": n} for n in (u.get("user_sub_type_ids") or []) if n]),
             "user_type_id":        str(u["user_type_id"]) if u.get("user_type_id") else None,
+            "visa_type_id":        u.get("visa_type_id"),
+            "visa_type_name":      visa_type_name_map.get(str(u.get("visa_type_id", ""))) if u.get("visa_type_id") else None,
             "prior_shifts":        prior_shifts,
             "work_history":        work_history,
             "status":              u.get("status"),
@@ -1288,6 +1305,10 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     if payload.gender_id:
         gid = payload.gender_id.strip()
         user_filter["gender_id"] = gid
+
+    # Visa type filter
+    if payload.visa_type_id:
+        user_filter["visa_type_id"] = payload.visa_type_id.strip()
 
     # QQI status filter
     if payload.qqi_status_number is not None:
