@@ -399,21 +399,24 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
             await collection.insert_one(doc)
             action = "inserted"
 
-    # ── If status changed away from "To Be Filled" → end live outreach ────────
+    # ── If status changed away from "To Be Filled"/"To be assigned" → complete automation ──
     status_name = data.get("status_name", "")
-    if status_name and status_name.lower() != "to be filled" and existing:
+    status_val  = data.get("status", "")
+    _unfilled = {"to be filled", "to be assigned"}
+    _is_unfilled = (status_name.lower() in _unfilled) or (status_val.lower() in _unfilled)
+    if not _is_unfilled and existing:
         shift_oid = existing["_id"]
         from app.db.database import _client as _mc2
         _db2 = _mc2[settings.MONGODB_DB]
 
-        # End any live/paused outreach for this shift (status 1=Live, 2=Paused)
+        # Complete any live/paused outreach (10=Completed)
         await _db2["outreach"].update_many(
             {"shift_id": shift_oid, "outreach_status": {"$in": [1, 2]}},
             {"$set": {
-                "outreach_status": 3,
-                "ended_at":        now,
+                "outreach_status": 10,
+                "completed_at":    now,
                 "updated_at":      now,
-                "end_reason":      f"shift_status_changed:{status_name}",
+                "end_reason":      f"shift_status_changed:{status_name or status_val}",
             }}
         )
 
