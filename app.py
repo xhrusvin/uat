@@ -9,6 +9,7 @@ from lead_call import register_lead_call_routes
 from follow_up_call import register_follow_up_call_routes
 from shift_booking_call import register_shift_booking_call_routes
 from shift_booking_call_bulk import register_shift_booking_call_bulk_routes
+from shift_booking_whatsapp import register_shift_booking_whatsapp_routes
 from compliance_document_call import register_compliance_doc_call_routes
 from professional_reference_call import register_professional_reference_call_routes
 from onboarding_call import register_onboarding_call_routes
@@ -163,6 +164,7 @@ register_scrap_users_route(app)
 register_follow_up_call_routes(app)
 register_shift_booking_call_routes(app)
 register_shift_booking_call_bulk_routes(app)
+register_shift_booking_whatsapp_routes(app)
 register_compliance_doc_call_routes(app)
 register_professional_reference_call_routes(app)
 register_onboarding_call_routes(app)
