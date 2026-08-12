@@ -642,7 +642,8 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     target_shift = await db["shifts"].find_one(
         {"_id": shift_oid},
         {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
-         "shift_type": 1, "slots": 1, "user_type": 1, "client_id": 1}
+         "shift_type": 1, "slots": 1, "user_type": 1, "client_id": 1,
+         "requested_staff_list": 1}
     ) or {}
 
     # Query only Enabled users — no shifts_users join
@@ -754,7 +755,13 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     # Fetch latest shifts_users.call_processed_at per user for last_contacted
     user_ids_page = [u["_id"] for u in users]
 
-    # ── Build user sub type map ───────────────────────────────────────────────
+    # ── Build requested users set from shifts.requested_staff_list ───────────
+    requested_user_ids: set = set()
+    if target_shift:
+        for rs in (target_shift.get("requested_staff_list") or []):
+            sid = str(rs.get("staff_id", ""))
+            if sid:
+                requested_user_ids.add(sid)
     all_sub_oids = []
     for u in users:
         for oid in (u.get("user_sub_type_oids") or []):
@@ -1549,7 +1556,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "distance_km":         distance_km,
             "excluded":            excluded,
             "exclusion_tags":      exclusion_tags,
-            "requested":           0,
+            "requested":           1 if uid_str in requested_user_ids else 0,
             "in_pool":             in_pool_val,
         })
 
