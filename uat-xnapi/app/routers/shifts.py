@@ -409,9 +409,9 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         from app.db.database import _client as _mc2
         _db2 = _mc2[settings.MONGODB_DB]
 
-        # Complete any live/paused outreach (10=Completed)
+        # Complete any live/paused/ended outreach (10=Completed)
         await _db2["outreach"].update_many(
-            {"shift_id": shift_oid, "outreach_status": {"$in": [1, 2]}},
+            {"shift_id": shift_oid, "outreach_status": {"$in": [1, 2, 3]}},
             {"$set": {
                 "outreach_status": 10,
                 "completed_at":    now,
