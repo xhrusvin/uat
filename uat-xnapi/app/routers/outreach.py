@@ -358,6 +358,7 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
                 {"_id": exists_any["_id"]},
                 {"$set": {
                     "outreach_id":        outreach_oid,
+                    "channel":            pd.get("channel", "Phone"),
                     "assigned_at":        now,
                     "availability":       6,
                     "call_enabled":       1,
@@ -378,6 +379,7 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
             "user_id":            user_oid_pool,
             "shift_id":           shift_oid,
             "outreach_id":        outreach_oid,
+            "channel":            pd.get("channel", "Phone"),
             "assigned_at":        now,
             "availability":       6,
             "call_enabled":       1,
@@ -1236,7 +1238,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
     su_docs = await db["shifts_users"].find(
         {"outreach_id": outreach_oid},
         {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
-         "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1,
+         "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1, "channel": 1,
          "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "ignored": 1,
          "customer_feedback": 1}
     ).to_list(length=2000)
@@ -1407,7 +1409,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             "last_contacted":      last_contacted,
             "staff_tags":          staff_tags,
             "visa_hours_remaining": visa_hours_remaining,
-            "channel":             "Phone",
+            "channel":             su.get("channel") or "Phone",
             "response_text":       response_text,
             "response_time":       response_time_s,
             "availability":        avail_val,

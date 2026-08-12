@@ -43,8 +43,9 @@ def _resolve_oid(val: str, field: str) -> ObjectId:
 # ── Request schemas ───────────────────────────────────────────────────────────
 
 class AddUserToShiftRequest(BaseModel):
-    user_id:  str   # MongoDB ObjectId of the user
-    shift_id: str   # MongoDB ObjectId of the shift
+    user_id:  str
+    shift_id: str
+    channel:  Optional[str] = "Phone"
 
 
 class RemoveUserFromShiftRequest(BaseModel):
@@ -53,8 +54,9 @@ class RemoveUserFromShiftRequest(BaseModel):
 
 
 class AddUsersToShiftRequest(BaseModel):
-    shift_id:  str        # MongoDB ObjectId of the shift
-    user_ids:  List[str]  # List of user MongoDB ObjectIds
+    shift_id:  str
+    user_ids:  List[str]
+    channel:   Optional[str] = "Phone"
 
 
 # ── ADD single user to shift ──────────────────────────────────────────────────
@@ -94,9 +96,14 @@ async def add_user_to_shift(request: Request, payload: AddUserToShiftRequest):
         raise HTTPException(status_code=409,
             detail=f"{full_name} is already in the pool for shift {shift_code}")
 
+    channel = (payload.channel or "Phone").strip()
+    if channel not in ("Phone", "WhatsApp", "Email"):
+        raise HTTPException(status_code=422, detail="channel must be Phone, WhatsApp or Email")
+
     doc = {
         "user_id":  user_oid,
         "shift_id": shift_oid,
+        "channel":  channel,
         "added_at": now,
         "added_by": "manual",
         "updated_at": now,
@@ -156,6 +163,10 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
             {"user_id": 1}
         )
     }
+
+    channel = (payload.channel or "Phone").strip()
+    if channel not in ("Phone", "WhatsApp", "Email"):
+        raise HTTPException(status_code=422, detail="channel must be Phone, WhatsApp or Email")
 
     # Remove users from pool that are NOT in the new payload (sync pool to payload)
     all_pool_users = {
