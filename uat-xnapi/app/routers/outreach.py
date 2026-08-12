@@ -338,14 +338,41 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
         user_oid_pool = pd.get("user_id")
         if not user_oid_pool:
             continue
-        # Skip only if already exists with availability == 1
-        exists = await db["shifts_users"].find_one({
+        # Skip confirmed (1) or not available (0)
+        exists_skip = await db["shifts_users"].find_one({
             "shift_id":    shift_oid,
             "user_id":     user_oid_pool,
-            "availability": 1,
+            "availability": {"$in": [0, 1]},
         })
-        if exists:
+        if exists_skip:
             skipped += 1
+            continue
+
+        # Check if exists with any other status — update for new outreach round
+        exists_any = await db["shifts_users"].find_one({
+            "shift_id": shift_oid,
+            "user_id":  user_oid_pool,
+        })
+        if exists_any:
+            await db["shifts_users"].update_one(
+                {"_id": exists_any["_id"]},
+                {"$set": {
+                    "outreach_id":        outreach_oid,
+                    "assigned_at":        now,
+                    "availability":       6,
+                    "call_enabled":       1,
+                    "call_processed":     0,
+                    "call_processed_at":  now,
+                    "call_status":        0,
+                    "call_summary_title": None,
+                    "ended_at":           None,
+                    "started_at":         None,
+                    "call_order":         call_order,
+                    "updated_at":         now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+                }}
+            )
+            inserted_count += 1
+            call_order     += 1
             continue
         su_doc = {
             "user_id":            user_oid_pool,
