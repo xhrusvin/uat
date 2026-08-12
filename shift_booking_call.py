@@ -91,7 +91,7 @@ def register_shift_booking_call_routes(app):
         if user_id_param:
             query = {"user_id": ObjectId(user_id_param), "call_processed": 0}
         else:
-            query = {"call_processed": 0, "call_enabled": 1, "channel": "Phone"}
+            query = {"call_processed": 0, "call_enabled": 1}#, "channel": "Phone"
 
         record = app.db.shifts_users.find_one(query, sort=[("assigned_at", 1)])
 
