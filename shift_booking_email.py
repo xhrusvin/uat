@@ -100,7 +100,8 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id):
   </div>
   <div class="body">
     <p>Hi <strong>{first_name}</strong> 👋</p>
-    <p>It's Alice from <strong>Xpress Health</strong>. I've found a shift you may be interested in:</p>
+    <p>We're reaching out from <strong>Xpress Health</strong> to check your availability for an upcoming shift.</p>
+    <p>Please review the shift details below and let us know if you're available. Your quick response helps us confirm staffing as soon as possible.</p>
     <div class="shift-card">
       <p><span class="icon">📍</span><strong>{facility}</strong>, {location}</p>
       <p><span class="icon">📅</span>{date_str}</p>
