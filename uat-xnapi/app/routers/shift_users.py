@@ -197,6 +197,7 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
         doc = {
             "user_id":    user_oid,
             "shift_id":   shift_oid,
+            "channel":    channel,
             "added_at":   now,
             "added_by":   "bulk",
             "updated_at": now,
