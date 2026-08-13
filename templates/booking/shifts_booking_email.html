@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Inter,'Helvetica Neue',Helvetica,Arial,sans-serif;">
+
+<table width="600" border="0" cellspacing="0" cellpadding="0" align="center"
+  style="min-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;margin:30px auto;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+  <tbody>
+
+    <!-- Top gradient bar -->
+    <tr>
+      <td style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td>
+    </tr>
+
+    <!-- Logo -->
+    <tr>
+      <td style="padding:28px 40px 20px;background:#ffffff;">
+        <img src="{{logo_url}}" alt="Xpress Health" width="150" style="display:block;">
+      </td>
+    </tr>
+
+    <!-- Divider -->
+    <tr><td style="padding:0 40px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;"></td></tr>
+
+    <!-- Greeting -->
+    <tr>
+      <td style="padding:28px 40px 8px;font-size:15px;font-weight:600;line-height:22px;color:#111827;">
+        Hi {{first_name}},
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 40px 24px;font-size:14px;font-weight:400;line-height:22px;color:#374151;">
+        We're reaching out to check your availability for an upcoming shift at
+        <strong style="color:#111827;">{{facility}}</strong>.
+        Please review the details below and confirm at your earliest convenience.
+      </td>
+    </tr>
+
+    <!-- Shift card -->
+    <tr>
+      <td style="padding:0 40px 24px;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0"
+          style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+          <tbody>
+            <tr>
+              <td colspan="2" style="padding:14px 20px;background:#1e7a38;">
+                <span style="font-size:13px;font-weight:700;color:#ffffff;letter-spacing:0.5px;text-transform:uppercase;">Shift Details</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 20px 0;font-size:13px;color:#6b7280;font-weight:500;width:40%;">📍 Location</td>
+              <td style="padding:12px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{facility}}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">📌 Address</td>
+              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{location}}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">👩‍⚕️ Role</td>
+              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{user_type}}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">📅 Date</td>
+              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{date_str}}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">🕐 Shift Time</td>
+              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{start_time}} – {{end_time}}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 20px 16px;font-size:13px;color:#6b7280;font-weight:500;">🔖 Shift Code</td>
+              <td style="padding:8px 20px 16px;font-size:13px;color:#111827;font-weight:600;">{{shift_code}}</td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Question -->
+    <tr>
+      <td style="padding:0 40px 20px;font-size:15px;font-weight:600;color:#111827;text-align:center;">
+        Are you available for this shift?
+      </td>
+    </tr>
+
+    <!-- Buttons -->
+    <tr>
+      <td style="padding:0 40px 32px;text-align:center;">
+        <a href="{{yes_url}}"
+          style="display:inline-block;background:#1e7a38;color:#ffffff;padding:13px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">
+          ✅ Yes, I'm available
+        </a>
+        <a href="{{no_url}}"
+          style="display:inline-block;background:#dc2626;color:#ffffff;padding:13px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">
+          ❌ No, thanks
+        </a>
+        <a href="{{details_url}}"
+          style="display:inline-block;background:#ffffff;color:#374151;padding:13px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;border:1px solid #d1d5db;">
+          ℹ️ More details
+        </a>
+      </td>
+    </tr>
+
+    <!-- Divider -->
+    <tr><td style="padding:0 40px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;"></td></tr>
+
+    <!-- Regards -->
+    <tr>
+      <td style="padding:24px 40px 4px;font-size:14px;color:#374151;">
+        If there are any changes or concerns, please contact the bookings team.
+      </td>
+    </tr>
+    <tr><td style="padding:16px 40px 4px;font-size:14px;color:#374151;">Regards,</td></tr>
+    <tr><td style="padding:0 40px 4px;font-size:14px;font-weight:700;color:#111827;">Bookings Team</td></tr>
+    <tr><td style="padding:0 40px 4px;font-size:14px;font-weight:700;color:#111827;">Xpress Health</td></tr>
+    <tr><td style="padding:0 40px 28px;font-size:14px;color:#374151;">Ph: +353 (0)9125882</td></tr>
+
+    <!-- Bottom gradient bar -->
+    <tr><td style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td></tr>
+
+    <!-- Footer -->
+    <tr>
+      <td style="background:#f9fafb;text-align:center;padding:24px 40px;">
+        <img src="{{logo_url}}" alt="Xpress Health" width="120" style="display:inline-block;margin-bottom:14px;"><br>
+        <span style="font-size:11px;color:#9ca3af;line-height:16px;">
+          © 2026 Xpress Health, 47 Park West Ind Centre, Lavery Ave, Park West, Dublin, Ireland<br>
+          Xpress Health and the Xpress Health logo are registered trademarks of Xpress Health.
+        </span><br><br>
+        <a href="mailto:bookings@xpresshealth.ie" style="color:#2563eb;font-size:12px;text-decoration:none;padding-right:8px;border-right:1px solid #d1d5db;">bookings@xpresshealth.ie</a>
+        <a href="https://www.xpresshealth.ie" style="color:#2563eb;font-size:12px;text-decoration:none;padding-left:8px;">www.xpresshealth.ie</a>
+      </td>
+    </tr>
+
+  </tbody>
+</table>
+</body>
+</html>

@@ -56,6 +56,8 @@ def _format_date(date_str: str) -> str:
 
 def _build_email_html(first_name, shift, base_url, shifts_users_id):
     """Load and render shift booking email from HTML template file."""
+    import os as _os
+
     facility   = shift.get("client_name", "")
     location   = shift.get("location", facility)
     date_str   = _format_date(shift.get("date", ""))
@@ -71,8 +73,8 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id):
     details_url = f"{base_url}/shift_booking_email/respond/{su_id}?answer=details"
 
     # Load template file
-    template_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
+    template_path = _os.path.join(
+        _os.path.dirname(_os.path.abspath(__file__)),
         "templates", "booking", "shifts_booking_email.html"
     )
 
@@ -83,6 +85,7 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id):
         log.error(f"[EMAIL] Template not found: {template_path}")
         raise FileNotFoundError(f"Email template missing: {template_path}")
 
+    # Replace placeholders
     html = html.replace("{{first_name}}", first_name)
     html = html.replace("{{facility}}", facility)
     html = html.replace("{{location}}", location)
@@ -98,6 +101,83 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id):
     html = html.replace("{{base_url}}", base_url)
 
     return html
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background-color:#2c2d2e;font-family:Inter,'Helvetica Neue',Helvetica,Arial,sans-serif;">
+<table width="600" border="0" cellspacing="0" cellpadding="0" align="center"
+  style="min-width:600px;background-color:#262626;border-top-left-radius:6px;border-top-right-radius:6px;overflow:hidden;">
+  <tbody>
+    <!-- Logo banner -->
+    <tr>
+      <td style="background:linear-gradient(90deg,#016ab2 0%,#009540 100%);height:6px;"></td>
+    </tr>
+    <tr>
+      <td style="text-align:right;padding:24px 40px 16px;background-color:#262626;">
+        <img src="{logo_url}" alt="Xpress Health" width="140" style="display:inline-block;">
+      </td>
+    </tr>
+    <!-- Greeting -->
+    <tr>
+      <td style="padding:0 40px 14px;font-size:14px;font-weight:500;line-height:19.6px;color:rgba(237,238,240,0.8);">
+        Hi {first_name},
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 40px 20px;font-size:14px;font-weight:400;line-height:19.6px;color:rgba(237,238,240,0.8);">
+        We're reaching out from <strong style="color:rgba(237,238,240,0.9);">Xpress Health</strong> to check your availability for an upcoming shift.<br>
+        Please review the shift details below and let us know if you're available.
+      </td>
+    </tr>
+    <!-- Shift details -->
+    <tr><td style="padding:0 40px 5px;font-size:14px;color:rgba(237,238,240,0.8);">Location: <strong style="color:rgba(237,238,240,0.9);">{facility}</strong></td></tr>
+    <tr><td style="padding:0 40px 5px;font-size:14px;color:rgba(237,238,240,0.8);">Address: <strong style="color:rgba(237,238,240,0.9);">{location}</strong></td></tr>
+    <tr><td style="padding:0 40px 5px;font-size:14px;color:rgba(237,238,240,0.8);">Role: <strong style="color:rgba(237,238,240,0.9);">{user_type}</strong></td></tr>
+    <tr><td style="padding:0 40px 5px;font-size:14px;color:rgba(237,238,240,0.8);">Date: <strong style="color:rgba(237,238,240,0.9);">{date_str}</strong></td></tr>
+    <tr><td style="padding:0 40px 5px;font-size:14px;color:rgba(237,238,240,0.8);">Shift Time: <strong style="color:rgba(237,238,240,0.9);">{start_time} – {end_time}</strong></td></tr>
+    <tr><td style="padding:0 40px 30px;font-size:14px;color:rgba(237,238,240,0.8);">Shift Code: <strong style="color:rgba(237,238,240,0.9);">{shift_code}</strong></td></tr>
+    <!-- Question -->
+    <tr>
+      <td style="padding:0 40px 16px;font-size:15px;font-weight:600;color:rgba(237,238,240,0.9);text-align:center;">
+        Are you available for this shift?
+      </td>
+    </tr>
+    <!-- Buttons -->
+    <tr>
+      <td style="padding:0 40px 30px;text-align:center;">
+        <a href="{yes_url}" style="display:inline-block;background:#009540;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">✅ Yes, I'm available</a>
+        <a href="{no_url}"  style="display:inline-block;background:#c0392b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">❌ No, thanks</a>
+        <a href="{details_url}" style="display:inline-block;background:#3a3b3c;color:rgba(237,238,240,0.8);padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;border:1px solid #555;">ℹ️ More details</a>
+      </td>
+    </tr>
+    <!-- Regards -->
+    <tr><td style="padding:0 40px 20px;font-size:14px;color:rgba(237,238,240,0.8);">If there are any changes or concerns, feel free to get in touch with the bookings team.</td></tr>
+    <tr><td style="padding:0 40px 4px;font-size:14px;color:rgba(237,238,240,0.8);">Regards,</td></tr>
+    <tr><td style="padding:0 40px 4px;font-size:14px;font-weight:700;color:rgba(237,238,240,0.8);">Bookings Team</td></tr>
+    <tr><td style="padding:0 40px 4px;font-size:14px;font-weight:700;color:rgba(237,238,240,0.8);">Xpress Health</td></tr>
+    <tr><td style="padding:0 40px 30px;font-size:14px;font-weight:700;color:rgba(237,238,240,0.8);">Ph: +353 (0)9125882</td></tr>
+    <!-- Gradient bar -->
+    <tr><td style="height:6px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td></tr>
+    <!-- Footer -->
+    <tr>
+      <td style="background-color:#2c2d2e;text-align:center;padding:24px 40px 16px;">
+        <img src="{logo_url}" alt="Xpress Health" width="112" style="display:inline-block;margin-bottom:16px;"><br>
+        <span style="font-size:10px;color:#8b8b8b;line-height:14px;">
+          © 2026 Xpress Health, 47 Park West Ind Centre, Lavery Ave, Park West, Dublin, Ireland<br>
+          Xpress Health and the Xpress Health logo are registered trademarks of Xpress Health.
+        </span><br><br>
+        <a href="mailto:bookings@xpresshealth.ie" style="color:#5b8cff;font-size:12px;text-decoration:none;padding-right:6px;border-right:1px solid #ccc;">bookings@xpresshealth.ie</a>
+        <a href="https://www.xpresshealth.ie" style="color:#5b8cff;font-size:12px;text-decoration:none;padding-left:6px;">www.xpresshealth.ie</a>
+      </td>
+    </tr>
+  </tbody>
+</table>
+</body>
+</html>
+"""
 
 
 def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users_id):
@@ -108,10 +188,10 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"Shift Available – {shift_doc.get('client_name','')} on {_format_date(shift_doc.get('date',''))}"
-        msg["From"]    = f"{os.getenv('SHIFT_SMTP_FROM_NAME','XpressHealth')} <{os.getenv('SHIFT_FROM_EMAIL','')}>"
+        msg["From"]    = f"{os.getenv('SMTP_FROM_NAME','XpressHealth')} <{os.getenv('FROM_EMAIL','')}>"
         msg["To"]      = to_email
 
-        cc  = os.getenv("SHIFT_CC_EMAIL",  "")
+        cc  = os.getenv("SHIFT_CC_EMAIL", "")
         bcc = os.getenv("SHIFT_BCC_EMAIL", "")
         if cc:  msg["Cc"]  = cc
         if bcc: msg["Bcc"] = bcc
@@ -134,6 +214,8 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
             server.sendmail(msg["From"], recipients, msg.as_string())
 
         log.info(f"[EMAIL] ✓ Sent to {to_email}")
+
+        # Update shifts_users with email sent status
         app.db.shifts_users.update_one(
             {"_id": shifts_users_id},
             {"$set": {"email_sent": 1, "email_sent_at": datetime.utcnow()}}
@@ -149,6 +231,9 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
 
 def register_shift_booking_email_routes(app):
 
+    # ------------------------------------------------------------------
+    # 1. AUTO-TRIGGER: GET /shift_booking_email
+    # ------------------------------------------------------------------
     @app.route('/shift_booking_email', methods=['GET'])
     def shift_booking_email():
         allowed, server_time = is_within_call_window()
@@ -202,6 +287,7 @@ def register_shift_booking_email_routes(app):
             return jsonify({**response_base, "status": "no_email",
                             "message": "No email found.", "shifts_users_id": str(shifts_users_id)}), 200
 
+        # Mark as processed
         result = app.db.shifts_users.update_one(
             {"_id": shifts_users_id},
             {"$set": {"call_processed": 1, "call_processed_at": datetime.utcnow(),
@@ -230,12 +316,14 @@ def register_shift_booking_email_routes(app):
         record["last_name"]  = last_name
         record["full_name"]  = full_name
 
+        # Send email in background
         threading.Thread(
             target=_send_shift_email,
             args=(current_app._get_current_object(), record, shift_doc, email, first_name, shifts_users_id),
             daemon=True
         ).start()
 
+        # Check if all processed → end outreach
         threading.Thread(
             target=_check_and_end_outreach,
             args=(current_app._get_current_object(), shift_id, outreach_id),
@@ -254,7 +342,9 @@ def register_shift_booking_email_routes(app):
             "triggered_at":    datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
         }), 200
 
-
+    # ------------------------------------------------------------------
+    # 2. RESPONSE HANDLER: GET /shift_booking_email/respond/<su_id>
+    # ------------------------------------------------------------------
     @app.route('/shift_booking_email/respond/<shifts_users_id>', methods=['GET'])
     def shift_booking_email_respond(shifts_users_id):
         answer = request.args.get('answer', '').lower()
@@ -298,16 +388,17 @@ def register_shift_booking_email_routes(app):
                 target=_check_and_end_outreach,
                 args=(app, shift_id, outreach_id), daemon=True
             ).start()
-            html = f"""<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
-  <h2 style="color:#1e7a38">&#x2705; Great, you're confirmed!</h2>
+            html = f"""
+<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
+  <h2 style="color:#1e7a38">✅ Great, you're confirmed!</h2>
   <p>We've marked you as <strong>available</strong> for this shift.</p>
   <div style="background:#f9f9f9;border-left:4px solid #1e7a38;padding:16px;border-radius:6px;text-align:left;margin:20px 0">
-    <p>&#x1F4CD; {shift_doc.get('client_name')}, {shift_doc.get('location')}</p>
-    <p>&#x1F4C5; {shift_doc.get('date')}</p>
-    <p>&#x1F550; {shift_doc.get('start_time')} &#x2013; {shift_doc.get('end_time')}</p>
+    <p>📍 {shift_doc.get('client_name')}, {shift_doc.get('location')}</p>
+    <p>📅 {shift_doc.get('date')}</p>
+    <p>🕐 {shift_doc.get('start_time')} – {shift_doc.get('end_time')}</p>
   </div>
-  <p>We'll let you know as soon as the facility confirms the booking.</p>
-  <p style="color:#aaa;font-size:12px">Xpress Health</p>
+  <p>We'll let you know as soon as the facility confirms the booking. You'll receive a confirmation with all the shift details.</p>
+  <p style="color:#aaa;font-size:12px">Xpress Health Automated System</p>
 </body></html>"""
 
         elif answer == "no":
@@ -316,28 +407,30 @@ def register_shift_booking_email_routes(app):
                 {"$set": {"availability": 0, "response_text": "No, thanks.",
                            "responded_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
             )
-            html = """<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
-  <h2>&#x1F44D; No problem!</h2>
+            html = """
+<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
+  <h2>👍 No problem!</h2>
   <p>Thanks for letting us know. We'll reach out for future shifts.</p>
-  <p style="color:#aaa;font-size:12px">Xpress Health</p>
+  <p style="color:#aaa;font-size:12px">Xpress Health Automated System</p>
 </body></html>"""
 
         elif answer == "details":
-            html = f"""<html><body style="font-family:Arial;max-width:500px;margin:40px auto;color:#333">
+            html = f"""
+<html><body style="font-family:Arial;max-width:500px;margin:40px auto;color:#333">
   <h2 style="color:#1e7a38">Shift Details</h2>
   <div style="background:#f9f9f9;border-left:4px solid #1e7a38;padding:16px;border-radius:6px;margin:16px 0">
-    <p>&#x1F4CD; <strong>{shift_doc.get('client_name')}</strong>, {shift_doc.get('location')}</p>
-    <p>&#x1F4C5; {shift_doc.get('date')}</p>
-    <p>&#x1F550; {shift_doc.get('start_time')} &#x2013; {shift_doc.get('end_time')}</p>
-    <p>&#x1F469;&#x200D;&#x2695;&#xFE0F; {shift_doc.get('user_type')}</p>
-    <p>&#x1F516; {shift_doc.get('shift_code')}</p>
+    <p>📍 <strong>{shift_doc.get('client_name')}</strong>, {shift_doc.get('location')}</p>
+    <p>📅 {shift_doc.get('date')}</p>
+    <p>🕐 {shift_doc.get('start_time')} – {shift_doc.get('end_time')}</p>
+    <p>👩‍⚕️ {shift_doc.get('user_type')}</p>
+    <p>🔖 {shift_doc.get('shift_code')}</p>
   </div>
   <p style="font-weight:bold;text-align:center">Are you available for this shift?</p>
   <div style="text-align:center;margin:20px 0">
-    <a href="{yes_url}" style="background:#1e7a38;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin:6px;display:inline-block">Yes, I'm available</a>
-    <a href="{no_url}"  style="background:#e74c3c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin:6px;display:inline-block">No, thanks</a>
+    <a href="{yes_url}" style="background:#1e7a38;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin:6px">✅ Yes, I'm available</a>
+    <a href="{no_url}"  style="background:#e74c3c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin:6px">❌ No, thanks</a>
   </div>
-  <p style="color:#aaa;font-size:12px;text-align:center">Xpress Health</p>
+  <p style="color:#aaa;font-size:12px;text-align:center">Xpress Health Automated System</p>
 </body></html>"""
 
         else:
@@ -345,7 +438,9 @@ def register_shift_booking_email_routes(app):
 
         return html, 200
 
-
+    # ------------------------------------------------------------------
+    # 3. DEBUG
+    # ------------------------------------------------------------------
     @app.route('/debug-shift-booking-email')
     def debug_shift_booking_email():
         allowed, now = is_within_call_window()
