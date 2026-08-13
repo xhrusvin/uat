@@ -351,6 +351,8 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
             continue
 
         # Check if exists with any other status — update for new outreach round
+        _ch = pd.get("channel", "Phone") or "Phone"
+        _avail_init = 7 if _ch in ("WhatsApp", "Email") else 6
         exists_any = await db["shifts_users"].find_one({
             "shift_id": shift_oid,
             "user_id":  user_oid_pool,
@@ -377,15 +379,13 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
             inserted_count += 1
             call_order     += 1
             continue
-        _ch = pd.get("channel", "Phone") or "Phone"
-        _avail_init = 7 if _ch in ("WhatsApp", "Email") else 6
         su_doc = {
             "user_id":            user_oid_pool,
             "shift_id":           shift_oid,
             "outreach_id":        outreach_oid,
             "channel":            _ch,
             "assigned_at":        now,
-            "availability":       6,
+            "availability":       _avail_init,
             "call_enabled":       1,
             "call_processed":     0,
             "call_processed_at":  now,
