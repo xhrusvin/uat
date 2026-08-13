@@ -219,6 +219,14 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
         {"$set": {"channel": channel, "updated_at": now}}
     )
 
+    # Collect all pool _ids for users in payload
+    pool_ids = []
+    async for pd in db["shifts_pool"].find(
+        {"shift_id": shift_oid, "user_id": {"$in": user_oids}},
+        {"_id": 1}
+    ):
+        pool_ids.append(str(pd["_id"]))
+
     return {
         "success": True,
         "message": f"{inserted + skipped_dup} user(s) added to shift pool",
@@ -229,6 +237,7 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
             "skipped_duplicate":    skipped_dup,
             "skipped_missing_user": skipped_missing,
             "inserted_ids":         inserted_ids,
+            "pool_ids":             pool_ids,
         },
     }
 
