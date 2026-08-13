@@ -168,7 +168,7 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
     if channel not in ("Phone", "WhatsApp", "Email"):
         raise HTTPException(status_code=422, detail="channel must be Phone, WhatsApp or Email")
 
-    # Remove users from pool NOT in payload — but keep users who have been in a previous outreach
+    # Remove users from pool NOT in payload — but keep users who have shifts_users record
     all_pool_users = {
         str(su["user_id"])
         async for su in db["shifts_pool"].find({"shift_id": shift_oid}, {"user_id": 1})
@@ -178,11 +178,11 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
     if to_remove:
         remove_oids = [ObjectId(uid) for uid in to_remove if ObjectId.is_valid(uid)]
         if remove_oids:
-            # Never remove users who have been in a previous outreach
+            # Protect users who have any shifts_users record for this shift
             protected = {
                 str(su["user_id"])
                 async for su in db["shifts_users"].find(
-                    {"shift_id": shift_oid, "user_id": {"$in": remove_oids}, "outreach_id": {"$exists": True, "$ne": None}},
+                    {"shift_id": shift_oid, "user_id": {"$in": remove_oids}},
                     {"user_id": 1}
                 )
             }
@@ -190,7 +190,7 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
             if final_remove:
                 res = await db["shifts_pool"].delete_many({"shift_id": shift_oid, "user_id": {"$in": final_remove}})
                 removed = res.deleted_count
-                logger.info(f"shifts_pool bulk: removed {removed} users not in payload (protected {len(protected)})")
+                logger.info(f"shifts_pool bulk: removed {removed} (protected {len(protected)} with shifts_users)")
 
     inserted = skipped_dup = skipped_missing = 0
     inserted_ids = []
