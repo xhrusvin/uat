@@ -213,6 +213,12 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
 
     logger.info(f"shifts_pool bulk: shift={payload.shift_id} inserted={inserted} dup={skipped_dup} missing={skipped_missing}")
 
+    # Always update channel for ALL users now in pool (inserted + existing)
+    await db["shifts_pool"].update_many(
+        {"shift_id": shift_oid, "user_id": {"$in": user_oids}},
+        {"$set": {"channel": channel, "updated_at": now}}
+    )
+
     return {
         "success": True,
         "message": f"{inserted + skipped_dup} user(s) added to shift pool",
