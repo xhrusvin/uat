@@ -360,9 +360,9 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
                 {"_id": exists_any["_id"]},
                 {"$set": {
                     "outreach_id":        outreach_oid,
-                    "channel":            pd.get("channel", "Phone"),
+                    "channel":            _ch,
                     "assigned_at":        now,
-                    "availability":       6,
+                    "availability":       _avail_init,
                     "call_enabled":       1,
                     "call_processed":     0,
                     "call_processed_at":  now,
@@ -377,11 +377,13 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
             inserted_count += 1
             call_order     += 1
             continue
+        _ch = pd.get("channel", "Phone") or "Phone"
+        _avail_init = 7 if _ch in ("WhatsApp", "Email") else 6
         su_doc = {
             "user_id":            user_oid_pool,
             "shift_id":           shift_oid,
             "outreach_id":        outreach_oid,
-            "channel":            pd.get("channel", "Phone"),
+            "channel":            _ch,
             "assigned_at":        now,
             "availability":       6,
             "call_enabled":       1,
@@ -1117,6 +1119,7 @@ async def get_outreach_detail(request: Request, payload: OutreachDetailIdRequest
             "designation":     u.get("designation"),
             "rating":          u.get("rating"),
             "availability":    su.get("availability"),
+            "availability_text": {0:"Not Available",1:"Available",3:"Voicemail",4:"Call Not Attended",5:"In Call",6:"Call Not Triggered",7:"Not Sent"}.get(su.get("availability"), "Unknown"),
             "call_enabled":    su.get("call_enabled"),
             "call_processed":      su.get("call_processed"),
             "call_processed_text": "Sent" if su.get("call_processed") == 1 else "Queued",
@@ -1263,7 +1266,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
 
     AVAILABILITY_TEXT = {
         1: "Available", 0: "Not Available", 3: "Voicemail",
-        4: "Call Not Attended", 6: "Call Not Triggered",
+        4: "Call Not Attended", 6: "Call Not Triggered", 7: "Not Sent",
     }
 
     # Get shift info for client coords + shift label
