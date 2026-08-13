@@ -132,6 +132,7 @@ async def outreach_detail(request: Request, payload: OutreachDetailRequest):
                 "summary":       pool_summary,
             },
             "pause_on": pause_on,
+            "date_one": 0,
         },
     }
 
