@@ -168,6 +168,12 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
     if channel not in ("Phone", "WhatsApp", "Email"):
         raise HTTPException(status_code=422, detail="channel must be Phone, WhatsApp or Email")
 
+    # Mark all existing pool users as unselected first
+    await db["shifts_pool"].update_many(
+        {"shift_id": shift_oid},
+        {"$set": {"selected": 0}}
+    )
+
     # Remove users from pool NOT in payload — but keep users who have shifts_users record
     all_pool_users = {
         str(su["user_id"])
@@ -223,10 +229,10 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
 
     logger.info(f"shifts_pool bulk: shift={payload.shift_id} inserted={inserted} dup={skipped_dup} missing={skipped_missing}")
 
-    # Always update channel for ALL users now in pool (inserted + existing)
+    # Always update channel and mark as selected for ALL users in payload
     await db["shifts_pool"].update_many(
         {"shift_id": shift_oid, "user_id": {"$in": user_oids}},
-        {"$set": {"channel": channel, "updated_at": now}}
+        {"$set": {"channel": channel, "selected": 1, "updated_at": now}}
     )
 
     # Collect all pool _ids for users in payload

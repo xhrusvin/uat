@@ -88,12 +88,11 @@ async def outreach_detail(request: Request, payload: OutreachDetailRequest):
     is_first       = outreach_count == 0
 
     # ── Pool composition from shifts_pool (staff added via /shift-users/bulk) ─
-    total_staff    = await db["shifts_pool"].count_documents({"shift_id": shift_oid})
-    phone_count    = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "channel": {"$in": ["Phone", None, ""]}})
-    whatsapp_count = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "channel": "WhatsApp"})
-    email_count    = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "channel": "Email"})
-    # Users with no channel default to Phone
-    no_channel     = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "channel": {"$exists": False}})
+    total_staff    = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "selected": {"$ne": 0}})
+    phone_count    = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "selected": {"$ne": 0}, "channel": {"$in": ["Phone", None, ""]}})
+    whatsapp_count = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "selected": {"$ne": 0}, "channel": "WhatsApp"})
+    email_count    = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "selected": {"$ne": 0}, "channel": "Email"})
+    no_channel     = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "selected": {"$ne": 0}, "channel": {"$exists": False}})
     phone_count   += no_channel
     # whatsapp and email are placeholders until those fields are added
     pool_summary = (
@@ -265,7 +264,7 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
 
     # Copy from shifts_pool to shifts_users
     # Skip only if user already in shifts_users with availability == 1
-    pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid}).to_list(length=5000)
+    pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid, "selected": {"$ne": 0}}).to_list(length=5000)
 
     # ── Sort pool users based on sequence name ────────────────────────────────
     seq_name = (sequence.get("name") or "").strip().lower()
