@@ -191,6 +191,11 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
             skipped_missing += 1
             continue
         if uid_str in already_added:
+            # Update channel even for existing pool users
+            await db["shifts_pool"].update_one(
+                {"shift_id": shift_oid, "user_id": user_oid},
+                {"$set": {"channel": channel, "updated_at": now}}
+            )
             skipped_dup += 1
             continue
 
