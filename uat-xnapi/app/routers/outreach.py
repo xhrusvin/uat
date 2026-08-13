@@ -2032,52 +2032,101 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     except Exception:
         formatted_date = shift_date
 
-    email_content = {
-        "subject":    f"Shift Available – {s.get('client_name','')} on {formatted_date}",
-        "to":         u.get("email"),
-        "body": {
-            "greeting":    f"Hi {first_name} 👋",
-            "intro":       "We're reaching out from Xpress Health to check your availability for an upcoming shift.",
-            "shift": {
-                "facility":   s.get("client_name"),
-                "location":   s.get("location"),
-                "date":       formatted_date,
-                "start_time": s.get("start_time"),
-                "end_time":   s.get("end_time"),
-                "user_type":  s.get("user_type"),
-                "shift_code": s.get("shift_code"),
-            },
-            "question":    "Are you available for this shift?",
-            "buttons": {
-                "yes":     f"{base_url}/shift_booking_email/respond/{su_id}?answer=yes",
-                "no":      f"{base_url}/shift_booking_email/respond/{su_id}?answer=no",
-                "details": f"{base_url}/shift_booking_email/respond/{su_id}?answer=details",
-            },
-        },
-    }
+    # Build HTML chat response
+    from fastapi.responses import HTMLResponse as _HR
+    name      = f"{u.get('first_name','')} {u.get('last_name','')}".strip()
+    email_to  = u.get("email", "")
+    sent_at   = _iso(su.get("email_sent_at")) or _iso(su.get("assigned_at")) or ""
+    responded = _iso(su.get("responded_at")) or ""
+    response_text = su.get("response_text", "")
+    answer_label = "✅ Yes, I'm available" if av == 1 else "❌ No, thanks" if av == 0 else None
 
-    return {
-        "success": True,
-        "data": {
-            "id":               str(su["_id"]),
-            "shift_id":         str(su.get("shift_id", "")),
-            "outreach_id":      str(su.get("outreach_id", "")) if su.get("outreach_id") else None,
-            "user_id":          str(su.get("user_id", "")),
-            "name":             f"{u.get('first_name','')} {u.get('last_name','')}".strip(),
-            "email":            u.get("email"),
-            "channel":          su.get("channel", "Email"),
-            "availability":     av,
-            "availability_text": AVAIL.get(av, "Unknown"),
-            "call_processed":   su.get("call_processed", 0),
-            "email_sent":       su.get("email_sent", 0),
-            "email_sent_at":    _iso(su.get("email_sent_at")),
-            "email_error":      su.get("email_error"),
-            "assigned_at":      _iso(su.get("assigned_at")),
-            "response": {
-                "text":         su.get("response_text"),
-                "responded_at": _iso(su.get("responded_at")),
-                "answer":       "yes" if av == 1 else "no" if av == 0 else "pending",
-            },
-            "email_content":    email_content,
-        },
-    }
+    # Sent email bubble content
+    email_bubble = f"""
+      <div style="font-size:13px;line-height:1.6;color:#374151;">
+        <p style="margin:0 0 10px;">Hi <strong>{first_name}</strong>,</p>
+        <p style="margin:0 0 10px;">We're reaching out to check your availability for an upcoming shift at <strong>{s.get('client_name','')}</strong>.</p>
+        <table style="width:100%;background:#f3f4f6;border-radius:6px;border:1px solid #e5e7eb;font-size:12px;margin:10px 0;border-collapse:collapse;">
+          <tr><td style="padding:6px 12px;color:#6b7280;width:40%">📍 Facility</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{s.get('client_name','')}</td></tr>
+          <tr><td style="padding:6px 12px;color:#6b7280">👩‍⚕️ Role</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{s.get('user_type','')}</td></tr>
+          <tr><td style="padding:6px 12px;color:#6b7280">📅 Date</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{formatted_date}</td></tr>
+          <tr><td style="padding:6px 12px;color:#6b7280">🕐 Time</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{s.get('start_time','')} – {s.get('end_time','')}</td></tr>
+        </table>
+        <p style="margin:10px 0 6px;font-weight:600;text-align:center;">Are you available for this shift?</p>
+        <div style="text-align:center;">
+          <span style="display:inline-block;background:#1e7a38;color:#fff;padding:6px 14px;border-radius:4px;font-size:12px;margin:2px;">✅ Yes, I'm available</span>
+          <span style="display:inline-block;background:#dc2626;color:#fff;padding:6px 14px;border-radius:4px;font-size:12px;margin:2px;">❌ No, thanks</span>
+          <span style="display:inline-block;background:#f3f4f6;color:#374151;padding:6px 14px;border-radius:4px;font-size:12px;margin:2px;border:1px solid #d1d5db;">ℹ️ More details</span>
+        </div>
+      </div>"""
+
+    response_bubble = ""
+    if response_text:
+        response_bubble = f"""
+    <!-- Response bubble -->
+    <div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
+      <div>
+        <div style="background:#1e7a38;color:#fff;border-radius:18px 18px 4px 18px;padding:12px 18px;max-width:340px;font-size:14px;font-weight:600;">
+          {answer_label or response_text}
+        </div>
+        <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:4px;">{name} · {responded[:16] if responded else ''}</div>
+      </div>
+      <div style="width:36px;height:36px;border-radius:50%;background:#1e7a38;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;margin-left:8px;flex-shrink:0;">
+        {(name[0] if name else 'U').upper()}
+      </div>
+    </div>"""
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Email Chat – {name}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Inter,'Helvetica Neue',Arial,sans-serif;">
+
+<div style="max-width:600px;margin:0 auto;">
+
+  <!-- Header -->
+  <div style="background:#1e7a38;color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;">
+    <div style="width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">{(name[0] if name else 'U').upper()}</div>
+    <div>
+      <div style="font-weight:700;font-size:15px;">{name}</div>
+      <div style="font-size:12px;opacity:0.85;">{email_to}</div>
+    </div>
+    <div style="margin-left:auto;font-size:12px;opacity:0.8;background:{'rgba(255,255,255,0.2)' if av==1 else 'rgba(220,38,38,0.5)' if av==0 else 'rgba(255,255,255,0.1)'};padding:4px 10px;border-radius:12px;">
+      {AVAIL.get(av, 'Pending')}
+    </div>
+  </div>
+
+  <!-- Chat area -->
+  <div style="padding:20px;min-height:300px;background:#f9fafb;">
+
+    <!-- Sent email bubble -->
+    <div style="display:flex;margin-bottom:20px;gap:10px;">
+      <div style="width:36px;height:36px;border-radius:50%;background:#e5e7eb;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">XH</div>
+      <div style="flex:1;">
+        <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">Xpress Health · {sent_at[:16] if sent_at else 'Sent'}</div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px 18px 18px 18px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+          {email_bubble}
+        </div>
+      </div>
+    </div>
+
+    {response_bubble if response_bubble else '''
+    <div style="text-align:center;color:#9ca3af;font-size:13px;padding:20px;">
+      No response yet
+    </div>'''}
+
+  </div>
+
+  <!-- Footer -->
+  <div style="background:#fff;border-top:1px solid #e5e7eb;padding:12px 20px;font-size:12px;color:#9ca3af;text-align:center;">
+    Email sent · {su.get('email_sent', 0) and 'Delivered' or 'Pending'} · Shift: {s.get('shift_code','')}
+  </div>
+
+</div>
+</body>
+</html>"""
+
+    return _HR(content=html)
