@@ -68,6 +68,7 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id):
     yes_url     = f"{base_url}/shift_booking_email/respond/{su_id}?answer=yes"
     no_url      = f"{base_url}/shift_booking_email/respond/{su_id}?answer=no"
     details_url = f"{base_url}/shift_booking_email/respond/{su_id}?answer=details"
+    logo_url    = "https://uat.expresshealth.ie/static/image/logo.png"
 
     return f"""
 <!DOCTYPE html>
@@ -75,51 +76,75 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-  body {{ font-family: Arial, sans-serif; background:#f4f4f4; margin:0; padding:0; }}
-  .container {{ max-width:520px; margin:30px auto; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1); }}
-  .header {{ background:#1e7a38; color:#fff; padding:24px 30px; }}
-  .header h2 {{ margin:0; font-size:20px; }}
-  .body {{ padding:28px 30px; color:#333; }}
-  .body p {{ font-size:15px; line-height:1.6; }}
-  .shift-card {{ background:#f9f9f9; border-left:4px solid #1e7a38; border-radius:6px; padding:16px 20px; margin:20px 0; }}
-  .shift-card p {{ margin:6px 0; font-size:14px; }}
-  .shift-card .icon {{ margin-right:6px; }}
-  .btn-row {{ text-align:center; margin:24px 0 8px; }}
-  .btn {{ display:inline-block; padding:12px 24px; border-radius:6px; text-decoration:none; font-weight:bold; font-size:14px; margin:6px 4px; }}
-  .btn-yes {{ background:#1e7a38; color:#fff; }}
-  .btn-no  {{ background:#e74c3c; color:#fff; }}
-  .btn-details {{ background:#f0f0f0; color:#333; border:1px solid #ccc; }}
-  .footer {{ text-align:center; padding:16px; color:#aaa; font-size:12px; border-top:1px solid #eee; }}
-</style>
 </head>
-<body>
-<div class="container">
-  <div class="header">
-    <h2>Shift Available 🏥</h2>
-  </div>
-  <div class="body">
-    <p>Hi <strong>{first_name}</strong> 👋</p>
-    <p>We're reaching out from <strong>Xpress Health</strong> to check your availability for an upcoming shift.</p>
-    <p>Please review the shift details below and let us know if you're available. Your quick response helps us confirm staffing as soon as possible.</p>
-    <div class="shift-card">
-      <p><span class="icon">📍</span><strong>{facility}</strong>, {location}</p>
-      <p><span class="icon">📅</span>{date_str}</p>
-      <p><span class="icon">🕐</span>{start_time} – {end_time}</p>
-      <p><span class="icon">👩‍⚕️</span>{user_type}</p>
-      <p><span class="icon">🔖</span>{shift_code}</p>
-    </div>
-    <p style="text-align:center; font-weight:bold; font-size:15px;">Are you available for this shift?</p>
-    <div class="btn-row">
-      <a href="{yes_url}" class="btn btn-yes">✅ Yes, I'm available</a>
-      <a href="{no_url}"  class="btn btn-no">❌ No, thanks</a>
-      <a href="{details_url}" class="btn btn-details">ℹ️ More details</a>
-    </div>
-  </div>
-  <div class="footer">
-    Xpress Health · This email was sent by our automated system. Please do not reply directly.
-  </div>
-</div>
+<body style="margin:0;padding:0;background-color:#2c2d2e;font-family:Inter,'Helvetica Neue',Helvetica,Arial,sans-serif;">
+<table width="600" border="0" cellspacing="0" cellpadding="0" align="center"
+  style="min-width:600px;background-color:#262626;border-top-left-radius:6px;border-top-right-radius:6px;overflow:hidden;">
+  <tbody>
+    <!-- Logo banner -->
+    <tr>
+      <td style="background:linear-gradient(90deg,#016ab2 0%,#009540 100%);height:6px;"></td>
+    </tr>
+    <tr>
+      <td style="text-align:right;padding:24px 40px 16px;background-color:#262626;">
+        <img src="{logo_url}" alt="Xpress Health" width="140" style="display:inline-block;">
+      </td>
+    </tr>
+    <!-- Greeting -->
+    <tr>
+      <td style="padding:0 40px 14px;font-size:14px;font-weight:500;line-height:19.6px;color:rgba(237,238,240,0.8);">
+        Hi {first_name},
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 40px 20px;font-size:14px;font-weight:400;line-height:19.6px;color:rgba(237,238,240,0.8);">
+        We're reaching out from <strong style="color:rgba(237,238,240,0.9);">Xpress Health</strong> to check your availability for an upcoming shift.<br>
+        Please review the shift details below and let us know if you're available.
+      </td>
+    </tr>
+    <!-- Shift details -->
+    <tr><td style="padding:0 40px 5px;font-size:14px;color:rgba(237,238,240,0.8);">Location: <strong style="color:rgba(237,238,240,0.9);">{facility}</strong></td></tr>
+    <tr><td style="padding:0 40px 5px;font-size:14px;color:rgba(237,238,240,0.8);">Address: <strong style="color:rgba(237,238,240,0.9);">{location}</strong></td></tr>
+    <tr><td style="padding:0 40px 5px;font-size:14px;color:rgba(237,238,240,0.8);">Role: <strong style="color:rgba(237,238,240,0.9);">{user_type}</strong></td></tr>
+    <tr><td style="padding:0 40px 5px;font-size:14px;color:rgba(237,238,240,0.8);">Date: <strong style="color:rgba(237,238,240,0.9);">{date_str}</strong></td></tr>
+    <tr><td style="padding:0 40px 5px;font-size:14px;color:rgba(237,238,240,0.8);">Shift Time: <strong style="color:rgba(237,238,240,0.9);">{start_time} – {end_time}</strong></td></tr>
+    <tr><td style="padding:0 40px 30px;font-size:14px;color:rgba(237,238,240,0.8);">Shift Code: <strong style="color:rgba(237,238,240,0.9);">{shift_code}</strong></td></tr>
+    <!-- Question -->
+    <tr>
+      <td style="padding:0 40px 16px;font-size:15px;font-weight:600;color:rgba(237,238,240,0.9);text-align:center;">
+        Are you available for this shift?
+      </td>
+    </tr>
+    <!-- Buttons -->
+    <tr>
+      <td style="padding:0 40px 30px;text-align:center;">
+        <a href="{yes_url}" style="display:inline-block;background:#009540;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">✅ Yes, I'm available</a>
+        <a href="{no_url}"  style="display:inline-block;background:#c0392b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">❌ No, thanks</a>
+        <a href="{details_url}" style="display:inline-block;background:#3a3b3c;color:rgba(237,238,240,0.8);padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;border:1px solid #555;">ℹ️ More details</a>
+      </td>
+    </tr>
+    <!-- Regards -->
+    <tr><td style="padding:0 40px 20px;font-size:14px;color:rgba(237,238,240,0.8);">If there are any changes or concerns, feel free to get in touch with the bookings team.</td></tr>
+    <tr><td style="padding:0 40px 4px;font-size:14px;color:rgba(237,238,240,0.8);">Regards,</td></tr>
+    <tr><td style="padding:0 40px 4px;font-size:14px;font-weight:700;color:rgba(237,238,240,0.8);">Bookings Team</td></tr>
+    <tr><td style="padding:0 40px 4px;font-size:14px;font-weight:700;color:rgba(237,238,240,0.8);">Xpress Health</td></tr>
+    <tr><td style="padding:0 40px 30px;font-size:14px;font-weight:700;color:rgba(237,238,240,0.8);">Ph: +353 (0)9125882</td></tr>
+    <!-- Gradient bar -->
+    <tr><td style="height:6px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td></tr>
+    <!-- Footer -->
+    <tr>
+      <td style="background-color:#2c2d2e;text-align:center;padding:24px 40px 16px;">
+        <img src="{logo_url}" alt="Xpress Health" width="112" style="display:inline-block;margin-bottom:16px;"><br>
+        <span style="font-size:10px;color:#8b8b8b;line-height:14px;">
+          © 2026 Xpress Health, 47 Park West Ind Centre, Lavery Ave, Park West, Dublin, Ireland<br>
+          Xpress Health and the Xpress Health logo are registered trademarks of Xpress Health.
+        </span><br><br>
+        <a href="mailto:bookings@xpresshealth.ie" style="color:#5b8cff;font-size:12px;text-decoration:none;padding-right:6px;border-right:1px solid #ccc;">bookings@xpresshealth.ie</a>
+        <a href="https://www.xpresshealth.ie" style="color:#5b8cff;font-size:12px;text-decoration:none;padding-left:6px;">www.xpresshealth.ie</a>
+      </td>
+    </tr>
+  </tbody>
+</table>
 </body>
 </html>
 """
