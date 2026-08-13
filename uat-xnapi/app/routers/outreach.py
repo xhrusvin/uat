@@ -1846,3 +1846,238 @@ async def get_confirm_transcription_audio(request: Request, payload: ConfirmTran
         media_type="audio/mpeg",
         headers={"Content-Disposition": f"attachment; filename=confirm_{el_conv_id}.mp3"}
     )
+
+
+# ── GET /outreach/email-list ──────────────────────────────────────────────────
+
+@router.get(
+    "/email-list",
+    summary="List email outreach records with response status",
+    dependencies=[Depends(verify_api_key)],
+)
+async def email_list(
+    request: Request,
+    shift_id:    Optional[str] = None,
+    outreach_id: Optional[str] = None,
+    page:        int = 1,
+    per_page:    int = 20,
+):
+    db   = _get_db()
+    skip = (page - 1) * per_page
+
+    q: dict = {"channel": "Email"}
+    if shift_id and ObjectId.is_valid(shift_id):
+        q["shift_id"] = ObjectId(shift_id)
+    if outreach_id and ObjectId.is_valid(outreach_id):
+        q["outreach_id"] = ObjectId(outreach_id)
+
+    total = await db["shifts_users"].count_documents(q)
+    docs  = await db["shifts_users"].find(q).sort("assigned_at", -1).skip(skip).limit(per_page).to_list(per_page)
+
+    # Build user map
+    user_oids = [d["user_id"] for d in docs if d.get("user_id")]
+    user_map: dict = {}
+    async for u in db["users"].find({"_id": {"$in": user_oids}}, {"first_name": 1, "last_name": 1, "email": 1}):
+        user_map[str(u["_id"])] = u
+
+    AVAIL = {0: "Not Available", 1: "Available", 3: "Voicemail", 4: "Call Not Attended",
+             5: "In Call", 6: "Call Not Triggered", 7: "Not Sent"}
+
+    def _iso(v): return v.isoformat() if v and hasattr(v, "isoformat") else None
+
+    results = []
+    for d in docs:
+        u   = user_map.get(str(d.get("user_id", "")), {})
+        av  = d.get("availability")
+        results.append({
+            "id":               str(d["_id"]),
+            "shift_id":         str(d.get("shift_id", "")),
+            "outreach_id":      str(d.get("outreach_id", "")) if d.get("outreach_id") else None,
+            "user_id":          str(d.get("user_id", "")),
+            "name":             f"{u.get('first_name','')} {u.get('last_name','')}".strip(),
+            "email":            u.get("email"),
+            "channel":          d.get("channel", "Email"),
+            "availability":     av,
+            "availability_text": AVAIL.get(av, "Unknown"),
+            "call_processed":   d.get("call_processed", 0),
+            "email_sent":       d.get("email_sent", 0),
+            "email_sent_at":    _iso(d.get("email_sent_at")),
+            "response_text":    d.get("response_text"),
+            "responded_at":     _iso(d.get("responded_at")),
+            "assigned_at":      _iso(d.get("assigned_at")),
+        })
+
+    return {"success": True, "total": total, "page": page, "per_page": per_page, "data": results}
+
+
+# ── GET /outreach/email-responses ─────────────────────────────────────────────
+
+@router.get(
+    "/email-responses",
+    summary="List email responses (users who replied Yes/No)",
+    dependencies=[Depends(verify_api_key)],
+)
+async def email_responses(
+    request: Request,
+    shift_id:    Optional[str] = None,
+    outreach_id: Optional[str] = None,
+    answer:      Optional[str] = None,  # yes / no
+    page:        int = 1,
+    per_page:    int = 20,
+):
+    db   = _get_db()
+    skip = (page - 1) * per_page
+
+    q: dict = {"channel": "Email", "responded_at": {"$exists": True}}
+    if shift_id and ObjectId.is_valid(shift_id):
+        q["shift_id"] = ObjectId(shift_id)
+    if outreach_id and ObjectId.is_valid(outreach_id):
+        q["outreach_id"] = ObjectId(outreach_id)
+    if answer == "yes":
+        q["availability"] = 1
+    elif answer == "no":
+        q["availability"] = 0
+
+    total = await db["shifts_users"].count_documents(q)
+    docs  = await db["shifts_users"].find(q).sort("responded_at", -1).skip(skip).limit(per_page).to_list(per_page)
+
+    user_oids = [d["user_id"] for d in docs if d.get("user_id")]
+    user_map: dict = {}
+    async for u in db["users"].find({"_id": {"$in": user_oids}}, {"first_name": 1, "last_name": 1, "email": 1}):
+        user_map[str(u["_id"])] = u
+
+    def _iso(v): return v.isoformat() if v and hasattr(v, "isoformat") else None
+
+    results = []
+    for d in docs:
+        u  = user_map.get(str(d.get("user_id", "")), {})
+        av = d.get("availability")
+        results.append({
+            "id":            str(d["_id"]),
+            "shift_id":      str(d.get("shift_id", "")),
+            "outreach_id":   str(d.get("outreach_id", "")) if d.get("outreach_id") else None,
+            "user_id":       str(d.get("user_id", "")),
+            "name":          f"{u.get('first_name','')} {u.get('last_name','')}".strip(),
+            "email":         u.get("email"),
+            "response":      "yes" if av == 1 else "no" if av == 0 else "unknown",
+            "response_text": d.get("response_text"),
+            "responded_at":  _iso(d.get("responded_at")),
+            "email_sent_at": _iso(d.get("email_sent_at")),
+        })
+
+    return {"success": True, "total": total, "page": page, "per_page": per_page, "data": results}
+
+
+# ── GET /outreach/email-detail ────────────────────────────────────────────────
+
+class EmailDetailRequest(BaseModel):
+    user_id:     Optional[str] = None
+    shift_id:    Optional[str] = None
+    outreach_id: Optional[str] = None
+
+
+@router.post(
+    "/email-detail",
+    summary="Get sent email content and user response by user_id/shift_id/outreach_id",
+    dependencies=[Depends(verify_api_key)],
+)
+async def email_detail(request: Request, payload: EmailDetailRequest):
+    user_id     = payload.user_id
+    shift_id    = payload.shift_id
+    outreach_id = payload.outreach_id
+    db = _get_db()
+
+    q: dict = {"channel": "Email"}
+    if user_id and ObjectId.is_valid(user_id):
+        q["user_id"] = ObjectId(user_id)
+    if shift_id and ObjectId.is_valid(shift_id):
+        q["shift_id"] = ObjectId(shift_id)
+    if outreach_id and ObjectId.is_valid(outreach_id):
+        q["outreach_id"] = ObjectId(outreach_id)
+
+    if not q or q == {"channel": "Email"}:
+        raise HTTPException(status_code=422, detail="Provide at least one of: user_id, shift_id, outreach_id")
+
+    su = await db["shifts_users"].find_one(q, sort=[("assigned_at", -1)])
+    if not su:
+        raise HTTPException(status_code=404, detail="No email record found")
+
+    # Get user details
+    u = {}
+    if su.get("user_id"):
+        u = await db["users"].find_one({"_id": su["user_id"]}, {"first_name": 1, "last_name": 1, "email": 1}) or {}
+
+    # Get shift details
+    s = {}
+    if su.get("shift_id"):
+        s = await db["shifts"].find_one({"_id": su["shift_id"]},
+            {"shift_code": 1, "date": 1, "start_time": 1, "end_time": 1,
+             "client_name": 1, "location": 1, "user_type": 1}) or {}
+
+    AVAIL = {0: "Not Available", 1: "Available", 3: "Voicemail",
+             4: "Call Not Attended", 6: "Call Not Triggered", 7: "Not Sent"}
+
+    def _iso(v): return v.isoformat() if v and hasattr(v, "isoformat") else None
+
+    av = su.get("availability")
+
+    # Reconstruct sent email content
+    base_url   = "https://uat.expresshealth.ie"
+    first_name = u.get("first_name", "")
+    su_id      = str(su["_id"])
+    shift_date = str(s.get("date", ""))
+    try:
+        from datetime import datetime as _dt
+        formatted_date = _dt.strptime(shift_date.split(" ")[0], "%Y-%m-%d").strftime("%A, %d %B %Y")
+    except Exception:
+        formatted_date = shift_date
+
+    email_content = {
+        "subject":    f"Shift Available – {s.get('client_name','')} on {formatted_date}",
+        "to":         u.get("email"),
+        "body": {
+            "greeting":    f"Hi {first_name} 👋",
+            "intro":       "We're reaching out from Xpress Health to check your availability for an upcoming shift.",
+            "shift": {
+                "facility":   s.get("client_name"),
+                "location":   s.get("location"),
+                "date":       formatted_date,
+                "start_time": s.get("start_time"),
+                "end_time":   s.get("end_time"),
+                "user_type":  s.get("user_type"),
+                "shift_code": s.get("shift_code"),
+            },
+            "question":    "Are you available for this shift?",
+            "buttons": {
+                "yes":     f"{base_url}/shift_booking_email/respond/{su_id}?answer=yes",
+                "no":      f"{base_url}/shift_booking_email/respond/{su_id}?answer=no",
+                "details": f"{base_url}/shift_booking_email/respond/{su_id}?answer=details",
+            },
+        },
+    }
+
+    return {
+        "success": True,
+        "data": {
+            "id":               str(su["_id"]),
+            "shift_id":         str(su.get("shift_id", "")),
+            "outreach_id":      str(su.get("outreach_id", "")) if su.get("outreach_id") else None,
+            "user_id":          str(su.get("user_id", "")),
+            "name":             f"{u.get('first_name','')} {u.get('last_name','')}".strip(),
+            "email":            u.get("email"),
+            "channel":          su.get("channel", "Email"),
+            "availability":     av,
+            "availability_text": AVAIL.get(av, "Unknown"),
+            "call_processed":   su.get("call_processed", 0),
+            "email_sent":       su.get("email_sent", 0),
+            "email_sent_at":    _iso(su.get("email_sent_at")),
+            "email_error":      su.get("email_error"),
+            "assigned_at":      _iso(su.get("assigned_at")),
+            "response": {
+                "text":         su.get("response_text"),
+                "responded_at": _iso(su.get("responded_at")),
+                "answer":       "yes" if av == 1 else "no" if av == 0 else "pending",
+            },
+            "email_content":    email_content,
+        },
+    }
