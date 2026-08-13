@@ -11,9 +11,7 @@
   <tbody>
 
     <!-- Top gradient bar -->
-    <tr>
-      <td style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td>
-    </tr>
+    <tr><td style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td></tr>
 
     <!-- Logo -->
     <tr>
@@ -51,12 +49,16 @@
               </td>
             </tr>
             <tr>
-              <td style="padding:12px 20px 0;font-size:13px;color:#6b7280;font-weight:500;width:40%;">📍 Location</td>
+              <td style="padding:12px 20px 0;font-size:13px;color:#6b7280;font-weight:500;width:40%;">📍 Facility</td>
               <td style="padding:12px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{facility}}</td>
             </tr>
             <tr>
-              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">📌 Address</td>
-              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{location}}</td>
+              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">🏠 Address</td>
+              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{address}}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">🌍 County</td>
+              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{county}}</td>
             </tr>
             <tr>
               <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">👩‍⚕️ Role</td>
@@ -67,15 +69,21 @@
               <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{date_str}}</td>
             </tr>
             <tr>
-              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">🕐 Shift Time</td>
-              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{start_time}} – {{end_time}}</td>
-            </tr>
-            <tr>
-              <td style="padding:8px 20px 16px;font-size:13px;color:#6b7280;font-weight:500;">🔖 Shift Code</td>
-              <td style="padding:8px 20px 16px;font-size:13px;color:#111827;font-weight:600;">{{shift_code}}</td>
+              <td style="padding:8px 20px 16px;font-size:13px;color:#6b7280;font-weight:500;">🕐 Shift Time</td>
+              <td style="padding:8px 20px 16px;font-size:13px;color:#111827;font-weight:600;">{{start_time}} – {{end_time}}</td>
             </tr>
           </tbody>
         </table>
+      </td>
+    </tr>
+
+    <!-- Google Maps button -->
+    <tr>
+      <td style="padding:0 40px 24px;text-align:center;">
+        <a href="{{map_url}}" target="_blank"
+          style="display:inline-block;background:#4285f4;color:#ffffff;padding:11px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:13px;">
+          🗺️ View on Google Maps
+        </a>
       </td>
     </tr>
 
@@ -108,11 +116,7 @@
     <tr><td style="padding:0 40px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;"></td></tr>
 
     <!-- Regards -->
-    <tr>
-      <td style="padding:24px 40px 4px;font-size:14px;color:#374151;">
-        If there are any changes or concerns, please contact the bookings team.
-      </td>
-    </tr>
+    <tr><td style="padding:24px 40px 4px;font-size:14px;color:#374151;">If there are any changes or concerns, please contact the bookings team.</td></tr>
     <tr><td style="padding:16px 40px 4px;font-size:14px;color:#374151;">Regards,</td></tr>
     <tr><td style="padding:0 40px 4px;font-size:14px;font-weight:700;color:#111827;">Bookings Team</td></tr>
     <tr><td style="padding:0 40px 4px;font-size:14px;font-weight:700;color:#111827;">Xpress Health</td></tr>

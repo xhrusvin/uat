@@ -57,14 +57,17 @@ def _format_date(date_str: str) -> str:
 def _build_email_html(first_name, shift, base_url, shifts_users_id):
     """Load and render shift booking email from HTML template file."""
     facility   = shift.get("client_name", "")
-    location   = shift.get("location", facility)
+    address    = shift.get("client_address", "")
+    county     = shift.get("client_county", "")
+    lat        = shift.get("client_lat", "")
+    lng        = shift.get("client_lng", "")
     date_str   = _format_date(shift.get("date", ""))
     start_time = shift.get("start_time", "")
     end_time   = shift.get("end_time", "")
     user_type  = shift.get("user_type", "")
-    shift_code = shift.get("shift_code", "")
     su_id      = str(shifts_users_id)
     logo_url   = "https://uat.expresshealth.ie/static/image/logo.png"
+    map_url    = f"https://www.google.com/maps?q={lat},{lng}" if lat and lng else ""
 
     yes_url     = f"{base_url}/shift_booking_email/respond/{su_id}?answer=yes"
     no_url      = f"{base_url}/shift_booking_email/respond/{su_id}?answer=no"
@@ -85,12 +88,13 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id):
 
     html = html.replace("{{first_name}}", first_name)
     html = html.replace("{{facility}}", facility)
-    html = html.replace("{{location}}", location)
+    html = html.replace("{{address}}", address)
+    html = html.replace("{{county}}", county)
     html = html.replace("{{date_str}}", date_str)
     html = html.replace("{{start_time}}", start_time)
     html = html.replace("{{end_time}}", end_time)
     html = html.replace("{{user_type}}", user_type)
-    html = html.replace("{{shift_code}}", shift_code)
+    html = html.replace("{{map_url}}", map_url)
     html = html.replace("{{yes_url}}", yes_url)
     html = html.replace("{{no_url}}", no_url)
     html = html.replace("{{details_url}}", details_url)
@@ -214,15 +218,26 @@ def register_shift_booking_email_routes(app):
         if shift_id and ObjectId.is_valid(shift_id):
             s = app.db.shifts.find_one({"_id": ObjectId(shift_id)})
             if s:
+                # Join client data
+                client = None
+                if s.get("client_id"):
+                    client = app.db.clients.find_one(
+                        {"xn_client_id": str(s["client_id"])},
+                        {"address": 1, "county": 1, "latitude": 1, "longitude": 1}
+                    )
                 shift_doc = {
-                    "id":          str(s["_id"]),
-                    "shift_code":  s.get("shift_code") or s.get("name", ""),
-                    "date":        str(s.get("date", "")),
-                    "start_time":  s.get("start_time", ""),
-                    "end_time":    s.get("end_time", ""),
-                    "client_name": s.get("client_name", ""),
-                    "location":    s.get("location", ""),
-                    "user_type":   s.get("user_type", ""),
+                    "id":             str(s["_id"]),
+                    "shift_code":     s.get("shift_code") or s.get("name", ""),
+                    "date":           str(s.get("date", "")),
+                    "start_time":     s.get("start_time", ""),
+                    "end_time":       s.get("end_time", ""),
+                    "client_name":    s.get("client_name", ""),
+                    "location":       s.get("location", ""),
+                    "user_type":      s.get("user_type", ""),
+                    "client_address": client.get("address", "") if client else "",
+                    "client_county":  client.get("county", "") if client else "",
+                    "client_lat":     client.get("latitude", "") if client else "",
+                    "client_lng":     client.get("longitude", "") if client else "",
                 }
 
         record["email"]      = email
