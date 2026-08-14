@@ -1119,7 +1119,7 @@ async def get_outreach_detail(request: Request, payload: OutreachDetailIdRequest
             "designation":     u.get("designation"),
             "rating":          u.get("rating"),
             "availability":    su.get("availability"),
-            "availability_text": {0:"Not Available",1:"Available",3:"Voicemail",4:"Call Not Attended",5:"In Call",6:"Call Not Triggered",7:"Not Sent"}.get(su.get("availability"), "Unknown"),
+            "availability_text": {0:"Not Available",1:"Available",3:"Voicemail",4:"Call Not Attended",5:"In Call",6:"Call Not Triggered",7:"Not Sent",8:"No Response"}.get(su.get("availability"), "Unknown"),
             "call_enabled":    su.get("call_enabled"),
             "call_processed":      su.get("call_processed"),
             "call_processed_text": "Sent" if su.get("call_processed") == 1 else "Queued",
@@ -1266,7 +1266,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
 
     AVAILABILITY_TEXT = {
         1: "Available", 0: "Not Available", 3: "Voicemail",
-        4: "Call Not Attended", 6: "Call Not Triggered", 7: "Not Sent",
+        4: "Call Not Attended", 6: "Call Not Triggered", 7: "Not Sent", 8: "No Response",
     }
 
     # Get shift info for client coords + shift label

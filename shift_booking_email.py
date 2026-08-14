@@ -143,10 +143,11 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
         app.db.shifts_users.update_one(
             {"_id": shifts_users_id},
             {"$set": {
-                "email_sent":      1,
-                "email_sent_at":   datetime.utcnow(),
-                "email_status":    "delivered",
+                "email_sent":       1,
+                "email_sent_at":    datetime.utcnow(),
+                "email_status":     "delivered",
                 "email_message_id": su_id_str,
+                "availability":     8,
             }}
         )
 
