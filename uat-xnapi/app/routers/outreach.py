@@ -2059,6 +2059,7 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
         <p style="margin:0 0 10px;">Hi <strong>{first_name}</strong>,</p>
         <p style="margin:0 0 10px;">We're reaching out to check your availability for an upcoming shift at <strong>{s.get('client_name','')}</strong>.</p>
         <table style="width:100%;background:#f3f4f6;border-radius:6px;border:1px solid #e5e7eb;font-size:12px;margin:10px 0;border-collapse:collapse;">
+          <tr><td style="padding:6px 12px;color:#6b7280;width:40%">👤 Staff</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{name}</td></tr>
           <tr><td style="padding:6px 12px;color:#6b7280;width:40%">📍 Facility</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{s.get('client_name','')}</td></tr>
           <tr><td style="padding:6px 12px;color:#6b7280">👩‍⚕️ Role</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{s.get('user_type','')}</td></tr>
           <tr><td style="padding:6px 12px;color:#6b7280">📅 Date</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{formatted_date}</td></tr>
