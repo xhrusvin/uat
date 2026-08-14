@@ -2153,6 +2153,7 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
 </body>
 </html>"""
 
+    from fastapi.responses import HTMLResponse as _HR
     return _HR(content=html)
 
 
