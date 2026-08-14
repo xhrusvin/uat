@@ -2072,16 +2072,24 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
         </div>
       </div>"""
 
+    email_reply      = su.get("email_reply", "")
+    email_reply_from = su.get("email_reply_from", "")
+    email_reply_at   = _iso(su.get("email_reply_at")) or ""
+
     response_bubble = ""
-    if response_text:
+    if response_text or email_reply:
+        display_text = answer_label or response_text or email_reply
+        display_time = responded or email_reply_at
+        reply_label  = "📧 Replied via email" if email_reply and not response_text else ""
         response_bubble = f"""
     <!-- Response bubble -->
     <div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
       <div>
-        <div style="background:#1e7a38;color:#fff;border-radius:18px 18px 4px 18px;padding:12px 18px;max-width:340px;font-size:14px;font-weight:600;">
-          {answer_label or response_text}
+        {"<div style='font-size:11px;color:#9ca3af;text-align:right;margin-bottom:4px;'>"+reply_label+"</div>" if reply_label else ""}
+        <div style="background:#1e7a38;color:#fff;border-radius:18px 18px 4px 18px;padding:12px 18px;max-width:340px;font-size:14px;font-weight:600;white-space:pre-wrap;">
+          {display_text}
         </div>
-        <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:4px;">{name} · {responded[:16] if responded else ''}</div>
+        <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:4px;">{name} · {display_time[:16] if display_time else ''}</div>
       </div>
       <div style="width:36px;height:36px;border-radius:50%;background:#1e7a38;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;margin-left:8px;flex-shrink:0;">
         {(name[0] if name else 'U').upper()}
@@ -2217,3 +2225,76 @@ async def brevo_webhook(request: Request):
         )
 
     return {"success": True, "processed": len(events)}
+
+
+# ── POST /outreach/brevo-inbound ─────────────────────────────────────────────
+
+@router.post(
+    "/brevo-inbound",
+    summary="Brevo inbound email reply webhook",
+    include_in_schema=False,
+)
+async def brevo_inbound(request: Request):
+    """
+    Receives inbound email replies from Brevo.
+    Set Reply-To: reply+{shifts_users_id}@yourdomain.com when sending.
+    Configure in Brevo → Inbound Parsing → Webhook URL: /xnapi/outreach/brevo-inbound
+    """
+    db  = _get_db()
+    now = datetime.now(timezone.utc)
+
+    try:
+        # Brevo sends multipart form data for inbound
+        form = await request.form()
+        payload = {}
+        for k in form:
+            payload[k] = form[k]
+    except Exception:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
+    logger.info(f"[BREVO INBOUND] payload keys: {list(payload.keys())}")
+
+    # Extract reply-to address to get shifts_users_id
+    to_full    = payload.get("To", "") or payload.get("to", "")
+    from_email = payload.get("From", "") or payload.get("from", "")
+    subject    = payload.get("Subject", "") or payload.get("subject", "")
+    text_body  = payload.get("TextBody", "") or payload.get("text", "") or payload.get("RawTextBody", "")
+    html_body  = payload.get("HtmlBody", "") or payload.get("html", "")
+    reply_text = text_body.strip() or html_body.strip()
+
+    # Parse shifts_users_id from reply+ address e.g. reply+6a7db363@domain.com
+    shifts_users_id = None
+    import re as _re
+    match = _re.search(r'reply\+([a-f0-9]{24})', to_full, _re.IGNORECASE)
+    if match:
+        shifts_users_id = match.group(1)
+
+    # Save raw inbound log
+    await db["email_inbound_logs"].insert_one({
+        "to":              to_full,
+        "from":            from_email,
+        "subject":         subject,
+        "body":            reply_text[:2000],
+        "shifts_users_id": shifts_users_id,
+        "received_at":     now,
+        "raw":             {k: str(v)[:500] for k, v in payload.items()},
+    })
+
+    if shifts_users_id and ObjectId.is_valid(shifts_users_id):
+        await db["shifts_users"].update_one(
+            {"_id": ObjectId(shifts_users_id)},
+            {"$set": {
+                "email_reply":      reply_text[:2000],
+                "email_reply_from": from_email,
+                "email_reply_at":   now,
+                "updated_at":       now,
+            }}
+        )
+        logger.info(f"[BREVO INBOUND] ✓ Saved reply for su_id={shifts_users_id} from={from_email}")
+    else:
+        logger.warning(f"[BREVO INBOUND] Could not find shifts_users_id in To: {to_full}")
+
+    return {"success": True}
