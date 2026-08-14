@@ -54,7 +54,7 @@ def _format_date(date_str: str) -> str:
         return str(date_str)
 
 
-def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name=''):
+def _build_email_html(first_name, shift, base_url, shifts_users_id):
     """Load and render shift booking email from HTML template file."""
     facility   = shift.get("client_name", "")
     address    = shift.get("client_address", "")
@@ -87,7 +87,6 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
         raise FileNotFoundError(f"Email template missing: {template_path}")
 
     html = html.replace("{{first_name}}", first_name)
-    html = html.replace("{{staff_name}}", staff_name or first_name)
     html = html.replace("{{facility}}", facility)
     html = html.replace("{{address}}", address)
     html = html.replace("{{county}}", county)
@@ -109,7 +108,7 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
     """Send shift booking email via SMTP."""
     try:
         base_url = os.getenv("APP_BASE_URL", "https://uat.expresshealth.ie")
-        html     = _build_email_html(first_name, shift_doc, base_url, shifts_users_id, staff_name=f"{first_name} {last_name}".strip())
+        html     = _build_email_html(first_name, shift_doc, base_url, shifts_users_id)
 
         su_id_str = str(shifts_users_id)
         msg = MIMEMultipart("alternative")
