@@ -1438,7 +1438,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 if ucoords:
                     distance_km = _hav(float(client_lat), float(client_lng), ucoords[0], ucoords[1])
             if distance_km is None:
-                dist_raw = rs.get("distance") or rs.get("distance_km") or su.get("distance") or su.get("distance_km")
+                dist_raw = su.get("distance") or su.get("distance_km")
                 if dist_raw is not None:
                     try:
                         distance_km = round(float(str(dist_raw).lower().replace("km", "").replace(",", "").strip()), 2)
