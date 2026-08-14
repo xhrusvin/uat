@@ -2032,8 +2032,20 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     except Exception:
         formatted_date = shift_date
 
-    # Build HTML chat response
-    from fastapi.responses import HTMLResponse as _HR
+    email_status  = su.get("email_status", "")
+    email_opened  = su.get("email_opened", 0)
+    email_clicked = su.get("email_clicked", 0)
+    email_bounced = su.get("email_bounced", 0)
+
+    STATUS_ICON = {
+        "delivered":   "📬 Delivered",
+        "opened":      "👁️ Opened",
+        "clicked":     "🖱️ Clicked",
+        "soft_bounce": "⚠️ Soft Bounce",
+        "hard_bounce": "❌ Hard Bounce",
+        "unsubscribed":"🚫 Unsubscribed",
+    }
+    status_label = STATUS_ICON.get(email_status, "📤 Sent" if su.get("email_sent") else "⏳ Pending")
     name      = f"{u.get('first_name','')} {u.get('last_name','')}".strip()
     email_to  = u.get("email", "")
     sent_at   = _iso(su.get("email_sent_at")) or _iso(su.get("assigned_at")) or ""
@@ -2121,8 +2133,12 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
   </div>
 
   <!-- Footer -->
-  <div style="background:#fff;border-top:1px solid #e5e7eb;padding:12px 20px;font-size:12px;color:#9ca3af;text-align:center;">
-    Email sent · {su.get('email_sent', 0) and 'Delivered' or 'Pending'} · Shift: {s.get('shift_code','')}
+  <div style="background:#fff;border-top:1px solid #e5e7eb;padding:12px 20px;font-size:12px;color:#6b7280;text-align:center;display:flex;justify-content:center;gap:16px;flex-wrap:wrap;">
+    <span>{status_label}</span>
+    {'<span>👁️ Opened</span>' if email_opened else ''}
+    {'<span>🖱️ Clicked</span>' if email_clicked else ''}
+    {'<span>⚠️ Bounced</span>' if email_bounced else ''}
+    <span>🔖 {s.get('shift_code','')}</span>
   </div>
 
 </div>
@@ -2130,3 +2146,74 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
 </html>"""
 
     return _HR(content=html)
+
+
+# ── POST /outreach/brevo-webhook ──────────────────────────────────────────────
+
+@router.post(
+    "/brevo-webhook",
+    summary="Brevo email event webhook (open, click, bounce etc)",
+    include_in_schema=False,
+)
+async def brevo_webhook(request: Request):
+    """
+    Receives email events from Brevo (Sendinblue).
+    Configure in Brevo → Settings → Webhooks → URL: /xnapi/outreach/brevo-webhook
+    Events: delivered, opened, clicked, soft_bounce, hard_bounce, unsubscribed
+    """
+    db  = _get_db()
+    now = datetime.now(timezone.utc)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    # Brevo sends array or single event
+    events = body if isinstance(body, list) else [body]
+
+    for event in events:
+        event_type = event.get("event", "")
+        email      = event.get("email", "")
+        # X-Shift-Id header we set when sending
+        shifts_users_id = (
+            event.get("X-Shift-Id") or
+            event.get("x-shift-id") or
+            (event.get("headers") or {}).get("X-Shift-Id")
+        )
+
+        logger.info(f"[BREVO] event={event_type} email={email} su_id={shifts_users_id}")
+
+        if not shifts_users_id or not ObjectId.is_valid(shifts_users_id):
+            # Try to find by email
+            if email:
+                su = await db["shifts_users"].find_one(
+                    {"email_sent": 1, "email_status": {"$ne": "hard_bounce"}},
+                    sort=[("email_sent_at", -1)]
+                )
+                if su:
+                    shifts_users_id = str(su["_id"])
+
+        if not shifts_users_id or not ObjectId.is_valid(shifts_users_id):
+            continue
+
+        update: dict = {"email_status": event_type, "updated_at": now}
+
+        if event_type == "opened":
+            update["email_opened"]    = 1
+            update["email_opened_at"] = now
+        elif event_type == "clicked":
+            update["email_clicked"]    = 1
+            update["email_clicked_at"] = now
+        elif event_type in ("soft_bounce", "hard_bounce"):
+            update["email_bounced"]    = 1
+            update["email_bounce_type"] = event_type
+        elif event_type == "delivered":
+            update["email_delivered"] = 1
+
+        await db["shifts_users"].update_one(
+            {"_id": ObjectId(shifts_users_id)},
+            {"$set": update}
+        )
+
+    return {"success": True, "processed": len(events)}

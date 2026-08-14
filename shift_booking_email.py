@@ -110,9 +110,11 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
         base_url = os.getenv("APP_BASE_URL", "https://uat.expresshealth.ie")
         html     = _build_email_html(first_name, shift_doc, base_url, shifts_users_id)
 
+        su_id_str = str(shifts_users_id)
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"Shift Available – {shift_doc.get('client_name','')} on {_format_date(shift_doc.get('date',''))}"
-        msg["From"]    = f"{os.getenv('SHIFT_SMTP_FROM_NAME','XpressHealth')} <{os.getenv('SHIFT_FROM_EMAIL','')}>"
+        msg["Subject"]    = f"Shift Available – {shift_doc.get('client_name','')} on {_format_date(shift_doc.get('date',''))}"
+        msg["From"]       = f"{os.getenv('SHIFT_SMTP_FROM_NAME','XpressHealth')} <{os.getenv('SHIFT_FROM_EMAIL','')}>"
+        msg["X-Shift-Id"] = su_id_str  # Track back to shifts_users._id
         msg["To"]      = to_email
 
         cc  = os.getenv("SHIFT_CC_EMAIL",  "")
@@ -140,7 +142,12 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
         log.info(f"[EMAIL] ✓ Sent to {to_email}")
         app.db.shifts_users.update_one(
             {"_id": shifts_users_id},
-            {"$set": {"email_sent": 1, "email_sent_at": datetime.utcnow()}}
+            {"$set": {
+                "email_sent":      1,
+                "email_sent_at":   datetime.utcnow(),
+                "email_status":    "delivered",
+                "email_message_id": su_id_str,
+            }}
         )
 
     except Exception as e:
@@ -235,7 +242,7 @@ def register_shift_booking_email_routes(app):
                     "location":       s.get("location", ""),
                     "user_type":      s.get("user_type", ""),
                     "client_address": client.get("address", "") if client else "",
-                    "client_county":  client.get("county", "") if client else "",
+                    "client_county":  s.get("client_county", "") or (client.get("county", "") if client else ""),
                     "client_lat":     client.get("latitude", "") if client else "",
                     "client_lng":     client.get("longitude", "") if client else "",
                 }
