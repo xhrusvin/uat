@@ -1344,6 +1344,7 @@ class ListMultiShiftUsersRequest(BaseModel):
 
     qqi_status_number:      Optional[int]   = None
     user_sub_type_multiple: Optional[list]  = None
+    visa_type_id:           Optional[str]   = None
 @router.post(
     "/list-multi",
     summary="List users for multiple shifts with same enrichment as /list",
