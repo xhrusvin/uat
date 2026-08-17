@@ -69,9 +69,10 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     logo_url   = "https://uat.expresshealth.ie/static/image/logo.png"
     map_url    = f"https://www.google.com/maps?q={lat},{lng}" if lat and lng else ""
 
-    yes_url     = f"{base_url}/shift_booking_email/respond/{su_id}?answer=yes"
-    no_url      = f"{base_url}/shift_booking_email/respond/{su_id}?answer=no"
-    details_url = f"{base_url}/shift_booking_email/respond/{su_id}?answer=details"
+    yes_url      = f"{base_url}/shift_booking_email/respond/{su_id}?answer=yes"
+    no_url       = f"{base_url}/shift_booking_email/respond/{su_id}?answer=no"
+    details_url  = f"{base_url}/shift_booking_email/respond/{su_id}?answer=details"
+    comments_url = f"{base_url}/shift_booking_email/respond/{su_id}?answer=comments"
 
     # Load template file
     template_path = os.path.join(
@@ -99,6 +100,7 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{yes_url}}", yes_url)
     html = html.replace("{{no_url}}", no_url)
     html = html.replace("{{details_url}}", details_url)
+    html = html.replace("{{comments_url}}", comments_url)
     html = html.replace("{{logo_url}}", logo_url)
     html = html.replace("{{base_url}}", base_url)
 
@@ -349,25 +351,103 @@ def register_shift_booking_email_routes(app):
 </body></html>"""
 
         elif answer == "details":
-            html = f"""<html><body style="font-family:Arial;max-width:500px;margin:40px auto;color:#333">
-  <h2 style="color:#1e7a38">Shift Details</h2>
-  <div style="background:#f9f9f9;border-left:4px solid #1e7a38;padding:16px;border-radius:6px;margin:16px 0">
-    <p>&#x1F4CD; <strong>{shift_doc.get('client_name')}</strong>, {shift_doc.get('location')}</p>
-    <p>&#x1F4C5; {shift_doc.get('date')}</p>
-    <p>&#x1F550; {shift_doc.get('start_time')} &#x2013; {shift_doc.get('end_time')}</p>
-    <p>&#x1F469;&#x200D;&#x2695;&#xFE0F; {shift_doc.get('user_type')}</p>
-    <p>&#x1F516; {shift_doc.get('shift_code')}</p>
+            comments_url = f"{base_url}/shift_booking_email/respond/{shifts_users_id}?answer=comments"
+            html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Inter,Arial,sans-serif;">
+<div style="max-width:500px;margin:0 auto;">
+  <div style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></div>
+  <div style="background:#fff;padding:24px 28px;">
+    <img src="https://uat.expresshealth.ie/static/image/logo.png" alt="Xpress Health" width="130" style="display:block;margin-bottom:20px;">
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px;">
+    <h2 style="color:#111827;font-size:17px;margin:0 0 16px;">Shift Details</h2>
+    <table width="100%" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;border-collapse:collapse;overflow:hidden;">
+      <tr><td colspan="2" style="background:#1e7a38;padding:10px 16px;font-size:12px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px;">Shift Information</td></tr>
+      <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;width:45%;">📍 Facility</td><td style="padding:10px 16px;font-size:13px;font-weight:600;color:#111827;">{shift_doc.get('client_name')}</td></tr>
+      <tr style="background:#fff;"><td style="padding:8px 16px;font-size:13px;color:#6b7280;">👩‍⚕️ Role</td><td style="padding:8px 16px;font-size:13px;font-weight:600;color:#111827;">{shift_doc.get('user_type')}</td></tr>
+      <tr><td style="padding:8px 16px;font-size:13px;color:#6b7280;">📅 Date</td><td style="padding:8px 16px;font-size:13px;font-weight:600;color:#111827;">{shift_doc.get('date')}</td></tr>
+      <tr style="background:#fff;"><td style="padding:8px 16px;font-size:13px;color:#6b7280;">🕐 Time</td><td style="padding:8px 16px;font-size:13px;font-weight:600;color:#111827;">{shift_doc.get('start_time')} – {shift_doc.get('end_time')}</td></tr>
+      <tr><td style="padding:8px 16px;font-size:13px;color:#6b7280;">📌 Address</td><td style="padding:8px 16px;font-size:13px;font-weight:600;color:#111827;">{shift_doc.get('location')}</td></tr>
+    </table>
+    <p style="font-weight:700;text-align:center;color:#111827;margin:20px 0 12px;">Are you available for this shift?</p>
+    <div style="text-align:center;margin-bottom:16px;">
+      <a href="{yes_url}" style="display:inline-block;background:#1e7a38;color:#fff;padding:12px 22px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">✅ Yes, I'm available</a>
+      <a href="{no_url}"  style="display:inline-block;background:#dc2626;color:#fff;padding:12px 22px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">❌ No, thanks</a>
+      <a href="{comments_url}" style="display:inline-block;background:#f59e0b;color:#fff;padding:12px 22px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">💬 Add Comments</a>
+    </div>
   </div>
-  <p style="font-weight:bold;text-align:center">Are you available for this shift?</p>
-  <div style="text-align:center;margin:20px 0">
-    <a href="{yes_url}" style="background:#1e7a38;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin:6px;display:inline-block">Yes, I'm available</a>
-    <a href="{no_url}"  style="background:#e74c3c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin:6px;display:inline-block">No, thanks</a>
+  <div style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></div>
+  <div style="background:#f9fafb;text-align:center;padding:16px;font-size:11px;color:#9ca3af;">© 2026 Xpress Health</div>
+</div>
+</body></html>"""
+
+        elif answer == "comments":
+            existing_comment = record.get("staff_comment", "")
+            html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Inter,Arial,sans-serif;">
+<div style="max-width:500px;margin:0 auto;">
+  <div style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></div>
+  <div style="background:#fff;padding:24px 28px;">
+    <img src="https://uat.expresshealth.ie/static/image/logo.png" alt="Xpress Health" width="130" style="display:block;margin-bottom:20px;">
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px;">
+    <h2 style="color:#111827;font-size:17px;margin:0 0 8px;">Add Comments</h2>
+    <p style="font-size:13px;color:#6b7280;margin:0 0 16px;">Leave a message for the Xpress Health bookings team regarding this shift.</p>
+    {f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#166534;"><strong>Previous comment:</strong> {existing_comment}</div>' if existing_comment else ''}
+    <form method="POST" action="{base_url}/shift_booking_email/respond/{shifts_users_id}">
+      <input type="hidden" name="answer" value="save_comment">
+      <textarea name="comment" rows="5" placeholder="Type your comment here..." style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;"></textarea>
+      <button type="submit" style="width:100%;margin-top:12px;background:#f59e0b;color:#fff;padding:13px;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;">Submit Comment</button>
+    </form>
   </div>
-  <p style="color:#aaa;font-size:12px;text-align:center">Xpress Health</p>
+  <div style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></div>
+</div>
 </body></html>"""
 
         else:
             html = "<h2>Invalid response.</h2>"
+
+        return html, 200
+
+
+    @app.route('/shift_booking_email/respond/<shifts_users_id>', methods=['POST'])
+    def shift_booking_email_respond_post(shifts_users_id):
+        answer  = request.form.get('answer', '')
+        comment = request.form.get('comment', '').strip()
+
+        try:
+            obj_id = ObjectId(shifts_users_id)
+        except Exception:
+            return "<h2>Invalid link.</h2>", 400
+
+        if answer == "save_comment" and comment:
+            app.db.shifts_users.update_one(
+                {"_id": obj_id},
+                {"$set": {
+                    "staff_comment":    comment,
+                    "comment_at":       datetime.utcnow(),
+                    "updated_at":       datetime.utcnow(),
+                }}
+            )
+            html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Inter,Arial,sans-serif;">
+<div style="max-width:500px;margin:0 auto;">
+  <div style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></div>
+  <div style="background:#fff;padding:32px 28px;text-align:center;">
+    <img src="https://uat.expresshealth.ie/static/image/logo.png" alt="Xpress Health" width="130" style="display:block;margin:0 auto 20px;">
+    <div style="font-size:40px;margin-bottom:16px;">💬</div>
+    <h2 style="color:#111827;font-size:18px;margin:0 0 10px;">Comment Submitted!</h2>
+    <p style="font-size:14px;color:#6b7280;margin:0 0 20px;">Thank you. Your comment has been sent to the Xpress Health bookings team.</p>
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:14px 18px;text-align:left;font-size:13px;color:#374151;">
+      <strong>Your comment:</strong><br>{comment}
+    </div>
+  </div>
+  <div style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></div>
+</div>
+</body></html>"""
+        else:
+            html = "<h2>No comment provided.</h2>"
 
         return html, 200
 

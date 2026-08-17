@@ -2076,6 +2076,8 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     email_reply      = su.get("email_reply", "")
     email_reply_from = su.get("email_reply_from", "")
     email_reply_at   = _iso(su.get("email_reply_at")) or ""
+    staff_comment    = su.get("staff_comment", "")
+    comment_at       = _iso(su.get("comment_at")) or ""
 
     response_bubble = ""
     if response_text or email_reply:
@@ -2138,6 +2140,16 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     <div style="text-align:center;color:#9ca3af;font-size:13px;padding:20px;">
       No response yet
     </div>'''}
+
+    {f"""
+    <div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
+      <div>
+        <div style="font-size:11px;color:#9ca3af;text-align:right;margin-bottom:4px;">&#x1F4AC; Staff Comment</div>
+        <div style="background:#f59e0b;color:#fff;border-radius:18px 18px 4px 18px;padding:12px 18px;max-width:340px;font-size:14px;white-space:pre-wrap;">{staff_comment}</div>
+        <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:4px;">{name} · {comment_at[:16] if comment_at else ''}</div>
+      </div>
+      <div style="width:36px;height:36px;border-radius:50%;background:#f59e0b;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;margin-left:8px;flex-shrink:0;">{(name[0] if name else 'U').upper()}</div>
+    </div>""" if staff_comment else ""}
 
   </div>
 
