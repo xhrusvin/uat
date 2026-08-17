@@ -1283,7 +1283,7 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
             "duplicate_night":          "User already has a night shift on this date",
             "consecutive_day_night":    "User has both day and night shifts on this date",
             "exceeds_16h":              "Assignment would exceed 16 consecutive hours",
-            "under_6h_gap":             "Less than 6 hours gap between shifts",
+            "under_6h_gap":             "Less than 5 hours gap between shifts on same or adjacent day",
         }
         reasons = [
             tag_messages.get(t, t.replace("tag:", "Staff tag: ") if t.startswith("tag:") else t)
