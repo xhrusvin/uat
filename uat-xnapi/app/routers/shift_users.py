@@ -613,17 +613,25 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
                             if "exceeds_16h" not in tags:
                                 tags.append("exceeds_16h")
 
-            # Rule 6: Minimum 6h gap (same or adjacent day)
-            if tr_end and target_start:
-                gap = _gap_minutes(tr_end, target_start)
-                if 0 < gap < 360:
-                    if "under_6h_gap" not in tags:
-                        tags.append("under_6h_gap")
-            if target_end and tr_start:
-                gap = _gap_minutes(target_end, tr_start)
-                if 0 < gap < 360:
-                    if "under_6h_gap" not in tags:
-                        tags.append("under_6h_gap")
+            # Rule 6: Minimum 6h gap (same or adjacent day only)
+            if tr_end and target_start and tr_date and target_date:
+                try:
+                    td_d   = tr_date.date() if hasattr(tr_date, "date") else None
+                    tgt_d  = target_date.date() if hasattr(target_date, "date") else None
+                    if td_d and tgt_d:
+                        day_diff = abs((tgt_d - td_d).days)
+                        if day_diff <= 1:  # same or adjacent day only
+                            gap = _gap_minutes(tr_end, target_start)
+                            if 0 < gap < 360:
+                                if "under_6h_gap" not in tags:
+                                    tags.append("under_6h_gap")
+                            if target_end and tr_start:
+                                gap = _gap_minutes(target_end, tr_start)
+                                if 0 < gap < 360:
+                                    if "under_6h_gap" not in tags:
+                                        tags.append("under_6h_gap")
+                except Exception:
+                    pass
 
     return tags
 
