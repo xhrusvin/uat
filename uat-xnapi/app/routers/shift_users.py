@@ -1395,7 +1395,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     # Always fetch user_types from all provided shifts (used for by_designation + auto-filter)
     shift_docs = await db["shifts"].find(
         {"_id": {"$in": shift_oids}},
-        {"user_type": 1}
+        {"user_type": 1, "requested_staff_list": 1}
     ).to_list(length=100)
     shift_user_types = list({s["user_type"] for s in shift_docs if s.get("user_type")})
 
@@ -1509,6 +1509,14 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     ).to_list(5000)
     pool_user_ids = {str(p["user_id"]) for p in pool_records}
 
+    # Build requested_user_ids_multi from all shifts requested_staff_list
+    requested_user_ids_multi: set = set()
+    for _s in shift_docs:
+        for rs in (_s.get("requested_staff_list") or []):
+            sid = str(rs.get("staff_id", ""))
+            if sid:
+                requested_user_ids_multi.add(sid)
+
     # Check shifts_group_pool — use explicit group_id if provided, else find by shift_ids
     group_oids = []
     if payload.group_id and ObjectId.is_valid(payload.group_id):
@@ -1594,6 +1602,9 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         excluded       = 1 if exclusion_tags else 0
         in_pool_val    = 1 if uid_str in pool_user_ids else 0
 
+        # requested flag from all shifts requested_staff_list
+        requested = 1 if uid_str in requested_user_ids_multi else 0
+
         results.append({
             "id":                  uid_str,
             "xn_user_id":          u.get("xn_user_id"),
@@ -1621,7 +1632,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "distance_km":         distance_km,
             "excluded":            excluded,
             "exclusion_tags":      exclusion_tags,
-            "requested":           1 if uid_str in requested_user_ids else 0,
+            "requested":           requested,
             "in_pool":             in_pool_val,
         })
 
