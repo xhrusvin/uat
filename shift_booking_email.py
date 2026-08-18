@@ -64,8 +64,11 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     date_str   = _format_date(shift.get("date", ""))
     start_time = shift.get("start_time", "")
     end_time   = shift.get("end_time", "")
-    user_type  = shift.get("user_type", "")
-    su_id      = str(shifts_users_id)
+    user_type        = shift.get("user_type", "")
+    unit             = shift.get("unit", "") or "—"
+    shift_type       = shift.get("shift_type", "") or shift.get("shift_timing", "") or "—"
+    shift_preference = shift.get("shift_preference", "") or "—"
+    su_id            = str(shifts_users_id)
     logo_url   = "https://uat.expresshealth.ie/static/image/logo.png"
     map_url    = f"https://www.google.com/maps?q={lat},{lng}" if lat and lng else ""
 
@@ -96,6 +99,9 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{start_time}}", start_time)
     html = html.replace("{{end_time}}", end_time)
     html = html.replace("{{user_type}}", user_type)
+    html = html.replace("{{unit}}", unit)
+    html = html.replace("{{shift_type}}", shift_type)
+    html = html.replace("{{shift_preference}}", shift_preference)
     html = html.replace("{{map_url}}", map_url)
     html = html.replace("{{yes_url}}", yes_url)
     html = html.replace("{{no_url}}", no_url)
@@ -246,7 +252,10 @@ def register_shift_booking_email_routes(app):
                     "end_time":       s.get("end_time", ""),
                     "client_name":    s.get("client_name", ""),
                     "location":       s.get("location", ""),
-                    "user_type":      s.get("user_type", ""),
+                    "user_type":          s.get("user_type", ""),
+                    "unit":               s.get("unit") or "",
+                    "shift_type":         s.get("shift_timing") or s.get("shift_type") or "",
+                    "shift_preference":   ", ".join([sp.get("name","") for sp in (s.get("shift_preferences") or []) if sp.get("name")]) or "—",
                     "client_address": client.get("address", "") if client else "",
                     "client_county":  s.get("client_county", "") or (client.get("county", "") if client else ""),
                     "client_lat":     client.get("latitude", "") if client else "",
@@ -303,13 +312,15 @@ def register_shift_booking_email_routes(app):
             s = app.db.shifts.find_one({"_id": ObjectId(shift_id)})
             if s:
                 shift_doc = {
-                    "client_name": s.get("client_name", ""),
-                    "date":        _format_date(str(s.get("date", ""))),
-                    "start_time":  s.get("start_time", ""),
-                    "end_time":    s.get("end_time", ""),
-                    "location":    s.get("location", ""),
-                    "user_type":   s.get("user_type", ""),
-                    "shift_code":  s.get("shift_code", ""),
+                    "client_name":       s.get("client_name", ""),
+                    "date":              _format_date(str(s.get("date", ""))),
+                    "start_time":        s.get("start_time", ""),
+                    "end_time":          s.get("end_time", ""),
+                    "location":          s.get("location", ""),
+                    "user_type":         s.get("user_type", ""),
+                    "unit":              s.get("unit") or "—",
+                    "shift_type":        s.get("shift_timing") or s.get("shift_type") or "—",
+                    "shift_preference":  ", ".join([sp.get("name","") for sp in (s.get("shift_preferences") or []) if sp.get("name")]) or "—",
                 }
 
         base_url = os.getenv("APP_BASE_URL", "https://uat.expresshealth.ie")
