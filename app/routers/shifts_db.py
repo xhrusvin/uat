@@ -279,7 +279,6 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
                 {"shift_xn_id":    {"$regex": search, "$options": "i"}},
                 {"shift_code":     {"$regex": search, "$options": "i"}},
                 {"location":       {"$regex": search, "$options": "i"}},
-                {"client_name":    {"$regex": search, "$options": "i"}},
                 {"client_county":  {"$regex": search, "$options": "i"}},
                 {"client_id":      {"$regex": search, "$options": "i"}},
                 {"user_type":      {"$regex": search, "$options": "i"}},
@@ -578,7 +577,6 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
                 {"shift_xn_id":    {"$regex": search, "$options": "i"}},
                 {"shift_code":     {"$regex": search, "$options": "i"}},
                 {"location":       {"$regex": search, "$options": "i"}},
-                {"client_name":    {"$regex": search, "$options": "i"}},
                 {"client_county":  {"$regex": search, "$options": "i"}},
                 {"user_type":      {"$regex": search, "$options": "i"}},
             ]})
