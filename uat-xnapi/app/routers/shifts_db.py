@@ -1331,7 +1331,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     # Fetch available staff: shifts_users where availability == 1 only
     available_su = await db["shifts_users"].find(
         {"shift_id": shift_oid, "availability": 1},
-        {"user_id": 1, "availability": 1, "call_processed_at": 1, "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "response_text": 1, "response_time": 1, "ignored": 1, "flag": 1}
+        {"user_id": 1, "availability": 1, "call_processed_at": 1, "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "response_text": 1, "response_time": 1, "ignored": 1, "flag": 1, "channel": 1}
     ).to_list(length=500)
 
     available_staff = []
@@ -1474,7 +1474,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "last_contacted":      last_contacted,
                 "staff_tags":          staff_tags,
                 "visa_hours_remaining": visa_hours_remaining,
-                "channel":             "Phone",
+                "channel":             su.get("channel") or "Phone",
                 "response_text":       response_text,
                 "response_time":       response_time,
                 "availability":        avail_val,
@@ -1485,7 +1485,6 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "distance_km":         round(float(distance_km), 2) if distance_km is not None else None,
                 "call_details":        call_details,
                 "work_history":        work_history,
-                "workfat_new":         0,
                 "flag":                su.get("flag", 0),
                 "confirmed":           1 if str(uid_str) == str(doc.get("staff_id", "")) or u.get("email") == doc.get("staff_email") else 0,
                 # Confirm staff modal fields (Image 2)

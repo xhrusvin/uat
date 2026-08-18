@@ -435,11 +435,19 @@ def register_shift_booking_email_routes(app):
             app.db.shifts_users.update_one(
                 {"_id": obj_id},
                 {"$set": {
-                    "staff_comment":    comment,
-                    "comment_at":       datetime.utcnow(),
-                    "updated_at":       datetime.utcnow(),
+                    "staff_comment":     comment,
+                    "customer_feedback": comment,
+                    "comment_at":        datetime.utcnow(),
+                    "updated_at":        datetime.utcnow(),
                 }}
             )
+            # Also update requested_confirm.customer_feedback for same shift+user
+            su_record = app.db.shifts_users.find_one({"_id": obj_id}, {"shift_id": 1, "user_id": 1})
+            if su_record:
+                app.db.requested_confirm.update_many(
+                    {"shift_id": su_record.get("shift_id"), "staff_id": su_record.get("user_id")},
+                    {"$set": {"customer_feedback": comment, "updated_at": datetime.utcnow()}}
+                )
             html = f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Inter,Arial,sans-serif;">
