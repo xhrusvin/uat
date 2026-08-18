@@ -736,8 +736,8 @@ def _upload_to_hse(xn_staff_id, pdf_bytes, filename='application_form.pdf'):
     """
     import requests as _req
 
-    base_url    = os.environ.get('DOC_BASE_URL', '').rstrip('/')
-    api_key     = os.environ.get('DOC_API_KEY', '')
+    base_url    = os.environ.get('XN_PORTAL_BASE_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
     app_country = os.environ.get('XN_APP_COUNTRY', 'ie')
 
     if not base_url:
