@@ -1,16 +1,24 @@
 from datetime import datetime, timezone
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core.config import settings
 from app.core.security import verify_api_key
 from app.models.user import User
 from app.schemas.user import UserListResponse, UserResponse, UserUpdate
 
+logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/users", tags=["Users"])
+
+
+def _get_db():
+    from app.db.database import _client
+    return _client[settings.MONGODB_DB]
 
 
 def _user_to_response(user: User) -> UserResponse:
@@ -169,3 +177,88 @@ async def delete_user(request: Request, user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
     await user.delete()
     return {"success": True, "message": "User deleted", "id": user_id}
+
+
+# ── POST /users/sync-xn-user-id ───────────────────────────────────────────────
+
+@router.post(
+    "/sync-xn-user-id",
+    summary="Trigger background sync of xn_user_id for users missing it",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("5/minute")
+async def sync_xn_user_id(request: Request, limit: int = 100):
+    """
+    Finds users missing xn_user_id and calls upstream
+    GET /ai/recruitments/user-document-list to resolve it.
+    Runs in background — returns immediately with job status.
+    """
+    import asyncio
+    import httpx as _httpx
+
+    db  = _get_db()
+
+    USER_API_URL      = settings.USER_API_URL.rstrip("/")
+    USER_EXTERNAL_KEY = settings.USER_EXTERNAL_API_KEY
+    DOCUMENT_ID       = "68daa26ba580ebbd1001fc8b"
+
+    query = {
+        "$or": [
+            {"xn_user_id": {"$exists": False}},
+            {"xn_user_id": None},
+            {"xn_user_id": ""},
+        ],
+        "email": {"$exists": True, "$ne": None, "$ne": ""},
+    }
+
+    total_missing = await db["users"].count_documents(query)
+
+    async def _run_sync():
+        users = await db["users"].find(
+            query, {"_id": 1, "email": 1}
+        ).limit(limit).to_list(limit)
+
+        success = failed = 0
+        headers = {
+            "Api-Key":      USER_EXTERNAL_KEY,
+            "Content-Type": "application/json",
+            "Accept":       "application/json",
+        }
+
+        async with _httpx.AsyncClient(timeout=20.0) as client:
+            for u in users:
+                email = (u.get("email") or "").strip()
+                if not email:
+                    continue
+                try:
+                    resp = await client.get(
+                        f"{USER_API_URL}/ai/recruitments/user-document-list",
+                        params={"email": email, "document_id": DOCUMENT_ID},
+                        headers=headers,
+                    )
+                    if resp.status_code == 200:
+                        body  = resp.json()
+                        xn_id = (body.get("data") or {}).get("id") if body.get("success") else None
+                        if xn_id:
+                            await db["users"].update_one(
+                                {"_id": u["_id"]},
+                                {"$set": {"xn_user_id": xn_id}}
+                            )
+                            success += 1
+                        else:
+                            failed += 1
+                    else:
+                        failed += 1
+                except Exception:
+                    failed += 1
+
+        logger.info(f"[sync-xn-user-id] done success={success} failed={failed}")
+
+    asyncio.create_task(_run_sync())
+
+    return {
+        "success":       True,
+        "message":       f"Sync started in background for up to {limit} users",
+        "total_missing": total_missing,
+        "processing":    min(limit, total_missing),
+    }
