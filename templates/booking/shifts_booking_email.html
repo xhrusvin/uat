@@ -25,14 +25,13 @@
 
     <!-- Greeting -->
     <tr>
-      <td style="padding:28px 40px 8px;font-size:15px;font-weight:600;line-height:22px;color:#111827;">
+      <td style="padding:24px 40px 8px;font-size:15px;font-weight:600;line-height:22px;color:#111827;">
         Hi {{first_name}},
       </td>
     </tr>
     <tr>
       <td style="padding:0 40px 24px;font-size:14px;font-weight:400;line-height:22px;color:#374151;">
-        We're reaching out to check your availability for an upcoming shift at
-        <strong style="color:#111827;">{{facility}}</strong>.
+        We're reaching out to check your availability for an upcoming shift.
         Please review the details below and confirm at your earliest convenience.
       </td>
     </tr>
@@ -41,60 +40,66 @@
     <tr>
       <td style="padding:0 40px 24px;">
         <table width="100%" border="0" cellspacing="0" cellpadding="0"
-          style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+          style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
           <tbody>
+
+            <!-- Facility name -->
             <tr>
-              <td colspan="2" style="padding:14px 20px;background:#1e7a38;">
-                <span style="font-size:13px;font-weight:700;color:#ffffff;letter-spacing:0.5px;text-transform:uppercase;">Shift Details</span>
+              <td style="padding:18px 20px 6px;" colspan="2">
+                <span style="font-size:17px;font-weight:700;color:#111827;">{{facility}}</span>
               </td>
             </tr>
+
+            <!-- Unit -->
             <tr>
-              <td style="padding:12px 20px 0;font-size:13px;color:#6b7280;font-weight:500;width:40%;">👤 Staff</td>
-              <td style="padding:12px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{staff_name}}</td>
+              <td style="padding:6px 20px 0;font-size:14px;color:#374151;" colspan="2">
+                📍 <strong>Unit:</strong> {{unit}}
+              </td>
             </tr>
+
+            <!-- Role -->
             <tr>
-              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">📍 Facility</td>
-              <td style="padding:12px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{facility}}</td>
+              <td style="padding:6px 20px 0;font-size:14px;color:#374151;" colspan="2">
+                🧑‍⚕️ <strong>Role:</strong> {{user_type}}
+              </td>
             </tr>
+
+            <!-- Date & Time -->
             <tr>
-              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">🏠 Address</td>
-              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{address}}</td>
+              <td style="padding:6px 20px 0;font-size:14px;color:#374151;" colspan="2">
+                📅 <strong>{{date_str}} · {{start_time}}–{{end_time}}</strong>
+              </td>
             </tr>
+
+            <!-- Shift preference -->
             <tr>
-              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">🌍 County</td>
-              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{county}}</td>
+              <td style="padding:6px 20px 0;font-size:14px;color:#374151;" colspan="2">
+                ⭐ <strong>Shift preference:</strong> {{shift_preference}}
+              </td>
             </tr>
+
+            <!-- Address with map arrow -->
             <tr>
-              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">👩‍⚕️ Role</td>
-              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{user_type}}</td>
+              <td style="padding:6px 20px 16px;font-size:14px;color:#374151;">
+                🏠 {{address}}, {{county}}
+              </td>
+              <td style="padding:6px 20px 16px;text-align:right;">
+                <a href="{{map_url}}" target="_blank"
+                  style="display:inline-flex;align-items:center;gap:4px;background:#4285f4;color:#fff;padding:6px 12px;border-radius:20px;text-decoration:none;font-size:12px;font-weight:600;">
+                  📍 Directions →
+                </a>
+              </td>
             </tr>
-            <tr>
-              <td style="padding:8px 20px 0;font-size:13px;color:#6b7280;font-weight:500;">📅 Date</td>
-              <td style="padding:8px 20px 0;font-size:13px;color:#111827;font-weight:600;">{{date_str}}</td>
-            </tr>
-            <tr>
-              <td style="padding:8px 20px 16px;font-size:13px;color:#6b7280;font-weight:500;">🕐 Shift Time</td>
-              <td style="padding:8px 20px 16px;font-size:13px;color:#111827;font-weight:600;">{{start_time}} – {{end_time}}</td>
-            </tr>
+
           </tbody>
         </table>
       </td>
     </tr>
 
-    <!-- Google Maps button -->
-    <tr>
-      <td style="padding:0 40px 24px;text-align:center;">
-        <a href="{{map_url}}" target="_blank"
-          style="display:inline-block;background:#4285f4;color:#ffffff;padding:11px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:13px;">
-          🗺️ View on Google Maps
-        </a>
-      </td>
-    </tr>
-
     <!-- Question -->
     <tr>
-      <td style="padding:0 40px 20px;font-size:15px;font-weight:600;color:#111827;text-align:center;">
-        Are you available for this shift?
+      <td style="padding:0 40px 16px;font-size:15px;font-weight:600;color:#111827;text-align:center;">
+        Are you available?
       </td>
     </tr>
 
@@ -103,11 +108,11 @@
       <td style="padding:0 40px 32px;text-align:center;">
         <a href="{{yes_url}}"
           style="display:inline-block;background:#1e7a38;color:#ffffff;padding:13px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">
-          ✅ Yes, I'm available
+          🟢 Yes, I'm available
         </a>
         <a href="{{no_url}}"
           style="display:inline-block;background:#dc2626;color:#ffffff;padding:13px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">
-          ❌ No, thanks
+          🔴 No, thanks
         </a>
         <a href="{{details_url}}"
           style="display:inline-block;background:#ffffff;color:#374151;padding:13px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;border:1px solid #d1d5db;">
