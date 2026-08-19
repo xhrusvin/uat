@@ -536,7 +536,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     # Get shift_ids from regular outreach
     outreach_docs = await db["outreach"].find(
         outreach_query,
-        {"shift_id": 1, "outreach_status": 1, "sequence_id": 1, "created_at": 1}
+        {"shift_id": 1, "outreach_status": 1, "sequence_id": 1, "created_at": 1, "started_at": 1, "ended_at": 1, "paused_at": 1, "round_number": 1, "end_reason": 1}
     ).to_list(length=10000)
 
     # Also include shifts from group outreach (outreach_shift_group → shifts_group → shift_ids)
@@ -1313,30 +1313,23 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
             if seq:
                 seq_name = seq.get("name")
-        # start_time as time-ago from created_at
-        created_at_raw = o.get("created_at")
+        # start_time as time-ago from started_at
+        created_at_raw = o.get("started_at") or o.get("created_at")
         start_time_ago = None
         if created_at_raw:
             try:
-                from datetime import datetime, timezone
                 now = _now_irl()
-                dt  = created_at_raw if hasattr(created_at_raw, "tzinfo") else created_at_raw
+                dt  = created_at_raw
                 if hasattr(dt, "tzinfo") and dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.astimezone(_IRL_TZ)
                 diff = int((now - dt).total_seconds())
-                if diff < 60:
-                    start_time_ago = "just now"
-                elif diff < 3600:
-                    m = diff // 60
-                    start_time_ago = f"{m} minute{'s' if m != 1 else ''} ago"
-                elif diff < 86400:
-                    h = diff // 3600
-                    start_time_ago = f"{h} hour{'s' if h != 1 else ''} ago"
-                else:
-                    d = diff // 86400
-                    start_time_ago = f"{d} day{'s' if d != 1 else ''} ago"
-            except Exception:
-                pass
+                if diff < 60:       start_time_ago = "just now"
+                elif diff < 3600:   start_time_ago = f"{diff//60} minute{'s' if diff//60 != 1 else ''} ago"
+                elif diff < 86400:  start_time_ago = f"{diff//3600} hour{'s' if diff//3600 != 1 else ''} ago"
+                else:               start_time_ago = f"{diff//86400} day{'s' if diff//86400 != 1 else ''} ago"
+            except Exception as _e:
+                logger.error(f"[start_time_ago] {_e}")
 
         # Availability counts from shifts_users for this outreach
         ou_oid = o["_id"]
@@ -1535,6 +1528,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "call_details":        call_details,
                 "work_history":        work_history,
                 "flag":                su.get("flag", 0),
+                "ignored":             su.get("ignored", 0),
                 "confirmed":           1 if str(uid_str) == str(doc.get("staff_id", "")) or u.get("email") == doc.get("staff_email") else 0,
                 # Confirm staff modal fields (Image 2)
                 "confirm": {

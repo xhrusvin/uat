@@ -56,7 +56,7 @@ def _format_date(date_str: str) -> str:
 
 def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name=''):
     """Load and render shift booking email from HTML template file."""
-    facility        = shift.get("client_name", "") or shift.get("location", "")
+    facility        = shift.get("client_name", "")
     address         = shift.get("client_address", "")
     county          = shift.get("client_county", "")
     lat             = shift.get("client_lat", "")
@@ -129,6 +129,7 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{logo_url}}", logo_url)
     html = html.replace("{{base_url}}", base_url)
     html = html.replace("{{email_subject}}", email_subject)
+    html = html.replace("{{email_preview}}", email_preview)
     html = html.replace("{{email_intro}}", email_intro)
 
     return html
@@ -349,10 +350,16 @@ def register_shift_booking_email_routes(app):
         no_url   = f"{base_url}/shift_booking_email/respond/{shifts_users_id}?answer=no"
 
         if answer == "yes":
+            _now = datetime.utcnow()
             app.db.shifts_users.update_one(
                 {"_id": obj_id},
-                {"$set": {"availability": 1, "response_text": "Yes, I'm available.",
-                           "responded_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
+                {"$set": {
+                    "availability":   1,
+                    "response_text":  "Yes, I'm available.",
+                    "response_time":  _now.strftime("%Y-%m-%d %H:%M:%S"),
+                    "responded_at":   _now,
+                    "updated_at":     _now,
+                }}
             )
             threading.Thread(
                 target=_check_and_end_outreach,
@@ -371,10 +378,16 @@ def register_shift_booking_email_routes(app):
 </body></html>"""
 
         elif answer == "no":
+            _now = datetime.utcnow()
             app.db.shifts_users.update_one(
                 {"_id": obj_id},
-                {"$set": {"availability": 0, "response_text": "No, thanks.",
-                           "responded_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
+                {"$set": {
+                    "availability":  0,
+                    "response_text": "No, thanks.",
+                    "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
+                    "responded_at":  _now,
+                    "updated_at":    _now,
+                }}
             )
             html = """<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
   <h2>&#x1F44D; No problem!</h2>
