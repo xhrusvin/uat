@@ -170,11 +170,11 @@ async def recruitment_detail(request: Request, payload: RecruitmentDetailRequest
 
         now         = datetime.now(timezone.utc)
         update_doc  = _map_user_fields(data, now)
+        db          = _get_db()
 
         # Resolve user_sub_type_ids names → ObjectIds from user_sub_types collection
         raw_sub_ids = update_doc.get("user_sub_type_ids") or []
         if raw_sub_ids and isinstance(raw_sub_ids, list):
-            db = _get_db()
             resolved_ids = []
             import re as _re
             for item in raw_sub_ids:

@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shift Availability Request</title>
+</head>
+
+<body style="
+  margin:0;
+  padding:0;
+  background-color:#f5f5f5;
+  font-family:Arial, Helvetica, sans-serif;
+  color:#222222;
+">
+
+  <table
+    role="presentation"
+    width="100%"
+    cellspacing="0"
+    cellpadding="0"
+    border="0"
+    style="width:100%; background-color:#f5f5f5;"
+  >
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+
+        <!-- MAIN CONTAINER -->
+        <table
+          role="presentation"
+          width="100%"
+          cellspacing="0"
+          cellpadding="0"
+          border="0"
+          style="
+            width:100%;
+            max-width:760px;
+            background-color:#ffffff;
+            border-collapse:collapse;
+          "
+        >
+
+          <!-- HEADER / INTRO -->
+          <tr>
+            <td
+              style="
+                padding:28px 24px 22px 24px;
+                font-size:15px;
+                line-height:1.6;
+              "
+            >
+
+              Hi {{staff_name}},
+              <br><br>
+
+              Hope you're well! Please see the available
+              {{#if single_shift}}shift{{else}}shifts{{/if}}
+              in <strong>{{county}}</strong> below.
+              <br><br>
+
+              Tap <strong>Yes</strong> if you're available.
+              <br><br>
+
+              <strong>Please note:</strong>
+              The shift is only confirmed once the facility approves your request.
+              You'll receive a confirmation email once approved.
+
+            </td>
+          </tr>
+
+
+          <!-- SHIFT TABLE -->
+          <tr>
+            <td style="padding:0 24px 24px 24px;">
+
+              <table
+                role="presentation"
+                width="100%"
+                cellspacing="0"
+                cellpadding="0"
+                border="0"
+                style="
+                  width:100%;
+                  border:1px solid #dddddd;
+                  border-collapse:collapse;
+                "
+              >
+
+                <!-- COUNTY HEADER -->
+                <tr>
+                  <td
+                    colspan="5"
+                    style="
+                      padding:14px 16px;
+                      background-color:#f4f3ef;
+                      border-bottom:1px solid #dddddd;
+                      font-size:15px;
+                      font-weight:700;
+                      color:#27237c;
+                    "
+                  >
+                    CO. {{county_uppercase}}
+                    &nbsp;—&nbsp;
+                    {{shift_count}}
+                    {{#if single_shift}}shift{{else}}shifts{{/if}}
+                  </td>
+                </tr>
+
+
+                <!-- COLUMN HEADERS -->
+                <tr>
+
+                  <td
+                    style="
+                      padding:12px 14px;
+                      border-bottom:1px solid #dddddd;
+                      font-size:12px;
+                      font-weight:700;
+                      color:#666666;
+                    "
+                  >
+                    DATE
+                  </td>
+
+                  <td
+                    style="
+                      padding:12px 14px;
+                      border-bottom:1px solid #dddddd;
+                      font-size:12px;
+                      font-weight:700;
+                      color:#666666;
+                    "
+                  >
+                    TIME
+                  </td>
+
+                  <td
+                    style="
+                      padding:12px 14px;
+                      border-bottom:1px solid #dddddd;
+                      font-size:12px;
+                      font-weight:700;
+                      color:#666666;
+                    "
+                  >
+                    LOCATION
+                  </td>
+
+                  <td
+                    style="
+                      padding:12px 14px;
+                      border-bottom:1px solid #dddddd;
+                      font-size:12px;
+                      font-weight:700;
+                      color:#666666;
+                    "
+                  >
+                    RATE
+                  </td>
+
+                  <td
+                    align="center"
+                    style="
+                      padding:12px 14px;
+                      border-bottom:1px solid #dddddd;
+                      font-size:12px;
+                      font-weight:700;
+                      color:#666666;
+                    "
+                  >
+                    RESPONSE
+                  </td>
+
+                </tr>
+
+
+                <!-- LOOP: ONE ROW PER SHIFT -->
+                {{#each shifts}}
+
+                <tr>
+
+                  <!-- DATE -->
+                  <td
+                    valign="middle"
+                    style="
+                      padding:16px 14px;
+                      border-bottom:1px solid #eeeeee;
+                      font-size:14px;
+                      white-space:nowrap;
+                    "
+                  >
+                    {{date}}
+                  </td>
+
+
+                  <!-- TIME -->
+                  <td
+                    valign="middle"
+                    style="
+                      padding:16px 14px;
+                      border-bottom:1px solid #eeeeee;
+                      font-size:14px;
+                      white-space:nowrap;
+                    "
+                  >
+                    {{shift_type}} {{start_time}} – {{end_time}}
+                  </td>
+
+
+                  <!-- LOCATION -->
+                  <td
+                    valign="middle"
+                    style="
+                      padding:16px 14px;
+                      border-bottom:1px solid #eeeeee;
+                      font-size:14px;
+                      line-height:1.4;
+                    "
+                  >
+
+                    <strong>{{location}}</strong>
+
+                    {{#if department}}
+                    <br>
+                    <span style="color:#777777;">
+                      {{department}}
+                    </span>
+                    {{/if}}
+
+                  </td>
+
+
+                  <!-- RATE -->
+                  <td
+                    valign="middle"
+                    style="
+                      padding:16px 14px;
+                      border-bottom:1px solid #eeeeee;
+                      font-size:14px;
+                      white-space:nowrap;
+                    "
+                  >
+                    {{rate}}
+                  </td>
+
+
+                  <!-- RESPONSE -->
+                  <td
+                    valign="middle"
+                    align="center"
+                    style="
+                      padding:16px 14px;
+                      border-bottom:1px solid #eeeeee;
+                    "
+                  >
+
+                    <a
+                      href="{{yes_url}}"
+                      target="_blank"
+                      style="
+                        display:inline-block;
+                        background-color:#168124;
+                        color:#ffffff;
+                        text-decoration:none;
+                        font-size:14px;
+                        font-weight:700;
+                        padding:10px 22px;
+                        border-radius:5px;
+                        white-space:nowrap;
+                      "
+                    >
+                      ✓ Yes
+                    </a>
+
+                  </td>
+
+                </tr>
+
+                {{/each}}
+
+              </table>
+
+            </td>
+          </tr>
+
+
+          <!-- APP / COMMENT CTA -->
+          <tr>
+            <td
+              align="center"
+              style="
+                padding:26px 24px;
+                background-color:#f4f3ef;
+                font-size:14px;
+                line-height:1.5;
+              "
+            >
+
+              <div
+                style="
+                  margin-bottom:14px;
+                  font-size:15px;
+                "
+              >
+                Need more details, or want to see everything in one place?
+              </div>
+
+
+              <!-- OPEN APP -->
+              <a
+                href="{{app_url}}"
+                target="_blank"
+                style="
+                  display:inline-block;
+                  background-color:#5146c7;
+                  color:#ffffff;
+                  text-decoration:none;
+                  font-size:14px;
+                  font-weight:700;
+                  padding:12px 24px;
+                  border-radius:5px;
+                "
+              >
+                Open the Xpress Health app
+              </a>
+
+
+              <div
+                style="
+                  margin-top:18px;
+                  margin-bottom:12px;
+                  color:#666666;
+                "
+              >
+                Or reply to this email — someone from the team will get back to you.
+              </div>
+
+
+              <!-- ADD COMMENT -->
+              <a
+                href="{{comment_url}}"
+                target="_blank"
+                style="
+                  display:inline-block;
+                  border:1px solid #5146c7;
+                  background-color:#ffffff;
+                  color:#5146c7;
+                  text-decoration:none;
+                  font-size:14px;
+                  font-weight:700;
+                  padding:10px 20px;
+                  border-radius:5px;
+                "
+              >
+                Add a comment
+              </a>
+
+            </td>
+          </tr>
+
+
+          <!-- SIGNATURE -->
+          <tr>
+            <td
+              style="
+                padding:26px 24px;
+                font-size:14px;
+                line-height:1.6;
+                color:#444444;
+              "
+            >
+
+              Warm regards,
+              <br>
+              <strong>{{user}}</strong>
+              <br>
+              Bookings Team | Xpress Health
+
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

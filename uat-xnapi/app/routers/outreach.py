@@ -1271,6 +1271,16 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         ):
             user_map[str(u["_id"])] = u
 
+    # Build county name map from county_id (stored as string)
+    county_id_strs = list({str(u.get("county_id","")) for u in user_map.values() if u.get("county_id")})
+    county_name_map: dict = {}
+    if county_id_strs:
+        async for c in db["county"].find(
+            {"_id": {"$in": [ObjectId(i) for i in county_id_strs if ObjectId.is_valid(i)]}},
+            {"name": 1}
+        ):
+            county_name_map[str(c["_id"])] = c.get("name", "")
+
     AVAILABILITY_TEXT = {
         1: "Available", 0: "Not Available", 3: "Voicemail",
         4: "Call Not Attended", 6: "Call Not Triggered", 7: "Not Sent", 8: "No Response",
@@ -1415,8 +1425,9 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             "phone":               u.get("phone"),
             "designation":         u.get("designation"),
             "rating":              u.get("rating"),
-            "county":              u.get("county"),
+            "county":              u.get("county") or county_name_map.get(str(u.get("county_id", ""))) or None,
             "county_id":           str(u["county_id"]) if u.get("county_id") else None,
+            "abcd":                0,
             "prior_shifts_here":   prior_here,
             "last_contacted":      last_contacted,
             "staff_tags":          staff_tags,

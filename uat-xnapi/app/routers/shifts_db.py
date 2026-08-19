@@ -1076,7 +1076,15 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         ):
             req_user_map[str(u["_id"])] = u
 
-    # Load requested_confirm docs for this shift
+    # County name map for requested_staff
+    _county_ids_req = list({str(u.get("county_id","")) for u in req_user_map.values() if u.get("county_id")})
+    _county_name_map_req: dict = {}
+    if _county_ids_req:
+        async for c in db["county"].find(
+            {"_id": {"$in": [ObjectId(i) for i in _county_ids_req if ObjectId.is_valid(i)]}},
+            {"name": 1}
+        ):
+            _county_name_map_req[str(c["_id"])] = c.get("name", "")
     req_confirm_map: dict = {}
     if req_user_oids:
         async for rc in db["requested_confirm"].find(
@@ -1198,7 +1206,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "phone":             u.get("phone") or rs.get("phone_number"),
             "designation":       u.get("designation"),
             "rating":            u.get("rating"),
-            "county":            u.get("county") or rs.get("location"),
+            "county":            u.get("county") or _county_name_map_req.get(str(u.get("county_id",""))) or rs.get("location") or None,
             "county_id":         str(u["county_id"]) if u.get("county_id") else None,
             "staff_tags":        staff_tags,
             "work_history":      work_history,
@@ -1399,7 +1407,15 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             ):
                 avail_user_map[str(u["_id"])] = u
 
-        # Build user_types name → _id map
+        # Build county name map for available_staff
+        _county_ids_avail = list({str(u.get("county_id","")) for u in avail_user_map.values() if u.get("county_id")})
+        _county_name_map_avail: dict = {}
+        if _county_ids_avail:
+            async for c in db["county"].find(
+                {"_id": {"$in": [ObjectId(i) for i in _county_ids_avail if ObjectId.is_valid(i)]}},
+                {"name": 1}
+            ):
+                _county_name_map_avail[str(c["_id"])] = c.get("name", "")
         user_type_map: dict = {}
         async for ut in db["user_types"].find({}, {"name": 1}):
             user_type_map[ut.get("name", "").lower()] = str(ut["_id"])
@@ -1515,7 +1531,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "designation":         u.get("designation"),
                 "user_type_id":        str(u["user_type_id"]) if u.get("user_type_id") and ObjectId.is_valid(str(u.get("user_type_id",""))) else user_type_map.get((u.get("designation") or "").lower()),
                 "rating":              u.get("rating"),
-                "county":              u.get("county"),
+                "county":              u.get("county") or _county_name_map_avail.get(str(u.get("county_id",""))) or None,
                 "county_id":           str(u["county_id"]) if u.get("county_id") else None,
                 "prior_shifts_here":   prior_shifts_here,
                 "last_contacted":      last_contacted,
