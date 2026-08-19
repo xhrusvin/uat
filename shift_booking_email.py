@@ -131,7 +131,7 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{logo_url}}", logo_url)
     html = html.replace("{{base_url}}", base_url)
     html = html.replace("{{email_subject}}", email_subject)
-    html = html.replace("{{email_preview}}", email_preview)
+    html = html.replace("{{email_preview}}", "")
     html = html.replace("{{email_intro}}", email_intro)
 
     return html
