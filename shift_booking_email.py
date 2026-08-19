@@ -142,7 +142,8 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
 
         su_id_str = str(shifts_users_id)
         msg = MIMEMultipart("alternative")
-        msg["Subject"]    = f"Shift Available – {shift_doc.get('client_name','')} on {_format_date(shift_doc.get('date',''))}"
+        _county_s = shift_doc.get('client_county','') or shift_doc.get('location','')
+        msg["Subject"]    = f"Shift Availability Request – Co. {_county_s}" if _county_s else f"Shift Availability Request – {shift_doc.get('client_name','')}"
         msg["From"]       = f"{os.getenv('SHIFT_SMTP_FROM_NAME','XpressHealth')} <{os.getenv('SHIFT_FROM_EMAIL','')}>"
         msg["X-Shift-Id"] = su_id_str  # Track back to shifts_users._id
         reply_domain = os.getenv("SHIFT_REPLY_DOMAIN", "uat.expresshealth.ie")
