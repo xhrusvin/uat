@@ -1354,6 +1354,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "ended_at":             _iso_irl(o.get("ended_at")) or o.get("ended_at"),
             "created_at":           _iso_irl(o.get("created_at")) or str(o.get("created_at", "")),
             "start_time":           start_time_ago,
+            "time_ago":             start_time_ago,
             "staff_counts": {
                 "available":     avail_1,
                 "declined":      declined_count,
