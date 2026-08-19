@@ -1,147 +1,389 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Shift Availability</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shift Availability Request</title>
 </head>
-<body style="margin:0;padding:0;background:#f0eef7;font-family:Inter,-apple-system,sans-serif;color:#1a1a1a;font-size:14px;">
 
-<!-- Wrapper -->
-<table width="100%" border="0" cellspacing="0" cellpadding="0">
-<tr><td align="center" style="padding:24px 16px;">
+<body style="
+  margin:0;
+  padding:0;
+  background-color:#f5f5f5;
+  font-family:Arial, Helvetica, sans-serif;
+  color:#222222;
+">
 
-<table width="600" border="0" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
-<tbody>
+  <table
+    role="presentation"
+    width="100%"
+    cellspacing="0"
+    cellpadding="0"
+    border="0"
+    style="width:100%; background-color:#f5f5f5;"
+  >
+    <tr>
+      <td align="center" style="padding:24px 12px;">
 
-  <!-- Email client chrome -->
-  <tr>
-    <td style="padding:14px 22px;border-bottom:1px solid #e5e5e0;background:#f6f6f4;">
-      <h2 style="margin:0 0 5px;font-size:15px;font-weight:600;color:#1a1a1a;">{{email_subject}}</h2>
-      
-      
-    </td>
-  </tr>
+        <!-- MAIN CONTAINER -->
+        <table
+          role="presentation"
+          width="100%"
+          cellspacing="0"
+          cellpadding="0"
+          border="0"
+          style="
+            width:100%;
+            max-width:760px;
+            background-color:#ffffff;
+            border-collapse:collapse;
+          "
+        >
 
-  <!-- Logo -->
-  <tr>
-    <td style="padding:22px 28px 16px;">
-      <img src="{{logo_url}}" alt="Xpress Health" width="140" style="display:block;">
-    </td>
-  </tr>
+          <!-- HEADER / INTRO -->
+          <tr>
+            <td
+              style="
+                padding:28px 24px 22px 24px;
+                font-size:15px;
+                line-height:1.6;
+              "
+            >
 
-  <!-- Gradient bar -->
-  <tr><td style="height:4px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td></tr>
+              Hi {{staff_name}},
+              <br><br>
 
-  <!-- Greeting -->
-  <tr>
-    <td style="padding:20px 28px 14px;font-size:14px;color:#1a1a1a;line-height:1.6;">
-      Hi {{first_name}},<br><br>
-      {{email_intro}}<br>
-      Please note: The shift is only confirmed once the facility approves your request. You’ll receive a confirmation email once approved.
-    </td>
-  </tr>
+              Hope you're well! Please see the available
+              {{#if single_shift}}shift{{else}}shifts{{/if}}
+              in <strong>{{county}}</strong> below.
+              <br><br>
 
-  <!-- County section -->
-  <tr>
-    <td style="padding:0 28px 20px;">
+              Tap <strong>Yes</strong> if you're available.
+              <br><br>
 
-      <!-- County header -->
-      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="border:1px solid #e5e5e0;border-radius:6px;overflow:hidden;">
-        <tr>
-          <td style="padding:10px 16px;background:#f4f4f0;border-bottom:1px solid #e5e5e0;">
-            <span style="font-size:12px;font-weight:700;color:#3C3489;text-transform:uppercase;letter-spacing:0.04em;">
-              📍 {{county_name}}
-            </span>
-            <span style="font-size:12px;color:#555;font-weight:500;"> — {{shift_count}} shift(s)</span>
-            {{premium_badge}}
-          </td>
-        </tr>
+              <strong>Please note:</strong>
+              The shift is only confirmed once the facility approves your request.
+              You'll receive a confirmation email once approved.
 
-        <!-- Table header -->
-        <tr style="background:#ffffff;">
-          <td style="padding:8px 16px;border-bottom:1px solid #e5e5e0;">
-            <table width="100%" border="0" cellspacing="0" cellpadding="0">
-              <tr>
-                <td style="font-size:10.5px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.04em;width:22%;">Date</td>
-                <td style="font-size:10.5px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.04em;width:26%;">Time</td>
-                <td style="font-size:10.5px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.04em;width:30%;">Location</td>
-                <td style="font-size:10.5px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.04em;width:22%;text-align:right;">Response</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
+            </td>
+          </tr>
 
-        <!-- Shift row -->
-        <tr>
-          <td style="padding:0 16px;">
-            <table width="100%" border="0" cellspacing="0" cellpadding="0">
-              <tr>
-                <td style="padding:13px 0;border-bottom:1px solid #e5e5e0;vertical-align:middle;width:22%;">
-                  <span style="font-size:13px;font-weight:500;color:#1a1a1a;">{{shift_date}}</span>
-                </td>
-                <td style="padding:13px 8px;border-bottom:1px solid #e5e5e0;vertical-align:middle;width:26%;">
-                  <span style="font-size:13px;color:#1a1a1a;">{{shift_timing_icon}} {{shift_type}} {{start_time}}–{{end_time}}</span>
-                </td>
-                <td style="padding:13px 8px;border-bottom:1px solid #e5e5e0;vertical-align:middle;width:30%;">
-                  <div style="font-size:13px;font-weight:500;color:#1a1a1a;">{{facility}}</div>
-                  <div style="font-size:11px;color:#888;margin-top:2px;">{{unit}}</div>
-                </td>
-                <td style="padding:13px 0;border-bottom:1px solid #e5e5e0;vertical-align:middle;width:22%;text-align:right;">
-                  <a href="{{yes_url}}" style="display:inline-block;background:#1a7c1a;color:#fff;padding:6px 13px;border-radius:4px;text-decoration:none;font-size:12px;font-weight:600;margin-right:4px;">✓ Yes</a>
-                  <a href="{{no_url}}" style="display:inline-block;background:#ffffff;color:#a32d2d;padding:6px 13px;border-radius:4px;text-decoration:none;font-size:12px;font-weight:600;border:1px solid #ecb1b1;">✕ No</a>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
 
-      </table>
-    </td>
-  </tr>
+          <!-- SHIFT TABLE -->
+          <tr>
+            <td style="padding:0 24px 24px 24px;">
 
-  <!-- Footer CTA -->
-  <tr>
-    <td style="padding:0 28px 20px;">
-      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background:#f4f4f0;border-radius:6px;">
-        <tr>
-          <td style="padding:16px 18px;text-align:center;">
-            <p style="margin:0 0 12px;font-size:13px;color:#555;">Need more details, or want to see everything in one place?</p>
-            <a href="{{details_url}}" style="display:inline-block;background:#534AB7;color:#fff;padding:9px 20px;border-radius:5px;text-decoration:none;font-size:13px;font-weight:600;">📱 Open the Xpress Health app</a>
-            <p style="margin:10px 0 0;font-size:11.5px;color:#888;">Or reply to this email — someone from the team will get back to you.</p>
-            <p style="margin:10px 0 0;font-size:12px;">
-              <a href="{{comments_url}}" style="color:#d97706;text-decoration:underline;font-weight:500;">💬 Add a comment for the bookings team</a>
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
+              <table
+                role="presentation"
+                width="100%"
+                cellspacing="0"
+                cellpadding="0"
+                border="0"
+                style="
+                  width:100%;
+                  border:1px solid #dddddd;
+                  border-collapse:collapse;
+                "
+              >
 
-  <!-- Sign off -->
-  <tr>
-    <td style="padding:0 28px 8px;font-size:13px;color:#1a1a1a;line-height:1.7;">
-      Warm regards,<br>
-      <strong>Ellie</strong><br>
-      <span style="font-size:12px;color:#555;">Xpress Health · Ops team</span>
-    </td>
-  </tr>
+                <!-- COUNTY HEADER -->
+                <tr>
+                  <td
+                    colspan="5"
+                    style="
+                      padding:14px 16px;
+                      background-color:#f4f3ef;
+                      border-bottom:1px solid #dddddd;
+                      font-size:15px;
+                      font-weight:700;
+                      color:#27237c;
+                    "
+                  >
+                    CO. {{county_uppercase}}
+                    &nbsp;—&nbsp;
+                    {{shift_count}}
+                    {{#if single_shift}}shift{{else}}shifts{{/if}}
+                  </td>
+                </tr>
 
-  <!-- Gradient bar -->
-  <tr><td style="height:4px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td></tr>
 
-  <!-- Legal footer -->
-  <tr>
-    <td style="padding:16px 28px;background:#f4f4f0;text-align:center;font-size:10.5px;color:#888;line-height:1.6;">
-      You're receiving this because you're registered as a {{user_type}} with Xpress Health.<br>
-      © 2026 Xpress Health, 47 Park West Ind Centre, Lavery Ave, Park West, Dublin, Ireland
-    </td>
-  </tr>
+                <!-- COLUMN HEADERS -->
+                <tr>
 
-</tbody>
-</table>
+                  <td
+                    style="
+                      padding:12px 14px;
+                      border-bottom:1px solid #dddddd;
+                      font-size:12px;
+                      font-weight:700;
+                      color:#666666;
+                    "
+                  >
+                    DATE
+                  </td>
 
-</td></tr>
-</table>
+                  <td
+                    style="
+                      padding:12px 14px;
+                      border-bottom:1px solid #dddddd;
+                      font-size:12px;
+                      font-weight:700;
+                      color:#666666;
+                    "
+                  >
+                    TIME
+                  </td>
+
+                  <td
+                    style="
+                      padding:12px 14px;
+                      border-bottom:1px solid #dddddd;
+                      font-size:12px;
+                      font-weight:700;
+                      color:#666666;
+                    "
+                  >
+                    LOCATION
+                  </td>
+
+                  <td
+                    style="
+                      padding:12px 14px;
+                      border-bottom:1px solid #dddddd;
+                      font-size:12px;
+                      font-weight:700;
+                      color:#666666;
+                    "
+                  >
+                    RATE
+                  </td>
+
+                  <td
+                    align="center"
+                    style="
+                      padding:12px 14px;
+                      border-bottom:1px solid #dddddd;
+                      font-size:12px;
+                      font-weight:700;
+                      color:#666666;
+                    "
+                  >
+                    RESPONSE
+                  </td>
+
+                </tr>
+
+
+                <!-- LOOP: ONE ROW PER SHIFT -->
+                {{#each shifts}}
+
+                <tr>
+
+                  <!-- DATE -->
+                  <td
+                    valign="middle"
+                    style="
+                      padding:16px 14px;
+                      border-bottom:1px solid #eeeeee;
+                      font-size:14px;
+                      white-space:nowrap;
+                    "
+                  >
+                    {{date}}
+                  </td>
+
+
+                  <!-- TIME -->
+                  <td
+                    valign="middle"
+                    style="
+                      padding:16px 14px;
+                      border-bottom:1px solid #eeeeee;
+                      font-size:14px;
+                      white-space:nowrap;
+                    "
+                  >
+                    {{shift_type}} {{start_time}} – {{end_time}}
+                  </td>
+
+
+                  <!-- LOCATION -->
+                  <td
+                    valign="middle"
+                    style="
+                      padding:16px 14px;
+                      border-bottom:1px solid #eeeeee;
+                      font-size:14px;
+                      line-height:1.4;
+                    "
+                  >
+
+                    <strong>{{location}}</strong>
+
+                    {{#if department}}
+                    <br>
+                    <span style="color:#777777;">
+                      {{department}}
+                    </span>
+                    {{/if}}
+
+                  </td>
+
+
+                  <!-- RATE -->
+                  <td
+                    valign="middle"
+                    style="
+                      padding:16px 14px;
+                      border-bottom:1px solid #eeeeee;
+                      font-size:14px;
+                      white-space:nowrap;
+                    "
+                  >
+                    {{rate}}
+                  </td>
+
+
+                  <!-- RESPONSE -->
+                  <td
+                    valign="middle"
+                    align="center"
+                    style="
+                      padding:16px 14px;
+                      border-bottom:1px solid #eeeeee;
+                    "
+                  >
+
+                    <a
+                      href="{{yes_url}}"
+                      target="_blank"
+                      style="
+                        display:inline-block;
+                        background-color:#168124;
+                        color:#ffffff;
+                        text-decoration:none;
+                        font-size:14px;
+                        font-weight:700;
+                        padding:10px 22px;
+                        border-radius:5px;
+                        white-space:nowrap;
+                      "
+                    >
+                      ✓ Yes
+                    </a>
+
+                  </td>
+
+                </tr>
+
+                {{/each}}
+
+              </table>
+
+            </td>
+          </tr>
+
+
+          <!-- APP / COMMENT CTA -->
+          <tr>
+            <td
+              align="center"
+              style="
+                padding:26px 24px;
+                background-color:#f4f3ef;
+                font-size:14px;
+                line-height:1.5;
+              "
+            >
+
+              <div
+                style="
+                  margin-bottom:14px;
+                  font-size:15px;
+                "
+              >
+                Need more details, or want to see everything in one place?
+              </div>
+
+
+              <!-- OPEN APP -->
+              <a
+                href="{{app_url}}"
+                target="_blank"
+                style="
+                  display:inline-block;
+                  background-color:#5146c7;
+                  color:#ffffff;
+                  text-decoration:none;
+                  font-size:14px;
+                  font-weight:700;
+                  padding:12px 24px;
+                  border-radius:5px;
+                "
+              >
+                Open the Xpress Health app
+              </a>
+
+
+              <div
+                style="
+                  margin-top:18px;
+                  margin-bottom:12px;
+                  color:#666666;
+                "
+              >
+                Or reply to this email — someone from the team will get back to you.
+              </div>
+
+
+              <!-- ADD COMMENT -->
+              <a
+                href="{{comment_url}}"
+                target="_blank"
+                style="
+                  display:inline-block;
+                  border:1px solid #5146c7;
+                  background-color:#ffffff;
+                  color:#5146c7;
+                  text-decoration:none;
+                  font-size:14px;
+                  font-weight:700;
+                  padding:10px 20px;
+                  border-radius:5px;
+                "
+              >
+                Add a comment
+              </a>
+
+            </td>
+          </tr>
+
+
+          <!-- SIGNATURE -->
+          <tr>
+            <td
+              style="
+                padding:26px 24px;
+                font-size:14px;
+                line-height:1.6;
+                color:#444444;
+              "
+            >
+
+              Warm regards,
+              <br>
+              <strong>{{user}}</strong>
+              <br>
+              Bookings Team | Xpress Health
+
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>
