@@ -22,7 +22,25 @@ except Exception:
     _IRL_TZ = timezone.utc
 
 
-def _now_irl():
+def _normalize_shift_timing(s: dict) -> str:
+    """Return shift_timing as 'Type (HH:MM - HH:MM)' format."""
+    timing = s.get("shift_timing") or s.get("shift") or ""
+    start  = s.get("start_time", "")
+    end    = s.get("end_time", "")
+
+    # Fallback to first slot for start/end times
+    if (not start or not end) and s.get("slots"):
+        first_slot = s["slots"][0] if isinstance(s["slots"], list) and s["slots"] else {}
+        start = start or first_slot.get("start_time", "")
+        end   = end   or first_slot.get("end_time", "")
+        if not timing:
+            timing = first_slot.get("shift_type", "")
+
+    if timing and start and end:
+        if "(" in timing and ")" in timing:
+            return timing
+        return f"{timing} ({start} - {end})"
+    return timing or ""
     """Current datetime in Ireland timezone."""
     return datetime.now(_IRL_TZ)
 
@@ -1658,7 +1676,7 @@ async def cursor_list_shifts(request: Request, payload: ShiftCursorListRequest):
             "date":         s.get("date"),
             "start_time":   s.get("start_time"),
             "end_time":     s.get("end_time"),
-            "shift_timing": s.get("shift_timing") or s.get("shift") or "",
+            "shift_timing": _normalize_shift_timing(s),
             "user_type":    s.get("user_type") or "",
             "client_id":    cid,
             "client_name":  s.get("client_name"),
