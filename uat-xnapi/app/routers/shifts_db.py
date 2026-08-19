@@ -462,6 +462,7 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["shift_preference"]       = doc.get("shift_preferences") or s.get("shift_preferences") or []
         s["shift_preferences"]      = doc.get("shift_preferences") or []
         s["ghost_booking"]          = 0
+        s["shift_timing"]           = _normalize_shift_timing(doc)
         results.append(s)
 
     # Aggregate outreach counts (global — not filtered)
