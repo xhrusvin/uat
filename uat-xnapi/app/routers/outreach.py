@@ -2024,7 +2024,19 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     AVAIL = {0: "Not Available", 1: "Available", 3: "Voicemail",
              4: "Call Not Attended", 6: "Call Not Triggered", 7: "Not Sent"}
 
-    def _iso(v): return v.isoformat() if v and hasattr(v, "isoformat") else None
+    try:
+        from zoneinfo import ZoneInfo as _ZI2
+        _irl = _ZI2("Europe/Dublin")
+    except Exception:
+        from datetime import timezone as _tz2
+        _irl = _tz2.utc
+    def _iso(v):
+        if not v or not hasattr(v, "isoformat"):
+            return None
+        if hasattr(v, "tzinfo") and v.tzinfo is None:
+            from datetime import timezone
+            v = v.replace(tzinfo=timezone.utc)
+        return v.astimezone(_irl).isoformat()
 
     av = su.get("availability")
 
