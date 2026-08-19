@@ -1318,18 +1318,19 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         start_time_ago = None
         if created_at_raw:
             try:
-                now = _now_irl()
+                from datetime import datetime as _dtt
+                now = _dtt.now(timezone.utc)
                 dt  = created_at_raw
-                if hasattr(dt, "tzinfo") and dt.tzinfo is None:
+                if not hasattr(dt, "tzinfo") or dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
-                dt = dt.astimezone(_IRL_TZ)
                 diff = int((now - dt).total_seconds())
+                if diff < 0:        diff = 0
                 if diff < 60:       start_time_ago = "just now"
                 elif diff < 3600:   start_time_ago = f"{diff//60} minute{'s' if diff//60 != 1 else ''} ago"
                 elif diff < 86400:  start_time_ago = f"{diff//3600} hour{'s' if diff//3600 != 1 else ''} ago"
                 else:               start_time_ago = f"{diff//86400} day{'s' if diff//86400 != 1 else ''} ago"
             except Exception as _e:
-                logger.error(f"[start_time_ago] {_e}")
+                logger.error(f"[start_time_ago] {_e} dt={created_at_raw}")
 
         # Availability counts from shifts_users for this outreach
         ou_oid = o["_id"]
