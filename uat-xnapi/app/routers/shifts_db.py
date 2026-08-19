@@ -41,6 +41,9 @@ def _normalize_shift_timing(s: dict) -> str:
             return timing
         return f"{timing} ({start} - {end})"
     return timing or ""
+
+
+def _now_irl():
     """Current datetime in Ireland timezone."""
     return datetime.now(_IRL_TZ)
 
