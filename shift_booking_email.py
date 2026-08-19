@@ -56,7 +56,7 @@ def _format_date(date_str: str) -> str:
 
 def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name=''):
     """Load and render shift booking email from HTML template file."""
-    facility        = shift.get("client_name", "")
+    facility        = shift.get("client_name", "") or shift.get("location", "")
     address         = shift.get("client_address", "")
     county          = shift.get("client_county", "")
     lat             = shift.get("client_lat", "")
@@ -88,7 +88,7 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
 
     # Subject and intro
     county_display = county or address or "your area"
-    email_subject  = f"Shift Availability Request – Co. {county_display}" if county_display else f"Shift Availability Request – {facility}"
+    email_subject  = f"{user_type} shift available in {county_display} — are you free?"
     email_intro    = f"Hope you're well! Please see the shift available in <strong>{county_display}</strong>. Tap Yes if you're free, or No if you can't make it."
 
     # Load template file
@@ -129,7 +129,6 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{logo_url}}", logo_url)
     html = html.replace("{{base_url}}", base_url)
     html = html.replace("{{email_subject}}", email_subject)
-    html = html.replace("{{email_preview}}", email_preview)
     html = html.replace("{{email_intro}}", email_intro)
 
     return html
@@ -143,8 +142,7 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
 
         su_id_str = str(shifts_users_id)
         msg = MIMEMultipart("alternative")
-        _county_s = shift_doc.get('client_county','') or shift_doc.get('location','')
-        msg["Subject"]    = f"Shift Availability Request – Co. {_county_s}" if _county_s else f"Shift Availability Request – {shift_doc.get('client_name','')}"
+        msg["Subject"]    = f"Shift Available – {shift_doc.get('client_name','')} on {_format_date(shift_doc.get('date',''))}"
         msg["From"]       = f"{os.getenv('SHIFT_SMTP_FROM_NAME','XpressHealth')} <{os.getenv('SHIFT_FROM_EMAIL','')}>"
         msg["X-Shift-Id"] = su_id_str  # Track back to shifts_users._id
         reply_domain = os.getenv("SHIFT_REPLY_DOMAIN", "uat.expresshealth.ie")
@@ -351,16 +349,10 @@ def register_shift_booking_email_routes(app):
         no_url   = f"{base_url}/shift_booking_email/respond/{shifts_users_id}?answer=no"
 
         if answer == "yes":
-            _now = datetime.utcnow()
             app.db.shifts_users.update_one(
                 {"_id": obj_id},
-                {"$set": {
-                    "availability":   1,
-                    "response_text":  "Yes, I'm available.",
-                    "response_time":  _now.strftime("%Y-%m-%d %H:%M:%S"),
-                    "responded_at":   _now,
-                    "updated_at":     _now,
-                }}
+                {"$set": {"availability": 1, "response_text": "Yes, I'm available.",
+                           "responded_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
             )
             threading.Thread(
                 target=_check_and_end_outreach,
@@ -379,16 +371,10 @@ def register_shift_booking_email_routes(app):
 </body></html>"""
 
         elif answer == "no":
-            _now = datetime.utcnow()
             app.db.shifts_users.update_one(
                 {"_id": obj_id},
-                {"$set": {
-                    "availability":  0,
-                    "response_text": "No, thanks.",
-                    "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
-                    "responded_at":  _now,
-                    "updated_at":    _now,
-                }}
+                {"$set": {"availability": 0, "response_text": "No, thanks.",
+                           "responded_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
             )
             html = """<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
   <h2>&#x1F44D; No problem!</h2>
