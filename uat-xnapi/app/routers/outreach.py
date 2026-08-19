@@ -2111,7 +2111,7 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
         <div style="background:#1e7a38;color:#fff;border-radius:18px 18px 4px 18px;padding:12px 18px;max-width:340px;font-size:14px;font-weight:600;white-space:pre-wrap;">
           {display_text}
         </div>
-        <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:4px;">{name} · {display_time[:16] if display_time else ''}</div>
+        <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:4px;">{name} · {display_time.replace("T", " ")[:16] if display_time else ''}</div>
       </div>
       <div style="width:36px;height:36px;border-radius:50%;background:#1e7a38;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;margin-left:8px;flex-shrink:0;">
         {(name[0] if name else 'U').upper()}
@@ -2148,7 +2148,7 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     <div style="display:flex;margin-bottom:20px;gap:10px;">
       <div style="width:36px;height:36px;border-radius:50%;background:#e5e7eb;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">XH</div>
       <div style="flex:1;">
-        <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">Xpress Health · {sent_at[:16] if sent_at else 'Sent'}</div>
+        <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">Xpress Health · {sent_at.replace("T", " ")[:16] if sent_at else 'Sent'}</div>
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px 18px 18px 18px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
           {email_bubble}
         </div>
@@ -2165,7 +2165,7 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
       <div>
         <div style="font-size:11px;color:#9ca3af;text-align:right;margin-bottom:4px;">&#x1F4AC; Staff Comment</div>
         <div style="background:#f59e0b;color:#fff;border-radius:18px 18px 4px 18px;padding:12px 18px;max-width:340px;font-size:14px;white-space:pre-wrap;">{staff_comment}</div>
-        <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:4px;">{name} · {comment_at[:16] if comment_at else ''}</div>
+        <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:4px;">{name} · {comment_at.replace("T", " ")[:16] if comment_at else ''}</div>
       </div>
       <div style="width:36px;height:36px;border-radius:50%;background:#f59e0b;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;margin-left:8px;flex-shrink:0;">{(name[0] if name else 'U').upper()}</div>
     </div>""" if staff_comment else ""}
