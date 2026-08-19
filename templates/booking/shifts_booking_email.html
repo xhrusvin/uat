@@ -1,163 +1,152 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shift Availability</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Inter,'Helvetica Neue',Helvetica,Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#f0eef7;font-family:Inter,-apple-system,sans-serif;color:#1a1a1a;font-size:14px;">
 
-<table width="600" border="0" cellspacing="0" cellpadding="0" align="center"
-  style="min-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;margin:30px auto;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
-  <tbody>
+<!-- Wrapper -->
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+<tr><td align="center" style="padding:24px 16px;">
 
-    <!-- Top gradient bar -->
-    <tr><td style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td></tr>
+<table width="600" border="0" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+<tbody>
 
-    <!-- Logo -->
-    <tr>
-      <td style="padding:28px 40px 20px;background:#ffffff;">
-        <img src="{{logo_url}}" alt="Xpress Health" width="150" style="display:block;">
-      </td>
-    </tr>
+  <!-- Email client chrome -->
+  <tr>
+    <td style="padding:14px 22px;border-bottom:1px solid #e5e5e0;background:#f6f6f4;">
+      <h2 style="margin:0 0 5px;font-size:15px;font-weight:600;color:#1a1a1a;">{{email_subject}}</h2>
+      <p style="margin:0 0 8px;font-size:11.5px;color:#555;">
+        <span style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.04em;margin-right:4px;">Preview</span>
+        {{email_preview}}
+      </p>
+      <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#555;">
+        <span style="width:22px;height:22px;border-radius:50%;background:#534AB7;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;">EX</span>
+        <span><strong style="color:#1a1a1a;">Ellie</strong> at Xpress Health &middot; to {{first_name}}</span>
+      </div>
+    </td>
+  </tr>
 
-    <!-- Divider -->
-    <tr><td style="padding:0 40px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;"></td></tr>
+  <!-- Logo -->
+  <tr>
+    <td style="padding:22px 28px 16px;">
+      <img src="{{logo_url}}" alt="Xpress Health" width="140" style="display:block;">
+    </td>
+  </tr>
 
-    <!-- Greeting -->
-    <tr>
-      <td style="padding:24px 40px 8px;font-size:15px;font-weight:600;line-height:22px;color:#111827;">
-        Hi {{first_name}},
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:0 40px 24px;font-size:14px;font-weight:400;line-height:22px;color:#374151;">
-        We're reaching out to check your availability for an upcoming shift.
-        Please review the details below and confirm at your earliest convenience.
-      </td>
-    </tr>
+  <!-- Gradient bar -->
+  <tr><td style="height:4px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td></tr>
 
-    <!-- Shift card -->
-    <tr>
-      <td style="padding:0 40px 24px;">
-        <table width="100%" border="0" cellspacing="0" cellpadding="0"
-          style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
-          <tbody>
+  <!-- Greeting -->
+  <tr>
+    <td style="padding:20px 28px 14px;font-size:14px;color:#1a1a1a;line-height:1.6;">
+      Hi {{first_name}},<br><br>
+      {{email_intro}}
+    </td>
+  </tr>
 
-            <!-- Facility name -->
-            <tr>
-              <td style="padding:18px 20px 6px;" colspan="2">
-                <span style="font-size:17px;font-weight:700;color:#111827;">{{facility}}</span>
-              </td>
-            </tr>
+  <!-- County section -->
+  <tr>
+    <td style="padding:0 28px 20px;">
 
-            <!-- Unit -->
-            <tr>
-              <td style="padding:6px 20px 0;font-size:14px;color:#374151;" colspan="2">
-                📍 <strong>Unit:</strong> {{unit}}
-              </td>
-            </tr>
+      <!-- County header -->
+      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="border:1px solid #e5e5e0;border-radius:6px;overflow:hidden;">
+        <tr>
+          <td style="padding:10px 16px;background:#f4f4f0;border-bottom:1px solid #e5e5e0;">
+            <span style="font-size:12px;font-weight:700;color:#3C3489;text-transform:uppercase;letter-spacing:0.04em;">
+              📍 {{county_name}}
+            </span>
+            <span style="font-size:12px;color:#555;font-weight:500;"> — {{shift_count}} shift(s)</span>
+            {{premium_badge}}
+          </td>
+        </tr>
 
-            <!-- Role -->
-            <tr>
-              <td style="padding:6px 20px 0;font-size:14px;color:#374151;" colspan="2">
-                🧑‍⚕️ <strong>Role:</strong> {{user_type}}
-              </td>
-            </tr>
+        <!-- Table header -->
+        <tr style="background:#ffffff;">
+          <td style="padding:8px 16px;border-bottom:1px solid #e5e5e0;">
+            <table width="100%" border="0" cellspacing="0" cellpadding="0">
+              <tr>
+                <td style="font-size:10.5px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.04em;width:22%;">Date</td>
+                <td style="font-size:10.5px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.04em;width:26%;">Time</td>
+                <td style="font-size:10.5px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.04em;width:30%;">Location</td>
+                <td style="font-size:10.5px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.04em;width:22%;text-align:right;">Response</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
 
-            <!-- Date & Time -->
-            <tr>
-              <td style="padding:6px 20px 0;font-size:14px;color:#374151;" colspan="2">
-                📅 <strong>{{date_str}} · {{start_time}}–{{end_time}}</strong>
-              </td>
-            </tr>
+        <!-- Shift row -->
+        <tr>
+          <td style="padding:0 16px;">
+            <table width="100%" border="0" cellspacing="0" cellpadding="0">
+              <tr>
+                <td style="padding:13px 0;border-bottom:1px solid #e5e5e0;vertical-align:middle;width:22%;">
+                  <span style="font-size:13px;font-weight:500;color:#1a1a1a;">{{shift_date}}</span>
+                </td>
+                <td style="padding:13px 8px;border-bottom:1px solid #e5e5e0;vertical-align:middle;width:26%;">
+                  <span style="font-size:13px;color:#1a1a1a;">{{shift_timing_icon}} {{shift_type}} {{start_time}}–{{end_time}}</span>
+                </td>
+                <td style="padding:13px 8px;border-bottom:1px solid #e5e5e0;vertical-align:middle;width:30%;">
+                  <div style="font-size:13px;font-weight:500;color:#1a1a1a;">{{facility}}</div>
+                  <div style="font-size:11px;color:#888;margin-top:2px;">{{unit}}</div>
+                </td>
+                <td style="padding:13px 0;border-bottom:1px solid #e5e5e0;vertical-align:middle;width:22%;text-align:right;">
+                  <a href="{{yes_url}}" style="display:inline-block;background:#1a7c1a;color:#fff;padding:6px 13px;border-radius:4px;text-decoration:none;font-size:12px;font-weight:600;margin-right:4px;">✓ Yes</a>
+                  <a href="{{no_url}}" style="display:inline-block;background:#ffffff;color:#a32d2d;padding:6px 13px;border-radius:4px;text-decoration:none;font-size:12px;font-weight:600;border:1px solid #ecb1b1;">✕ No</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
 
-            <!-- Shift preference -->
-            <tr>
-              <td style="padding:6px 20px 0;font-size:14px;color:#374151;" colspan="2">
-                ⭐ <strong>Shift preference:</strong> {{shift_preference}}
-              </td>
-            </tr>
+      </table>
+    </td>
+  </tr>
 
-            <!-- Address with map arrow -->
-            <tr>
-              <td style="padding:6px 20px 16px;font-size:14px;color:#374151;">
-                🏠 {{address}}, {{county}}
-              </td>
-              <td style="padding:6px 20px 16px;text-align:right;">
-                <a href="{{map_url}}" target="_blank"
-                  style="display:inline-flex;align-items:center;gap:4px;background:#4285f4;color:#fff;padding:6px 12px;border-radius:20px;text-decoration:none;font-size:12px;font-weight:600;">
-                  📍 Directions →
-                </a>
-              </td>
-            </tr>
+  <!-- Footer CTA -->
+  <tr>
+    <td style="padding:0 28px 20px;">
+      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background:#f4f4f0;border-radius:6px;">
+        <tr>
+          <td style="padding:16px 18px;text-align:center;">
+            <p style="margin:0 0 12px;font-size:13px;color:#555;">Need more details, or want to see everything in one place?</p>
+            <a href="{{details_url}}" style="display:inline-block;background:#534AB7;color:#fff;padding:9px 20px;border-radius:5px;text-decoration:none;font-size:13px;font-weight:600;">📱 Open the Xpress Health app</a>
+            <p style="margin:10px 0 0;font-size:11.5px;color:#888;">Or reply to this email — someone from the team will get back to you.</p>
+            <p style="margin:10px 0 0;font-size:12px;">
+              <a href="{{comments_url}}" style="color:#d97706;text-decoration:underline;font-weight:500;">💬 Add a comment for the bookings team</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
 
-          </tbody>
-        </table>
-      </td>
-    </tr>
+  <!-- Sign off -->
+  <tr>
+    <td style="padding:0 28px 8px;font-size:13px;color:#1a1a1a;line-height:1.7;">
+      Warm regards,<br>
+      <strong>Ellie</strong><br>
+      <span style="font-size:12px;color:#555;">Xpress Health · Ops team</span>
+    </td>
+  </tr>
 
-    <!-- Question -->
-    <tr>
-      <td style="padding:0 40px 16px;font-size:15px;font-weight:600;color:#111827;text-align:center;">
-        Are you available?
-      </td>
-    </tr>
+  <!-- Gradient bar -->
+  <tr><td style="height:4px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td></tr>
 
-    <!-- Main buttons row -->
-    <tr>
-      <td style="padding:0 40px 12px;text-align:center;">
-        <a href="{{yes_url}}"
-          style="display:inline-block;background:#1e7a38;color:#ffffff;padding:13px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">
-          🟢 Yes, I'm available
-        </a>
-        <a href="{{no_url}}"
-          style="display:inline-block;background:#dc2626;color:#ffffff;padding:13px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:4px;">
-          🔴 No, thanks
-        </a>
-      </td>
-    </tr>
-    <!-- Secondary links row -->
-    <tr>
-      <td style="padding:0 40px 28px;text-align:center;">
-        <a href="{{details_url}}"
-          style="color:#2563eb;font-size:13px;text-decoration:underline;margin:0 12px;font-weight:500;">
-          ℹ️ More details
-        </a>
-        <span style="color:#d1d5db;">|</span>
-        <a href="{{comments_url}}"
-          style="color:#d97706;font-size:13px;text-decoration:underline;margin:0 12px;font-weight:500;">
-          💬 Add Comments
-        </a>
-      </td>
-    </tr>
+  <!-- Legal footer -->
+  <tr>
+    <td style="padding:16px 28px;background:#f4f4f0;text-align:center;font-size:10.5px;color:#888;line-height:1.6;">
+      You're receiving this because you're registered as a {{user_type}} with Xpress Health.<br>
+      © 2026 Xpress Health, 47 Park West Ind Centre, Lavery Ave, Park West, Dublin, Ireland
+    </td>
+  </tr>
 
-    <!-- Divider -->
-    <tr><td style="padding:0 40px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;"></td></tr>
+</tbody>
+</table>
 
-    <!-- Regards -->
-    <tr><td style="padding:24px 40px 4px;font-size:14px;color:#374151;">If there are any changes or concerns, please contact the bookings team.</td></tr>
-    <tr><td style="padding:16px 40px 4px;font-size:14px;color:#374151;">Regards,</td></tr>
-    <tr><td style="padding:0 40px 4px;font-size:14px;font-weight:700;color:#111827;">Bookings Team</td></tr>
-    <tr><td style="padding:0 40px 4px;font-size:14px;font-weight:700;color:#111827;">Xpress Health</td></tr>
-    <tr><td style="padding:0 40px 28px;font-size:14px;color:#374151;">Ph: +353 (0)9125882</td></tr>
-
-    <!-- Bottom gradient bar -->
-    <tr><td style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></td></tr>
-
-    <!-- Footer -->
-    <tr>
-      <td style="background:#f9fafb;text-align:center;padding:24px 40px;">
-        <img src="{{logo_url}}" alt="Xpress Health" width="120" style="display:inline-block;margin-bottom:14px;"><br>
-        <span style="font-size:11px;color:#9ca3af;line-height:16px;">
-          © 2026 Xpress Health, 47 Park West Ind Centre, Lavery Ave, Park West, Dublin, Ireland<br>
-          Xpress Health and the Xpress Health logo are registered trademarks of Xpress Health.
-        </span><br><br>
-        <a href="mailto:bookings@xpresshealth.ie" style="color:#2563eb;font-size:12px;text-decoration:none;padding-right:8px;border-right:1px solid #d1d5db;">bookings@xpresshealth.ie</a>
-        <a href="https://www.xpresshealth.ie" style="color:#2563eb;font-size:12px;text-decoration:none;padding-left:8px;">www.xpresshealth.ie</a>
-      </td>
-    </tr>
-
-  </tbody>
+</td></tr>
 </table>
 </body>
 </html>

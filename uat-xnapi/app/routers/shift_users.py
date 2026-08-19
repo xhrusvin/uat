@@ -1475,7 +1475,8 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     # Client coords — use first shift
     primary_oid   = shift_oids[0]
-    client_coords = await _get_shift_client_coords(db, primary_oid)
+    client_data   = await _get_shift_client_coords(db, primary_oid)
+    client_coords = (client_data["latitude"], client_data["longitude"]) if client_data else None
     client_location = {
         "latitude":  client_coords[0],
         "longitude": client_coords[1],

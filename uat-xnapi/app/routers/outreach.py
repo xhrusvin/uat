@@ -1164,21 +1164,28 @@ async def get_outreach_detail(request: Request, payload: OutreachDetailIdRequest
 
 
 def _format_call_time(dt) -> str:
-    """Format call_processed_at as Today HH:MM, Yesterday HH:MM, or D Mon HH:MM."""
+    """Format call_processed_at as Today HH:MM, Yesterday HH:MM, or D Mon HH:MM (Ireland time)."""
     if not dt:
         return None
     from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+        irl_tz = ZoneInfo("Europe/Dublin")
+    except Exception:
+        import os
+        irl_tz = timezone.utc  # fallback
+    now = datetime.now(irl_tz)
     if hasattr(dt, "tzinfo") and dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    time_str = dt.strftime("%H:%M")
-    diff_days = (now.date() - dt.date()).days
+    dt_irl  = dt.astimezone(irl_tz)
+    time_str = dt_irl.strftime("%H:%M")
+    diff_days = (now.date() - dt_irl.date()).days
     if diff_days == 0:
         return f"Today {time_str}"
     elif diff_days == 1:
         return f"Yesterday {time_str}"
     else:
-        return dt.strftime("%-d %b %H:%M")
+        return dt_irl.strftime("%-d %b %H:%M")
 
 
 # ── POST /outreach/staff_list ─────────────────────────────────────────────────

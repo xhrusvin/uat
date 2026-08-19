@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from bson import ObjectId
@@ -13,6 +14,36 @@ from app.core.security import verify_api_key
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/shifts-db", tags=["Shifts DB"])
+
+try:
+    from zoneinfo import ZoneInfo as _ZI
+    _IRL_TZ = _ZI("Europe/Dublin")
+except Exception:
+    _IRL_TZ = timezone.utc
+
+
+def _now_irl():
+    """Current datetime in Ireland timezone."""
+    return datetime.now(_IRL_TZ)
+
+
+def _to_irl(dt):
+    """Convert a datetime to Ireland timezone."""
+    if not dt:
+        return None
+    if hasattr(dt, "tzinfo") and dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_IRL_TZ)
+
+
+def _iso_irl(dt) -> str | None:
+    """Return datetime as ISO string in Ireland timezone."""
+    if not dt:
+        return None
+    converted = _to_irl(dt)
+    if converted:
+        return converted.isoformat()
+    return None
 
 
 def _get_db():
@@ -1068,9 +1099,8 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         if lc_su and lc_su.get("call_processed_at"):
             from datetime import datetime as _dt_r, timezone as _tz_r
             lc = lc_su["call_processed_at"]
-            if hasattr(lc, "tzinfo") and lc.tzinfo is None:
-                lc = lc.replace(tzinfo=_tz_r.utc)
-            diff = int((_dt_r.now(_tz_r.utc) - lc).total_seconds())
+            lc = _to_irl(lc)
+            diff = int((_now_irl() - lc).total_seconds())
             if diff < 60:       last_contacted = "just now"
             elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
             elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
@@ -1098,7 +1128,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                     lc_rq = last_req_shift["assigned_at"]
                     if hasattr(lc_rq, "tzinfo") and lc_rq.tzinfo is None:
                         lc_rq = lc_rq.replace(tzinfo=_tz_rq.utc)
-                    diff_rq = int((_dt_rq.now(_tz_rq.utc) - lc_rq).total_seconds())
+                    diff_rq = int((_now_irl() - lc_rq).total_seconds())
                     if diff_rq < 60:       last_at_client_req = "just now"
                     elif diff_rq < 3600:   last_at_client_req = f"{diff_rq//60} minute{'s' if diff_rq//60!=1 else ''} ago"
                     elif diff_rq < 86400:  last_at_client_req = f"{diff_rq//3600} hour{'s' if diff_rq//3600!=1 else ''} ago"
@@ -1212,7 +1242,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "phone":       u.get("phone"),
             "designation": u.get("designation"),
             "rating":      u.get("rating"),
-            "added_at":    p["added_at"].isoformat() if p.get("added_at") and hasattr(p["added_at"], "isoformat") else str(p.get("added_at", "")),
+            "added_at":    _iso_irl(p.get("added_at")),
             "added_by":    p.get("added_by"),
         })
     s["pool_users"] = pool_users
@@ -1270,7 +1300,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         if created_at_raw:
             try:
                 from datetime import datetime, timezone
-                now = datetime.now(timezone.utc)
+                now = _now_irl()
                 dt  = created_at_raw if hasattr(created_at_raw, "tzinfo") else created_at_raw
                 if hasattr(dt, "tzinfo") and dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
@@ -1307,10 +1337,10 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "outreach_status":      o_status,
             "outreach_status_text": STATUS_TEXT.get(o_status, "Not Started"),
             "end_reason":           o.get("end_reason"),
-            "started_at":           o["started_at"].isoformat() if o.get("started_at") and hasattr(o["started_at"], "isoformat") else str(o.get("started_at", "")),
-            "paused_at":            o["paused_at"].isoformat() if o.get("paused_at") and hasattr(o["paused_at"], "isoformat") else o.get("paused_at"),
-            "ended_at":             o["ended_at"].isoformat() if o.get("ended_at") and hasattr(o["ended_at"], "isoformat") else o.get("ended_at"),
-            "created_at":           o["created_at"].isoformat() if o.get("created_at") and hasattr(o["created_at"], "isoformat") else str(o.get("created_at", "")),
+            "started_at":           _iso_irl(o.get("started_at")) or str(o.get("started_at", "")),
+            "paused_at":            _iso_irl(o.get("paused_at")),
+            "ended_at":             _iso_irl(o.get("ended_at")) or o.get("ended_at"),
+            "created_at":           _iso_irl(o.get("created_at")) or str(o.get("created_at", "")),
             "start_time":           start_time_ago,
             "staff_counts": {
                 "available":     avail_1,
@@ -1416,7 +1446,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                         lc2 = last_shift["assigned_at"]
                         if hasattr(lc2, "tzinfo") and lc2.tzinfo is None:
                             lc2 = lc2.replace(tzinfo=_tz2.utc)
-                        diff2 = int((datetime.now(_tz2.utc) - lc2).total_seconds())
+                        diff2 = int((_now_irl() - lc2).total_seconds())
                         if diff2 < 60:       last_at_client_str = "just now"
                         elif diff2 < 3600:   last_at_client_str = f"{diff2//60} minute{'s' if diff2//60!=1 else ''} ago"
                         elif diff2 < 86400:  last_at_client_str = f"{diff2//3600} hour{'s' if diff2//3600!=1 else ''} ago"
@@ -1718,5 +1748,5 @@ async def cron_sync_shifts(request: Request):
         "failed":        len(failed),
         "synced_list":   synced,
         "failed_list":   failed,
-        "synced_at":     datetime.now(_tz.utc).isoformat(),
+        "synced_at":     _now_irl().isoformat(),
     }

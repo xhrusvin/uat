@@ -56,33 +56,47 @@ def _format_date(date_str: str) -> str:
 
 def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name=''):
     """Load and render shift booking email from HTML template file."""
-    facility   = shift.get("client_name", "")
-    address    = shift.get("client_address", "")
-    county     = shift.get("client_county", "")
-    lat        = shift.get("client_lat", "")
-    lng        = shift.get("client_lng", "")
-    date_str   = _format_date(shift.get("date", ""))
-    start_time = shift.get("start_time", "")
-    end_time   = shift.get("end_time", "")
-    user_type        = shift.get("user_type", "")
-    unit             = shift.get("unit", "") or "—"
-    shift_type       = shift.get("shift_type", "") or shift.get("shift_timing", "") or "—"
-    shift_preference = shift.get("shift_preference", "") or "—"
-    su_id            = str(shifts_users_id)
-    logo_url   = "https://uat.expresshealth.ie/static/image/logo.png"
-    map_url    = f"https://www.google.com/maps?q={lat},{lng}" if lat and lng else ""
+    facility        = shift.get("client_name", "") or shift.get("location", "")
+    address         = shift.get("client_address", "")
+    county          = shift.get("client_county", "")
+    lat             = shift.get("client_lat", "")
+    lng             = shift.get("client_lng", "")
+    date_str        = _format_date(shift.get("date", ""))
+    start_time      = shift.get("start_time", "")
+    end_time        = shift.get("end_time", "")
+    user_type       = shift.get("user_type", "")
+    unit            = shift.get("unit", "") or ""
+    shift_type      = shift.get("shift_type", "") or shift.get("shift_timing", "") or ""
+    shift_preference= shift.get("shift_preference", "") or "—"
+    su_id           = str(shifts_users_id)
+    logo_url        = "https://uat.expresshealth.ie/static/image/logo.png"
+    map_url         = f"https://www.google.com/maps?q={lat},{lng}" if lat and lng else ""
 
     yes_url      = f"{base_url}/shift_booking_email/respond/{su_id}?answer=yes"
     no_url       = f"{base_url}/shift_booking_email/respond/{su_id}?answer=no"
     details_url  = f"{base_url}/shift_booking_email/respond/{su_id}?answer=details"
     comments_url = f"{base_url}/shift_booking_email/respond/{su_id}?answer=comments"
 
+    # Shift timing icon
+    st_lower = shift_type.lower()
+    if "night" in st_lower:
+        timing_icon = "🌙"
+    elif "morning" in st_lower or "eve" in st_lower:
+        timing_icon = "🌅"
+    else:
+        timing_icon = "☀️"
+
+    # Subject and intro
+    county_display = county or address or "your area"
+    email_subject  = f"{user_type} shift available in {county_display} — are you free?"
+    email_intro    = f"Hope you're well! Please see the shift available in <strong>{county_display}</strong>. Tap Yes if you're free, or No if you can't make it."
+
     # Load template file
-    template_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
+    import os as _os
+    template_path = _os.path.join(
+        _os.path.dirname(_os.path.abspath(__file__)),
         "templates", "booking", "shifts_booking_email.html"
     )
-
     try:
         with open(template_path, "r", encoding="utf-8") as f:
             html = f.read()
@@ -95,12 +109,17 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{facility}}", facility)
     html = html.replace("{{address}}", address)
     html = html.replace("{{county}}", county)
-    html = html.replace("{{date_str}}", date_str)
+    html = html.replace("{{county_name}}", f"Co. {county}" if county else facility)
+    html = html.replace("{{shift_count}}", "1")
+    html = html.replace("{{premium_badge}}", "")
+    html = html.replace("{{shift_date}}", date_str)
+    html = html.replace("{{shift_timing_icon}}", timing_icon)
+    html = html.replace("{{shift_type}}", shift_type)
     html = html.replace("{{start_time}}", start_time)
     html = html.replace("{{end_time}}", end_time)
-    html = html.replace("{{user_type}}", user_type)
     html = html.replace("{{unit}}", unit)
-    html = html.replace("{{shift_type}}", shift_type)
+    html = html.replace("{{user_type}}", user_type)
+    html = html.replace("{{date_str}}", date_str)
     html = html.replace("{{shift_preference}}", shift_preference)
     html = html.replace("{{map_url}}", map_url)
     html = html.replace("{{yes_url}}", yes_url)
@@ -109,6 +128,8 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{comments_url}}", comments_url)
     html = html.replace("{{logo_url}}", logo_url)
     html = html.replace("{{base_url}}", base_url)
+    html = html.replace("{{email_subject}}", email_subject)
+    html = html.replace("{{email_intro}}", email_intro)
 
     return html
 
@@ -442,10 +463,14 @@ def register_shift_booking_email_routes(app):
                 }}
             )
             # Also update requested_confirm.customer_feedback for same shift+user
-            su_record = app.db.shifts_users.find_one({"_id": obj_id}, {"shift_id": 1, "user_id": 1})
+            su_record = app.db.shifts_users.find_one({"_id": obj_id}, {"shift_id": 1, "user_id": 1, "outreach_id": 1})
             if su_record:
                 app.db.requested_confirm.update_many(
-                    {"shift_id": su_record.get("shift_id"), "staff_id": su_record.get("user_id")},
+                    {
+                        "shift_id":   su_record.get("shift_id"),
+                        "staff_id":   su_record.get("user_id"),
+                        "outreach_id": su_record.get("outreach_id"),
+                    },
                     {"$set": {"customer_feedback": comment, "updated_at": datetime.utcnow()}}
                 )
             html = f"""<!DOCTYPE html>
