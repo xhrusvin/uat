@@ -32,7 +32,7 @@
             <td style="padding:28px 24px 22px 24px;font-size:15px;line-height:1.6;">
               Hi {{staff_name}},
               <br><br>
-              Hope you're well! Please see the available shifts in <strong>{{county}}</strong> below.
+              Hope you're well! We have some available shifts that may be of interest to you below.
               <br><br>
               Tap <strong>Yes</strong> on any shift you're available for.
               <br><br>
@@ -46,31 +46,7 @@
           <tr>
             <td style="padding:0 24px 24px 24px;">
 
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-                style="width:100%;border:1px solid #dddddd;border-collapse:collapse;">
-
-                <!-- COUNTY HEADER -->
-                <tr>
-                  <td colspan="5"
-                    style="padding:14px 16px;background-color:#f4f3ef;border-bottom:1px solid #dddddd;
-                           font-size:15px;font-weight:700;color:#27237c;">
-                    CO. {{county_uppercase}} &nbsp;—&nbsp; {{shift_count}} shift(s)
-                  </td>
-                </tr>
-
-                <!-- COLUMN HEADERS -->
-                <tr>
-                  <td style="padding:12px 14px;border-bottom:1px solid #dddddd;font-size:12px;font-weight:700;color:#666666;">DATE</td>
-                  <td style="padding:12px 14px;border-bottom:1px solid #dddddd;font-size:12px;font-weight:700;color:#666666;">TIME</td>
-                  <td style="padding:12px 14px;border-bottom:1px solid #dddddd;font-size:12px;font-weight:700;color:#666666;">LOCATION</td>
-                  <td style="padding:12px 14px;border-bottom:1px solid #dddddd;font-size:12px;font-weight:700;color:#666666;">RATE</td>
-                  <td align="center" style="padding:12px 14px;border-bottom:1px solid #dddddd;font-size:12px;font-weight:700;color:#666666;">RESPONSE</td>
-                </tr>
-
-                <!-- SHIFT ROWS PLACEHOLDER -->
-                {{shift_rows}}
-
-              </table>
+              {{shift_rows}}
 
             </td>
           </tr>
