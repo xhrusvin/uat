@@ -110,7 +110,8 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{address}}", address)
     html = html.replace("{{county}}", county)
     html = html.replace("{{county_uppercase}}", county.upper() if county else "")
-    html = html.replace("{{rate}}", shift.get("rate", "") or "—")
+    _rate_val = shift.get("rate", "")
+    html = html.replace("{{rate}}", "REG" if not _rate_val or str(_rate_val) in ("0","0.0","") else str(_rate_val))
     html = html.replace("{{county_name}}", f"Co. {county}" if county else facility)
     html = html.replace("{{shift_count}}", "1")
     html = html.replace("{{premium_badge}}", "")
@@ -120,7 +121,7 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{start_time}}", start_time)
     html = html.replace("{{end_time}}", end_time)
     html = html.replace("{{unit}}", unit)
-    unit_line = f'<br><span style="color:#777777;">Unit: {unit}</span>' if unit else ""
+    unit_line = f'<br><span style="color:#777777;"><strong>Unit:</strong> {unit}</span>' if unit else ""
     html = html.replace("{{unit_line}}", unit_line)
     html = html.replace("{{user_type}}", user_type)
     html = html.replace("{{date_str}}", date_str)

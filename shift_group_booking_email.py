@@ -63,13 +63,13 @@ def _build_email_html(first_name, shifts_list, base_url, shifts_users_id, staff_
         for shift in _shifts:
             facility   = shift.get("client_name", "") or shift.get("location", "")
             unit       = shift.get("unit", "") or ""
-            unit_td    = f"<br><small style='color:#777;'>Unit: {unit}</small>" if unit else ""
+            unit_td    = f"<br><small style='color:#777;'><strong>Unit:</strong> {unit}</small>" if unit else ""
             date_str   = _format_date(shift.get("date", ""))
             start_time = shift.get("start_time", "")
             end_time   = shift.get("end_time", "")
             shift_type = shift.get("shift_type", "") or shift.get("shift_timing", "") or ""
             _rate_raw  = shift.get("rate", "")
-            rate       = "—" if not _rate_raw or str(_rate_raw) in ("0", "0.0", "") else str(_rate_raw)
+            rate       = "REG" if not _rate_raw or str(_rate_raw) in ("0", "0.0", "") else str(_rate_raw)
             yes_url    = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=yes&shift_id={str(shift.get('id',''))}"
             _county_rows += (
                 f"<tr>"
