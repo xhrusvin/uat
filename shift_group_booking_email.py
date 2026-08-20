@@ -36,45 +36,56 @@ def _format_date(date_str: str) -> str:
         return str(date_str)
 
 
-def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name=''):
-    """Load and render shift booking email from HTML template file."""
-    facility         = shift.get("client_name", "") or shift.get("location", "")
-    address          = shift.get("client_address", "")
-    county           = shift.get("client_county", "")
-    lat              = shift.get("client_lat", "")
-    lng              = shift.get("client_lng", "")
-    date_str         = _format_date(shift.get("date", ""))
-    start_time       = shift.get("start_time", "")
-    end_time         = shift.get("end_time", "")
-    user_type        = shift.get("user_type", "")
-    unit             = shift.get("unit", "") or ""
-    shift_type       = shift.get("shift_type", "") or shift.get("shift_timing", "") or ""
-    shift_preference = shift.get("shift_preference", "") or "—"
-    su_id            = str(shifts_users_id)
-    logo_url         = "https://uat.expresshealth.ie/static/image/logo.png"
-    map_url          = f"https://www.google.com/maps?q={lat},{lng}" if lat and lng else ""
-
-    yes_url      = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=yes"
-    no_url       = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=no"
-    details_url  = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=details"
-    comments_url = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=comments"
-
-    st_lower = shift_type.lower()
-    if "night" in st_lower:
-        timing_icon = "🌙"
-    elif "morning" in st_lower or "eve" in st_lower:
-        timing_icon = "🌅"
-    else:
-        timing_icon = "☀️"
-
-    county_display = county or address or "your area"
-    email_subject  = f"Shift Availability Request – Co. {county_display}" if county_display else f"Shift Availability Request – {facility}"
-    email_intro    = f"Hope you're well! Please see the shift available in <strong>{county_display}</strong>. Tap Yes if you're free, or No if you can't make it."
-
+def _build_email_html(first_name, shifts_list, base_url, shifts_users_id, staff_name='', county=''):
+    """Load and render GROUP shift booking email with multiple shift rows."""
     import os as _os
+
+    su_id        = str(shifts_users_id)
+    logo_url     = "https://uat.expresshealth.ie/static/image/logo.png"
+    county_upper = county.upper() if county else ""
+    comments_url = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=comments"
+    details_url  = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=details"
+
+    # Build shift rows HTML
+    rows_html = ""
+    for shift in shifts_list:
+        facility   = shift.get("client_name", "") or shift.get("location", "")
+        unit       = shift.get("unit", "") or ""
+        unit_line  = f'<br><span style="color:#777777;">{unit}</span>' if unit else ""
+        date_str   = _format_date(shift.get("date", ""))
+        start_time = shift.get("start_time", "")
+        end_time   = shift.get("end_time", "")
+        shift_type = shift.get("shift_type", "") or shift.get("shift_timing", "") or ""
+        rate       = shift.get("rate", "") or "—"
+        yes_url    = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=yes&shift_id={str(shift.get('id',''))}"
+
+        rows_html += f"""
+                <tr>
+                  <td valign="middle" style="padding:16px 14px;border-bottom:1px solid #eeeeee;font-size:14px;white-space:nowrap;">
+                    {date_str}
+                  </td>
+                  <td valign="middle" style="padding:16px 14px;border-bottom:1px solid #eeeeee;font-size:14px;white-space:nowrap;">
+                    {shift_type} {start_time} – {end_time}
+                  </td>
+                  <td valign="middle" style="padding:16px 14px;border-bottom:1px solid #eeeeee;font-size:14px;line-height:1.4;">
+                    <strong>{facility}</strong>{unit_line}
+                  </td>
+                  <td valign="middle" style="padding:16px 14px;border-bottom:1px solid #eeeeee;font-size:14px;white-space:nowrap;">
+                    {rate}
+                  </td>
+                  <td valign="middle" align="center" style="padding:16px 14px;border-bottom:1px solid #eeeeee;">
+                    <a href="{yes_url}" target="_blank"
+                      style="display:inline-block;background-color:#168124;color:#ffffff;text-decoration:none;
+                             font-size:14px;font-weight:700;padding:10px 22px;border-radius:5px;white-space:nowrap;">
+                      ✓ Yes
+                    </a>
+                  </td>
+                </tr>"""
+
+    # Load template
     template_path = _os.path.join(
         _os.path.dirname(_os.path.abspath(__file__)),
-        "templates", "booking", "shifts_booking_email.html"
+        "templates", "booking", "shifts_group_booking_email.html"
     )
     try:
         with open(template_path, "r", encoding="utf-8") as f:
@@ -83,48 +94,27 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
         log.error(f"[GROUP EMAIL] Template not found: {template_path}")
         raise FileNotFoundError(f"Email template missing: {template_path}")
 
-    html = html.replace("{{first_name}}", first_name)
     html = html.replace("{{staff_name}}", staff_name or first_name)
-    html = html.replace("{{facility}}", facility)
-    html = html.replace("{{address}}", address)
     html = html.replace("{{county}}", county)
-    html = html.replace("{{county_uppercase}}", county.upper() if county else "")
-    html = html.replace("{{rate}}", shift.get("rate", "") or "—")
-    html = html.replace("{{county_name}}", f"Co. {county}" if county else facility)
-    html = html.replace("{{shift_count}}", "1")
-    html = html.replace("{{premium_badge}}", "")
-    html = html.replace("{{shift_date}}", date_str)
-    html = html.replace("{{shift_timing_icon}}", timing_icon)
-    html = html.replace("{{shift_type}}", shift_type)
-    html = html.replace("{{start_time}}", start_time)
-    html = html.replace("{{end_time}}", end_time)
-    html = html.replace("{{unit}}", unit)
-    unit_line = f'<br><span style="color:#777777;">{unit}</span>' if unit else ""
-    html = html.replace("{{unit_line}}", unit_line)
-    html = html.replace("{{user_type}}", user_type)
-    html = html.replace("{{date_str}}", date_str)
-    html = html.replace("{{shift_preference}}", shift_preference)
-    html = html.replace("{{map_url}}", map_url)
-    html = html.replace("{{yes_url}}", yes_url)
-    html = html.replace("{{no_url}}", no_url)
+    html = html.replace("{{county_uppercase}}", county_upper)
+    html = html.replace("{{shift_count}}", str(len(shifts_list)))
+    html = html.replace("{{shift_rows}}", rows_html)
     html = html.replace("{{details_url}}", details_url)
     html = html.replace("{{comments_url}}", comments_url)
     html = html.replace("{{logo_url}}", logo_url)
     html = html.replace("{{base_url}}", base_url)
-    html = html.replace("{{email_subject}}", email_subject)
-    html = html.replace("{{email_preview}}", "")
-    html = html.replace("{{email_intro}}", email_intro)
 
     return html
 
 
-def _send_group_shift_email(app, record, shift_doc, to_email, first_name, su_id):
+
+def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_id, county=""):
     """Send group shift booking email via SMTP."""
     try:
         base_url  = os.getenv("APP_BASE_URL", "https://uat.expresshealth.ie")
         last_name = record.get("last_name", "")
-        html      = _build_email_html(first_name, shift_doc, base_url, su_id,
-                                       staff_name=f"{first_name} {last_name}".strip())
+        html      = _build_email_html(first_name, shifts_list, base_url, su_id,
+                                       staff_name=f"{first_name} {last_name}".strip(), county=county)
 
         su_id_str = str(su_id)
         msg = MIMEMultipart("alternative")
@@ -241,54 +231,56 @@ def register_shift_group_booking_email_routes(app):
             if result.modified_count == 0:
                 continue
 
-            # Build shift_doc — find shift from group
-            shift_doc = {}
-            group_id  = record.get("group_id")
+            # Build shifts_list — all shifts from the group
+            shifts_list = []
+            county      = ""
+            group_id    = record.get("group_id")
             if group_id:
                 sg = app.db.shifts_group.find_one({"_id": group_id}, {"shift_ids": 1})
                 if sg and sg.get("shift_ids"):
-                    # Use first shift in group
-                    first_shift_id = sg["shift_ids"][0]
-                    s = app.db.shifts.find_one({"_id": first_shift_id})
-                    if s:
-                        client = None
-                        if s.get("client_id"):
-                            client = app.db.clients.find_one(
-                                {"xn_client_id": str(s["client_id"])},
-                                {"address": 1, "county": 1, "latitude": 1, "longitude": 1}
-                            )
-                        shift_doc = {
-                            "id":               str(s["_id"]),
-                            "date":             str(s.get("date", "")),
-                            "start_time":       s.get("start_time", ""),
-                            "end_time":         s.get("end_time", ""),
-                            "client_name":      s.get("client_name", ""),
-                            "location":         s.get("location", ""),
-                            "user_type":        s.get("user_type", ""),
-                            "unit":             s.get("unit") or "",
-                            "shift_type":       s.get("shift_timing") or s.get("shift_type") or "",
-                            "shift_preference": ", ".join([sp.get("name", "") for sp in (s.get("shift_preferences") or []) if sp.get("name")]) or "—",
-                            "client_address":   client.get("address", "") if client else "",
-                            "client_county":    s.get("client_county", "") or (client.get("county", "") if client else ""),
-                            "client_lat":       client.get("latitude", "") if client else "",
-                            "client_lng":       client.get("longitude", "") if client else "",
-                        }
-            # Also try shift_id directly on the record
-            elif shift_id and ObjectId.is_valid(shift_id):
+                    for sid in sg["shift_ids"]:
+                        s = app.db.shifts.find_one({"_id": sid})
+                        if s:
+                            client = None
+                            if s.get("client_id"):
+                                client = app.db.clients.find_one(
+                                    {"xn_client_id": str(s["client_id"])},
+                                    {"address": 1, "county": 1, "latitude": 1, "longitude": 1}
+                                )
+                            c = s.get("client_county", "") or (client.get("county", "") if client else "")
+                            if not county and c:
+                                county = c
+                            shifts_list.append({
+                                "id":               str(s["_id"]),
+                                "date":             str(s.get("date", "")),
+                                "start_time":       s.get("start_time", ""),
+                                "end_time":         s.get("end_time", ""),
+                                "client_name":      s.get("client_name", "") or s.get("location", ""),
+                                "location":         s.get("location", ""),
+                                "user_type":        s.get("user_type", ""),
+                                "unit":             s.get("unit") or "",
+                                "shift_type":       s.get("shift_timing") or s.get("shift_type") or "",
+                                "rate":             str(s.get("rate", "")) or "—",
+                                "client_county":    c,
+                            })
+            # Fallback — single shift_id on record
+            if not shifts_list and shift_id and ObjectId.is_valid(shift_id):
                 s = app.db.shifts.find_one({"_id": ObjectId(shift_id)})
                 if s:
-                    shift_doc = {
-                        "id":           str(s["_id"]),
-                        "date":         str(s.get("date", "")),
-                        "start_time":   s.get("start_time", ""),
-                        "end_time":     s.get("end_time", ""),
-                        "client_name":  s.get("client_name", ""),
-                        "location":     s.get("location", ""),
-                        "user_type":    s.get("user_type", ""),
-                        "unit":         s.get("unit") or "",
-                        "shift_type":   s.get("shift_timing") or s.get("shift_type") or "",
-                        "client_county": s.get("client_county", ""),
-                    }
+                    county = s.get("client_county", "")
+                    shifts_list.append({
+                        "id":          str(s["_id"]),
+                        "date":        str(s.get("date", "")),
+                        "start_time":  s.get("start_time", ""),
+                        "end_time":    s.get("end_time", ""),
+                        "client_name": s.get("client_name", "") or s.get("location", ""),
+                        "location":    s.get("location", ""),
+                        "user_type":   s.get("user_type", ""),
+                        "unit":        s.get("unit") or "",
+                        "shift_type":  s.get("shift_timing") or s.get("shift_type") or "",
+                        "rate":        str(s.get("rate", "")) or "—",
+                        "client_county": county,
+                    })
 
             record["email"]      = email
             record["first_name"] = first_name
@@ -296,7 +288,7 @@ def register_shift_group_booking_email_routes(app):
 
             threading.Thread(
                 target=_send_group_shift_email,
-                args=(current_app._get_current_object(), record, shift_doc, email, first_name, su_id),
+                args=(current_app._get_current_object(), record, shifts_list, email, first_name, su_id, county),
                 daemon=True
             ).start()
 
