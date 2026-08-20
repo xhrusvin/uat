@@ -1369,6 +1369,7 @@ class ListMultiShiftUsersRequest(BaseModel):
     qqi_status_number:      Optional[int]   = None
     user_sub_type_multiple: Optional[list]  = None
     visa_type_id:           Optional[str]   = None
+    search:                 Optional[str]   = None  # search by name, email, phone
 @router.post(
     "/list-multi",
     summary="List users for multiple shifts with same enrichment as /list",
@@ -1448,7 +1449,20 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
                 {"designation":  {"$in": type_names_filter}},
             ]
 
-    total = await db["users"].count_documents(user_filter)
+    if payload.search:
+        _s = payload.search.strip()
+        _search_or = [
+            {"first_name": {"$regex": _s, "$options": "i"}},
+            {"last_name":  {"$regex": _s, "$options": "i"}},
+            {"email":      {"$regex": _s, "$options": "i"}},
+            {"phone":      {"$regex": _s, "$options": "i"}},
+        ]
+        # Also try full name match
+        _search_or.append({"$expr": {"$regexMatch": {"input": {"$concat": ["$first_name", " ", "$last_name"]}, "regex": _s, "options": "i"}}})
+        if "$or" in user_filter:
+            user_filter = {"$and": [user_filter, {"$or": _search_or}]}
+        else:
+            user_filter["$or"] = _search_or
     users = await db["users"].find(
         user_filter,
         {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
