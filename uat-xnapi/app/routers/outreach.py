@@ -2148,12 +2148,24 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
                 elif ad.get("availability") == 0:
                     response_text = "No, thanks."
                 break
+    # Build availability_details map for quick lookup
+    avail_details_map = {}
+    for ad in (su.get("availability_details") or []):
+        avail_details_map[str(ad.get("shift_id", ""))] = ad
+
     answer_label = "✅ Yes, I'm available" if av == 1 else "❌ No, thanks" if av == 0 else None
 
     # Sent email bubble content
-    def _shift_row_html(sh, fd):
+    def _shift_row_html(sh, fd, shift_avail=None):
+        _avail_badge = ""
+        if shift_avail == 1:
+            _avail_badge = '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;margin-left:6px;">✅ Available</span>'
+        elif shift_avail == 0:
+            _avail_badge = '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;margin-left:6px;">❌ Not Available</span>'
+        elif shift_avail == 8:
+            _avail_badge = '<span style="background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:6px;">⏳ No Response</span>'
         return f"""
-          <tr><td style="padding:6px 12px;color:#6b7280;width:40%">📍 Facility</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{sh.get('client_name','') or sh.get('location','')}</td></tr>
+          <tr><td style="padding:6px 12px;color:#6b7280;width:40%">📍 Facility</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{sh.get('client_name','') or sh.get('location','')}{_avail_badge}</td></tr>
           <tr><td style="padding:6px 12px;color:#6b7280">👩\u200d⚕️ Role</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{sh.get('user_type','')}</td></tr>
           <tr><td style="padding:6px 12px;color:#6b7280">📅 Date</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{fd}</td></tr>
           <tr><td style="padding:6px 12px;color:#6b7280">🕐 Time</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{sh.get('start_time','')} – {sh.get('end_time','')}</td></tr>"""
@@ -2167,12 +2179,13 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
                 _fd = _dtt2.strptime(str(sh.get("date","")).split("T")[0], "%Y-%m-%d").strftime("%A, %d %B %Y")
             except Exception:
                 pass
+            _sh_avail = avail_details_map.get(str(sh.get("_id","")), {}).get("availability")
             shift_rows_html += f'<tr><td colspan="2" style="padding:6px 12px;background:#f4f3ef;font-size:11px;font-weight:700;color:#27237c;">SHIFT {i+1} OF {len(all_shifts)}</td></tr>'
-            shift_rows_html += _shift_row_html(sh, _fd)
+            shift_rows_html += _shift_row_html(sh, _fd, _sh_avail)
         intro_text = f"We're reaching out to check your availability for the following <strong>{len(all_shifts)} shifts</strong>."
         avail_text = "Are you available for these shifts?"
     else:
-        shift_rows_html = _shift_row_html(s, formatted_date) if s else ""
+        shift_rows_html = _shift_row_html(s, formatted_date, av) if s else ""
         intro_text = f"We're reaching out to check your availability for an upcoming shift at <strong>{s.get('client_name','')}</strong>."
         avail_text = "Are you available for this shift?"
 
@@ -2198,7 +2211,33 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     comment_at       = _iso(su.get("comment_at")) or ""
 
     response_bubble = ""
-    if response_text or email_reply:
+    if is_group and len(all_shifts) > 1 and avail_details_map:
+        # Show per-shift response bubbles
+        for sh in all_shifts:
+            sh_id = str(sh.get("_id", ""))
+            ad    = avail_details_map.get(sh_id)
+            if not ad:
+                continue
+            _av   = ad.get("availability")
+            _time = ad.get("responded_at", "")
+            _label = "✅ Yes, I'm available" if _av == 1 else "❌ No, thanks" if _av == 0 else None
+            if _label:
+                _facility = sh.get("client_name", "") or sh.get("location", "")
+                _color    = "#1e7a38" if _av == 1 else "#dc2626"
+                response_bubble += f"""
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <div>
+        <div style="font-size:11px;color:#9ca3af;text-align:right;margin-bottom:4px;">{_facility}</div>
+        <div style="background:{_color};color:#fff;border-radius:18px 18px 4px 18px;padding:10px 16px;max-width:340px;font-size:13px;font-weight:600;">
+          {_label}
+        </div>
+        <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:3px;">{name} · {str(_time)[:16]}</div>
+      </div>
+      <div style="width:36px;height:36px;border-radius:50%;background:{_color};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;margin-left:8px;flex-shrink:0;">
+        {(name[0] if name else 'U').upper()}
+      </div>
+    </div>"""
+    elif response_text or email_reply:
         display_text = answer_label or response_text or email_reply
         display_time = responded or email_reply_at
         reply_label  = "📧 Replied via email" if email_reply and not response_text else ""
