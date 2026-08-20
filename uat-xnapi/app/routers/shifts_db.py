@@ -803,9 +803,22 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
                 grp_client_ids.append(sh["client_id"])
         grp_client_map = await _build_client_map(db, list(set(grp_client_ids)))
 
-        async for doc in db["shifts"].find(
-            {"_id": {"$in": grp_shift_oids}},
-        ):
+        # Build search filter for group shifts
+        grp_shift_filter: dict = {"_id": {"$in": grp_shift_oids}}
+        if search:
+            grp_shift_filter["$or"] = [
+                {"name":              {"$regex": search, "$options": "i"}},
+                {"shift_xn_id":       {"$regex": search, "$options": "i"}},
+                {"shift_code":        {"$regex": search, "$options": "i"}},
+                {"shift_id":          {"$regex": search, "$options": "i"}},
+                {"location":          {"$regex": search, "$options": "i"}},
+                {"client_name":       {"$regex": search, "$options": "i"}},
+                {"client_county":     {"$regex": search, "$options": "i"}},
+                {"user_type":         {"$regex": search, "$options": "i"}},
+                {"slots.shift_xn_id": {"$regex": search, "$options": "i"}},
+            ]
+
+        async for doc in db["shifts"].find(grp_shift_filter):
             s   = _serialize(doc)
             cid = s.get("client_id", "")
             cl  = grp_client_map.get(cid)
