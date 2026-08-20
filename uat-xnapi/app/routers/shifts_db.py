@@ -1421,6 +1421,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "sequence_id":          str(seq_oid) if seq_oid else None,
             "sequence_name":        seq_name,
             "round_number":         o.get("round_number"),
+            "round_label":          "Bulk Shift Round" if o.get("_is_group") else f"Round {o.get('round_number', 1)}",
             "outreach_status":      o_status,
             "outreach_status_text": STATUS_TEXT.get(o_status, "Not Started"),
             "end_reason":           o.get("end_reason"),
