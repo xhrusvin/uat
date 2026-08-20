@@ -118,8 +118,7 @@ def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_i
 
         su_id_str = str(su_id)
         msg = MIMEMultipart("alternative")
-        _county_s = shift_doc.get("client_county", "") or shift_doc.get("location", "")
-        msg["Subject"]    = f"Shift Availability Request – Co. {_county_s}" if _county_s else f"Shift Availability Request – {shift_doc.get('client_name', '')}"
+        msg["Subject"]    = f"Shift Availability Request – Co. {county}" if county else "Shift Availability Request – Xpress Health"
         msg["From"]       = f"{os.getenv('SHIFT_SMTP_FROM_NAME', 'XpressHealth')} <{os.getenv('SHIFT_FROM_EMAIL', '')}>"
         msg["X-Shift-Id"] = su_id_str
         reply_domain      = os.getenv("SHIFT_REPLY_DOMAIN", "uat.expresshealth.ie")
