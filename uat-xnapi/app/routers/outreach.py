@@ -2038,6 +2038,12 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
         raise HTTPException(status_code=422, detail="Provide at least one of: user_id, shift_id, outreach_id")
 
     su = await db["shifts_users"].find_one(q, sort=[("assigned_at", -1)])
+    is_group = False
+    if not su:
+        # Try shifts_group_users for group outreach
+        su = await db["shifts_group_users"].find_one(q, sort=[("assigned_at", -1)])
+        if su:
+            is_group = True
     if not su:
         raise HTTPException(status_code=404, detail="No email record found")
 
@@ -2046,12 +2052,27 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     if su.get("user_id"):
         u = await db["users"].find_one({"_id": su["user_id"]}, {"first_name": 1, "last_name": 1, "email": 1}) or {}
 
-    # Get shift details
+    # Get shift details — for group outreach fetch all shifts in group
     s = {}
-    if su.get("shift_id"):
+    all_shifts = []
+    if is_group and su.get("group_id"):
+        sg = await db["shifts_group"].find_one({"_id": su["group_id"]}, {"shift_ids": 1})
+        if sg and sg.get("shift_ids"):
+            async for sh in db["shifts"].find(
+                {"_id": {"$in": sg["shift_ids"]}},
+                {"shift_code": 1, "date": 1, "start_time": 1, "end_time": 1,
+                 "client_name": 1, "location": 1, "user_type": 1, "unit": 1,
+                 "shift_timing": 1, "client_county": 1, "rate": 1}
+            ):
+                all_shifts.append(sh)
+            if all_shifts:
+                s = all_shifts[0]
+    elif su.get("shift_id"):
         s = await db["shifts"].find_one({"_id": su["shift_id"]},
             {"shift_code": 1, "date": 1, "start_time": 1, "end_time": 1,
-             "client_name": 1, "location": 1, "user_type": 1}) or {}
+             "client_name": 1, "location": 1, "user_type": 1, "unit": 1,
+             "shift_timing": 1, "client_county": 1, "rate": 1}) or {}
+        all_shifts = [s] if s else []
 
     AVAIL = {0: "Not Available", 1: "Available", 3: "Voicemail",
              4: "Call Not Attended", 6: "Call Not Triggered", 7: "Not Sent"}
@@ -2105,22 +2126,43 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     answer_label = "✅ Yes, I'm available" if av == 1 else "❌ No, thanks" if av == 0 else None
 
     # Sent email bubble content
+    def _shift_row_html(sh, fd):
+        return f"""
+          <tr><td style="padding:6px 12px;color:#6b7280;width:40%">📍 Facility</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{sh.get('client_name','') or sh.get('location','')}</td></tr>
+          <tr><td style="padding:6px 12px;color:#6b7280">👩\u200d⚕️ Role</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{sh.get('user_type','')}</td></tr>
+          <tr><td style="padding:6px 12px;color:#6b7280">📅 Date</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{fd}</td></tr>
+          <tr><td style="padding:6px 12px;color:#6b7280">🕐 Time</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{sh.get('start_time','')} – {sh.get('end_time','')}</td></tr>"""
+
+    if is_group and len(all_shifts) > 1:
+        shift_rows_html = ""
+        for i, sh in enumerate(all_shifts):
+            _fd = formatted_date
+            try:
+                from datetime import datetime as _dtt2
+                _fd = _dtt2.strptime(str(sh.get("date","")).split("T")[0], "%Y-%m-%d").strftime("%A, %d %B %Y")
+            except Exception:
+                pass
+            shift_rows_html += f'<tr><td colspan="2" style="padding:6px 12px;background:#f4f3ef;font-size:11px;font-weight:700;color:#27237c;">SHIFT {i+1} OF {len(all_shifts)}</td></tr>'
+            shift_rows_html += _shift_row_html(sh, _fd)
+        intro_text = f"We're reaching out to check your availability for the following <strong>{len(all_shifts)} shifts</strong>."
+        avail_text = "Are you available for these shifts?"
+    else:
+        shift_rows_html = _shift_row_html(s, formatted_date) if s else ""
+        intro_text = f"We're reaching out to check your availability for an upcoming shift at <strong>{s.get('client_name','')}</strong>."
+        avail_text = "Are you available for this shift?"
+
     email_bubble = f"""
       <div style="font-size:13px;line-height:1.6;color:#374151;">
         <p style="margin:0 0 10px;">Hi <strong>{first_name}</strong>,</p>
-        <p style="margin:0 0 10px;">We're reaching out to check your availability for an upcoming shift at <strong>{s.get('client_name','')}</strong>.</p>
+        <p style="margin:0 0 10px;">{intro_text}</p>
         <table style="width:100%;background:#f3f4f6;border-radius:6px;border:1px solid #e5e7eb;font-size:12px;margin:10px 0;border-collapse:collapse;">
           <tr><td style="padding:6px 12px;color:#6b7280;width:40%">👤 Staff</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{name}</td></tr>
-          <tr><td style="padding:6px 12px;color:#6b7280;width:40%">📍 Facility</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{s.get('client_name','')}</td></tr>
-          <tr><td style="padding:6px 12px;color:#6b7280">👩‍⚕️ Role</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{s.get('user_type','')}</td></tr>
-          <tr><td style="padding:6px 12px;color:#6b7280">📅 Date</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{formatted_date}</td></tr>
-          <tr><td style="padding:6px 12px;color:#6b7280">🕐 Time</td><td style="padding:6px 12px;font-weight:600;color:#111827;">{s.get('start_time','')} – {s.get('end_time','')}</td></tr>
+          {shift_rows_html}
         </table>
-        <p style="margin:10px 0 6px;font-weight:600;text-align:center;">Are you available for this shift?</p>
+        <p style="margin:10px 0 6px;font-weight:600;text-align:center;">{avail_text}</p>
         <div style="text-align:center;">
           <span style="display:inline-block;background:#1e7a38;color:#fff;padding:6px 14px;border-radius:4px;font-size:12px;margin:2px;">✅ Yes, I'm available</span>
           <span style="display:inline-block;background:#dc2626;color:#fff;padding:6px 14px;border-radius:4px;font-size:12px;margin:2px;">❌ No, thanks</span>
-          <span style="display:inline-block;background:#f3f4f6;color:#374151;padding:6px 14px;border-radius:4px;font-size:12px;margin:2px;border:1px solid #d1d5db;">ℹ️ More details</span>
         </div>
       </div>"""
 
