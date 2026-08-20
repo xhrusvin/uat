@@ -494,7 +494,8 @@ async def delete_shift_group(request: Request, payload: ShiftGroupDeleteRequest)
 
 class GroupPoolAddRequest(BaseModel):
     group_id:  str
-    user_ids:  list   # list of users._id strings
+    user_ids:  list
+    channel:   Optional[str] = "Phone"  # Phone, WhatsApp, Email, SMS
 
 
 class GroupPoolRemoveRequest(BaseModel):
@@ -536,6 +537,15 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
 
     now = datetime.now(timezone.utc)
     group_oid = ObjectId(payload.group_id)
+    channel   = payload.channel or "Phone"
+    if channel not in ("Phone", "WhatsApp", "Email", "SMS"):
+        channel = "Phone"
+
+    # Reset all existing pool users selected=0 first (like shift-users/bulk)
+    await db["shifts_group_pool"].update_many(
+        {"group_id": group_oid},
+        {"$set": {"selected": 0}}
+    )
 
     # Get already added user_ids
     existing = {
@@ -550,11 +560,18 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
     skipped  = 0
     for oid in user_oids:
         if str(oid) in existing:
+            # Update channel and selected=1
+            await db["shifts_group_pool"].update_one(
+                {"group_id": group_oid, "user_id": oid},
+                {"$set": {"channel": channel, "selected": 1, "updated_at": now}}
+            )
             skipped += 1
             continue
         await db["shifts_group_pool"].insert_one({
             "group_id":  group_oid,
             "user_id":   oid,
+            "channel":   channel,
+            "selected":  1,
             "added_at":  now,
             "added_by":  "manual",
         })
