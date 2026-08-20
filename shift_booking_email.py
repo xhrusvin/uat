@@ -56,7 +56,7 @@ def _format_date(date_str: str) -> str:
 
 def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name=''):
     """Load and render shift booking email from HTML template file."""
-    facility        = shift.get("client_name", "")
+    facility        = shift.get("client_name", "") or shift.get("location", "")
     address         = shift.get("client_address", "")
     county          = shift.get("client_county", "")
     lat             = shift.get("client_lat", "")
@@ -120,6 +120,8 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{start_time}}", start_time)
     html = html.replace("{{end_time}}", end_time)
     html = html.replace("{{unit}}", unit)
+    unit_line = f'<br><span style="color:#777777;">{unit}</span>' if unit else ""
+    html = html.replace("{{unit_line}}", unit_line)
     html = html.replace("{{user_type}}", user_type)
     html = html.replace("{{date_str}}", date_str)
     html = html.replace("{{shift_preference}}", shift_preference)

@@ -954,7 +954,7 @@ async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
 async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
     """
     Returns latest outreach status + sequence name for a shift.
-    If no outreach found, returns outreach_status=0, text='Not Started'.
+    Checks both regular outreach and group outreach (outreach_shift_group).
     """
     STATUS_TEXT = {
         0:  "Not Started",
@@ -963,11 +963,33 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
         3:  "Ended",
         10: "Completed",
     }
+
+    # Check regular outreach
     latest = await db["outreach"].find_one(
         {"shift_id": shift_oid},
         sort=[("created_at", -1)]
     )
-    if not latest:
+
+    # Check group outreach — find shifts_group that contains this shift_id
+    group_latest = None
+    async for sg in db["shifts_group"].find({"shift_ids": shift_oid}, {"_id": 1}):
+        go = await db["outreach_shift_group"].find_one(
+            {"group_id": sg["_id"]},
+            sort=[("created_at", -1)]
+        )
+        if go:
+            if group_latest is None or go.get("created_at", 0) > group_latest.get("created_at", 0):
+                group_latest = go
+
+    # Pick the most recent between regular and group
+    if latest and group_latest:
+        use = latest if (latest.get("created_at") or 0) >= (group_latest.get("created_at") or 0) else group_latest
+        is_group = use is group_latest
+    elif latest:
+        use, is_group = latest, False
+    elif group_latest:
+        use, is_group = group_latest, True
+    else:
         return {
             "outreach_status":          0,
             "outreach_status_text":     "Not Started",
@@ -977,11 +999,12 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
             "client_preference":        [],
             "ghost_booking":            0,
         }
-    status = latest.get("outreach_status", 0)
+
+    status = use.get("outreach_status", 0)
 
     # Resolve sequence name
     sequence_name = None
-    seq_oid = latest.get("sequence_id")
+    seq_oid = use.get("sequence_id")
     if seq_oid:
         seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
         if seq:
@@ -990,8 +1013,9 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
     return {
         "outreach_status":          status,
         "outreach_status_text":     STATUS_TEXT.get(status, "Not Started"),
-        "outreach_id":              str(latest["_id"]),
+        "outreach_id":              str(use["_id"]),
         "outreach_sequence_name":   sequence_name,
+        "is_group_outreach":        is_group,
         "shift_preference":         [],
             "shift_preferences":        [],
         "client_preference":        None,
