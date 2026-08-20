@@ -56,7 +56,8 @@ def _build_email_html(first_name, shifts_list, base_url, shifts_users_id, staff_
         start_time = shift.get("start_time", "")
         end_time   = shift.get("end_time", "")
         shift_type = shift.get("shift_type", "") or shift.get("shift_timing", "") or ""
-        rate       = shift.get("rate", "") or "—"
+        _rate_raw  = shift.get("rate", "")
+        rate       = "—" if not _rate_raw or str(_rate_raw) in ("0", "0.0", "") else str(_rate_raw)
         yes_url    = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=yes&shift_id={str(shift.get('id',''))}"
 
         rows_html += f"""
@@ -259,7 +260,7 @@ def register_shift_group_booking_email_routes(app):
                                 "user_type":        s.get("user_type", ""),
                                 "unit":             s.get("unit") or "",
                                 "shift_type":       s.get("shift_timing") or s.get("shift_type") or "",
-                                "rate":             str(s.get("rate", "")) or "—",
+                                "rate":             "—" if not s.get("rate") or str(s.get("rate","")) in ("0","0.0") else str(s.get("rate","")),
                                 "client_county":    c,
                             })
             # Fallback — single shift_id on record
@@ -277,7 +278,7 @@ def register_shift_group_booking_email_routes(app):
                         "user_type":   s.get("user_type", ""),
                         "unit":        s.get("unit") or "",
                         "shift_type":  s.get("shift_timing") or s.get("shift_type") or "",
-                        "rate":        str(s.get("rate", "")) or "—",
+                        "rate":        "—" if not s.get("rate") or str(s.get("rate","")) in ("0","0.0") else str(s.get("rate","")),
                         "client_county": county,
                     })
 
