@@ -2148,6 +2148,9 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
                 elif ad.get("availability") == 0:
                     response_text = "No, thanks."
                 break
+    elif is_group and not shift_id:
+        # Multi-shift group — don't show single response_text, use per-shift bubbles
+        response_text = ""
     # Build availability_details map for quick lookup
     avail_details_map = {}
     for ad in (su.get("availability_details") or []):
