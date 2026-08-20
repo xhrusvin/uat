@@ -46,42 +46,52 @@ def _build_email_html(first_name, shifts_list, base_url, shifts_users_id, staff_
     comments_url = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=comments"
     details_url  = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=details"
 
-    # Build shift rows HTML
-    rows_html = ""
+    # Group shifts by client_county from shifts data
+    from collections import OrderedDict as _OD
+    county_groups = _OD()
     for shift in shifts_list:
-        facility   = shift.get("client_name", "") or shift.get("location", "")
-        unit       = shift.get("unit", "") or ""
-        unit_line  = f'<br><span style="color:#777777;">{unit}</span>' if unit else ""
-        date_str   = _format_date(shift.get("date", ""))
-        start_time = shift.get("start_time", "")
-        end_time   = shift.get("end_time", "")
-        shift_type = shift.get("shift_type", "") or shift.get("shift_timing", "") or ""
-        _rate_raw  = shift.get("rate", "")
-        rate       = "—" if not _rate_raw or str(_rate_raw) in ("0", "0.0", "") else str(_rate_raw)
-        yes_url    = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=yes&shift_id={str(shift.get('id',''))}"
+        c = (shift.get("client_county") or shift.get("county") or county or "Other").strip()
+        if c not in county_groups:
+            county_groups[c] = []
+        county_groups[c].append(shift)
 
-        rows_html += f"""
-                <tr>
-                  <td valign="middle" style="padding:16px 14px;border-bottom:1px solid #eeeeee;font-size:14px;white-space:nowrap;">
-                    {date_str}
-                  </td>
-                  <td valign="middle" style="padding:16px 14px;border-bottom:1px solid #eeeeee;font-size:14px;white-space:nowrap;">
-                    {shift_type} {start_time} – {end_time}
-                  </td>
-                  <td valign="middle" style="padding:16px 14px;border-bottom:1px solid #eeeeee;font-size:14px;line-height:1.4;">
-                    <strong>{facility}</strong>{unit_line}
-                  </td>
-                  <td valign="middle" style="padding:16px 14px;border-bottom:1px solid #eeeeee;font-size:14px;white-space:nowrap;">
-                    {rate}
-                  </td>
-                  <td valign="middle" align="center" style="padding:16px 14px;border-bottom:1px solid #eeeeee;">
-                    <a href="{yes_url}" target="_blank"
-                      style="display:inline-block;background-color:#168124;color:#ffffff;text-decoration:none;
-                             font-size:14px;font-weight:700;padding:10px 22px;border-radius:5px;white-space:nowrap;">
-                      ✓ Yes
-                    </a>
-                  </td>
-                </tr>"""
+    # Build one table per county
+    rows_html = ""
+    for _county, _shifts in county_groups.items():
+        _county_upper = _county.upper() if _county else ""
+        _county_rows = ""
+        for shift in _shifts:
+            facility   = shift.get("client_name", "") or shift.get("location", "")
+            unit       = shift.get("unit", "") or ""
+            unit_td    = f"<br><small style='color:#777;'>{unit}</small>" if unit else ""
+            date_str   = _format_date(shift.get("date", ""))
+            start_time = shift.get("start_time", "")
+            end_time   = shift.get("end_time", "")
+            shift_type = shift.get("shift_type", "") or shift.get("shift_timing", "") or ""
+            _rate_raw  = shift.get("rate", "")
+            rate       = "—" if not _rate_raw or str(_rate_raw) in ("0", "0.0", "") else str(_rate_raw)
+            yes_url    = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=yes&shift_id={str(shift.get('id',''))}"
+            _county_rows += (
+                f"<tr>"
+                f"<td style='padding:12px 10px;border-bottom:1px solid #eee;font-size:13px;white-space:nowrap;vertical-align:middle;'>{date_str}</td>"
+                f"<td style='padding:12px 10px;border-bottom:1px solid #eee;font-size:13px;white-space:nowrap;vertical-align:middle;'>{shift_type}<br>{start_time}–{end_time}</td>"
+                f"<td style='padding:12px 10px;border-bottom:1px solid #eee;font-size:13px;vertical-align:middle;line-height:1.4;'><strong>{facility}</strong>{unit_td}</td>"
+                f"<td style='padding:12px 10px;border-bottom:1px solid #eee;font-size:13px;white-space:nowrap;vertical-align:middle;text-align:center;'>{rate}</td>"
+                f"<td style='padding:12px 10px;border-bottom:1px solid #eee;vertical-align:middle;text-align:center;'>"
+                f"<a href='{yes_url}' target='_blank' style='display:inline-block;background:#168124;color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:8px 18px;border-radius:5px;white-space:nowrap;'>✓ Yes</a>"
+                f"</td></tr>"
+            )
+        rows_html += (
+            f"<table width='100%' cellspacing='0' cellpadding='0' border='0' style='width:100%;border:1px solid #ddd;border-collapse:collapse;margin-bottom:16px;'>"
+            f"<tr><td colspan='5' style='padding:12px 14px;background:#f4f3ef;border-bottom:1px solid #ddd;font-size:14px;font-weight:700;color:#27237c;'>CO. {_county_upper} &nbsp;—&nbsp; {len(_shifts)} shift(s)</td></tr>"
+            f"<tr style='background:#fafafa;'>"
+            f"<td style='padding:10px;border-bottom:1px solid #ddd;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;'>Date</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #ddd;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;'>Time</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #ddd;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;'>Location</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #ddd;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;text-align:center;'>Rate</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #ddd;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;text-align:center;'>Response</td>"
+            f"</tr>{_county_rows}</table>"
+        )
 
     # Load template
     template_path = _os.path.join(
