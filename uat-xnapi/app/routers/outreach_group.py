@@ -280,6 +280,7 @@ async def create_group_outreach(request: Request, payload: GroupOutreachRequest)
             "conversation_id":    None,
             "call_status":        0,
             "call_order":         call_order,
+            "channel":            pd.get("channel") or "Phone",
             "updated_at":         now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
         })
         inserted_count += 1
@@ -405,7 +406,8 @@ async def restart_group_outreach(request: Request, payload: GroupOutreachActionR
                     "outreach_id": outreach["_id"], "assigned_at": now,
                     "availability": 6, "call_enabled": 1, "call_processed": 0,
                     "call_processed_at": now, "conversation_id": None,
-                    "call_status": 0, "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+                    "call_status": 0, "channel": p.get("channel") or "Phone",
+                    "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
                 })
                 added += 1
 
