@@ -1212,6 +1212,12 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
 
     outreach_oid = ObjectId(payload.outreach_id)
     outreach = await db["outreach"].find_one({"_id": outreach_oid})
+    is_group_outreach = False
+    if not outreach:
+        # Try group outreach collection
+        outreach = await db["outreach_shift_group"].find_one({"_id": outreach_oid})
+        if outreach:
+            is_group_outreach = True
     if not outreach:
         raise HTTPException(status_code=404, detail="Outreach not found")
 
@@ -1254,6 +1260,20 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
          "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "ignored": 1,
          "customer_feedback": 1}
     ).to_list(length=2000)
+
+    # For group outreach — also try fetching by group shift_ids if no results
+    if not su_docs and is_group_outreach:
+        group_id = outreach.get("group_id")
+        if group_id:
+            sg = await db["shifts_group"].find_one({"_id": group_id}, {"shift_ids": 1})
+            if sg and sg.get("shift_ids"):
+                su_docs = await db["shifts_users"].find(
+                    {"shift_id": {"$in": sg["shift_ids"]}, "outreach_id": outreach_oid},
+                    {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
+                     "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1, "channel": 1,
+                     "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "ignored": 1,
+                     "customer_feedback": 1}
+                ).to_list(length=2000)
 
     # Batch user lookup — include all fields needed for available_staff structure
     user_oids = [
@@ -1480,6 +1500,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             "round_number":         outreach.get("round_number"),
             "outreach_status":      o_status,
             "outreach_status_text": STATUS_TEXT.get(o_status, "Not Started"),
+            "is_group_outreach":    is_group_outreach,
             "end_reason":           outreach.get("end_reason"),
             "started_at":           outreach["started_at"].isoformat() if outreach.get("started_at") and hasattr(outreach["started_at"], "isoformat") else None,
             "paused_at":            outreach["paused_at"].isoformat() if outreach.get("paused_at") and hasattr(outreach["paused_at"], "isoformat") else None,
