@@ -369,13 +369,15 @@ def register_shift_group_booking_email_routes(app):
         if answer == "yes":
             _now       = datetime.utcnow()
             _avail_new = 1
-            _resp_text = "Yes, I'm available."
             _set_fields = {
-                "response_text": _resp_text,
                 "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
                 "responded_at":  _now,
                 "updated_at":    _now,
             }
+            # Only set top-level response_text if no specific shift
+            if not clicked_shift_id:
+                _set_fields["availability"]  = _avail_new
+                _set_fields["response_text"] = "Yes, I'm available."
             update_op = {"$set": _set_fields}
 
             if clicked_shift_id:
@@ -444,11 +446,13 @@ def register_shift_group_booking_email_routes(app):
             _avail_new = 0
             _resp_text = "No, thanks."
             _set_fields = {
-                "response_text": _resp_text,
                 "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
                 "responded_at":  _now,
                 "updated_at":    _now,
             }
+            if not clicked_shift_id:
+                _set_fields["availability"]  = _avail_new
+                _set_fields["response_text"] = "No, thanks."
             update_op = {"$set": _set_fields}
             if clicked_shift_id:
                 existing = record.get("availability_details") or []
