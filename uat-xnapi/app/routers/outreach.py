@@ -1252,28 +1252,19 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
                 "user_type":   sh.get("user_type"),
             }
 
-    # Fetch shifts_users for this outreach
+    # Fetch shifts_users — check shifts_users first, fallback to shifts_group_users
+    _su_projection = {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
+                      "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1, "channel": 1,
+                      "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "ignored": 1,
+                      "customer_feedback": 1}
     su_docs = await db["shifts_users"].find(
-        {"outreach_id": outreach_oid},
-        {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
-         "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1, "channel": 1,
-         "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "ignored": 1,
-         "customer_feedback": 1}
+        {"outreach_id": outreach_oid}, _su_projection
     ).to_list(length=2000)
 
-    # For group outreach — also try fetching by group shift_ids if no results
-    if not su_docs and is_group_outreach:
-        group_id = outreach.get("group_id")
-        if group_id:
-            sg = await db["shifts_group"].find_one({"_id": group_id}, {"shift_ids": 1})
-            if sg and sg.get("shift_ids"):
-                su_docs = await db["shifts_users"].find(
-                    {"shift_id": {"$in": sg["shift_ids"]}, "outreach_id": outreach_oid},
-                    {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
-                     "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1, "channel": 1,
-                     "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "ignored": 1,
-                     "customer_feedback": 1}
-                ).to_list(length=2000)
+    if not su_docs:
+        su_docs = await db["shifts_group_users"].find(
+            {"outreach_id": outreach_oid}, _su_projection
+        ).to_list(length=2000)
 
     # Batch user lookup — include all fields needed for available_staff structure
     user_oids = [
