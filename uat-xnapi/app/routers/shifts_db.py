@@ -830,6 +830,16 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             s["is_group_outreach"]      = True
             results.append(s)
 
+    # Deduplicate results by shift id
+    seen_ids = set()
+    deduped = []
+    for r in results:
+        rid = r.get("id") or r.get("shift_id") or r.get("shift_code")
+        if rid not in seen_ids:
+            seen_ids.add(rid)
+            deduped.append(r)
+    results = deduped
+
     # Aggregate outreach counts (across all shifts, not just filtered)
     automation_shift_ids = await db["outreach"].distinct("shift_id", {"outreach_status": {"$gt": 0}})
     automation_count     = len(set(str(s) for s in automation_shift_ids))
@@ -839,7 +849,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     to_be_filled_count   = await db["shifts"].count_documents({"upstream_status": "To Be Filled"})
 
     # Apply pagination to combined results (regular + group outreach)
-    combined_total = total + len([r for r in results if r.get("is_group_outreach")])
+    combined_total = len(results)
     paginated_results = results[skip:skip + limit]
 
     return {
