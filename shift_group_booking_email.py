@@ -279,7 +279,7 @@ def register_shift_group_booking_email_routes(app):
                                 "user_type":        s.get("user_type", ""),
                                 "unit":             s.get("unit") or "",
                                 "shift_type":       s.get("shift_timing") or s.get("shift_type") or "",
-                                "rate":             "—" if not s.get("rate") or str(s.get("rate","")) in ("0","0.0") else str(s.get("rate","")),
+                                "rate":             "REG" if not s.get("rate") or str(s.get("rate","")) in ("0","0.0") else str(s.get("rate","")),
                                 "client_county":    c,
                             })
             # Fallback — single shift_id on record
@@ -297,7 +297,7 @@ def register_shift_group_booking_email_routes(app):
                         "user_type":   s.get("user_type", ""),
                         "unit":        s.get("unit") or "",
                         "shift_type":  s.get("shift_timing") or s.get("shift_type") or "",
-                        "rate":        "—" if not s.get("rate") or str(s.get("rate","")) in ("0","0.0") else str(s.get("rate","")),
+                        "rate":        "REG" if not s.get("rate") or str(s.get("rate","")) in ("0","0.0") else str(s.get("rate","")),
                         "client_county": county,
                     })
 
