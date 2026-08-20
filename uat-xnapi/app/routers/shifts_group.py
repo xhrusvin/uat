@@ -185,7 +185,32 @@ async def get_shift_group(request: Request, payload: ShiftGroupDetailRequest):
     s["pool_users"]  = pool_users
     s["pool_count"]  = len(pool_users)
 
-    # Available staff — full structure matching /shifts-db/detail
+    # Channel counts from shifts_group_users
+    channel_counts = {"Phone": 0, "WhatsApp": 0, "Email": 0, "SMS": 0, "total": 0}
+    async for su in db["shifts_group_users"].find(
+        {"group_id": group_oid},
+        {"channel": 1}
+    ):
+        ch = su.get("channel") or "Phone"
+        if ch in channel_counts:
+            channel_counts[ch] += 1
+        else:
+            channel_counts[ch] = 1
+        channel_counts["total"] += 1
+
+    # Channel counts from pool (selected=1)
+    pool_channel_counts = {"Phone": 0, "WhatsApp": 0, "Email": 0, "SMS": 0, "total": 0}
+    for p in pool_docs:
+        if p.get("selected") == 1:
+            ch = p.get("channel") or "Phone"
+            if ch in pool_channel_counts:
+                pool_channel_counts[ch] += 1
+            else:
+                pool_channel_counts[ch] = 1
+            pool_channel_counts["total"] += 1
+
+    s["channel_counts"]      = channel_counts
+    s["pool_channel_counts"] = pool_channel_counts
     avail_su = await db["shifts_group_users"].find(
         {"group_id": group_oid, "availability": 1},
         {"user_id": 1, "availability": 1, "call_processed_at": 1,
