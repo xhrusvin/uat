@@ -1339,6 +1339,15 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         uid_str = str(su.get("user_id", ""))
         u = user_map.get(uid_str, {})
         avail_val    = su.get("availability")
+
+        # For group outreach — resolve availability from availability_details by shift_id
+        if is_group_outreach and su.get("availability_details"):
+            shift_id_for_avail = str(outreach.get("shift_id", "")) if outreach.get("shift_id") else None
+            if shift_id_for_avail:
+                for ad in su["availability_details"]:
+                    if str(ad.get("shift_id", "")) == shift_id_for_avail:
+                        avail_val = ad.get("availability", avail_val)
+                        break
         raw_oid_su   = su.get("outreach_id")
 
         # Prior shifts here

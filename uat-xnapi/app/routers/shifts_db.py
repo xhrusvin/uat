@@ -1512,6 +1512,13 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             uid_str = str(su.get("user_id", ""))
             u = avail_user_map.get(uid_str, {})
             avail_val = su.get("availability")
+
+            # For group outreach — resolve from availability_details by shift_id
+            if su.get("availability_details"):
+                for ad in su["availability_details"]:
+                    if str(ad.get("shift_id", "")) == str(shift_oid):
+                        avail_val = ad.get("availability", avail_val)
+                        break
             raw_outreach_oid = su.get("outreach_id")
             user_oid_val = su.get("user_id")
 

@@ -268,19 +268,21 @@ async def create_group_outreach(request: Request, payload: GroupOutreachRequest)
         if exists:
             skipped += 1
             continue
+        _channel = pd.get("channel") or "Phone"
+        _avail   = 7 if _channel in ("Email", "SMS", "WhatsApp") else 6
         await db["shifts_group_users"].insert_one({
             "user_id":            user_oid,
             "group_id":           group_oid,
             "outreach_id":        oid,
             "assigned_at":        now,
-            "availability":       6,
+            "availability":       _avail,
             "call_enabled":       1,
             "call_processed":     0,
             "call_processed_at":  now,
             "conversation_id":    None,
             "call_status":        0,
             "call_order":         call_order,
-            "channel":            pd.get("channel") or "Phone",
+            "channel":            _channel,
             "updated_at":         now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
         })
         inserted_count += 1
@@ -401,12 +403,14 @@ async def restart_group_outreach(request: Request, payload: GroupOutreachActionR
         if uid and uid not in su_ids:
             exists_avail = await db["shifts_group_users"].find_one({"group_id": group_oid, "user_id": p["user_id"], "availability": 1})
             if not exists_avail:
+                _ch2    = p.get("channel") or "Phone"
+                _avail2 = 7 if _ch2 in ("Email", "SMS", "WhatsApp") else 6
                 await db["shifts_group_users"].insert_one({
                     "user_id": p["user_id"], "group_id": group_oid,
                     "outreach_id": outreach["_id"], "assigned_at": now,
-                    "availability": 6, "call_enabled": 1, "call_processed": 0,
+                    "availability": _avail2, "call_enabled": 1, "call_processed": 0,
                     "call_processed_at": now, "conversation_id": None,
-                    "call_status": 0, "channel": p.get("channel") or "Phone",
+                    "call_status": 0, "channel": _ch2,
                     "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
                 })
                 added += 1
