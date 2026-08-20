@@ -630,10 +630,12 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
                 {"name":           {"$regex": search, "$options": "i"}},
                 {"shift_xn_id":    {"$regex": search, "$options": "i"}},
                 {"shift_code":     {"$regex": search, "$options": "i"}},
+                {"shift_id":       {"$regex": search, "$options": "i"}},
                 {"location":       {"$regex": search, "$options": "i"}},
                 {"client_name":    {"$regex": search, "$options": "i"}},
                 {"client_county":  {"$regex": search, "$options": "i"}},
                 {"user_type":      {"$regex": search, "$options": "i"}},
+                {"slots.shift_xn_id": {"$regex": search, "$options": "i"}},
             ]})
 
     if status:
