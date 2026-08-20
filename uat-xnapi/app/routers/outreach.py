@@ -1340,19 +1340,15 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         u = user_map.get(uid_str, {})
         avail_val    = su.get("availability")
 
-        # For group outreach — resolve from availability_details
+        # For group outreach — resolve avail_val from availability_details per outreach shift_id
         if is_group_outreach and su.get("availability_details"):
-            details = su["availability_details"]
-            # If any shift has availability=1, use 1
-            avails = [ad.get("availability") for ad in details if ad.get("availability") is not None]
-            if avails:
-                if 1 in avails:
-                    avail_val = 1
-                elif all(a == 0 for a in avails):
-                    avail_val = 0
-                else:
-                    # Mixed — keep top-level or use most recent
-                    avail_val = su.get("availability", avails[-1])
+            # Build a map of shift_id -> availability from details
+            _details_map = {str(ad.get("shift_id","")): ad.get("availability") for ad in su["availability_details"]}
+            # Get the shift_id for this su record (from outreach shift context)
+            _su_shift_id = str(su.get("shift_id",""))
+            if _su_shift_id and _su_shift_id in _details_map:
+                avail_val = _details_map[_su_shift_id]
+            # else keep top-level avail_val as fallback
         raw_oid_su   = su.get("outreach_id")
 
         # Prior shifts here
@@ -1462,6 +1458,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             "response_time":       response_time_s,
             "availability":        avail_val,
             "availability_text":   AVAILABILITY_TEXT.get(avail_val, "Unknown"),
+            "availability_details": su.get("availability_details") or [],
             "call_enabled":        su.get("call_enabled"),
             "call_processed":      su.get("call_processed"),
             "call_processed_text": "Sent" if su.get("call_processed") == 1 else "Queued",
