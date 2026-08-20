@@ -63,7 +63,7 @@ def _build_email_html(first_name, shifts_list, base_url, shifts_users_id, staff_
         for shift in _shifts:
             facility   = shift.get("client_name", "") or shift.get("location", "")
             unit       = shift.get("unit", "") or ""
-            unit_td    = f"<br><small style='color:#777;'>{unit}</small>" if unit else ""
+            unit_td    = f"<br><small style='color:#777;'>Unit: {unit}</small>" if unit else ""
             date_str   = _format_date(shift.get("date", ""))
             start_time = shift.get("start_time", "")
             end_time   = shift.get("end_time", "")

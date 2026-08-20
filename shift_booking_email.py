@@ -120,7 +120,7 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
     html = html.replace("{{start_time}}", start_time)
     html = html.replace("{{end_time}}", end_time)
     html = html.replace("{{unit}}", unit)
-    unit_line = f'<br><span style="color:#777777;">{unit}</span>' if unit else ""
+    unit_line = f'<br><span style="color:#777777;">Unit: {unit}</span>' if unit else ""
     html = html.replace("{{unit_line}}", unit_line)
     html = html.replace("{{user_type}}", user_type)
     html = html.replace("{{date_str}}", date_str)
