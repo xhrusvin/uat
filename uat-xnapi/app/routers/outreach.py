@@ -1340,14 +1340,19 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         u = user_map.get(uid_str, {})
         avail_val    = su.get("availability")
 
-        # For group outreach — resolve availability from availability_details by shift_id
+        # For group outreach — resolve from availability_details
         if is_group_outreach and su.get("availability_details"):
-            shift_id_for_avail = str(outreach.get("shift_id", "")) if outreach.get("shift_id") else None
-            if shift_id_for_avail:
-                for ad in su["availability_details"]:
-                    if str(ad.get("shift_id", "")) == shift_id_for_avail:
-                        avail_val = ad.get("availability", avail_val)
-                        break
+            details = su["availability_details"]
+            # If any shift has availability=1, use 1
+            avails = [ad.get("availability") for ad in details if ad.get("availability") is not None]
+            if avails:
+                if 1 in avails:
+                    avail_val = 1
+                elif all(a == 0 for a in avails):
+                    avail_val = 0
+                else:
+                    # Mixed — keep top-level or use most recent
+                    avail_val = su.get("availability", avails[-1])
         raw_oid_su   = su.get("outreach_id")
 
         # Prior shifts here
@@ -2096,18 +2101,25 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
 
     av = su.get("availability")
 
-    # For group outreach — if shift_id provided, show only that shift and its availability
-    if is_group and shift_id and all_shifts:
-        # Filter to requested shift only
-        filtered = [sh for sh in all_shifts if str(sh.get("_id","")) == shift_id]
-        if filtered:
-            all_shifts = filtered
-            s = filtered[0]
-        # Get per-shift availability from availability_details
-        for ad in (su.get("availability_details") or []):
-            if str(ad.get("shift_id","")) == shift_id:
-                av = ad.get("availability", av)
-                break
+    # For group outreach — resolve av from availability_details
+    if is_group:
+        details = su.get("availability_details") or []
+        if shift_id:
+            # Specific shift — get av for that shift, fallback to top-level
+            for ad in details:
+                if str(ad.get("shift_id","")) == shift_id:
+                    av = ad.get("availability", av)
+                    break
+            # Filter all_shifts to just this shift
+            if all_shifts:
+                filtered = [sh for sh in all_shifts if str(sh.get("_id","")) == shift_id]
+                if filtered:
+                    all_shifts = filtered
+                    s = filtered[0]
+        else:
+            # No specific shift — use first availability_details entry if exists, else top-level
+            if details:
+                av = details[0].get("availability", av)
 
     # Reconstruct sent email content
     base_url   = "https://uat.expresshealth.ie"
