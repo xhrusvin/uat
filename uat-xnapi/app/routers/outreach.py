@@ -1192,6 +1192,7 @@ def _format_call_time(dt) -> str:
 
 class OutreachStaffListRequest(BaseModel):
     outreach_id: str
+    shift_id:    Optional[str] = None
 
 
 @router.post(
@@ -1342,13 +1343,20 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
 
         # For group outreach — resolve avail_val from availability_details per outreach shift_id
         if is_group_outreach and su.get("availability_details"):
-            # Build a map of shift_id -> availability from details
             _details_map = {str(ad.get("shift_id","")): ad.get("availability") for ad in su["availability_details"]}
-            # Get the shift_id for this su record (from outreach shift context)
-            _su_shift_id = str(su.get("shift_id",""))
-            if _su_shift_id and _su_shift_id in _details_map:
-                avail_val = _details_map[_su_shift_id]
-            # else keep top-level avail_val as fallback
+            # Use payload shift_id if provided, else check all entries
+            _lookup_shift_id = payload.shift_id or ""
+            if _lookup_shift_id and _lookup_shift_id in _details_map:
+                avail_val = _details_map[_lookup_shift_id]
+            elif not _lookup_shift_id:
+                # No shift_id — show overall: Available only if all Yes
+                _avails = [v for v in _details_map.values() if v is not None]
+                if _avails:
+                    if all(a == 1 for a in _avails):
+                        avail_val = 1
+                    elif 0 in _avails:
+                        avail_val = 0
+                    # else keep top-level
         raw_oid_su   = su.get("outreach_id")
 
         # Prior shifts here
