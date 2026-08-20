@@ -1363,6 +1363,20 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         sort=[("created_at", -1)]
     ).to_list(length=100)
 
+    # Also fetch group outreach records for this shift
+    async for sg in db["shifts_group"].find({"shift_ids": shift_oid}, {"_id": 1}):
+        async for go in db["outreach_shift_group"].find(
+            {"group_id": sg["_id"]},
+            sort=[("created_at", -1)]
+        ):
+            # Tag as group outreach for display
+            go["_is_group"] = True
+            go["_group_id"] = str(sg["_id"])
+            outreach_docs.append(go)
+
+    # Sort combined list by created_at desc
+    outreach_docs.sort(key=lambda x: x.get("created_at") or 0, reverse=True)
+
     STATUS_TEXT = {0: "Not Started", 1: "Live", 2: "Paused", 3: "Ended", 10: "Completed"}
     outreach_list = []
     for o in outreach_docs:
@@ -1416,6 +1430,8 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "created_at":           _iso_irl(o.get("created_at")) or str(o.get("created_at", "")),
             "start_time":           start_time_ago,
             "time_ago":             start_time_ago,
+            "is_group_outreach":    o.get("_is_group", False),
+            "group_id":             o.get("_group_id"),
             "staff_counts": {
                 "available":     avail_1,
                 "declined":      declined_count,
