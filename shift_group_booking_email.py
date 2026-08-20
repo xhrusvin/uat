@@ -341,46 +341,92 @@ def register_shift_group_booking_email_routes(app):
                         "shift_type":  s.get("shift_timing") or s.get("shift_type") or "—",
                     }
 
-        base_url = os.getenv("APP_BASE_URL", "https://uat.expresshealth.ie")
-        yes_url  = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=yes"
-        no_url   = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=no"
+        base_url  = os.getenv("APP_BASE_URL", "https://uat.expresshealth.ie")
+        yes_url   = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=yes"
+        no_url    = f"{base_url}/shift_group_booking_email/respond/{su_id}?answer=no"
+        # shift_id from URL param — for per-shift response tracking
+        clicked_shift_id = request.args.get('shift_id', '')
 
         if answer == "yes":
-            _now = datetime.utcnow()
-            app.db.shifts_group_users.update_one(
-                {"_id": obj_id},
-                {"$set": {
-                    "availability":  1,
-                    "response_text": "Yes, I'm available.",
-                    "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
-                    "responded_at":  _now,
-                    "updated_at":    _now,
-                }}
-            )
+            _now       = datetime.utcnow()
+            _avail_new = 1
+            _resp_text = "Yes, I'm available."
+            _set_fields = {
+                "availability":  _avail_new,
+                "response_text": _resp_text,
+                "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
+                "responded_at":  _now,
+                "updated_at":    _now,
+            }
+            # Update availability_details for specific shift if shift_id provided
+            if clicked_shift_id:
+                existing = record.get("availability_details") or []
+                updated  = False
+                for ad in existing:
+                    if str(ad.get("shift_id", "")) == clicked_shift_id:
+                        ad["availability"] = _avail_new
+                        ad["responded_at"] = _now.strftime("%Y-%m-%d %H:%M:%S")
+                        updated = True
+                        break
+                if not updated:
+                    existing.append({"shift_id": clicked_shift_id, "availability": _avail_new,
+                                     "responded_at": _now.strftime("%Y-%m-%d %H:%M:%S")})
+                _set_fields["availability_details"] = existing
+            app.db.shifts_group_users.update_one({"_id": obj_id}, {"$set": _set_fields})
+
+            # Find shift details for confirmation page
+            _conf_shift = {}
+            if clicked_shift_id and ObjectId.is_valid(clicked_shift_id):
+                _s = app.db.shifts.find_one({"_id": ObjectId(clicked_shift_id)},
+                    {"client_name": 1, "location": 1, "date": 1, "start_time": 1, "end_time": 1})
+                if _s:
+                    _conf_shift = {
+                        "client_name": _s.get("client_name", ""),
+                        "location":    _s.get("location", ""),
+                        "date":        _format_date(str(_s.get("date", ""))),
+                        "start_time":  _s.get("start_time", ""),
+                        "end_time":    _s.get("end_time", ""),
+                    }
+            elif shift_doc:
+                _conf_shift = shift_doc
+
             html = f"""<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
   <h2 style="color:#1e7a38">&#x2705; Great, you're confirmed!</h2>
   <p>We've marked you as <strong>available</strong> for this shift.</p>
   <div style="background:#f9f9f9;border-left:4px solid #1e7a38;padding:16px;border-radius:6px;text-align:left;margin:20px 0">
-    <p>&#x1F4CD; {shift_doc.get('client_name')}, {shift_doc.get('location')}</p>
-    <p>&#x1F4C5; {shift_doc.get('date')}</p>
-    <p>&#x1F550; {shift_doc.get('start_time')} &#x2013; {shift_doc.get('end_time')}</p>
+    <p>&#x1F4CD; {_conf_shift.get('client_name','')}, {_conf_shift.get('location','')}</p>
+    <p>&#x1F4C5; {_conf_shift.get('date','')}</p>
+    <p>&#x1F550; {_conf_shift.get('start_time','')} &#x2013; {_conf_shift.get('end_time','')}</p>
   </div>
   <p>We'll let you know as soon as the facility confirms the booking.</p>
   <p style="color:#aaa;font-size:12px">Xpress Health</p>
 </body></html>"""
 
         elif answer == "no":
-            _now = datetime.utcnow()
-            app.db.shifts_group_users.update_one(
-                {"_id": obj_id},
-                {"$set": {
-                    "availability":  0,
-                    "response_text": "No, thanks.",
-                    "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
-                    "responded_at":  _now,
-                    "updated_at":    _now,
-                }}
-            )
+            _now       = datetime.utcnow()
+            _avail_new = 0
+            _resp_text = "No, thanks."
+            _set_fields = {
+                "availability":  _avail_new,
+                "response_text": _resp_text,
+                "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
+                "responded_at":  _now,
+                "updated_at":    _now,
+            }
+            if clicked_shift_id:
+                existing = record.get("availability_details") or []
+                updated  = False
+                for ad in existing:
+                    if str(ad.get("shift_id", "")) == clicked_shift_id:
+                        ad["availability"] = _avail_new
+                        ad["responded_at"] = _now.strftime("%Y-%m-%d %H:%M:%S")
+                        updated = True
+                        break
+                if not updated:
+                    existing.append({"shift_id": clicked_shift_id, "availability": _avail_new,
+                                     "responded_at": _now.strftime("%Y-%m-%d %H:%M:%S")})
+                _set_fields["availability_details"] = existing
+            app.db.shifts_group_users.update_one({"_id": obj_id}, {"$set": _set_fields})
             html = """<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
   <h2>&#x1F44D; No problem!</h2>
   <p>Thanks for letting us know. We'll reach out for future shifts.</p>

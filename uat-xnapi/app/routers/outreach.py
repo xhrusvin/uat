@@ -2029,18 +2029,21 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     q: dict = {"channel": "Email"}
     if user_id and ObjectId.is_valid(user_id):
         q["user_id"] = ObjectId(user_id)
-    if shift_id and ObjectId.is_valid(shift_id):
-        q["shift_id"] = ObjectId(shift_id)
     if outreach_id and ObjectId.is_valid(outreach_id):
         q["outreach_id"] = ObjectId(outreach_id)
 
     if not q or q == {"channel": "Email"}:
         raise HTTPException(status_code=422, detail="Provide at least one of: user_id, shift_id, outreach_id")
 
-    su = await db["shifts_users"].find_one(q, sort=[("assigned_at", -1)])
+    # For regular outreach — also filter by shift_id
+    q_regular = dict(q)
+    if shift_id and ObjectId.is_valid(shift_id):
+        q_regular["shift_id"] = ObjectId(shift_id)
+
+    su = await db["shifts_users"].find_one(q_regular, sort=[("assigned_at", -1)])
     is_group = False
     if not su:
-        # Try shifts_group_users for group outreach
+        # Try shifts_group_users — no shift_id filter (group users don't have shift_id)
         su = await db["shifts_group_users"].find_one(q, sort=[("assigned_at", -1)])
         if su:
             is_group = True
@@ -2093,6 +2096,19 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
 
     av = su.get("availability")
 
+    # For group outreach — if shift_id provided, show only that shift and its availability
+    if is_group and shift_id and all_shifts:
+        # Filter to requested shift only
+        filtered = [sh for sh in all_shifts if str(sh.get("_id","")) == shift_id]
+        if filtered:
+            all_shifts = filtered
+            s = filtered[0]
+        # Get per-shift availability from availability_details
+        for ad in (su.get("availability_details") or []):
+            if str(ad.get("shift_id","")) == shift_id:
+                av = ad.get("availability", av)
+                break
+
     # Reconstruct sent email content
     base_url   = "https://uat.expresshealth.ie"
     first_name = u.get("first_name", "")
@@ -2123,6 +2139,15 @@ async def email_detail(request: Request, payload: EmailDetailRequest):
     sent_at   = _iso(su.get("email_sent_at")) or _iso(su.get("assigned_at")) or ""
     responded = _iso(su.get("responded_at")) or ""
     response_text = su.get("response_text", "")
+    # For group per-shift — override response_text from availability_details
+    if is_group and shift_id:
+        for ad in (su.get("availability_details") or []):
+            if str(ad.get("shift_id","")) == shift_id:
+                if ad.get("availability") == 1:
+                    response_text = "Yes, I'm available."
+                elif ad.get("availability") == 0:
+                    response_text = "No, thanks."
+                break
     answer_label = "✅ Yes, I'm available" if av == 1 else "❌ No, thanks" if av == 0 else None
 
     # Sent email bubble content
