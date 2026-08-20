@@ -371,27 +371,45 @@ def register_shift_group_booking_email_routes(app):
             _avail_new = 1
             _resp_text = "Yes, I'm available."
             _set_fields = {
-                "availability":  _avail_new,
                 "response_text": _resp_text,
                 "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
                 "responded_at":  _now,
                 "updated_at":    _now,
             }
-            # Update availability_details for specific shift if shift_id provided
+            update_op = {"$set": _set_fields}
+
             if clicked_shift_id:
+                # Check if this shift already in availability_details
                 existing = record.get("availability_details") or []
-                updated  = False
-                for ad in existing:
-                    if str(ad.get("shift_id", "")) == clicked_shift_id:
-                        ad["availability"] = _avail_new
-                        ad["responded_at"] = _now.strftime("%Y-%m-%d %H:%M:%S")
-                        updated = True
-                        break
-                if not updated:
-                    existing.append({"shift_id": clicked_shift_id, "availability": _avail_new,
-                                     "responded_at": _now.strftime("%Y-%m-%d %H:%M:%S")})
-                _set_fields["availability_details"] = existing
-            app.db.shifts_group_users.update_one({"_id": obj_id}, {"$set": _set_fields})
+                already_exists = any(str(ad.get("shift_id","")) == clicked_shift_id for ad in existing)
+                if already_exists:
+                    # Update existing entry
+                    new_details = []
+                    for ad in existing:
+                        if str(ad.get("shift_id","")) == clicked_shift_id:
+                            new_details.append({
+                                "shift_id":     clicked_shift_id,
+                                "availability": _avail_new,
+                                "responded_at": _now.strftime("%Y-%m-%d %H:%M:%S"),
+                            })
+                        else:
+                            new_details.append(ad)
+                    _set_fields["availability_details"] = new_details
+                else:
+                    # Push new entry
+                    update_op["$push"] = {
+                        "availability_details": {
+                            "shift_id":     clicked_shift_id,
+                            "availability": _avail_new,
+                            "responded_at": _now.strftime("%Y-%m-%d %H:%M:%S"),
+                        }
+                    }
+                # Only set top-level availability=1 if ALL shifts responded Yes
+                # Otherwise keep as 8 (No Response) until all replied
+            else:
+                _set_fields["availability"] = _avail_new
+
+            app.db.shifts_group_users.update_one({"_id": obj_id}, update_op)
 
             # Find shift details for confirmation page
             _conf_shift = {}
@@ -426,26 +444,28 @@ def register_shift_group_booking_email_routes(app):
             _avail_new = 0
             _resp_text = "No, thanks."
             _set_fields = {
-                "availability":  _avail_new,
                 "response_text": _resp_text,
                 "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
                 "responded_at":  _now,
                 "updated_at":    _now,
             }
+            update_op = {"$set": _set_fields}
             if clicked_shift_id:
                 existing = record.get("availability_details") or []
-                updated  = False
-                for ad in existing:
-                    if str(ad.get("shift_id", "")) == clicked_shift_id:
-                        ad["availability"] = _avail_new
-                        ad["responded_at"] = _now.strftime("%Y-%m-%d %H:%M:%S")
-                        updated = True
-                        break
-                if not updated:
-                    existing.append({"shift_id": clicked_shift_id, "availability": _avail_new,
-                                     "responded_at": _now.strftime("%Y-%m-%d %H:%M:%S")})
-                _set_fields["availability_details"] = existing
-            app.db.shifts_group_users.update_one({"_id": obj_id}, {"$set": _set_fields})
+                already_exists = any(str(ad.get("shift_id","")) == clicked_shift_id for ad in existing)
+                if already_exists:
+                    new_details = []
+                    for ad in existing:
+                        if str(ad.get("shift_id","")) == clicked_shift_id:
+                            new_details.append({"shift_id": clicked_shift_id, "availability": _avail_new, "responded_at": _now.strftime("%Y-%m-%d %H:%M:%S")})
+                        else:
+                            new_details.append(ad)
+                    _set_fields["availability_details"] = new_details
+                else:
+                    update_op["$push"] = {"availability_details": {"shift_id": clicked_shift_id, "availability": _avail_new, "responded_at": _now.strftime("%Y-%m-%d %H:%M:%S")}}
+            else:
+                _set_fields["availability"] = _avail_new
+            app.db.shifts_group_users.update_one({"_id": obj_id}, update_op)
             html = """<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
   <h2>&#x1F44D; No problem!</h2>
   <p>Thanks for letting us know. We'll reach out for future shifts.</p>
