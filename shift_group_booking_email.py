@@ -241,28 +241,45 @@ def register_shift_group_booking_email_routes(app):
             last_name  = user.get("last_name", "")
             full_name  = f"{first_name} {last_name}".strip()
 
-            # Check user designation matches shift user_type
-            user_designation = user.get("designation", "").strip().lower()
-            # Get user_type from group's first shift
-            _shift_user_type = ""
-            _group_id_check  = record.get("group_id")
-            if _group_id_check:
-                _sg_check = app.db.shifts_group.find_one({"_id": _group_id_check}, {"shift_ids": 1})
-                if _sg_check and _sg_check.get("shift_ids"):
-                    _s_check = app.db.shifts.find_one({"_id": _sg_check["shift_ids"][0]}, {"user_type": 1})
-                    if _s_check:
-                        _shift_user_type = (_s_check.get("user_type") or "").strip().lower()
-            if user_designation and _shift_user_type and user_designation != _shift_user_type:
-                log.warning(f"[GROUP EMAIL] Skipping {email} — designation '{user_designation}' != shift user_type '{_shift_user_type}'")
-                continue
+                        # ------------------------------------------------------------------
+            # Skip email when user's designation does not match shift.user_type
+            # ------------------------------------------------------------------
+            user_designation = (user.get("designation") or "").strip().lower()
 
-            # Mark as processed
-            result = app.db.shifts_group_users.update_one(
-                {"_id": su_id},
-                {"$set": {"call_processed": 1, "call_processed_at": datetime.utcnow(),
-                           "updated_at": datetime.utcnow()}}
-            )
-            if result.modified_count == 0:
+            # Determine the shift's user_type (prefer group, fall back to single shift)
+            shift_user_type = ""
+            group_id = record.get("group_id")
+            if group_id:
+                sg = app.db.shifts_group.find_one({"_id": group_id}, {"shift_ids": 1})
+                if sg and sg.get("shift_ids"):
+                    first_shift = app.db.shifts.find_one(
+                        {"_id": sg["shift_ids"][0]}, {"user_type": 1}
+                    )
+                    if first_shift:
+                        shift_user_type = (first_shift.get("user_type") or "").strip().lower()
+            # Fallback – single shift_id on the record
+            if not shift_user_type and shift_id and ObjectId.is_valid(shift_id):
+                s = app.db.shifts.find_one(
+                    {"_id": ObjectId(shift_id)}, {"user_type": 1}
+                )
+                if s:
+                    shift_user_type = (s.get("user_type") or "").strip().lower()
+
+            if user_designation and shift_user_type and user_designation != shift_user_type:
+                log.warning(
+                    f"[GROUP EMAIL] Skipping {email} — "
+                    f"designation '{user_designation}' != shift user_type '{shift_user_type}'"
+                )
+                # Mark processed so we don't keep picking this record
+                app.db.shifts_group_users.update_one(
+                    {"_id": su_id},
+                    {"$set": {
+                        "call_processed": 1,
+                        "call_processed_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow(),
+                        "email_skipped_reason": "designation_mismatch",
+                    }}
+                )
                 continue
 
             # Build shifts_list — all shifts from the group
