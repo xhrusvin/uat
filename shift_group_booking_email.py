@@ -122,16 +122,22 @@ def _build_email_html(first_name, shifts_list, base_url, shifts_users_id, staff_
 def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_id, county=""):
     """Send group shift booking email via SMTP."""
     try:
-        # Safety check — skip if designation doesn't match any shift user_type
+        # Safety check — filter shifts to only those matching user designation
         user_id = record.get("user_id")
         if user_id:
             _u = app.db.users.find_one({"_id": user_id}, {"designation": 1})
             _designation = (_u.get("designation") or "").strip().lower() if _u else ""
             if _designation and shifts_list:
-                _shift_types = {(s.get("user_type") or "").strip().lower() for s in shifts_list if s.get("user_type")}
-                if _shift_types and _designation not in _shift_types:
-                    log.warning(f"[GROUP EMAIL] Blocked send to {to_email} — designation '{_designation}' not in shift types {_shift_types}")
+                filtered_shifts = [
+                    s for s in shifts_list
+                    if not s.get("user_type") or s.get("user_type", "").strip().lower() == _designation
+                ]
+                if not filtered_shifts:
+                    log.warning(f"[GROUP EMAIL] Blocked send to {to_email} — no shifts match designation '{_designation}'")
                     return
+                if len(filtered_shifts) < len(shifts_list):
+                    log.info(f"[GROUP EMAIL] Filtered {len(shifts_list) - len(filtered_shifts)} shifts not matching '{_designation}' for {to_email}")
+                    shifts_list = filtered_shifts
         base_url  = os.getenv("APP_BASE_URL", "https://uat.expresshealth.ie")
         last_name = record.get("last_name", "")
         html      = _build_email_html(first_name, shifts_list, base_url, su_id,
