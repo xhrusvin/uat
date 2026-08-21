@@ -222,13 +222,15 @@ def register_shift_booking_whatsapp_routes(app):
 
             shift_doc = _get_shift_doc(app, record)
 
-            import threading
-            threading.Thread(
-                target=_send_wati_whatsapp,
-                args=(current_app._get_current_object(), record, shift_doc,
-                      phone, first_name, su_id, collection_name),
-                daemon=True
-            ).start()
+            _send_wati_whatsapp(current_app._get_current_object(), record, shift_doc, phone, first_name, su_id, collection_name)
+
+            # import threading
+            # threading.Thread(
+            #     target=_send_wati_whatsapp,
+            #     args=(current_app._get_current_object(), record, shift_doc,
+            #           phone, first_name, su_id, collection_name),
+            #     daemon=True
+            # ).start()
 
             triggered.append({
                 "su_id":      str(su_id),
