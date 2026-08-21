@@ -356,23 +356,25 @@ def register_wati_webhook_routes(app):
             return {"success": True, "message": "No actionable response"}, 200
 
         now = datetime.utcnow()
+        log.info(f"[WATI WEBHOOK] Processing — phone={phone} avail={avail} btn={btn_text} text={text}")
 
         # Find shifts_users by user already resolved above
         if not user:
             log.warning(f"[WATI WEBHOOK] No user found for phone {phone}")
             return {"success": True}, 200
 
-        # Find most recent shifts_users for this user with wa_sent=1
-        conversation_id = data.get("conversationId", "")
+        log.info(f"[WATI WEBHOOK] User found: {user['_id']}")
 
-        # Find by wa_phone (WhatsApp format e.g. 917034526952)
         su         = None
         collection = "shifts_users"
 
+        # 1. Try by wa_phone
         su = app.db.shifts_users.find_one(
             {"wa_phone": phone, "wa_sent": 1},
             sort=[("wa_sent_at", -1)]
         )
+        log.info(f"[WATI WEBHOOK] wa_phone lookup ({phone}): {'found '+str(su['_id']) if su else 'NOT FOUND'}")
+
         if not su:
             su = app.db.shifts_group_users.find_one(
                 {"wa_phone": phone, "wa_sent": 1},
@@ -380,13 +382,15 @@ def register_wati_webhook_routes(app):
             )
             if su:
                 collection = "shifts_group_users"
+            log.info(f"[WATI WEBHOOK] group wa_phone lookup: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
 
-        # Fallback — find by user_id + wa_sent
-        if not su and user:
+        # 2. Fallback by user_id
+        if not su:
             su = app.db.shifts_users.find_one(
                 {"user_id": user["_id"], "wa_sent": 1},
                 sort=[("wa_sent_at", -1)]
             )
+            log.info(f"[WATI WEBHOOK] user_id fallback: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
             if not su:
                 su = app.db.shifts_group_users.find_one(
                     {"user_id": user["_id"], "wa_sent": 1},
@@ -394,13 +398,15 @@ def register_wati_webhook_routes(app):
                 )
                 if su:
                     collection = "shifts_group_users"
+                log.info(f"[WATI WEBHOOK] group user_id fallback: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
 
         if not su:
-            log.warning(f"[WATI WEBHOOK] No pending shifts_users found for phone {phone}")
+            log.warning(f"[WATI WEBHOOK] No record found for phone={phone} user={user['_id']}")
             return {"success": True}, 200
 
+        log.info(f"[WATI WEBHOOK] Updating su_id={su['_id']} in {collection} → availability={avail}")
         db_col = getattr(app.db, collection)
-        db_col.update_one(
+        result = db_col.update_one(
             {"_id": su["_id"]},
             {"$set": {
                 "availability":  avail,
@@ -408,9 +414,9 @@ def register_wati_webhook_routes(app):
                 "response_time": now.strftime("%Y-%m-%d %H:%M:%S"),
                 "responded_at":  now,
                 "updated_at":    now,
-                "wa_response":   button_text or text,
+                "wa_response":   btn_text or text,
             }}
         )
+        log.info(f"[WATI WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
+        return {"success": True, "availability": avail, "collection": collection, "su_id": str(su["_id"])}, 200
 
-        log.info(f"[WATI WEBHOOK] ✓ {phone} → availability={avail} in {collection}")
-        return {"success": True, "availability": avail, "collection": collection}, 200
