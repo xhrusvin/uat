@@ -1283,7 +1283,6 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         ):
             user_map[str(u["_id"])] = u
 
-    # Build county name map from county_id (stored as string)
     county_id_strs = list({str(u.get("county_id","")) for u in user_map.values() if u.get("county_id")})
     county_name_map: dict = {}
     if county_id_strs:
@@ -1336,9 +1335,19 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         prior_client_shift_ids_s = await db["shifts"].distinct("_id", {"client_id": shift_client_id_s})
 
     shifts_users_list = []
+    # Get shift user_type for designation filtering
+    _shift_user_type_filter = (shift_info.get("user_type") or "").strip().lower() if shift_info else ""
+
     for su in su_docs:
         uid_str = str(su.get("user_id", ""))
         u = user_map.get(uid_str, {})
+
+        # Skip if user designation doesn't match shift user_type
+        if _shift_user_type_filter:
+            _user_desig = (u.get("designation") or "").strip().lower()
+            if _user_desig and _user_desig != _shift_user_type_filter:
+                continue
+
         avail_val    = su.get("availability")
 
         # For group outreach — resolve avail_val from availability_details per outreach shift_id
