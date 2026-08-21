@@ -2503,6 +2503,7 @@ async def brevo_inbound(request: Request):
 # ── POST /outreach/whatsapp-detail ────────────────────────────────────────────
 
 class WhatsAppDetailRequest(BaseModel):
+    phone:       Optional[str] = None  # WhatsApp format e.g. 917034526952 or +91 7034526952
     user_id:     Optional[str] = None
     shift_id:    Optional[str] = None
     outreach_id: Optional[str] = None
@@ -2516,20 +2517,34 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
     from fastapi.responses import HTMLResponse as _HR2
     db  = _get_db()
 
-    q: dict = {"channel": "WhatsApp"}
-    if payload.user_id and ObjectId.is_valid(payload.user_id):
-        q["user_id"] = ObjectId(payload.user_id)
-    if payload.shift_id and ObjectId.is_valid(payload.shift_id):
-        q["shift_id"] = ObjectId(payload.shift_id)
-    if payload.outreach_id and ObjectId.is_valid(payload.outreach_id):
-        q["outreach_id"] = ObjectId(payload.outreach_id)
+    # Find by phone (most direct) or other filters
+    su = None
+    if payload.phone:
+        _phone_clean = payload.phone.replace("+", "").replace(" ", "").replace("-", "").strip()
+        su = await db["shifts_users"].find_one(
+            {"wa_phone": _phone_clean},
+            sort=[("wa_sent_at", -1)]
+        )
+        if not su:
+            su = await db["shifts_group_users"].find_one(
+                {"wa_phone": _phone_clean},
+                sort=[("wa_sent_at", -1)]
+            )
 
-    if len(q) == 1:
-        raise HTTPException(status_code=422, detail="Provide at least one of: user_id, shift_id, outreach_id")
-
-    su = await db["shifts_users"].find_one(q, sort=[("assigned_at", -1)])
     if not su:
-        su = await db["shifts_group_users"].find_one(q, sort=[("assigned_at", -1)])
+        q: dict = {"channel": "WhatsApp"}
+        if payload.user_id and ObjectId.is_valid(payload.user_id):
+            q["user_id"] = ObjectId(payload.user_id)
+        if payload.shift_id and ObjectId.is_valid(payload.shift_id):
+            q["shift_id"] = ObjectId(payload.shift_id)
+        if payload.outreach_id and ObjectId.is_valid(payload.outreach_id):
+            q["outreach_id"] = ObjectId(payload.outreach_id)
+
+        if len(q) > 1:
+            su = await db["shifts_users"].find_one(q, sort=[("assigned_at", -1)])
+            if not su:
+                su = await db["shifts_group_users"].find_one(q, sort=[("assigned_at", -1)])
+
     if not su:
         raise HTTPException(status_code=404, detail="No WhatsApp record found")
 
@@ -2547,9 +2562,13 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
             {"shift_code": 1, "date": 1, "start_time": 1, "end_time": 1,
              "client_name": 1, "user_type": 1, "client_county": 1}) or {}
 
-    # WATI messages from wati_messages collection
+    # WATI messages — search by wa_phone or user_id
+    _wa_phone = su.get("wa_phone") or (payload.phone.replace("+","").replace(" ","").strip() if payload.phone else "")
     wati_msgs = await db["wati_messages"].find(
-        {"$or": [{"user_id": su.get("user_id")}, {"phone": phone.replace("+","").replace(" ","")}]},
+        {"$or": [
+            {"phone": _wa_phone},
+            {"user_id": su.get("user_id")},
+        ]} if _wa_phone else {"user_id": su.get("user_id")},
         sort=[("timestamp", 1)]
     ).to_list(length=200)
 

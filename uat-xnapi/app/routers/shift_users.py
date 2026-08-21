@@ -1582,6 +1582,16 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     from app.routers.staff import _haversine_km as _hav_m, _user_coords as _uc_m
 
     results = []
+    # Batch prior shifts count for all page users
+    prior_shifts_map: dict = {}
+    async for ps in db["shifts_users"].aggregate([
+        {"$match": {"user_id": {"$in": user_ids_page}, "availability": 1}},
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]):
+        prior_shifts_map[str(ps["_id"])] = ps["count"]
+
+    _cache_updates = []  # collect (user_id, exclusion_tags) to bulk save after loop
+
     for u in users:
         uid_str = str(u["_id"])
         ucoords = _uc_m(u)
@@ -1613,7 +1623,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         visa_total = u.get("visa_hours_total")
         visa_hours_remaining = f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
 
-        prior_shifts = await db["shifts_users"].count_documents({"user_id": u["_id"], "availability": 1})
+        prior_shifts = prior_shifts_map.get(uid_str, 0)
         work_history = None
         if prior_shifts > 0 and last_contacted:
             work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_contacted}"
@@ -1645,16 +1655,13 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
         # Exclusion check against primary shift
         user_email     = u.get("email")
-        # Use cached exclusion if available, else compute and save
+        # Use cached exclusion if available, else compute (save batch after loop)
         _cache_excl = u.get("exclusion_cache")
         if _cache_excl is not None:
             exclusion_tags = _cache_excl
         elif user_email and target_shift:
             exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or [], u.get("tags") or [], u.get("_id"))
-            await db["users"].update_one(
-                {"_id": u["_id"]},
-                {"$set": {"exclusion_cache": exclusion_tags, "exclusion_cache_at": __import__("datetime").datetime.utcnow()}}
-            )
+            _cache_updates.append((u["_id"], exclusion_tags))
         else:
             exclusion_tags = []
         excluded       = 1 if exclusion_tags else 0
@@ -1726,6 +1733,20 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         results.sort(key=lambda r: r["rating"] if r["rating"] is not None else 0, reverse=reverse)
     elif order_by == "name":
         results.sort(key=lambda r: r["name"].lower(), reverse=reverse)
+
+    # Bulk save exclusion cache for users computed this request
+    if _cache_updates:
+        from datetime import timezone as _tz_cache
+        _now_cache = datetime.now(_tz_cache.utc)
+        from pymongo import UpdateOne as _UO
+        _bulk = [
+            _UO({"_id": _uid}, {"$set": {"exclusion_cache": _etags, "exclusion_cache_at": _now_cache}})
+            for _uid, _etags in _cache_updates
+        ]
+        try:
+            await db["users"].bulk_write(_bulk, ordered=False)
+        except Exception:
+            pass
 
     return {
         "success":         True,
