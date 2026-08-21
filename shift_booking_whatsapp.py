@@ -110,6 +110,9 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
                     "availability":     8,
                 }}
             )
+            # Store response for return
+            record["_wati_response"] = resp_data
+            record["_wati_status"]   = resp.status_code
         else:
             log.error(f"[WA] ✗ Failed {phone_clean}: {resp.status_code} {resp.text[:200]}")
             db_col = getattr(app.db, collection)
@@ -221,24 +224,31 @@ def register_shift_booking_whatsapp_routes(app):
 
             shift_doc = _get_shift_doc(app, record)
 
-            import threading
-            threading.Thread(
+            # Send synchronously to capture WATI response
+            import threading as _threading
+            _app_obj = current_app._get_current_object()
+            _t = _threading.Thread(
                 target=_send_wati_whatsapp,
-                args=(current_app._get_current_object(), record, shift_doc,
-                      phone, first_name, su_id, collection_name),
+                args=(_app_obj, record, shift_doc, phone, first_name, su_id, collection_name),
                 daemon=True
-            ).start()
+            )
+            _t.start()
+            _t.join(timeout=15)  # wait up to 15s
 
+            # Re-fetch record to get updated wa fields
+            _updated = db_col.find_one({"_id": su_id}, {"wa_message_id": 1, "wa_conversation_id": 1, "wa_error": 1, "availability": 1})
+
+            _upd = _updated or {}
             triggered.append({
-                "su_id":             str(su_id),
-                "user_id":           str(user_id),
-                "staff_name":        full_name,
-                "phone":             phone,
-                "wa_message_id":     record.get("wa_message_id", ""),
-                "wa_conversation_id": record.get("wa_conversation_id", ""),
-                "availability":      record.get("availability", 7),
-                "wa_response":       record.get("wa_response", ""),
-                "responded_at":      str(record.get("responded_at", "")),
+                "su_id":              str(su_id),
+                "user_id":            str(user_id),
+                "staff_name":         full_name,
+                "phone":              phone,
+                "wa_message_id":      _upd.get("wa_message_id", ""),
+                "wa_conversation_id": _upd.get("wa_conversation_id", ""),
+                "availability":       _upd.get("availability", 7),
+                "wa_error":           _upd.get("wa_error", ""),
+                "sent":               "wa_message_id" in _upd and bool(_upd.get("wa_message_id")),
             })
 
         return jsonify({
