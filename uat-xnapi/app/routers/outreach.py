@@ -2503,10 +2503,12 @@ async def brevo_inbound(request: Request):
 # ── POST /outreach/whatsapp-detail ────────────────────────────────────────────
 
 class WhatsAppDetailRequest(BaseModel):
-    phone:       Optional[str] = None  # WhatsApp format e.g. 917034526952 or +91 7034526952
+    phone:       Optional[str] = None
     user_id:     Optional[str] = None
     shift_id:    Optional[str] = None
     outreach_id: Optional[str] = None
+    page:        int = 1
+    per_page:    int = 20
 
 @router.post(
     "/whatsapp-detail",
@@ -2564,13 +2566,17 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
 
     # WATI messages — search by wa_phone or user_id
     _wa_phone = su.get("wa_phone") or (payload.phone.replace("+","").replace(" ","").strip() if payload.phone else "")
+    _skip = (payload.page - 1) * payload.per_page
+    _total_msgs = await db["wati_messages"].count_documents(
+        {"$or": [{"phone": _wa_phone}, {"user_id": su.get("user_id")}]} if _wa_phone else {"user_id": su.get("user_id")}
+    )
     wati_msgs = await db["wati_messages"].find(
         {"$or": [
             {"phone": _wa_phone},
             {"user_id": su.get("user_id")},
         ]} if _wa_phone else {"user_id": su.get("user_id")},
         sort=[("timestamp", 1)]
-    ).to_list(length=200)
+    ).skip(_skip).limit(payload.per_page).to_list(length=payload.per_page)
 
     try:
         from zoneinfo import ZoneInfo as _ZI3
@@ -2694,7 +2700,7 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
 
   <!-- Footer -->
   <div style="background:#fff;padding:10px 18px;font-size:11px;color:#aaa;text-align:center;border-top:1px solid #e5e7eb;">
-    📱 WhatsApp · Template: shift_call_new · Shift: {s.get('shift_code','—')}
+    📱 WhatsApp · Template: shift_call_new · Shift: {s.get('shift_code','—')} · Page {payload.page} of {max(1, -(-_total_msgs // payload.per_page))} ({_total_msgs} messages)
   </div>
 
 </div></body></html>"""
