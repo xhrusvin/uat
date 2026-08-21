@@ -48,5 +48,5 @@ from . import live_staffs_reg_record
 from . import care_leads
 from . import live_staffs_application_form
 from . import whatsapp_user_send_routes  
-
+from . import user_cv
 
