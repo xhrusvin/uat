@@ -98,14 +98,16 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
 
         if resp.status_code == 200:
             log.info(f"[WA] ✓ Sent to {phone_clean}")
+            resp_data = resp.json()
             db_col = getattr(app.db, collection)
             db_col.update_one(
                 {"_id": su_id},
                 {"$set": {
-                    "wa_sent":       1,
-                    "wa_sent_at":    datetime.utcnow(),
-                    "wa_message_id": resp.json().get("id", ""),
-                    "availability":  8,
+                    "wa_sent":          1,
+                    "wa_sent_at":       datetime.utcnow(),
+                    "wa_message_id":    resp_data.get("id", ""),
+                    "wa_conversation_id": resp_data.get("conversationId", ""),
+                    "availability":     8,
                 }}
             )
         else:
@@ -360,19 +362,37 @@ def register_wati_webhook_routes(app):
             return {"success": True}, 200
 
         # Find most recent shifts_users for this user with wa_sent=1
-        su = app.db.shifts_users.find_one(
-            {"user_id": user["_id"], "wa_sent": 1},
-            sort=[("wa_sent_at", -1)]
-        )
-        collection = "shifts_users"
+        conversation_id = data.get("conversationId", "")
 
-        if not su:
-            # Try shifts_group_users
-            su = app.db.shifts_group_users.find_one(
+        # Find shifts_users by conversationId — most reliable
+        su         = None
+        collection = "shifts_users"
+        if conversation_id:
+            su = app.db.shifts_users.find_one(
+                {"wa_conversation_id": conversation_id},
+                sort=[("wa_sent_at", -1)]
+            )
+            if not su:
+                su = app.db.shifts_group_users.find_one(
+                    {"wa_conversation_id": conversation_id},
+                    sort=[("wa_sent_at", -1)]
+                )
+                if su:
+                    collection = "shifts_group_users"
+
+        # Fallback — find by user phone + wa_sent
+        if not su and user:
+            su = app.db.shifts_users.find_one(
                 {"user_id": user["_id"], "wa_sent": 1},
                 sort=[("wa_sent_at", -1)]
             )
-            collection = "shifts_group_users"
+            if not su:
+                su = app.db.shifts_group_users.find_one(
+                    {"user_id": user["_id"], "wa_sent": 1},
+                    sort=[("wa_sent_at", -1)]
+                )
+                if su:
+                    collection = "shifts_group_users"
 
         if not su:
             log.warning(f"[WATI WEBHOOK] No pending shifts_users found for phone {phone}")
