@@ -85,6 +85,19 @@ export default function UsersPage() {
   const [deleteUser, setDeleteUser]     = useState(null)
   const [deleting, setDeleting]         = useState(false)
   const [deleteError, setDeleteError]   = useState(null)
+  const [clearingCacheId, setClearingCacheId] = useState(null)
+
+  const handleClearCache = async (e, userId) => {
+    e.stopPropagation()
+    setClearingCacheId(userId)
+    try {
+      const apiKey = localStorage.getItem('api_key') || ''
+      await fetch(`/xnapi/users/${userId}/clear-exclusion-cache`,
+        { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}` } }
+      )
+    } catch (_) {}
+    finally { setClearingCacheId(null) }
+  }
   const debounceRef                     = useRef(null)
 
   useEffect(() => { usersService.init() }, [])
@@ -278,6 +291,16 @@ export default function UsersPage() {
                     <td className="px-5 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
+                          onClick={(e) => handleClearCache(e, u.id)}
+                          disabled={clearingCacheId === u.id}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                          title="Clear exclusion cache">
+                          {clearingCacheId === u.id
+                            ? <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                            : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                              </svg>}
+                        </button>
                           onClick={(e) => { e.stopPropagation(); setDeleteUser(u); setDeleteError(null) }}
                           className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                           title="Delete user">
