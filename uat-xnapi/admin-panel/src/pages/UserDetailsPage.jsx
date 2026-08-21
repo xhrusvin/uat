@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { recruitmentsApi } from '../services/api'
+import { recruitmentsApi, usersApi } from '../services/api'
 
 function Field({ label, value }) {
   if (value === null || value === undefined || value === '') return null
@@ -53,10 +53,31 @@ function SyncBadge({ sync }) {
 }
 
 export default function UserDetailsPage() {
-  const [userId, setUserId]   = useState('')
-  const [loading, setLoading] = useState(false)
-  const [result, setResult]   = useState(null)
-  const [error, setError]     = useState(null)
+  const [userId, setUserId]         = useState('')
+  const [loading, setLoading]       = useState(false)
+  const [result, setResult]         = useState(null)
+  const [error, setError]           = useState(null)
+  const [cacheClearing, setCacheClearing] = useState(false)
+  const [cacheMsg, setCacheMsg]     = useState(null)
+
+  const handleClearCache = async () => {
+    if (!userId.trim()) return
+    setCacheClearing(true)
+    setCacheMsg(null)
+    try {
+      const apiKey = localStorage.getItem('api_key') || ''
+      const res = await fetch(
+        `/xnapi/users/${userId.trim()}/clear-exclusion-cache`,
+        { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}` } }
+      )
+      const data = await res.json()
+      setCacheMsg(data.success ? '✅ Exclusion cache cleared' : `❌ ${data.detail || 'Failed'}`)
+    } catch (e) {
+      setCacheMsg('❌ Error clearing cache')
+    } finally {
+      setCacheClearing(false)
+    }
+  }
 
   const handleCall = async () => {
     if (!userId.trim()) return
@@ -134,8 +155,31 @@ export default function UserDetailsPage() {
                 </svg>}
             {loading ? 'Fetching…' : 'Fetch & Sync'}
           </button>
+          <button
+            onClick={handleClearCache}
+            disabled={cacheClearing || !userId.trim()}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white
+                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: '#d97706' }}
+            title="Clear exclusion cache so it recomputes on next shift list"
+          >
+            {cacheClearing
+              ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>}
+            Clear Cache
+          </button>
         </div>
       </div>
+
+      {/* Cache clear message */}
+      {cacheMsg && (
+        <div className={`mb-5 px-4 py-3 rounded-lg text-sm ${cacheMsg.startsWith('✅') ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+          {cacheMsg}
+        </div>
+      )}
 
       {/* Error */}
       {error && (

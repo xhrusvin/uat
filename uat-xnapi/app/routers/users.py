@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import logging
+from bson import ObjectId
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -261,4 +262,29 @@ async def sync_xn_user_id(request: Request, limit: int = 100):
         "message":       f"Sync started in background for up to {limit} users",
         "total_missing": total_missing,
         "processing":    min(limit, total_missing),
+    }
+
+
+# ── POST /users/{id}/clear-exclusion-cache ────────────────────────────────────
+
+@router.post(
+    "/{user_id}/clear-exclusion-cache",
+    summary="Clear exclusion cache for a user",
+    dependencies=[Depends(verify_api_key)],
+)
+async def clear_exclusion_cache(request: Request, user_id: str):
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status_code=422, detail="Invalid user_id")
+    db = _get_db()
+    result = await db["users"].update_one(
+        {"_id": ObjectId(user_id)},
+        {"$unset": {"exclusion_cache": "", "exclusion_cache_at": ""}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "success": True,
+        "message": "Exclusion cache cleared — will recompute on next shift list call",
+        "user_id": user_id,
+        "modified": result.modified_count > 0,
     }
