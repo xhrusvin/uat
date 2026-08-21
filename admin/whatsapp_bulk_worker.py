@@ -1,6 +1,4 @@
-
 from datetime import datetime
-from unittest import result
 
 from database import db
 from .whatsapp_wati import _send_template_message
@@ -11,20 +9,18 @@ def process_bulk_messages(campaign_id, batch_size=1000):
     campaigns = db.whatsapp_bulk_campaigns
     messages = db.whatsapp_bulk_messages
 
+    # Campaign is the same for every message in this batch — read it once.
+    campaign = campaigns.find_one({"_id": campaign_id}) or {}
+    template_name = campaign.get("template_name", "new_chat_v1")
+    parameter_config = campaign.get("parameter_config", [])
+
     pending = list(
         messages.find({"status": "pending", "campaign_id": campaign_id}).limit(batch_size)
     )
 
     for msg in pending:
-        campaign = campaigns.find_one({"_id": msg["campaign_id"]})
-        template_name = campaign.get("template_name", "new_chat_v1") if campaign else "new_chat_v1"
 
         try:
-            parameter_config = campaign.get(
-                "parameter_config",
-                []
-            )
-
             parameters = []
 
             for item in parameter_config:
@@ -36,7 +32,9 @@ def process_bulk_messages(campaign_id, batch_size=1000):
                 if not param_name:
                     continue
 
-                if param_type == "excel":
+                # "user" and "excel" both resolve against row_data, which is
+                # populated from the user document or the spreadsheet row.
+                if param_type in ("user", "excel"):
 
                     value = (
                         msg.get("row_data", {})
@@ -57,7 +55,7 @@ def process_bulk_messages(campaign_id, batch_size=1000):
                 template_name,
                 parameters
             )
-            
+
             print("WATI RESPONSE")
             print(result)
 
