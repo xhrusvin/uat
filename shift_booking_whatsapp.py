@@ -99,7 +99,6 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
         if resp.status_code == 200:
             log.info(f"[WA] ✓ Sent to {phone_clean}")
             resp_data = resp.json()
-            return resp_data
             db_col = getattr(app.db, collection)
             db_col.update_one(
                 {"_id": su_id},
@@ -222,21 +221,24 @@ def register_shift_booking_whatsapp_routes(app):
 
             shift_doc = _get_shift_doc(app, record)
 
-            _send_wati_whatsapp(current_app._get_current_object(), record, shift_doc, phone, first_name, su_id, collection_name)
-
-            # import threading
-            # threading.Thread(
-            #     target=_send_wati_whatsapp,
-            #     args=(current_app._get_current_object(), record, shift_doc,
-            #           phone, first_name, su_id, collection_name),
-            #     daemon=True
-            # ).start()
+            import threading
+            threading.Thread(
+                target=_send_wati_whatsapp,
+                args=(current_app._get_current_object(), record, shift_doc,
+                      phone, first_name, su_id, collection_name),
+                daemon=True
+            ).start()
 
             triggered.append({
-                "su_id":      str(su_id),
-                "user_id":    str(user_id),
-                "staff_name": full_name,
-                "phone":      phone,
+                "su_id":             str(su_id),
+                "user_id":           str(user_id),
+                "staff_name":        full_name,
+                "phone":             phone,
+                "wa_message_id":     record.get("wa_message_id", ""),
+                "wa_conversation_id": record.get("wa_conversation_id", ""),
+                "availability":      record.get("availability", 7),
+                "wa_response":       record.get("wa_response", ""),
+                "responded_at":      str(record.get("responded_at", "")),
             })
 
         return jsonify({
