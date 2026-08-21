@@ -342,6 +342,17 @@ def register_wati_webhook_routes(app):
 
         app.db.wati_messages.insert_one(msg_doc)
 
+        # Only process availability when it's a button click (type=button or has buttonReply)
+        is_button_event = (
+            msg_type == "button" or
+            bool(btn_reply) or
+            event_type in ("message", "ctaButtonClicked", "CTA Button Clicked")
+        ) and bool(btn_text)
+
+        if not is_button_event:
+            log.info(f"[WATI WEBHOOK] Skipping non-button event: eventType={event_type} type={msg_type}")
+            return {"success": True, "message": f"Skipped event: {event_type}"}, 200
+
         # Determine availability from button clicked
         btn_text_l  = btn_text.strip().lower()
         text_l      = text.strip().lower()
