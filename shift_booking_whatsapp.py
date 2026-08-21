@@ -99,6 +99,7 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
         if resp.status_code == 200:
             log.info(f"[WA] ✓ Sent to {phone_clean}")
             resp_data = resp.json()
+            return resp_data
             db_col = getattr(app.db, collection)
             db_col.update_one(
                 {"_id": su_id},
