@@ -229,7 +229,7 @@ def register_shift_group_booking_email_routes(app):
             if user_id and ObjectId.is_valid(user_id):
                 user = app.db.users.find_one(
                     {"_id": ObjectId(user_id)},
-                    {"email": 1, "first_name": 1, "last_name": 1}
+                    {"email": 1, "first_name": 1, "last_name": 1, "designation": 1}
                 )
 
             if not user or not user.get("email"):
@@ -240,6 +240,21 @@ def register_shift_group_booking_email_routes(app):
             first_name = user.get("first_name", "")
             last_name  = user.get("last_name", "")
             full_name  = f"{first_name} {last_name}".strip()
+
+            # Check user designation matches shift user_type
+            user_designation = user.get("designation", "").strip().lower()
+            # Get user_type from group's first shift
+            _shift_user_type = ""
+            _group_id_check  = record.get("group_id")
+            if _group_id_check:
+                _sg_check = app.db.shifts_group.find_one({"_id": _group_id_check}, {"shift_ids": 1})
+                if _sg_check and _sg_check.get("shift_ids"):
+                    _s_check = app.db.shifts.find_one({"_id": _sg_check["shift_ids"][0]}, {"user_type": 1})
+                    if _s_check:
+                        _shift_user_type = (_s_check.get("user_type") or "").strip().lower()
+            if user_designation and _shift_user_type and user_designation != _shift_user_type:
+                log.warning(f"[GROUP EMAIL] Skipping {email} — designation '{user_designation}' != shift user_type '{_shift_user_type}'")
+                continue
 
             # Mark as processed
             result = app.db.shifts_group_users.update_one(
