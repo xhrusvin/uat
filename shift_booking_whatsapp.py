@@ -44,11 +44,11 @@ def _format_day(date_str: str) -> str:
 def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collection="shifts_users"):
     """Send WhatsApp message via WATI API."""
     try:
-        wati_url   = os.getenv("WATI_API_URL", "").rstrip("/")
-        wati_token = os.getenv("WATI_API_TOKEN", "")
+        wati_url   = (os.getenv("WATI_API_ENDPOINT") or os.getenv("WATI_API_URL", "")).rstrip("/")
+        wati_token = os.getenv("WATI_ACCESS_TOKEN") or os.getenv("WATI_API_TOKEN", "")
 
         if not wati_url or not wati_token:
-            log.error("[WA] WATI_API_URL or WATI_API_TOKEN not set")
+            log.error("[WA] WATI_API_ENDPOINT or WATI_ACCESS_TOKEN not set")
             return
 
         # Clean phone — remove + and spaces
@@ -84,10 +84,13 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
         headers = {
             "Authorization": f"Bearer {wati_token}",
             "Content-Type":  "application/json",
+            "Accept":        "application/json",
         }
 
+        # Build URL — if endpoint already has /api in it, use as-is
+        _wati_send_url = f"{wati_url}/api/v1/sendTemplateMessage?whatsappNumber={phone_clean}" if "/api" not in wati_url else f"{wati_url}/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
         resp = _req.post(
-            f"{wati_url}/api/v1/sendTemplateMessage?whatsappNumber={phone_clean}",
+            _wati_send_url,
             json=payload,
             headers=headers,
             timeout=20,
