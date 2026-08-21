@@ -303,11 +303,19 @@ def register_wati_webhook_routes(app):
         # Save raw event to wati_messages collection
         phone       = (data.get("waId") or data.get("phone") or "").replace("+", "").strip()
         event_type  = data.get("eventType", "") or data.get("type", "")
-        wa_message  = data.get("waMessage") or data.get("message") or {}
-        text        = (wa_message.get("text") or wa_message.get("body") or "").strip()
-        btn_reply   = wa_message.get("buttonReply") or (wa_message.get("interactive") or {}).get("button_reply") or {}
-        btn_text    = btn_reply.get("title", "")
-        direction   = "inbound" if event_type in ("message_received", "Message Received", "New Contact Message") else "outbound"
+        msg_type    = data.get("type", "")
+        # WATI sends button replies at top level (not nested in waMessage)
+        btn_reply   = data.get("buttonReply") or {}
+        btn_text    = btn_reply.get("text", "") or btn_reply.get("title", "")
+        text        = data.get("text") or ""
+        # Also check nested waMessage
+        wa_message  = data.get("waMessage") or {}
+        if not btn_text:
+            nested_btn = wa_message.get("buttonReply") or {}
+            btn_text   = nested_btn.get("text", "") or nested_btn.get("title", "")
+        if not text:
+            text = (wa_message.get("text") or wa_message.get("body") or "")
+        direction   = "inbound" if (msg_type == "button" or event_type == "message") else "outbound"
 
         # Save to DB
         msg_doc = {
@@ -323,7 +331,7 @@ def register_wati_webhook_routes(app):
 
         # Link to user if phone matches
         user = app.db.users.find_one(
-            {"phone": {"$regex": phone[-9:] if len(phone) >= 9 else phone}},
+            {"phone": {"$regex": phone[-9:] if len(phone) >= 9 else phone, "$options": "i"}},
             {"_id": 1}
         )
         if user:
@@ -332,19 +340,14 @@ def register_wati_webhook_routes(app):
         app.db.wati_messages.insert_one(msg_doc)
 
         # Determine availability from button clicked
-        button_id   = btn_reply.get("id", "").lower()
-        button_text_l = btn_text.lower()
-        text_l      = text.lower()
+        btn_text_l  = btn_text.strip().lower()
+        text_l      = text.strip().lower()
+        combined    = btn_text_l or text_l
         avail = None
-        if button_id in ("yes", "yes_available") or "yes" in button_text_l or "available" in button_text_l:
+        if "yes" in combined or "available" in combined:
             avail = 1
-        elif button_id in ("no", "no_thanks") or "no" in button_text_l or "thanks" in button_text_l:
+        elif "no" in combined or "thanks" in combined:
             avail = 0
-        if avail is None and text_l:
-            if "yes" in text_l or "available" in text_l:
-                avail = 1
-            elif "no" in text_l or "thanks" in text_l:
-                avail = 0
 
         if avail is None or not phone:
             return {"success": True, "message": "No actionable response"}, 200
