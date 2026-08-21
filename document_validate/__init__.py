@@ -14,3 +14,4 @@ from . import changed_to_staff
 from . import staff_details
 from . import shift_updated
 from . import client_updated
+from . import document_status
