@@ -1015,7 +1015,9 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     results = []
     # For post-filter mode, only run full exclusion on current page slice to save time
-    page_user_ids_set = {str(u["_id"]) for u in (users[skip:skip+limit] if needs_post_filter else users)}
+    # When filtering by excluded status, run exclusion for ALL users (not just page slice)
+    _excluded_filter_active = payload.excluded is not None
+    page_user_ids_set = {str(u["_id"]) for u in (users if _excluded_filter_active else (users[skip:skip+limit] if needs_post_filter else users))}
     for u in users:
         uid_str  = str(u["_id"])
         ucoords  = _user_location_coords(u)
