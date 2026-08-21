@@ -361,7 +361,7 @@ def register_wati_webhook_routes(app):
 
         # Find most recent shifts_users for this user with wa_sent=1
         su = app.db.shifts_users.find_one(
-            {"user_id": user["_id"], "wa_sent": 1, "availability": {"$in": [7, 8]}},
+            {"user_id": user["_id"], "wa_sent": 1},
             sort=[("wa_sent_at", -1)]
         )
         collection = "shifts_users"
@@ -369,7 +369,7 @@ def register_wati_webhook_routes(app):
         if not su:
             # Try shifts_group_users
             su = app.db.shifts_group_users.find_one(
-                {"user_id": user["_id"], "wa_sent": 1, "availability": {"$in": [7, 8]}},
+                {"user_id": user["_id"], "wa_sent": 1},
                 sort=[("wa_sent_at", -1)]
             )
             collection = "shifts_group_users"
