@@ -103,16 +103,14 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
             db_col.update_one(
                 {"_id": su_id},
                 {"$set": {
-                    "wa_sent":          1,
-                    "wa_sent_at":       datetime.utcnow(),
-                    "wa_message_id":    resp_data.get("id", ""),
+                    "wa_sent":            1,
+                    "wa_sent_at":         datetime.utcnow(),
+                    "wa_message_id":      resp_data.get("id", ""),
                     "wa_conversation_id": resp_data.get("conversationId", ""),
-                    "availability":     8,
+                    "wa_phone":           phone_clean,
+                    "availability":       8,
                 }}
             )
-            # Store response for return
-            record["_wati_response"] = resp_data
-            record["_wati_status"]   = resp.status_code
         else:
             log.error(f"[WA] ✗ Failed {phone_clean}: {resp.status_code} {resp.text[:200]}")
             db_col = getattr(app.db, collection)
@@ -224,31 +222,19 @@ def register_shift_booking_whatsapp_routes(app):
 
             shift_doc = _get_shift_doc(app, record)
 
-            # Send synchronously to capture WATI response
-            import threading as _threading
-            _app_obj = current_app._get_current_object()
-            _t = _threading.Thread(
+            import threading
+            threading.Thread(
                 target=_send_wati_whatsapp,
-                args=(_app_obj, record, shift_doc, phone, first_name, su_id, collection_name),
+                args=(current_app._get_current_object(), record, shift_doc,
+                      phone, first_name, su_id, collection_name),
                 daemon=True
-            )
-            _t.start()
-            _t.join(timeout=15)  # wait up to 15s
+            ).start()
 
-            # Re-fetch record to get updated wa fields
-            _updated = db_col.find_one({"_id": su_id}, {"wa_message_id": 1, "wa_conversation_id": 1, "wa_error": 1, "availability": 1})
-
-            _upd = _updated or {}
             triggered.append({
-                "su_id":              str(su_id),
-                "user_id":            str(user_id),
-                "staff_name":         full_name,
-                "phone":              phone,
-                "wa_message_id":      _upd.get("wa_message_id", ""),
-                "wa_conversation_id": _upd.get("wa_conversation_id", ""),
-                "availability":       _upd.get("availability", 7),
-                "wa_error":           _upd.get("wa_error", ""),
-                "sent":               "wa_message_id" in _upd and bool(_upd.get("wa_message_id")),
+                "su_id":      str(su_id),
+                "user_id":    str(user_id),
+                "staff_name": full_name,
+                "phone":      phone,
             })
 
         return jsonify({
@@ -379,23 +365,23 @@ def register_wati_webhook_routes(app):
         # Find most recent shifts_users for this user with wa_sent=1
         conversation_id = data.get("conversationId", "")
 
-        # Find shifts_users by conversationId — most reliable
+        # Find by wa_phone (WhatsApp format e.g. 917034526952)
         su         = None
         collection = "shifts_users"
-        if conversation_id:
-            su = app.db.shifts_users.find_one(
-                {"wa_conversation_id": conversation_id},
+
+        su = app.db.shifts_users.find_one(
+            {"wa_phone": phone, "wa_sent": 1},
+            sort=[("wa_sent_at", -1)]
+        )
+        if not su:
+            su = app.db.shifts_group_users.find_one(
+                {"wa_phone": phone, "wa_sent": 1},
                 sort=[("wa_sent_at", -1)]
             )
-            if not su:
-                su = app.db.shifts_group_users.find_one(
-                    {"wa_conversation_id": conversation_id},
-                    sort=[("wa_sent_at", -1)]
-                )
-                if su:
-                    collection = "shifts_group_users"
+            if su:
+                collection = "shifts_group_users"
 
-        # Fallback — find by user phone + wa_sent
+        # Fallback — find by user_id + wa_sent
         if not su and user:
             su = app.db.shifts_users.find_one(
                 {"user_id": user["_id"], "wa_sent": 1},
