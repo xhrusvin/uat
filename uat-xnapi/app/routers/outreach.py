@@ -2498,3 +2498,186 @@ async def brevo_inbound(request: Request):
         logger.warning(f"[BREVO INBOUND] Could not find shifts_users_id in To: {to_full}")
 
     return {"success": True}
+
+
+# ── POST /outreach/whatsapp-detail ────────────────────────────────────────────
+
+class WhatsAppDetailRequest(BaseModel):
+    user_id:     Optional[str] = None
+    shift_id:    Optional[str] = None
+    outreach_id: Optional[str] = None
+
+@router.post(
+    "/whatsapp-detail",
+    summary="Get WhatsApp chat view for a staff member",
+    dependencies=[Depends(verify_api_key)],
+)
+async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
+    from fastapi.responses import HTMLResponse as _HR2
+    db  = _get_db()
+
+    q: dict = {"channel": "WhatsApp"}
+    if payload.user_id and ObjectId.is_valid(payload.user_id):
+        q["user_id"] = ObjectId(payload.user_id)
+    if payload.shift_id and ObjectId.is_valid(payload.shift_id):
+        q["shift_id"] = ObjectId(payload.shift_id)
+    if payload.outreach_id and ObjectId.is_valid(payload.outreach_id):
+        q["outreach_id"] = ObjectId(payload.outreach_id)
+
+    if len(q) == 1:
+        raise HTTPException(status_code=422, detail="Provide at least one of: user_id, shift_id, outreach_id")
+
+    su = await db["shifts_users"].find_one(q, sort=[("assigned_at", -1)])
+    if not su:
+        su = await db["shifts_group_users"].find_one(q, sort=[("assigned_at", -1)])
+    if not su:
+        raise HTTPException(status_code=404, detail="No WhatsApp record found")
+
+    # User info
+    u = {}
+    if su.get("user_id"):
+        u = await db["users"].find_one({"_id": su["user_id"]}, {"first_name": 1, "last_name": 1, "phone": 1}) or {}
+    name  = f"{u.get('first_name','')} {u.get('last_name','')}".strip()
+    phone = u.get("phone", "")
+
+    # Shift info
+    s = {}
+    if su.get("shift_id"):
+        s = await db["shifts"].find_one({"_id": su["shift_id"]},
+            {"shift_code": 1, "date": 1, "start_time": 1, "end_time": 1,
+             "client_name": 1, "user_type": 1, "client_county": 1}) or {}
+
+    # WATI messages from wati_messages collection
+    wati_msgs = await db["wati_messages"].find(
+        {"$or": [{"user_id": su.get("user_id")}, {"phone": phone.replace("+","").replace(" ","")}]},
+        sort=[("timestamp", 1)]
+    ).to_list(length=200)
+
+    try:
+        from zoneinfo import ZoneInfo as _ZI3
+        _irl3 = _ZI3("Europe/Dublin")
+    except Exception:
+        from datetime import timezone as _tz3
+        _irl3 = _tz3.utc
+
+    def _fmt_time(v):
+        if not v: return ""
+        if hasattr(v, "tzinfo") and v.tzinfo is None:
+            from datetime import timezone
+            v = v.replace(tzinfo=timezone.utc)
+        return v.astimezone(_irl3).strftime("%H:%M")
+
+    def _fmt_date(v):
+        if not v: return ""
+        if hasattr(v, "tzinfo") and v.tzinfo is None:
+            from datetime import timezone
+            v = v.replace(tzinfo=timezone.utc)
+        return v.astimezone(_irl3).strftime("%d %b %Y")
+
+    AVAIL = {0:"Not Available",1:"Available",7:"Not Sent",8:"No Response"}
+    av    = su.get("availability", 7)
+
+    # Build chat bubbles
+    bubbles_html = ""
+
+    # Sent template message bubble
+    wa_sent_at = su.get("wa_sent_at")
+    if su.get("wa_sent"):
+        _shift_text = ""
+        if s:
+            _shift_text = f"<br><small style='color:#aaa;'>{s.get('client_name','')} · {s.get('user_type','')} · {s.get('start_time','')}–{s.get('end_time','')}</small>"
+        bubbles_html += f"""
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <div style="width:32px;height:32px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">XH</div>
+      <div>
+        <div style="font-size:10px;color:#aaa;margin-bottom:4px;">Xpress Health · {_fmt_time(wa_sent_at)}</div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px 18px 18px 18px;padding:12px 16px;max-width:320px;font-size:14px;line-height:1.5;color:#111;">
+          Hi <strong>{u.get('first_name','')}</strong> 👋<br>
+          We're checking your availability for the following shift:{_shift_text}<br><br>
+          <em>Are you available for this shift?</em>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px;">
+          <span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;">✓ Yes, I'm available</span>
+          <span style="background:#fff0f0;border:1px solid #fecaca;color:#991b1b;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;">✕ No, thanks</span>
+        </div>
+      </div>
+    </div>"""
+
+    # WATI message history
+    for msg in wati_msgs:
+        is_inbound = msg.get("type") == "inbound" or msg.get("direction") == "inbound"
+        msg_text   = msg.get("text") or msg.get("body") or msg.get("message", "")
+        msg_time   = _fmt_time(msg.get("timestamp") or msg.get("created_at"))
+        btn_text   = (msg.get("button_reply") or {}).get("title") or msg.get("button_text", "")
+        display    = btn_text or msg_text
+
+        if not display:
+            continue
+
+        if is_inbound:
+            # User reply — right side green
+            bubbles_html += f"""
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <div>
+        <div style="background:#DCF8C6;border-radius:18px 18px 4px 18px;padding:10px 16px;max-width:280px;font-size:14px;color:#111;">{display}</div>
+        <div style="text-align:right;font-size:10px;color:#aaa;margin-top:3px;">{name} · {msg_time}</div>
+      </div>
+      <div style="width:32px;height:32px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;margin-left:8px;flex-shrink:0;">{(name[0] if name else 'U').upper()}</div>
+    </div>"""
+        else:
+            # Outbound — left side white
+            bubbles_html += f"""
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div style="width:32px;height:32px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">XH</div>
+      <div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px 18px 18px 18px;padding:10px 16px;max-width:280px;font-size:14px;color:#111;">{display}</div>
+        <div style="font-size:10px;color:#aaa;margin-top:3px;">Xpress Health · {msg_time}</div>
+      </div>
+    </div>"""
+
+    # User response from shifts_users
+    if su.get("response_text") and not wati_msgs:
+        _resp_time = _fmt_time(su.get("responded_at"))
+        _color     = "#DCF8C6" if av == 1 else "#fff0f0"
+        bubbles_html += f"""
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <div>
+        <div style="background:{_color};border-radius:18px 18px 4px 18px;padding:10px 16px;max-width:280px;font-size:14px;color:#111;">{su.get('response_text')}</div>
+        <div style="text-align:right;font-size:10px;color:#aaa;margin-top:3px;">{name} · {_resp_time}</div>
+      </div>
+      <div style="width:32px;height:32px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;margin-left:8px;flex-shrink:0;">{(name[0] if name else 'U').upper()}</div>
+    </div>"""
+
+    avail_color = {"1":"#1e7a38","0":"#dc2626","7":"#6b7280","8":"#d97706"}.get(str(av),"#6b7280")
+    avail_text  = AVAIL.get(av,"Unknown")
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhatsApp – {name}</title>
+</head>
+<body style="margin:0;padding:0;background:#f0f0f0;font-family:Inter,Arial,sans-serif;">
+<div style="max-width:600px;margin:0 auto;">
+
+  <!-- Header -->
+  <div style="background:#075E54;color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px;">
+    <div style="width:40px;height:40px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">{(name[0] if name else 'U').upper()}</div>
+    <div style="flex:1;">
+      <div style="font-weight:700;font-size:15px;">{name}</div>
+      <div style="font-size:12px;opacity:0.85;">{phone}</div>
+    </div>
+    <div style="background:{avail_color};padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;">{avail_text}</div>
+  </div>
+
+  <!-- Chat area -->
+  <div style="padding:16px;min-height:300px;background:#ECE5DD;">
+    {bubbles_html if bubbles_html else '<div style="text-align:center;color:#888;font-size:13px;padding:40px;">No messages yet</div>'}
+  </div>
+
+  <!-- Footer -->
+  <div style="background:#fff;padding:10px 18px;font-size:11px;color:#aaa;text-align:center;border-top:1px solid #e5e7eb;">
+    📱 WhatsApp · Template: shift_call_new · Shift: {s.get('shift_code','—')}
+  </div>
+
+</div></body></html>"""
+
+    return _HR2(content=html)

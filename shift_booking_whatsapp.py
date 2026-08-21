@@ -282,3 +282,111 @@ def register_shift_booking_whatsapp_routes(app):
             "pending_group":    pending_sgu,
             "wati_url":         os.getenv("WATI_API_URL", "not set"),
         })
+
+
+def register_wati_webhook_routes(app):
+
+    @app.route('/wati/webhook', methods=['POST'])
+    def wati_webhook():
+        """
+        WATI sends button click responses here.
+        Configure in WATI dashboard → Settings → Webhook URL:
+        https://uat.expresshealth.ie/wati/webhook
+        """
+        try:
+            data = request.get_json(silent=True) or {}
+        except Exception:
+            data = {}
+
+        log.info(f"[WATI WEBHOOK] {data}")
+
+        # Save raw event to wati_messages collection
+        phone       = (data.get("waId") or data.get("phone") or "").replace("+", "").strip()
+        event_type  = data.get("eventType", "") or data.get("type", "")
+        wa_message  = data.get("waMessage") or data.get("message") or {}
+        text        = (wa_message.get("text") or wa_message.get("body") or "").strip()
+        btn_reply   = wa_message.get("buttonReply") or (wa_message.get("interactive") or {}).get("button_reply") or {}
+        btn_text    = btn_reply.get("title", "")
+        direction   = "inbound" if event_type in ("message_received", "Message Received", "New Contact Message") else "outbound"
+
+        # Save to DB
+        msg_doc = {
+            "phone":        phone,
+            "event_type":   event_type,
+            "direction":    direction,
+            "text":         btn_text or text,
+            "button_text":  btn_text,
+            "button_reply": btn_reply,
+            "raw":          {k: str(v)[:500] for k, v in data.items()},
+            "timestamp":    datetime.utcnow(),
+        }
+
+        # Link to user if phone matches
+        user = app.db.users.find_one(
+            {"phone": {"$regex": phone[-9:] if len(phone) >= 9 else phone}},
+            {"_id": 1}
+        )
+        if user:
+            msg_doc["user_id"] = user["_id"]
+
+        app.db.wati_messages.insert_one(msg_doc)
+
+        # Determine availability from button clicked
+        button_id   = btn_reply.get("id", "").lower()
+        button_text_l = btn_text.lower()
+        text_l      = text.lower()
+        avail = None
+        if button_id in ("yes", "yes_available") or "yes" in button_text_l or "available" in button_text_l:
+            avail = 1
+        elif button_id in ("no", "no_thanks") or "no" in button_text_l or "thanks" in button_text_l:
+            avail = 0
+        if avail is None and text_l:
+            if "yes" in text_l or "available" in text_l:
+                avail = 1
+            elif "no" in text_l or "thanks" in text_l:
+                avail = 0
+
+        if avail is None or not phone:
+            return {"success": True, "message": "No actionable response"}, 200
+
+        now = datetime.utcnow()
+
+        # Find shifts_users by user already resolved above
+        if not user:
+            log.warning(f"[WATI WEBHOOK] No user found for phone {phone}")
+            return {"success": True}, 200
+
+        # Find most recent shifts_users for this user with wa_sent=1
+        su = app.db.shifts_users.find_one(
+            {"user_id": user["_id"], "wa_sent": 1, "availability": {"$in": [7, 8]}},
+            sort=[("wa_sent_at", -1)]
+        )
+        collection = "shifts_users"
+
+        if not su:
+            # Try shifts_group_users
+            su = app.db.shifts_group_users.find_one(
+                {"user_id": user["_id"], "wa_sent": 1, "availability": {"$in": [7, 8]}},
+                sort=[("wa_sent_at", -1)]
+            )
+            collection = "shifts_group_users"
+
+        if not su:
+            log.warning(f"[WATI WEBHOOK] No pending shifts_users found for phone {phone}")
+            return {"success": True}, 200
+
+        db_col = getattr(app.db, collection)
+        db_col.update_one(
+            {"_id": su["_id"]},
+            {"$set": {
+                "availability":  avail,
+                "response_text": "Yes, I'm available." if avail == 1 else "No, thanks.",
+                "response_time": now.strftime("%Y-%m-%d %H:%M:%S"),
+                "responded_at":  now,
+                "updated_at":    now,
+                "wa_response":   button_text or text,
+            }}
+        )
+
+        log.info(f"[WATI WEBHOOK] ✓ {phone} → availability={avail} in {collection}")
+        return {"success": True, "availability": avail, "collection": collection}, 200
