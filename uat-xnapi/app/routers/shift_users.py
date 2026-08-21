@@ -1083,7 +1083,6 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                 exclusion_tags = cache
             else:
                 exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or [], u.get("tags") or [], u.get("_id")) if (user_email and target_shift) else []
-                # Save cache
                 await db["users"].update_one(
                     {"_id": u["_id"]},
                     {"$set": {"exclusion_cache": exclusion_tags, "exclusion_cache_at": __import__("datetime").datetime.utcnow()}}
@@ -1337,6 +1336,12 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
     )
 
     logger.info(f"Assigned user={payload.user_id} ({email}) to shift={payload.shift_id}")
+
+    # Clear exclusion cache — user's schedule changed, cache is now stale
+    await db["users"].update_one(
+        {"_id": user_oid},
+        {"$unset": {"exclusion_cache": "", "exclusion_cache_at": ""}}
+    )
 
     return {
         "success":        True,
@@ -1640,7 +1645,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
         # Exclusion check against primary shift
         user_email     = u.get("email")
-        # Use cached exclusion if available
+        # Use cached exclusion if available, else compute and save
         _cache_excl = u.get("exclusion_cache")
         if _cache_excl is not None:
             exclusion_tags = _cache_excl
