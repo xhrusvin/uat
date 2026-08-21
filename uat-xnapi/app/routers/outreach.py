@@ -1257,7 +1257,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
     _su_projection = {"user_id": 1, "availability": 1, "call_enabled": 1, "call_processed": 1,
                       "call_processed_at": 1, "call_status": 1, "assigned_at": 1, "flag": 1, "channel": 1,
                       "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "ignored": 1,
-                      "customer_feedback": 1, "availability_details": 1}
+                      "customer_feedback": 1, "availability_details": 1, "wa_phone": 1}
     su_docs = await db["shifts_users"].find(
         {"outreach_id": outreach_oid}, _su_projection
     ).to_list(length=2000)
@@ -1520,6 +1520,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             "outreach_status":      o_status,
             "outreach_status_text": STATUS_TEXT.get(o_status, "Not Started"),
             "is_group_outreach":    is_group_outreach,
+            "wa_phone":             su.get("wa_phone", ""),
             "end_reason":           outreach.get("end_reason"),
             "started_at":           outreach["started_at"].isoformat() if outreach.get("started_at") and hasattr(outreach["started_at"], "isoformat") else None,
             "paused_at":            outreach["paused_at"].isoformat() if outreach.get("paused_at") and hasattr(outreach["paused_at"], "isoformat") else None,
