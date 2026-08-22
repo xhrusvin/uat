@@ -25,7 +25,9 @@ Endpoints
 
 Env (same as live_staffs_crons.py)
 ----------------------------------
-  LIVE_STAFF_URL, XN_PORTAL_API_KEY, XN_APP_COUNTRY, GEMINI_API_KEY, CRON_SECRET
+  LIVE_STAFF_URL, XN_PORTAL_API_KEY, XN_APP_COUNTRY, GEMINI_API_KEY
+
+Optional: APPFORM_LOGO_PATH overrides the embedded Xpress Health logo.
 """
 
 from flask import request, jsonify, Response
@@ -40,6 +42,7 @@ import re as _re
 
 from database import db
 from . import admin_bp
+from admin.views import admin_required
 
 # ──────────────────────────────────────────────────────────────────────
 # Small helpers
@@ -168,59 +171,35 @@ def _first(*vals):
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Lookup resolution (gender_id / county_id / country_id / visa_type_id)
+# Lookup resolution — same convention as user_cv.py / user_point_scale.py
 # ──────────────────────────────────────────────────────────────────────
 
-# Fallback map for the IDs seen in production samples, used when the
-# lookup collections are not present in this database.
-_STATIC_LOOKUPS = {
-    '67ee8be0d1ccf7f06109fd82': 'Male',
-    '67ee8be0d1ccf7f06109fd83': 'Female',
-    '67d7be956e2dddc58b052511': 'Ireland',
-}
 
-_LOOKUP_COLLECTIONS = (
-    'genders', 'countries', 'counties', 'visa_types',
-    'master_data', 'lookups', 'settings_master',
-)
-
-_lookup_cache = {}
-
-
-def _resolve_lookup(oid):
-    """
-    Resolve a master-data ObjectId to its human-readable name.
-    Tries the known lookup collections, then the static fallback map,
-    then returns '' so the field simply renders blank on the form.
-    """
-    key = _v(oid)
-    if not key:
-        return ''
-    if key in _lookup_cache:
-        return _lookup_cache[key]
-
-    name = ''
+def _oid(val):
     try:
-        query_id = ObjectId(key) if len(key) == 24 else key
-    except (InvalidId, TypeError):
-        query_id = key
+        return ObjectId(str(val))
+    except Exception:
+        return None
 
-    for cname in _LOOKUP_COLLECTIONS:
-        try:
-            rec = db[cname].find_one({"_id": query_id})
-        except Exception:
-            rec = None
-        if rec:
-            name = _v(_first(rec.get('name'), rec.get('title'),
-                             rec.get('label'), rec.get('value')))
-            if name:
-                break
 
-    if not name:
-        name = _STATIC_LOOKUPS.get(key, '')
-
-    _lookup_cache[key] = name
-    return name
+def _lookup_name(collection_name, oid_str):
+    """
+    Soft lookup for the *_id reference fields on `users`
+    (county_id, country_id, gender_id, visa_type_id ...).
+    Returns '' on any failure so it never breaks form generation.
+    """
+    oid = _oid(oid_str)
+    if oid is None:
+        return ''
+    try:
+        doc = db[collection_name].find_one(
+            {"_id": oid}, {"name": 1, "title": 1, "label": 1}
+        )
+        if not doc:
+            return ''
+        return _v(doc.get('name') or doc.get('title') or doc.get('label') or '')
+    except Exception:
+        return ''
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -519,8 +498,8 @@ def _gather_appform_context(user_id):
     # on the template.
     _perm = _yn(_first(detail.get('permission_to_work'),
                        user.get('permission_to_work')))
-    _visa = _v(_resolve_lookup(_first(detail.get('visa_type_id'),
-                                      user.get('visa_type_id'))))
+    _visa = _v(_lookup_name('visa_types', _first(detail.get('visa_type_id'),
+                                                user.get('visa_type_id'))))
     visa_status = _v(extracted.get('work_permit_visa_status'))
     if not visa_status:
         visa_status = '; '.join(x for x in (_perm, _visa) if x)
@@ -570,19 +549,22 @@ def _gather_appform_context(user_id):
         "dob":              _fmt_date(_first(extracted.get('date_of_birth'),
                                              detail.get('dob'), user.get('dob'))),
         "gender":           _v(_first(extracted.get('gender'),
-                                      _resolve_lookup(_first(detail.get('gender_id'),
-                                                             user.get('gender_id'))))),
+                                      _lookup_name('genders',
+                                                _first(detail.get('gender_id'),
+                                                       user.get('gender_id'))))),
         "email":            pick('email', 'email'),
         "phone":            _v(_first(extracted.get('mobile_number'),
                                       detail.get('phone_number'),
                                       user.get('phone'))),
         "address":          address,
         "eir_code":         pick('eir_code', 'eir_code'),
-        "county":           _v(_first(_resolve_lookup(_first(detail.get('county_id'),
-                                                             user.get('county_id'))))),
+        "county":           _v(_first(_lookup_name('counties',
+                                                _first(detail.get('county_id'),
+                                                       user.get('county_id'))))),
         "country":          _v(_first(extracted.get('nationality'),
-                                      _resolve_lookup(_first(detail.get('country_id'),
-                                                             user.get('country_id'))))),
+                                      _lookup_name('countries',
+                                                _first(detail.get('country_id'),
+                                                       user.get('country_id'))))),
         "pps_number":       pick('pps_number', 'pps_number'),
 
         # Position
@@ -611,8 +593,9 @@ def _gather_appform_context(user_id):
         "job_title":        pick('job_title', 'job_title'),
         "company_phone":    _v(f"{_v(_first(detail.get('company_dial_code'), user.get('company_dial_code')))} "
                                f"{_v(_first(detail.get('company_phone'), user.get('company_phone')))}").strip(),
-        "company_county":   _resolve_lookup(_first(detail.get('company_county_id'),
-                                                   user.get('company_county_id'))),
+        "company_county":   _lookup_name('counties',
+                                                _first(detail.get('company_county_id'),
+                                                       user.get('company_county_id'))),
         "company_experience": _exp(_first(detail.get('last_company_experience_year'),
                                           user.get('last_company_experience_year')),
                                    _first(detail.get('last_company_experience_month'),
@@ -622,9 +605,7 @@ def _gather_appform_context(user_id):
         "permission_to_work": _yn(_first(extracted.get('right_to_work'),
                                          detail.get('permission_to_work'),
                                          user.get('permission_to_work'))),
-        "visa_type":          _v(_first(extracted.get('visa_type'),
-                                        _resolve_lookup(_first(detail.get('visa_type_id'),
-                                                               user.get('visa_type_id'))))),
+        "visa_type":          _visa,
         "work_permit_exemption": _yn(_first(extracted.get('work_permit_exemption'),
                                             detail.get('work_permit_exemption'),
                                             user.get('work_permit_exemption'))),
@@ -713,30 +694,73 @@ _DECLARATION = (
 )
 
 
+_FONT_CANDIDATES = [
+    # (regular, bold) — first pair that exists on disk wins
+    ('/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+     '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'),
+    ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+     '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
+]
+
+_FONTS_READY = None
+
+
+def _register_fonts():
+    """
+    Register Liberation Sans so the output matches the Word template's
+    metrics. Falls back to built-in Helvetica if no TTFs are installed.
+    Returns (regular, bold).
+    """
+    global _FONTS_READY
+    if _FONTS_READY is not None:
+        return _FONTS_READY
+
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.fonts import addMapping
+
+    for reg, bold in _FONT_CANDIDATES:
+        if not (os.path.exists(reg) and os.path.exists(bold)):
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont('AppSans', reg))
+            pdfmetrics.registerFont(TTFont('AppSans-Bold', bold))
+            addMapping('AppSans', 0, 0, 'AppSans')
+            addMapping('AppSans', 1, 0, 'AppSans-Bold')
+            _FONTS_READY = ('AppSans', 'AppSans-Bold')
+            return _FONTS_READY
+        except Exception:
+            continue
+
+    _FONTS_READY = ('Helvetica', 'Helvetica-Bold')
+    return _FONTS_READY
+
+
 def _styles():
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER
     from reportlab.lib import colors
 
     ss = getSampleStyleSheet()
+    regular, bold = _register_fonts()
     return {
         'title': ParagraphStyle(
-            'title', parent=ss['Normal'], fontName='Helvetica-Bold',
+            'title', parent=ss['Normal'], fontName=bold,
             fontSize=13, leading=17, alignment=TA_CENTER,
             textColor=colors.HexColor(_TITLE_BLUE), spaceAfter=14),
         'heading': ParagraphStyle(
-            'heading', parent=ss['Normal'], fontName='Helvetica-Bold',
+            'heading', parent=ss['Normal'], fontName=bold,
             fontSize=12.5, leading=16,
             textColor=colors.HexColor(_HEADING_BLUE),
             spaceBefore=8, spaceAfter=2),
         'field': ParagraphStyle(
-            'field', parent=ss['Normal'], fontName='Helvetica',
+            'field', parent=ss['Normal'], fontName=regular,
             fontSize=10, leading=13, spaceAfter=7),
         'plain': ParagraphStyle(
-            'plain', parent=ss['Normal'], fontName='Helvetica',
+            'plain', parent=ss['Normal'], fontName=regular,
             fontSize=10, leading=13, spaceAfter=7),
         'body': ParagraphStyle(
-            'body', parent=ss['Normal'], fontName='Helvetica',
+            'body', parent=ss['Normal'], fontName=regular,
             fontSize=10, leading=14, spaceAfter=8),
     }
 
@@ -948,16 +972,6 @@ def _build_appform_pdf(ctx):
 # ──────────────────────────────────────────────────────────────────────
 
 
-def _authorised():
-    """Optional CRON_SECRET gate — matches the cron endpoints' behaviour."""
-    cron_secret = os.environ.get('CRON_SECRET', '')
-    if not cron_secret:
-        return True
-    provided = (request.args.get('cron_key') or
-                request.headers.get('X-Cron-Key', ''))
-    return provided == cron_secret
-
-
 def _resolve_user_id(user_id):
     """Allow the id via path, query string, or JSON body."""
     if user_id:
@@ -968,9 +982,6 @@ def _resolve_user_id(user_id):
 
 
 def _render(user_id, disposition):
-    if not _authorised():
-        return jsonify({"success": False, "error": "Unauthorised"}), 401
-
     uid = _resolve_user_id(user_id)
     if not uid:
         return jsonify({"success": False,
@@ -999,30 +1010,39 @@ def _render(user_id, disposition):
     })
 
 
-@admin_bp.route('/appform/preview', methods=['GET', 'POST'])
+@admin_bp.route('/users/<user_id>/appform/preview', methods=['GET'])
 @admin_bp.route('/appform/preview/<user_id>', methods=['GET', 'POST'])
+@admin_bp.route('/appform/preview', methods=['GET', 'POST'])
+@admin_required
 def appform_preview(user_id=None):
-    """Inline PDF preview — opens directly in the browser."""
-    return _render(user_id, 'inline')
+    """Inline PDF preview — renders in the browser / an <iframe>."""
+    try:
+        return _render(user_id, 'inline')
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@admin_bp.route('/appform/download', methods=['GET', 'POST'])
+@admin_bp.route('/users/<user_id>/appform/download', methods=['GET'])
 @admin_bp.route('/appform/download/<user_id>', methods=['GET', 'POST'])
+@admin_bp.route('/appform/download', methods=['GET', 'POST'])
+@admin_required
 def appform_download(user_id=None):
-    """Same PDF, forced as a download."""
-    return _render(user_id, 'attachment')
+    """Same PDF, but as a file download."""
+    try:
+        return _render(user_id, 'attachment')
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@admin_bp.route('/appform/data', methods=['GET', 'POST'])
+@admin_bp.route('/users/<user_id>/appform/json', methods=['GET'])
 @admin_bp.route('/appform/data/<user_id>', methods=['GET', 'POST'])
+@admin_bp.route('/appform/data', methods=['GET', 'POST'])
+@admin_required
 def appform_data(user_id=None):
     """
-    JSON view of the merged context — useful for debugging what came from
-    where (detail API, document list, Gemini) before rendering the PDF.
+    JSON view of the merged context — shows what came from where
+    (detail API, document list, Gemini) before the PDF is rendered.
     """
-    if not _authorised():
-        return jsonify({"success": False, "error": "Unauthorised"}), 401
-
     uid = _resolve_user_id(user_id)
     if not uid:
         return jsonify({"success": False, "error": "Provide a user id"}), 400
