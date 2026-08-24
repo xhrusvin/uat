@@ -24,6 +24,12 @@ Usage
     ok, resp = upload_hse_document(
         pdf_bytes, "Brian_Long_CV.pdf", staff_id, HSE_CV
     )
+
+To test connectivity without uploading anything:
+
+    from admin.hse_document_upload import check_hse_upload_connection
+
+    report = check_hse_upload_connection(staff_id)   # staff_id optional
 """
 
 import os
@@ -197,3 +203,164 @@ def upload_hse_document(file_bytes, filename, staff_id,
         "errors":      body.get('errors') or {},
         "response":    body,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Connection check
+#
+# Deliberately sends a request the API MUST reject: every field except the
+# file. Validation fails before anything is stored, so this proves the URL,
+# TLS, API key and (optionally) the staff id are all good without leaving a
+# document behind.
+# ══════════════════════════════════════════════════════════════════════
+
+def check_hse_upload_connection(staff_id=None, timeout=20):
+    """
+    Probe the HSE document upload API and report what works.
+
+    Parameters
+    ----------
+    staff_id : str or None   if given, the probe also validates the id
+    timeout  : int           request timeout in seconds
+
+    Returns
+    -------
+    dict with:
+        ok            : bool   True when the endpoint answered as expected
+        summary       : str    one-line verdict for the UI
+        endpoint      : str    the URL that was probed
+        api_key       : str    masked, so a wrong key is visible in a log
+        staff_id      : str    the id probed, or ''
+        staff_id_ok   : bool or None   None when no staff id was checked
+        status_code   : int or None
+        elapsed_ms    : int or None
+        checks        : list of {name, ok, detail}
+        response      : dict   the API's own body, for the JSON view
+    """
+    import time
+    import requests as _req
+
+    checks = []
+
+    def add(name, ok, detail=''):
+        checks.append({"name": name, "ok": ok, "detail": detail})
+
+    base_url = _upload_base_url()
+    api_key  = _upload_headers().get('Api-Key') or ''
+    masked   = (api_key[:4] + '…' + api_key[-4:]) if len(api_key) > 8 else ('set' if api_key else '')
+    staff_id = _v(staff_id)
+
+    report = {
+        "ok":          False,
+        "summary":     '',
+        "endpoint":    f"{base_url}{HSE_UPLOAD_PATH}" if base_url else '',
+        "api_key":     masked,
+        "staff_id":    staff_id,
+        "staff_id_ok": None,
+        "status_code": None,
+        "elapsed_ms":  None,
+        "checks":      checks,
+        "response":    {},
+    }
+
+    # ── Configuration ────────────────────────────────────────────────
+    add("Base URL configured", bool(base_url),
+        report["endpoint"] or "Set HSE_UPLOAD_URL (or LIVE_STAFF_URL) in the environment")
+    add("API key configured", bool(api_key),
+        f"Api-Key: {masked}" if api_key
+        else "Set HSE_UPLOAD_API_KEY (or XN_PORTAL_API_KEY) in the environment")
+    add("Country header", True,
+        f"X-App-Country: {os.environ.get('XN_APP_COUNTRY', '') or '(not set)'}")
+
+    if not base_url or not api_key:
+        report["summary"] = "Not configured — see the failing checks above."
+        return report
+
+    # ── Probe ────────────────────────────────────────────────────────
+    # Everything except the file. The API answers 422 "The file field is
+    # required." — which is exactly the proof we want.
+    data = {"hse_document_type": HSE_CV}
+    if staff_id:
+        data["staff_id"] = staff_id
+
+    started = time.time()
+    try:
+        resp = _req.post(report["endpoint"], headers=_upload_headers(),
+                         data=data, files={}, timeout=timeout)
+    except _req.exceptions.SSLError as err:
+        add("Reachable", False, f"TLS error: {str(err)[:200]}")
+        report["summary"] = "TLS handshake failed."
+        return report
+    except _req.exceptions.ConnectionError as err:
+        add("Reachable", False, f"Cannot connect: {str(err)[:200]}")
+        report["summary"] = "Could not reach the API — check the URL, DNS and any firewall."
+        return report
+    except _req.exceptions.Timeout:
+        add("Reachable", False, f"No response within {timeout}s")
+        report["summary"] = "The API did not respond in time."
+        return report
+    except Exception as err:
+        add("Reachable", False, f"{type(err).__name__}: {str(err)[:200]}")
+        report["summary"] = "The probe failed before it reached the API."
+        return report
+
+    report["elapsed_ms"]  = int((time.time() - started) * 1000)
+    report["status_code"] = resp.status_code
+    add("Reachable", True, f"HTTP {resp.status_code} in {report['elapsed_ms']} ms")
+
+    try:
+        body = resp.json()
+    except Exception:
+        body = {"raw": (resp.text or '')[:500]}
+    report["response"] = body
+
+    errors = body.get('errors') or {}
+
+    # ── Interpret ────────────────────────────────────────────────────
+    if resp.status_code in (401, 403):
+        add("API key accepted", False,
+            body.get('message') or "Rejected — check HSE_UPLOAD_API_KEY")
+        report["summary"] = "Reached the API, but the key was rejected."
+        return report
+
+    if resp.status_code == 404:
+        add("Endpoint exists", False, "404 — the upload path was not found at this base URL")
+        report["summary"] = "Wrong base URL — the upload route is not there."
+        return report
+
+    if resp.status_code == 422:
+        # The expected answer. The file error confirms validation ran.
+        add("API key accepted", True, "Reached validation, so the key was accepted")
+        add("Endpoint exists", True, "Validation responded as documented")
+
+        if 'file' in errors:
+            add("Validation reached", True, "Rejected the empty probe, as expected")
+        else:
+            add("Validation reached", True,
+                body.get('message') or "422 returned without a file error")
+
+        if staff_id:
+            bad = 'staff_id' in errors
+            report["staff_id_ok"] = not bad
+            add("Staff ID valid", not bad,
+                (errors['staff_id'][0] if bad else f"{staff_id} accepted by the user service"))
+            report["ok"] = not bad
+            report["summary"] = ("Connection is good and the staff ID is valid."
+                                 if not bad else
+                                 "Connection is good, but that staff ID was rejected.")
+        else:
+            report["ok"] = True
+            report["summary"] = ("Connection is good. Pick a candidate to also "
+                                 "check their staff ID.")
+        return report
+
+    if resp.status_code >= 500:
+        add("API healthy", False, body.get('message') or f"HTTP {resp.status_code}")
+        report["summary"] = "Reached the API, but it returned a server error."
+        return report
+
+    # Anything else — reachable, but not the documented behaviour.
+    add("Expected response", False,
+        body.get('message') or f"Unexpected HTTP {resp.status_code}")
+    report["summary"] = f"Reached the API, but it answered HTTP {resp.status_code}."
+    return report

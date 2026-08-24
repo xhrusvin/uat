@@ -14,6 +14,8 @@ GET  /admin/documents/<user_id>          the console, opened on one person
 GET  /admin/documents/search?q=          JSON search (name / email / phone / PPS / id)
 POST /admin/documents/<user_id>/<key>/upload   push a generated PDF to the HSE
                                                document API
+GET  /admin/documents/hse-check                probe the HSE upload API
+GET  /admin/documents/<user_id>/hse-check      ... and validate their staff ID
 
 Adding a generator
 ------------------
@@ -277,6 +279,53 @@ def document_console_types(user_id):
     return jsonify({"success": True, "user_id": user_id,
                     "types": _doc_types_for(user_id),
                     "upload_status": UPLOAD_STATUS})
+
+
+@admin_bp.route('/documents/hse-check', methods=['GET', 'POST'])
+@admin_bp.route('/documents/<user_id>/hse-check', methods=['GET', 'POST'])
+@admin_required
+def documents_hse_check(user_id=None):
+    """
+    Check the connection to the HSE document upload API.
+
+    Sends a deliberately incomplete request (everything except the file) so
+    the API rejects it at validation — nothing is stored. That round trip
+    still proves the URL, TLS and API key are right.
+
+    With a user_id (or ?staff_id=) the probe also asks the user service
+    whether that staff ID exists.
+    """
+    from admin.hse_document_upload import check_hse_upload_connection
+
+    staff_id = _v(request.args.get('staff_id'))
+    person   = None
+
+    if not staff_id and user_id:
+        person = _find_one(user_id)
+        if person is None:
+            return jsonify({"success": False,
+                            "error": f"No record found for '{user_id}'"}), 404
+        staff_id = person.get('xn_id') or ''
+
+    try:
+        report = check_hse_upload_connection(staff_id or None)
+    except Exception as e:
+        return jsonify({"success": False,
+                        "error": f"{type(e).__name__}: {e}"}), 500
+
+    if person is not None and not staff_id:
+        report['checks'].append({
+            "name":   "Staff ID on record",
+            "ok":     False,
+            "detail": (f"{person.get('name')} has no xn_user_id / staff_id stored, "
+                       "so uploads for them will fail"),
+        })
+        report['ok'] = False
+        report['summary'] = ("Connection checked, but this candidate has no "
+                             "staff ID on record.")
+
+    return jsonify({"success": True, "user_id": user_id or '',
+                    "candidate": person, **report})
 
 
 def _upload_view_for(doc_key):

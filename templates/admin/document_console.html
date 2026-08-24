@@ -212,6 +212,31 @@
   .notice .n-body{flex:1}
   .notice code{font-family:var(--mono);font-size:12px}
 
+  /* ── Connection check ────────────────────────────────────────── */
+  .checks{list-style:none;margin:0;padding:0}
+  .checks li{
+    display:flex;gap:10px;align-items:flex-start;padding:9px 0;
+    border-bottom:1px solid var(--line-soft);font-size:13px;
+  }
+  .checks li:last-child{border-bottom:0}
+  .checks .dot{
+    width:16px;height:16px;border-radius:50%;flex:none;margin-top:2px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:700;color:#fff;
+  }
+  .checks .dot.pass{background:var(--green)}
+  .checks .dot.fail{background:var(--red)}
+  .checks .c-name{font-weight:600}
+  .checks .c-detail{color:var(--ink-2);font-family:var(--mono);font-size:11.5px;
+                    word-break:break-word}
+  .check-body{padding:16px 18px;overflow-y:auto;height:100%;background:var(--surface)}
+  .check-meta{
+    display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:14px;padding-top:12px;
+    border-top:1px solid var(--line-soft);color:var(--ink-3);
+    font-family:var(--mono);font-size:11.5px;
+  }
+  .notice.ok{background:var(--green-tint);color:var(--green);border:1px solid #C2E0CB}
+
   /* ── Toast ───────────────────────────────────────────────────── */
   #toast{
     position:fixed;bottom:22px;left:50%;transform:translate(-50%,14px);
@@ -247,6 +272,10 @@
     <span class="sub">Document Console</span>
   </div>
   <div class="spacer"></div>
+  <button id="hse-check" class="btn" type="button"
+          title="Check the connection to the HSE document upload API">
+    Check HSE connection
+  </button>
   <div class="hint"><kbd>/</kbd> to search</div>
 </header>
 
@@ -489,7 +518,7 @@
         openJson(btn, def.label, base + def.actions.json)));
 
       const canUpload = live && UPLOAD_STATUS === "live" && !!def.view;
-      acts.append(action("Upload to XN Portal", "", canUpload, btn =>
+      acts.append(action("Upload to HSE", "", canUpload, btn =>
         upload(btn, def, row.id)));
 
       card.append(acts);
@@ -503,7 +532,7 @@
     b.type = "button";
     b.disabled = !enabled;
     if (!enabled){
-      b.title = label === "Upload to XN Portal"
+      b.title = label === "Upload to HSE"
         ? "Upload is not wired up for this document yet"
         : "This generator is not wired up yet";
     }
@@ -628,6 +657,58 @@
     return m ? decodeURIComponent(m[1].replace(/"$/,"")) : null;
   }
 
+  /* ── Connection check ──────────────────────────────────────── */
+  async function hseCheck(btn){
+    btn.classList.add("busy"); btn.disabled = true;
+    // With someone selected we can also validate their staff ID.
+    const sel = (current && current.id) ? current.id : null;
+    const url = "/admin/documents/" + (sel ? encodeURIComponent(sel) + "/" : "") +
+                "hse-check";
+    try {
+      const r = await fetch(url, {headers:{"Accept":"application/json"}});
+      const text = await r.text();
+      let d;
+      try { d = JSON.parse(text); }
+      catch { throw new Error("Server returned a non-JSON response (HTTP " + r.status + ")"); }
+      if (!r.ok && !d.checks) throw new Error(d.error || ("HTTP " + r.status));
+      renderCheck(d);
+    } catch (err){
+      toast(err.message, true);
+    } finally {
+      btn.classList.remove("busy"); btn.disabled = false;
+    }
+  }
+
+  function renderCheck(d){
+    const body = viewerFrame("HSE upload connection",
+                             d.endpoint || "not configured", null);
+    body.className = "viewer-body check-body";
+
+    const n = el("div","notice " + (d.ok ? "ok" : "error"));
+    n.append(el("div","n-body", d.summary || (d.ok ? "Connection is good." : "Check failed.")));
+    body.append(n);
+
+    const list = el("ul","checks");
+    (d.checks || []).forEach(c => {
+      const li = el("li");
+      li.append(el("span","dot " + (c.ok ? "pass" : "fail"), c.ok ? "\u2713" : "\u2715"));
+      const txt = el("div");
+      txt.append(el("div","c-name", c.name));
+      if (c.detail) txt.append(el("div","c-detail", c.detail));
+      li.append(txt);
+      list.append(li);
+    });
+    body.append(list);
+
+    const meta = el("div","check-meta");
+    if (d.status_code) meta.append(el("span",null,"HTTP " + d.status_code));
+    if (d.elapsed_ms != null) meta.append(el("span",null,d.elapsed_ms + " ms"));
+    if (d.api_key) meta.append(el("span",null,"key " + d.api_key));
+    if (d.staff_id) meta.append(el("span",null,"staff_id " + d.staff_id));
+    meta.append(el("span",null,"nothing was uploaded"));
+    body.append(meta);
+  }
+
   /* ── Upload ────────────────────────────────────────────────── */
   async function upload(btn, def, userId){
     btn.classList.add("busy"); btn.disabled = true;
@@ -657,6 +738,8 @@
       btn.classList.remove("busy"); btn.disabled = false;
     }
   }
+
+  $("#hse-check").addEventListener("click", e => hseCheck(e.currentTarget));
 
   /* ── Boot ──────────────────────────────────────────────────── */
   if (PRESELECTED) select(PRESELECTED);
