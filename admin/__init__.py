@@ -50,3 +50,4 @@ from . import live_staffs_application_form
 from . import whatsapp_user_send_routes  
 from . import user_cv
 from . import user_point_scale
+from . import user_appform
