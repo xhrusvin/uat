@@ -28,6 +28,7 @@ GET       /admin/users/<user_id>/screening-record/preview    inline PDF
 GET       /admin/users/<user_id>/screening-record/download   PDF attachment
 GET       /admin/users/<user_id>/screening-record/json       cached JSON (debug)
 GET       /admin/users/<user_id>/screening-record/documents  raw doc list (debug)
+POST      /admin/users/<user_id>/screening-record/upload     push the PDF to the HSE API
 
 Query params
 ------------
@@ -42,6 +43,11 @@ LIVE_STAFF_URL       base url of the XN Portal API
 XN_PORTAL_API_KEY    Api-Key header
 XN_APP_COUNTRY       X-App-Country header
 GEMINI_API_KEY       Gemini key
+
+Upload env (see admin/hse_document_upload.py)
+---------------------------------------------
+HSE_UPLOAD_URL       base url of the admin API (falls back to LIVE_STAFF_URL)
+HSE_UPLOAD_API_KEY   Api-Key header (falls back to XN_PORTAL_API_KEY)
 """
 
 from flask import request, jsonify, Response
@@ -55,6 +61,7 @@ import re
 from database import db
 from . import admin_bp
 from admin.views import admin_required
+from admin.hse_document_upload import upload_hse_document, HSE_INTERVIEW_NOTES
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1476,6 +1483,18 @@ def _generate_for_user(user_id, force=False, screening_date=None,
     }, 200
 
 
+def _staff_id_for(user):
+    """
+    The HSE upload API validates staff_id against the user service, so it
+    wants the staff/XN id — not the local Mongo _id. Prefer the explicit
+    fields, fall back to the Mongo id as a last resort.
+    """
+    for key in ('staff_id', 'xn_user_id', 'xn_staff_id', 'user_service_id'):
+        if _v(user.get(key)):
+            return _v(user.get(key))
+    return _v(user.get('_id'))
+
+
 def _pdf_filename(user_block, fallback='screening_record'):
     name = _v(user_block.get('name')) or fallback
     safe = re.sub(r'[^A-Za-z0-9]+', '_', name).strip('_') or fallback
@@ -1623,3 +1642,90 @@ def user_screening_record_documents(user_id):
         "existing_record": existing,
         "has_existing_record": existing is not None,
     })
+
+
+@admin_bp.route('/users/<user_id>/screening-record/upload', methods=['POST'])
+@admin_required
+def user_screening_record_upload(user_id):
+    """
+    Generate the Interview & Agency Screening Record and push it to the HSE
+    document upload API as hse_document_type = interview_notes.
+
+    Takes the same query params as the other screening-record routes
+    (?refresh=1, ?screening_date=, ?interviewer=, ?regenerate=1), plus
+    ?staff_id=... (or a JSON body staff_id) to override the staff id.
+
+    If a screening record already exists on the portal the upload is skipped —
+    pass ?regenerate=1 to build and upload a fresh one anyway.
+    """
+    try:
+        oid = _oid(user_id)
+        if oid is None:
+            return jsonify({"success": False, "error": "Invalid user id"}), 400
+
+        user = _users_col().find_one({"_id": oid})
+        if not user:
+            return jsonify({"success": False, "error": "User not found"}), 404
+
+        payload, status = _generate_for_user(user_id, **_common_args())
+        if status != 200 or not payload.get('success'):
+            return jsonify(payload), status
+
+        filename = _pdf_filename(payload['user'], user_id)
+
+        if payload.get('source') == 'existing_document':
+            return jsonify({
+                "success":      True,
+                "uploaded":     False,
+                "user_id":      str(oid),
+                "filename":     filename,
+                "source":       "existing_document",
+                "existing_url": payload.get('existing_url'),
+                "message":      ("A screening record already exists on the portal — "
+                                  "nothing uploaded. Use ?regenerate=1 to build and "
+                                  "upload a fresh one."),
+            }), 200
+
+        body = request.get_json(silent=True) or {}
+        staff_id = (_v(request.args.get('staff_id'))
+                    or _v(body.get('staff_id'))
+                    or _staff_id_for(user))
+        if not staff_id:
+            return jsonify({"success": False,
+                            "error": "No staff id available for this user"}), 400
+
+        pdf_bytes = _build_screening_pdf(payload['record'], payload['user'])
+
+        ok, result = upload_hse_document(pdf_bytes, filename, staff_id,
+                                         HSE_INTERVIEW_NOTES)
+        if not ok:
+            return jsonify({
+                "success":  False,
+                "user_id":  str(oid),
+                "staff_id": staff_id,
+                "filename": filename,
+                "upload":   result,
+            }), result.get('status_code') or 502
+
+        _records_col().update_one(
+            {"user_id": str(oid)},
+            {"$set": {
+                "uploaded_at":       datetime.utcnow(),
+                "uploaded_staff_id": staff_id,
+                "upload_response":   result.get('data') or {},
+                "hse_document_type": HSE_INTERVIEW_NOTES,
+            }},
+            upsert=True,
+        )
+
+        return jsonify({
+            "success":           True,
+            "uploaded":          True,
+            "user_id":           str(oid),
+            "staff_id":          staff_id,
+            "filename":          filename,
+            "hse_document_type": HSE_INTERVIEW_NOTES,
+            "upload":            result,
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500

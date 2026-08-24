@@ -22,12 +22,18 @@ Endpoints
   GET/POST /admin/appform/preview/<user_id>    inline PDF (browser preview)
   GET/POST /admin/appform/download/<user_id>   PDF as attachment
   GET      /admin/appform/data/<user_id>       JSON of the merged context (debug)
+  POST     /admin/appform/upload/<user_id>     push the PDF to the HSE document API
 
 Env (same as live_staffs_crons.py)
 ----------------------------------
   LIVE_STAFF_URL, XN_PORTAL_API_KEY, XN_APP_COUNTRY, GEMINI_API_KEY
 
 Optional: APPFORM_LOGO_PATH overrides the embedded Xpress Health logo.
+
+Upload env (see admin/hse_document_upload.py)
+---------------------------------------------
+  HSE_UPLOAD_URL       base url of the admin API (falls back to LIVE_STAFF_URL)
+  HSE_UPLOAD_API_KEY   Api-Key header (falls back to XN_PORTAL_API_KEY)
 """
 
 from flask import request, jsonify, Response
@@ -43,6 +49,7 @@ import re as _re
 from database import db
 from . import admin_bp
 from admin.views import admin_required
+from admin.hse_document_upload import upload_hse_document, HSE_APPLICATION_FORM
 
 # ──────────────────────────────────────────────────────────────────────
 # Small helpers
@@ -972,6 +979,23 @@ def _build_appform_pdf(ctx):
 # ──────────────────────────────────────────────────────────────────────
 
 
+def _staff_id_for(user):
+    """
+    The HSE upload API validates staff_id against the user service, so it
+    wants the staff/XN id — not the local Mongo _id. Prefer the explicit
+    fields, fall back to the Mongo id as a last resort.
+    """
+    for key in ('staff_id', 'xn_user_id', 'xn_staff_id', 'user_service_id'):
+        if _v(user.get(key)):
+            return _v(user.get(key))
+    return _v(user.get('_id'))
+
+
+def _appform_filename(ctx, fallback='applicant'):
+    safe = (ctx.get('full_name') or fallback).replace(' ', '_').replace('/', '_')
+    return f"ApplicationForm_{safe}.pdf"
+
+
 def _resolve_user_id(user_id):
     """Allow the id via path, query string, or JSON body."""
     if user_id:
@@ -1000,8 +1024,7 @@ def _render(user_id, disposition):
     except Exception as e:
         return jsonify({"success": False, "error": f"PDF build failed: {e}"}), 500
 
-    safe = (ctx['full_name'] or 'applicant').replace(' ', '_').replace('/', '_')
-    filename = f"ApplicationForm_{safe}.pdf"
+    filename = _appform_filename(ctx)
 
     return Response(pdf_bytes, mimetype='application/pdf', headers={
         "Content-Disposition": f'{disposition}; filename="{filename}"',
@@ -1063,3 +1086,65 @@ def appform_data(user_id=None):
     ]
 
     return jsonify({"success": True, "data": payload})
+
+
+@admin_bp.route('/users/<user_id>/appform/upload', methods=['POST'])
+@admin_bp.route('/appform/upload/<user_id>', methods=['POST'])
+@admin_bp.route('/appform/upload', methods=['POST'])
+@admin_required
+def appform_upload(user_id=None):
+    """
+    Build the Application Form PDF and push it to the HSE document upload API
+    as hse_document_type = application_form.
+
+    ?staff_id=... (or JSON body staff_id) overrides the staff id sent.
+    """
+    uid = _resolve_user_id(user_id)
+    if not uid:
+        return jsonify({"success": False,
+                        "error": "Provide a user id in the path, ?_id=, or JSON body"}), 400
+
+    try:
+        user = _find_user(uid)
+        if not user:
+            return jsonify({"success": False,
+                            "error": f"No user found in 'users' for id/email: {uid}"}), 404
+
+        ctx, err = _gather_appform_context(uid)
+        if ctx is None:
+            return jsonify({"success": False, "error": err}), 404
+
+        body = request.get_json(silent=True) or {}
+        staff_id = (_v(request.args.get('staff_id'))
+                    or _v(body.get('staff_id'))
+                    or _staff_id_for(user))
+        if not staff_id:
+            return jsonify({"success": False,
+                            "error": "No staff id available for this user"}), 400
+
+        filename  = _appform_filename(ctx)
+        pdf_bytes = _build_appform_pdf(ctx)
+
+        ok, result = upload_hse_document(pdf_bytes, filename, staff_id,
+                                         HSE_APPLICATION_FORM)
+        if not ok:
+            return jsonify({
+                "success":  False,
+                "user_id":  str(user.get('_id')),
+                "staff_id": staff_id,
+                "filename": filename,
+                "upload":   result,
+            }), result.get('status_code') or 502
+
+        return jsonify({
+            "success":           True,
+            "user_id":           str(user.get('_id')),
+            "staff_id":          staff_id,
+            "filename":          filename,
+            "hse_document_type": HSE_APPLICATION_FORM,
+            "source":            ('application_form'
+                                   if ctx['meta']['appform_found'] else 'profile_data'),
+            "upload":            result,
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
