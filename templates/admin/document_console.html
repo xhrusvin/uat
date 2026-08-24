@@ -488,8 +488,8 @@
       acts.append(action("JSON", "", live, btn =>
         openJson(btn, def.label, base + def.actions.json)));
 
-      const canUpload = live && UPLOAD_STATUS === "live";
-      acts.append(action("Upload to XN Portal", "", canUpload, btn =>
+      const canUpload = live && UPLOAD_STATUS === "live" && !!def.view;
+      acts.append(action("Upload to HSE", "", canUpload, btn =>
         upload(btn, def, row.id)));
 
       card.append(acts);
@@ -503,8 +503,8 @@
     b.type = "button";
     b.disabled = !enabled;
     if (!enabled){
-      b.title = label === "Upload to XN Portal"
-        ? "Upload to XN Portal is not wired up yet"
+      b.title = label === "Upload to HSE"
+        ? "Upload is not wired up for this document yet"
         : "This generator is not wired up yet";
     }
     b.addEventListener("click", () => fn(b));
@@ -636,8 +636,21 @@
                             "/" + def.key + "/upload",
                             {method:"POST", headers:{"Accept":"application/json"}});
       const data = await r.json();
-      if (!r.ok || !data.success) throw new Error(data.error || ("HTTP " + r.status));
-      toast(def.label + " uploaded to XN Portal");
+      if (!r.ok || !data.success){
+        // The API's 422 field errors arrive nested under `upload`.
+        const up   = data.upload || {};
+        const errs = Object.values(up.errors || {}).flat();
+        throw new Error((errs.length ? errs.join(" ") : null)
+                        || up.error || data.error || ("HTTP " + r.status));
+      }
+      // Some generators skip the upload deliberately (e.g. the screening
+      // record already exists on the portal) — say so rather than claiming
+      // it went up.
+      if (data.uploaded === false){
+        toast(data.message || (def.label + " was not uploaded"));
+      } else {
+        toast(def.label + " uploaded");
+      }
     } catch (err){
       toast(err.message, true);
     } finally {

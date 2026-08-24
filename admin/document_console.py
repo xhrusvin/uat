@@ -12,14 +12,21 @@ Endpoints
 GET  /admin/documents                    the console
 GET  /admin/documents/<user_id>          the console, opened on one person
 GET  /admin/documents/search?q=          JSON search (name / email / phone / PPS / id)
-POST /admin/documents/<user_id>/<key>/upload   push a generated PDF to XN Portal
+POST /admin/documents/<user_id>/<key>/upload   push a generated PDF to the HSE
+                                               document API
 
 Adding a generator
 ------------------
 Append an entry to DOCUMENT_TYPES below. Nothing else needs to change — the
 UI, the buttons and the upload hook are all driven off that list. Set
 "status" to "live" once the routes exist; "planned" renders the card greyed
-out with its buttons disabled.
+out with its buttons disabled. Give it an "upload" action and a "view" (the
+dotted import path of its upload route) to enable the Upload button.
+
+Upload env (see admin/hse_document_upload.py)
+---------------------------------------------
+HSE_UPLOAD_URL       base url of the admin API (falls back to LIVE_STAFF_URL)
+HSE_UPLOAD_API_KEY   Api-Key header (falls back to XN_PORTAL_API_KEY)
 """
 
 from flask import request, jsonify, render_template, Response
@@ -43,7 +50,9 @@ DOCUMENT_TYPES = [
         "blurb":  "Personal details, ID checks, references, signed declaration.",
         "base":   "/admin/users/{user_id}/appform",
         "status": "live",
-        "actions": {"preview": "/preview", "download": "/download", "json": "/json"},
+        "actions": {"preview": "/preview", "download": "/download",
+                    "json": "/json", "upload": "/upload"},
+        "view":   "admin.user_appform:appform_upload",
     },
     {
         "key":    "cv",
@@ -51,7 +60,9 @@ DOCUMENT_TYPES = [
         "blurb":  "Candidate HSE CV rebuilt to the house template.",
         "base":   "/admin/users/{user_id}/cv",
         "status": "live",
-        "actions": {"preview": "/preview", "download": "/download", "json": "/json"},
+        "actions": {"preview": "/preview", "download": "/download",
+                    "json": "/json", "upload": "/upload"},
+        "view":   "admin.user_cv:user_cv_upload",
     },
     {
         "key":    "point_scale",
@@ -59,7 +70,9 @@ DOCUMENT_TYPES = [
         "blurb":  "Verification of service and salary point assessment.",
         "base":   "/admin/users/{user_id}/point-scale",
         "status": "live",
-        "actions": {"preview": "/preview", "download": "/download", "json": "/json"},
+        "actions": {"preview": "/preview", "download": "/download",
+                    "json": "/json", "upload": "/upload"},
+        "view":   "admin.user_point_scale:user_point_scale_upload",
     },
     # {
     #     "key":    "hse_cv",
@@ -75,13 +88,16 @@ DOCUMENT_TYPES = [
         "blurb":  "Screening call notes and scoring sheet.",
         "base":   "/admin/users/{user_id}/screening-record",
         "status": "live",
-        "actions": {"preview": "/preview", "download": "/download", "json": "/json"},
+        "actions": {"preview": "/preview", "download": "/download",
+                    "json": "/json", "upload": "/upload"},
+        "view":   "admin.user_screening_record:user_screening_record_upload",
     },
 ]
 
-# Upload to XN Portal is wired for every type but not yet implemented
-# server-side — see documents_upload() at the bottom of this file.
-UPLOAD_STATUS = "planned"
+# Upload is live — documents_upload() at the bottom of this file dispatches
+# to each generator's own /upload route, which POSTs the generated PDF to the
+# HSE document upload API (admin/hse_document_upload.py).
+UPLOAD_STATUS = "live"
 
 
 def _doc_types_for(user_id):
@@ -100,6 +116,7 @@ def _doc_types_for(user_id):
             },
             "upload_url": (f"/admin/documents/{user_id}/{d['key']}/upload"
                            if user_id else ''),
+            "can_upload": bool(d.get('view')) and d["status"] == "live",
         })
     return out
 
@@ -262,24 +279,52 @@ def document_console_types(user_id):
                     "upload_status": UPLOAD_STATUS})
 
 
+def _upload_view_for(doc_key):
+    """
+    Resolve a registry entry's "view" ("module:function") to the callable.
+    Imported lazily so the console still loads if one generator module is
+    missing or broken.
+    """
+    entry = next((d for d in DOCUMENT_TYPES if d["key"] == doc_key), None)
+    if entry is None:
+        return None, f"Unknown document type '{doc_key}'", 404
+    if entry.get('status') != 'live':
+        return None, f"'{entry['label']}' is not wired up yet", 501
+
+    path = entry.get('view')
+    if not path:
+        return None, f"'{entry['label']}' has no upload route configured", 501
+
+    module_name, _, func_name = path.partition(':')
+    try:
+        from importlib import import_module
+        view = getattr(import_module(module_name), func_name)
+    except Exception as err:
+        return None, f"Could not load {path}: {type(err).__name__}: {err}", 500
+    return view, None, 200
+
+
 @admin_bp.route('/documents/<user_id>/<doc_key>/upload', methods=['POST'])
 @admin_required
 def documents_upload(user_id, doc_key):
     """
-    Push a generated document to the XN Portal.
+    Push a generated document to the HSE document upload API.
 
-    Not implemented yet. When the portal endpoint is confirmed, generate the
-    PDF with the matching builder, POST it, and record the result. Flip
-    UPLOAD_STATUS to "live" to enable the buttons in the console.
+    Thin dispatcher — each generator owns its own /upload route, which knows
+    its hse_document_type and how to build its PDF. This calls that view
+    directly inside the current request context, so query params such as
+    ?refresh=1, ?staff_id=, ?assessment_date= and ?regenerate=1 pass straight
+    through from the console.
     """
-    known = {d["key"] for d in DOCUMENT_TYPES}
-    if doc_key not in known:
-        return jsonify({"success": False,
-                        "error": f"Unknown document type '{doc_key}'"}), 404
+    view, error, status = _upload_view_for(doc_key)
+    if view is None:
+        return jsonify({"success": False, "error": error,
+                        "user_id": user_id, "document": doc_key}), status
 
-    return jsonify({
-        "success": False,
-        "error": "Upload to XN Portal is not wired up yet.",
-        "user_id": user_id,
-        "document": doc_key,
-    }), 501
+    try:
+        return view(user_id)
+    except Exception as e:
+        return jsonify({"success": False,
+                        "error": f"{type(e).__name__}: {e}",
+                        "user_id": user_id,
+                        "document": doc_key}), 500
