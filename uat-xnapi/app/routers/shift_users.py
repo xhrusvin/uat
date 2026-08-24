@@ -1477,7 +1477,8 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
          "location": 1, "latitude": 1, "longitude": 1, "status": 1,
          "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
          "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1, "gender_id": 1,
-         "exclusion_cache": 1}
+         "exclusion_cache": 1, "consumed_hours": 1, "work_permit_exemption": 1,
+         "user_sub_type_oids": 1, "user_sub_type_ids": 1, "qqi_status_number": 1}
     ).sort("first_name", 1).skip(skip).limit(payload.per_page).to_list(length=payload.per_page)
 
     # Last contacted across all provided shifts
@@ -1582,6 +1583,17 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     from app.routers.staff import _haversine_km as _hav_m, _user_coords as _uc_m
 
     results = []
+    # Build sub_type name map
+    all_sub_oids = []
+    for u in users:
+        for oid in (u.get("user_sub_type_oids") or []):
+            if ObjectId.is_valid(str(oid)):
+                all_sub_oids.append(ObjectId(str(oid)))
+    sub_type_name_map: dict = {}
+    if all_sub_oids:
+        async for st in db["user_sub_types"].find({"_id": {"$in": all_sub_oids}}, {"name": 1}):
+            sub_type_name_map[str(st["_id"])] = st.get("name", "")
+
     # Batch prior shifts count for all page users
     prior_shifts_map: dict = {}
     async for ps in db["shifts_users"].aggregate([
@@ -1621,7 +1633,8 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
         visa_used  = u.get("visa_hours_used")
         visa_total = u.get("visa_hours_total")
-        visa_hours_remaining = f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
+        consumed   = u.get("consumed_hours")
+        visa_hours_remaining = consumed if consumed is not None else (f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None)
 
         prior_shifts = prior_shifts_map.get(uid_str, 0)
         work_history = None
@@ -1683,6 +1696,9 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "last_contacted":      last_contacted,
             "visa_hours_remaining": visa_hours_remaining,
             "work_permit_exemption": u.get("work_permit_exemption"),
+            "work_permit_exemption": u.get("work_permit_exemption"),
+            "user_sub_types":       ([{"id": str(oid), "name": sub_type_name_map.get(str(oid), "")} for oid in (u.get("user_sub_type_oids") or []) if ObjectId.is_valid(str(oid))]) or ([{"id": None, "name": n} for n in (u.get("user_sub_type_ids") or []) if n]),
+            "qqi_status_number":    u.get("qqi_status_number"),
             "consumed_hours":       u.get("consumed_hours"),
             "gender_id":           str(u["gender_id"]) if u.get("gender_id") else None,
             "prior_shifts":        prior_shifts,
