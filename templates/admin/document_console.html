@@ -489,7 +489,7 @@
         openJson(btn, def.label, base + def.actions.json)));
 
       const canUpload = live && UPLOAD_STATUS === "live" && !!def.view;
-      acts.append(action("Upload to HSE", "", canUpload, btn =>
+      acts.append(action("Upload to XN Portal", "", canUpload, btn =>
         upload(btn, def, row.id)));
 
       card.append(acts);
@@ -503,7 +503,7 @@
     b.type = "button";
     b.disabled = !enabled;
     if (!enabled){
-      b.title = label === "Upload to HSE"
+      b.title = label === "Upload to XN Portal"
         ? "Upload is not wired up for this document yet"
         : "This generator is not wired up yet";
     }
