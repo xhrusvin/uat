@@ -16,6 +16,7 @@ POST /admin/documents/<user_id>/<key>/upload   push a generated PDF to the HSE
                                                document API
 GET  /admin/documents/hse-check                probe the HSE upload API
 GET  /admin/documents/<user_id>/hse-check      ... and validate their staff ID
+POST /admin/documents/<user_id>/hse-test-upload  upload a marked sample file
 
 Adding a generator
 ------------------
@@ -326,6 +327,71 @@ def documents_hse_check(user_id=None):
 
     return jsonify({"success": True, "user_id": user_id or '',
                     "candidate": person, **report})
+
+
+@admin_bp.route('/documents/<user_id>/hse-test-upload', methods=['POST'])
+@admin_required
+def documents_hse_test_upload(user_id):
+    """
+    Upload a sample PDF against the selected candidate — the full round trip.
+
+    Unlike /hse-check this DOES store a document on the staff record, so the
+    file is stamped "TEST UPLOAD — NOT A REAL DOCUMENT" and defaults to the
+    others_1 slot. Pass ?type=others_2 (etc) to choose a different slot, or
+    ?staff_id= to override the id taken from the record.
+    """
+    from admin.hse_document_upload import (send_test_document,
+                                           SAMPLE_DEFAULT_TYPE,
+                                           UPLOADABLE_HSE_TYPES)
+
+    body = request.get_json(silent=True) or {}
+    doc_type = (_v(request.args.get('type')) or _v(body.get('type'))
+                or SAMPLE_DEFAULT_TYPE)
+    if doc_type not in UPLOADABLE_HSE_TYPES:
+        return jsonify({"success": False,
+                        "error": f"'{doc_type}' is not an uploadable type",
+                        "allowed": sorted(UPLOADABLE_HSE_TYPES)}), 400
+
+    person = _find_one(user_id)
+    if person is None:
+        return jsonify({"success": False,
+                        "error": f"No record found for '{user_id}'"}), 404
+
+    staff_id = (_v(request.args.get('staff_id')) or _v(body.get('staff_id'))
+                or person.get('xn_id') or '')
+    if not staff_id:
+        return jsonify({
+            "success": False,
+            "error": (f"{person.get('name')} has no xn_user_id / staff_id on "
+                      "record — pass ?staff_id= to test with a known id"),
+            "candidate": person,
+        }), 400
+
+    try:
+        ok, result = send_test_document(
+            staff_id, doc_type,
+            note=f"console test for {person.get('name') or user_id}")
+    except Exception as e:
+        return jsonify({"success": False,
+                        "error": f"{type(e).__name__}: {e}"}), 500
+
+    payload = {
+        "success":           ok,
+        "user_id":           user_id,
+        "candidate":         person,
+        "staff_id":          staff_id,
+        "hse_document_type": doc_type,
+        "filename":          result.get('filename'),
+        "size_kb":           result.get('size_kb'),
+        "upload":            result,
+    }
+    if not ok:
+        payload["error"] = result.get('error')
+        return jsonify(payload), result.get('status_code') or 502
+
+    payload["message"] = (f"Sample file uploaded to {person.get('name')} "
+                          f"as {doc_type}. It can be deleted from the portal.")
+    return jsonify(payload), 200
 
 
 def _upload_view_for(doc_key):

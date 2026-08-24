@@ -30,6 +30,12 @@ To test connectivity without uploading anything:
     from admin.hse_document_upload import check_hse_upload_connection
 
     report = check_hse_upload_connection(staff_id)   # staff_id optional
+
+To send a real (but obviously marked) sample file end to end:
+
+    from admin.hse_document_upload import send_test_document
+
+    ok, resp = send_test_document(staff_id)          # defaults to others_1
 """
 
 import os
@@ -364,3 +370,134 @@ def check_hse_upload_connection(staff_id=None, timeout=20):
         body.get('message') or f"Unexpected HTTP {resp.status_code}")
     report["summary"] = f"Reached the API, but it answered HTTP {resp.status_code}."
     return report
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Sample upload
+#
+# Unlike check_hse_upload_connection(), this DOES store a document against
+# the staff member — it is the full round trip. The PDF says so on its face
+# so nobody mistakes it for real paperwork, and it defaults to an others_*
+# slot so it cannot displace a genuine CV or application form.
+# ══════════════════════════════════════════════════════════════════════
+
+SAMPLE_DEFAULT_TYPE = HSE_OTHERS_1
+
+
+def build_sample_pdf(staff_id='', note='', document_type=''):
+    """
+    A one-page PDF marked as a connection test. Returns PDF bytes.
+
+    Falls back to a hand-built minimal PDF if ReportLab is unavailable, so
+    the test still works on a bare environment.
+    """
+    from datetime import datetime
+
+    stamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+    lines = [
+        "This file was uploaded by the Xpress Health document console to test",
+        "the connection to the HSE document upload API.",
+        "",
+        "It is not a real document and can be deleted.",
+        "",
+        f"Generated:      {stamp}",
+        f"Staff ID:       {_v(staff_id) or '(not supplied)'}",
+        f"Document type:  {_v(document_type) or SAMPLE_DEFAULT_TYPE}",
+    ]
+    if _v(note):
+        lines += ["", f"Note:           {_v(note)}"]
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.lib import colors
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.enums import TA_LEFT
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf, pagesize=A4,
+            leftMargin=22 * mm, rightMargin=22 * mm,
+            topMargin=22 * mm, bottomMargin=22 * mm,
+            title='HSE upload connection test', author='Xpress Health',
+        )
+        st_title = ParagraphStyle('t', fontName='Helvetica-Bold', fontSize=16,
+                                  leading=20, spaceAfter=14,
+                                  textColor=colors.HexColor('#B3261E'))
+        st_body  = ParagraphStyle('b', fontName='Helvetica', fontSize=11,
+                                  leading=16, alignment=TA_LEFT)
+        st_mono  = ParagraphStyle('m', fontName='Courier', fontSize=10,
+                                  leading=15)
+
+        story = [Paragraph('TEST UPLOAD — NOT A REAL DOCUMENT', st_title)]
+        for ln in lines:
+            if not ln:
+                story.append(Spacer(1, 8))
+            else:
+                story.append(Paragraph(
+                    ln.replace('&', '&amp;').replace('<', '&lt;'),
+                    st_mono if ':' in ln and ln.startswith((
+                        'Generated', 'Staff ID', 'Document type', 'Note')) else st_body))
+        doc.build(story)
+        return buf.getvalue()
+    except Exception:
+        pass
+
+    # ── Minimal fallback PDF, no dependencies ────────────────────────
+    text = ''.join(
+        f"BT /F1 11 Tf 56 {760 - 16 * i} Td "
+        f"({ln.replace(chr(92), '').replace('(', '').replace(')', '')}) Tj ET\n"
+        for i, ln in enumerate(['TEST UPLOAD - NOT A REAL DOCUMENT', ''] + lines)
+    ).encode('latin-1', 'replace')
+
+    objs = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        b"<< /Length " + str(len(text)).encode() + b" >>\nstream\n" + text + b"endstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>",
+    ]
+    out, offsets = bytearray(b"%PDF-1.4\n"), []
+    for i, body in enumerate(objs, start=1):
+        offsets.append(len(out))
+        out += str(i).encode() + b" 0 obj\n" + body + b"\nendobj\n"
+    start = len(out)
+    out += b"xref\n0 " + str(len(objs) + 1).encode() + b"\n0000000000 65535 f \n"
+    for off in offsets:
+        out += f"{off:010d} 00000 n \n".encode()
+    out += (b"trailer\n<< /Size " + str(len(objs) + 1).encode() +
+            b" /Root 1 0 R >>\nstartxref\n" + str(start).encode() + b"\n%%EOF\n")
+    return bytes(out)
+
+
+def send_test_document(staff_id, hse_document_type=None, note='', timeout=60):
+    """
+    Build a sample PDF and upload it — the complete round trip.
+
+    This leaves a real document on the staff record, so it defaults to
+    others_1 rather than a slot that matters.
+
+    Returns (ok, result) exactly like upload_hse_document(), with the
+    filename and document type added to the result for display.
+    """
+    from datetime import datetime
+
+    doc_type = _v(hse_document_type) or SAMPLE_DEFAULT_TYPE
+    stamp    = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
+    filename = f"connection-test-{stamp}.pdf"
+
+    pdf_bytes = build_sample_pdf(staff_id, note, doc_type)
+
+    ok, result = upload_hse_document(pdf_bytes, filename, staff_id,
+                                     doc_type, timeout=timeout)
+
+    if isinstance(result, dict):
+        result = dict(result)
+        result.update({
+            "filename":          filename,
+            "hse_document_type": doc_type,
+            "size_kb":           round(len(pdf_bytes) / 1024, 1),
+        })
+    return ok, result

@@ -237,6 +237,24 @@
   }
   .notice.ok{background:var(--green-tint);color:var(--green);border:1px solid #C2E0CB}
 
+  /* ── Diagnostics row ─────────────────────────────────────────── */
+  .diag{
+    display:flex;flex-wrap:wrap;align-items:center;gap:10px;
+    background:var(--surface);border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px;box-shadow:var(--shadow);
+    margin-bottom:26px;
+  }
+  .diag .d-label{font-size:12.5px;color:var(--ink-2)}
+  .diag .spacer{flex:1}
+  .diag select{
+    font:inherit;font-size:12.5px;color:var(--ink);background:var(--surface);
+    border:1px solid var(--line);border-radius:var(--r);padding:6px 8px;
+  }
+  .diag .warn{
+    font-size:11.5px;color:var(--amber);background:var(--amber-tint);
+    border:1px solid #EBD9AE;border-radius:999px;padding:3px 10px;
+  }
+
   /* ── Toast ───────────────────────────────────────────────────── */
   #toast{
     position:fixed;bottom:22px;left:50%;transform:translate(-50%,14px);
@@ -319,6 +337,28 @@
         <div class="p-sub" id="p-sub"></div>
         <div class="idrow" id="p-ids"></div>
       </section>
+
+      <h2 class="eyebrow">HSE connection</h2>
+      <div class="diag">
+        <button id="diag-check" class="btn" type="button">Check connection</button>
+        <span class="d-label">Send a sample file as</span>
+        <select id="diag-type" aria-label="Sample document type">
+          <option value="others_1" selected>others_1</option>
+          <option value="others_2">others_2</option>
+          <option value="others_3">others_3</option>
+          <option value="others_4">others_4</option>
+          <option value="others_5">others_5</option>
+          <option value="others_6">others_6</option>
+          <option value="others_7">others_7</option>
+          <option value="hse_cv">hse_cv</option>
+          <option value="application_form">application_form</option>
+          <option value="point_scale_document">point_scale_document</option>
+          <option value="interview_notes">interview_notes</option>
+        </select>
+        <button id="diag-send" class="btn" type="button">Send sample file</button>
+        <div class="spacer"></div>
+        <span class="warn">Sending stores a real document on the staff record</span>
+      </div>
 
       <h2 class="eyebrow">Documents</h2>
       <div class="matrix" id="matrix"></div>
@@ -709,6 +749,63 @@
     body.append(meta);
   }
 
+  /* ── Sample upload ─────────────────────────────────────────── */
+  async function sendSample(btn){
+    if (!current){ toast("Pick a candidate first", true); return; }
+    const type = $("#diag-type").value;
+    const who  = current.name || current.id;
+    if (!confirm("Upload a sample file to " + who + " as \"" + type + "\"?\n\n" +
+                 "This stores a real document on their staff record. The file is " +
+                 "marked as a test and can be deleted from the portal.")) return;
+
+    btn.classList.add("busy"); btn.disabled = true;
+    try {
+      const r = await fetch("/admin/documents/" + encodeURIComponent(current.id) +
+                            "/hse-test-upload?type=" + encodeURIComponent(type),
+                            {method:"POST", headers:{"Accept":"application/json"}});
+      const text = await r.text();
+      let d;
+      try { d = JSON.parse(text); }
+      catch { throw new Error("Server returned a non-JSON response (HTTP " + r.status + ")"); }
+
+      renderSample(d, r.ok);
+      if (d.success) toast(d.message || "Sample file uploaded");
+      else toast(sampleError(d), true);
+    } catch (err){
+      toast(err.message, true);
+    } finally {
+      btn.classList.remove("busy"); btn.disabled = false;
+    }
+  }
+
+  function sampleError(d){
+    const up   = d.upload || {};
+    const errs = Object.values(up.errors || {}).flat();
+    return (errs.length ? errs.join(" ") : null) || up.error || d.error || "Upload failed";
+  }
+
+  function renderSample(d, httpOk){
+    const body = viewerFrame("Sample upload",
+                             d.hse_document_type || "", null);
+    body.className = "viewer-body check-body";
+
+    const n = el("div","notice " + (d.success ? "ok" : "error"));
+    n.append(el("div","n-body", d.success ? (d.message || "Uploaded.")
+                                          : sampleError(d)));
+    body.append(n);
+
+    const meta = el("div","check-meta");
+    if (d.staff_id)  meta.append(el("span",null,"staff_id " + d.staff_id));
+    if (d.filename)  meta.append(el("span",null,d.filename));
+    if (d.size_kb)   meta.append(el("span",null,d.size_kb + " KB"));
+    if (d.hse_document_type) meta.append(el("span",null,"type " + d.hse_document_type));
+    body.append(meta);
+
+    const pre = el("pre");
+    pre.innerHTML = highlight(JSON.stringify(d, null, 2));
+    body.append(pre);
+  }
+
   /* ── Upload ────────────────────────────────────────────────── */
   async function upload(btn, def, userId){
     btn.classList.add("busy"); btn.disabled = true;
@@ -739,7 +836,9 @@
     }
   }
 
-  $("#hse-check").addEventListener("click", e => hseCheck(e.currentTarget));
+  $("#hse-check").addEventListener("click",  e => hseCheck(e.currentTarget));
+  $("#diag-check").addEventListener("click", e => hseCheck(e.currentTarget));
+  $("#diag-send").addEventListener("click",  e => sendSample(e.currentTarget));
 
   /* ── Boot ──────────────────────────────────────────────────── */
   if (PRESELECTED) select(PRESELECTED);
