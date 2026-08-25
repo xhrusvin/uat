@@ -408,13 +408,13 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
 
     # Get counts for activity log
     available_count = await db["shifts_users"].count_documents({
-        "shift_id": shift_oid, "availability": {"$gt": 0},
+        "shift_id": shift_oid, "outreach_id": outreach_oid, "availability": 1,
     })
     declined_count = await db["shifts_users"].count_documents({
-        "shift_id": shift_oid, "availability": {"$ne": 1},
+        "shift_id": shift_oid, "outreach_id": outreach_oid, "availability": 0,
     })
     no_reply_count = await db["shifts_users"].count_documents({
-        "shift_id": shift_oid, "call_processed": 0, "call_enabled": 1,
+        "shift_id": shift_oid, "outreach_id": outreach_oid, "availability": {"$in": [3, 4, 6, 7, 8]},
     })
 
     # Save activity log
@@ -695,13 +695,13 @@ async def restart_outreach(request: Request, payload: PauseOutreachRequest):
 
     # Get counts for activity log
     available_count = await db["shifts_users"].count_documents({
-        "shift_id": shift_oid, "availability": {"$gt": 0},
+        "shift_id": shift_oid, "outreach_id": outreach_oid, "availability": 1,
     })
     declined_count = await db["shifts_users"].count_documents({
-        "shift_id": shift_oid, "availability": {"$ne": 1},
+        "shift_id": shift_oid, "outreach_id": outreach_oid, "availability": 0,
     })
     no_reply_count = await db["shifts_users"].count_documents({
-        "shift_id": shift_oid, "call_processed": 0, "call_enabled": 1,
+        "shift_id": shift_oid, "outreach_id": outreach_oid, "availability": {"$in": [3, 4, 6, 7, 8]},
     })
 
     # Save activity log
@@ -1294,7 +1294,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
 
     AVAILABILITY_TEXT = {
         1: "Available", 0: "Not Available", 3: "Voicemail",
-        4: "Call Not Attended", 6: "Call Not Triggered", 7: "Not Sent", 8: "No Response",
+        4: "Call Not Attended", 5: "Ongoing Call", 6: "Call Not Triggered", 7: "Not Sent", 8: "No Response",
     }
 
     # Get shift info for client coords + shift label
