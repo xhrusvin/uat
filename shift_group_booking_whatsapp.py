@@ -100,27 +100,34 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_
         if resp.status_code == 200:
             log.info(f"[GROUP WA] ✓ Sent to {phone_clean} shift_index={shift_index}")
             resp_data = resp.json()
-            # Push per-shift record to wa_sent_shifts array
+            wati_id   = resp_data.get("id", "")
+
+            # Update base fields
             app.db.shifts_group_users.update_one(
                 {"_id": su_id},
                 {"$set": {
                     "wa_sent":            1,
                     "wa_sent_at":         datetime.utcnow(),
-                    "wa_message_id":      resp_data.get("id", ""),
+                    "wa_message_id":      wati_id,
                     "wa_conversation_id": resp_data.get("conversationId", ""),
                     "wa_phone":           phone_clean,
                     "availability":       8,
-                },
-                "$push": {
+                }}
+            )
+            # Push shift record separately
+            app.db.shifts_group_users.update_one(
+                {"_id": su_id},
+                {"$push": {
                     "wa_sent_shifts": {
                         "shift_id":       shift_id,
                         "shift_index":    shift_index,
                         "broadcast_name": f"group_shift_{str(su_id)}_{shift_index}",
-                        "wati_id":        resp_data.get("id", ""),
+                        "wati_id":        wati_id,
                         "sent_at":        datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                     }
                 }}
             )
+            log.info(f"[GROUP WA] ✓ Saved wa_sent_shifts for shift_id={shift_id} wati_id={wati_id}")
         else:
             log.error(f"[GROUP WA] ✗ Failed {phone_clean}: {resp.status_code} {resp.text[:200]}")
             app.db.shifts_group_users.update_one(
