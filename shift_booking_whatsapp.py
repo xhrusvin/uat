@@ -11,7 +11,7 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-ALLOWED_START_HOUR = 0
+ALLOWED_START_HOUR = 1
 ALLOWED_END_HOUR   = 23
 BATCH_SIZE         = 10
 WATI_TEMPLATE_NAME = "shift_call_new"
@@ -64,15 +64,19 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
         rate     = "REG" if not _rate or str(_rate) in ("0", "0.0", "") else str(_rate)
 
         # WATI template parameters — order matches template placeholders
+        unit = shift_doc.get("unit", "") or ""
+        # Template: shift_call_new
+        # Hi {{name}}, It's Alice from Xpress Health.
+        # {{Facility}}, {{County}} | {{Day}}, {{Date}} | {{Start}} – {{End}} | {{Rate}}/hour
         parameters = [
-            {"name": "name",     "value": first_name},
-            {"name": "facility", "value": facility},
-            {"name": "county",   "value": county},
-            {"name": "day",      "value": day_str},
-            {"name": "date",     "value": date_str},
-            {"name": "start",    "value": start},
-            {"name": "end",      "value": end},
-            {"name": "rate",     "value": rate},
+            {"name": "name",     "value": first_name or "there"},
+            {"name": "facility", "value": facility or "the facility"},
+            {"name": "county",   "value": county or "Ireland"},
+            {"name": "day",      "value": day_str or "Today"},
+            {"name": "date",     "value": date_str or "TBC"},
+            {"name": "start",    "value": start or "TBC"},
+            {"name": "end",      "value": end or "TBC"},
+            {"name": "rate",     "value": rate or "REG"},
         ]
 
         payload = {
@@ -257,14 +261,14 @@ def register_shift_booking_whatsapp_routes(app):
         return _process_batch(query, "shifts_users")
 
     # ── Group shifts_group_users (group outreach) ─────────────────────────────
-    # @app.route('/shift_group_booking_whatsapp', methods=['GET'])
-    # def shift_group_booking_whatsapp():
-    #     user_id_param = request.args.get('user_id')
-    #     if user_id_param:
-    #         query = {"user_id": ObjectId(user_id_param), "call_processed": 0, "channel": "WhatsApp"}
-    #     else:
-    #         query = {"call_processed": 0, "call_enabled": 1, "channel": "WhatsApp"}
-    #     return _process_batch(query, "shifts_group_users")
+    @app.route('/shift_group_booking_whatsapp', methods=['GET'])
+    def shift_group_booking_whatsapp():
+        user_id_param = request.args.get('user_id')
+        if user_id_param:
+            query = {"user_id": ObjectId(user_id_param), "call_processed": 0, "channel": "WhatsApp"}
+        else:
+            query = {"call_processed": 0, "call_enabled": 1, "channel": "WhatsApp"}
+        return _process_batch(query, "shifts_group_users")
 
     # ── Debug ─────────────────────────────────────────────────────────────────
     @app.route('/debug-shift-booking-whatsapp')
@@ -417,17 +421,36 @@ def register_wati_webhook_routes(app):
 
         log.info(f"[WATI WEBHOOK] Updating su_id={su['_id']} in {collection} → availability={avail}")
         db_col = getattr(app.db, collection)
-        result = db_col.update_one(
-            {"_id": su["_id"]},
-            {"$set": {
-                "availability":  avail,
-                "response_text": "Yes, I'm available." if avail == 1 else "No, thanks.",
-                "response_time": now.strftime("%Y-%m-%d %H:%M:%S"),
-                "responded_at":  now,
-                "updated_at":    now,
-                "wa_response":   btn_text or text,
-            }}
-        )
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+        _set_fields = {
+            "availability":  avail,
+            "response_text": "Yes, I'm available." if avail == 1 else "No, thanks.",
+            "response_time": now_str,
+            "responded_at":  now,
+            "updated_at":    now,
+            "wa_response":   btn_text or text,
+        }
+        update_op = {"$set": _set_fields}
+
+        # For group outreach — also push to availability_details per shift
+        if collection == "shifts_group_users":
+            existing = su.get("availability_details") or []
+            group_id = su.get("group_id")
+            if group_id:
+                sg = app.db.shifts_group.find_one({"_id": group_id}, {"shift_ids": 1})
+                if sg and sg.get("shift_ids"):
+                    new_details = list(existing)
+                    for _sid in sg["shift_ids"]:
+                        _sid_str = str(_sid)
+                        already  = next((ad for ad in new_details if str(ad.get("shift_id","")) == _sid_str), None)
+                        if already:
+                            already["availability"] = avail
+                            already["responded_at"] = now_str
+                        else:
+                            new_details.append({"shift_id": _sid_str, "availability": avail, "responded_at": now_str})
+                    _set_fields["availability_details"] = new_details
+
+        result = db_col.update_one({"_id": su["_id"]}, update_op)
         log.info(f"[WATI WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
         return {"success": True, "availability": avail, "collection": collection, "su_id": str(su["_id"])}, 200
-
