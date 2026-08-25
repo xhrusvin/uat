@@ -280,6 +280,8 @@ def register_shift_group_booking_whatsapp_routes(app):
                 shift_docs    = [shift_doc]
                 shift_id_list = [str(record.get("group_id", ""))]
 
+            log.info(f"[GROUP WA] Sending {len(shift_docs)} messages to {phone} for su_id={su_id}")
+
             # Mark processed + availability=7 (Not Sent)
             result = app.db.shifts_group_users.update_one(
                 {"_id": su_id},
@@ -290,6 +292,9 @@ def register_shift_group_booking_whatsapp_routes(app):
                 continue
 
             for _i, (_sdoc, _shift_id_str) in enumerate(zip(shift_docs, shift_id_list)):
+                if _i > 0:
+                    import time as _time
+                    _time.sleep(2)  # 2s delay between messages to avoid WATI dedup
                 threading.Thread(
                     target=_send_wati_whatsapp,
                     args=(current_app._get_current_object(), record, _sdoc,
