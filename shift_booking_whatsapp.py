@@ -380,40 +380,41 @@ def register_wati_webhook_routes(app):
 
         log.info(f"[WATI WEBHOOK] User found: {user['_id']}")
 
+
         su         = None
         collection = "shifts_users"
 
-        # 1. Try by wa_phone
-        su = app.db.shifts_users.find_one(
+        # Check shifts_group_users FIRST (most recent group outreach takes priority)
+        su = app.db.shifts_group_users.find_one(
             {"wa_phone": phone, "wa_sent": 1},
             sort=[("wa_sent_at", -1)]
         )
-        log.info(f"[WATI WEBHOOK] wa_phone lookup ({phone}): {'found '+str(su['_id']) if su else 'NOT FOUND'}")
-
-        if not su:
-            su = app.db.shifts_group_users.find_one(
+        if su:
+            collection = "shifts_group_users"
+            log.info(f"[WATI WEBHOOK] wa_phone lookup ({phone}): found {su['_id']} in shifts_group_users")
+        else:
+            su = app.db.shifts_users.find_one(
                 {"wa_phone": phone, "wa_sent": 1},
+                sort=[("wa_sent_at", -1)]
+            )
+            log.info(f"[WATI WEBHOOK] wa_phone lookup ({phone}): {'found '+str(su['_id']) if su else 'NOT FOUND'} in shifts_users")
+
+        # Fallback by user_id
+        if not su and user:
+            su = app.db.shifts_group_users.find_one(
+                {"user_id": user["_id"], "wa_sent": 1},
                 sort=[("wa_sent_at", -1)]
             )
             if su:
                 collection = "shifts_group_users"
-            log.info(f"[WATI WEBHOOK] group wa_phone lookup: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
-
-        # 2. Fallback by user_id
-        if not su:
-            su = app.db.shifts_users.find_one(
-                {"user_id": user["_id"], "wa_sent": 1},
-                sort=[("wa_sent_at", -1)]
-            )
-            log.info(f"[WATI WEBHOOK] user_id fallback: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
-            if not su:
-                su = app.db.shifts_group_users.find_one(
+                log.info(f"[WATI WEBHOOK] user_id fallback: found {su['_id']} in shifts_group_users")
+            else:
+                su = app.db.shifts_users.find_one(
                     {"user_id": user["_id"], "wa_sent": 1},
                     sort=[("wa_sent_at", -1)]
                 )
-                if su:
-                    collection = "shifts_group_users"
-                log.info(f"[WATI WEBHOOK] group user_id fallback: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
+                log.info(f"[WATI WEBHOOK] user_id fallback shifts_users: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
+
 
         if not su:
             log.warning(f"[WATI WEBHOOK] No record found for phone={phone} user={user['_id']}")
@@ -454,3 +455,4 @@ def register_wati_webhook_routes(app):
         result = db_col.update_one({"_id": su["_id"]}, update_op)
         log.info(f"[WATI WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
         return {"success": True, "availability": avail, "collection": collection, "su_id": str(su["_id"])}, 200
+
