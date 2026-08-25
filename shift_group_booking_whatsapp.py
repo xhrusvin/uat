@@ -1,10 +1,9 @@
-# shift_group_booking_whatsapp.py
-# Sends WhatsApp messages via WATI for GROUP shifts (shifts_group_users collection)
+# shift_booking_whatsapp.py
+# Sends WhatsApp messages via WATI for shifts where channel == 'WhatsApp'
 # Processes up to 10 pending messages per trigger call
 import logging
 import os
 import requests as _req
-import threading
 from flask import current_app, jsonify, request
 from bson import ObjectId
 from datetime import datetime
@@ -22,7 +21,7 @@ def is_within_call_window():
     now     = datetime.utcnow()
     hour    = now.hour
     allowed = ALLOWED_START_HOUR <= hour < ALLOWED_END_HOUR
-    log.info(f"[GROUP WA TIME CHECK] {now.strftime('%Y-%m-%d %H:%M:%S UTC')} → Hour {hour} → Allowed: {allowed}")
+    log.info(f"[WA TIME CHECK] {now.strftime('%Y-%m-%d %H:%M:%S UTC')} → Hour {hour} → Allowed: {allowed}")
     return allowed, now
 
 
@@ -42,16 +41,17 @@ def _format_day(date_str: str) -> str:
         return ""
 
 
-def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_index=0):
-    """Send WhatsApp message via WATI API and save to shifts_group_users."""
+def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collection="shifts_users"):
+    """Send WhatsApp message via WATI API."""
     try:
         wati_url   = (os.getenv("WATI_API_ENDPOINT") or os.getenv("WATI_API_URL", "")).rstrip("/")
         wati_token = os.getenv("WATI_ACCESS_TOKEN") or os.getenv("WATI_API_TOKEN", "")
 
         if not wati_url or not wati_token:
-            log.error("[GROUP WA] WATI_API_ENDPOINT or WATI_ACCESS_TOKEN not set")
+            log.error("[WA] WATI_API_ENDPOINT or WATI_ACCESS_TOKEN not set")
             return
 
+        # Clean phone — remove + and spaces
         phone_clean = phone.replace("+", "").replace(" ", "").replace("-", "").strip()
 
         facility = shift_doc.get("client_name", "") or shift_doc.get("location", "")
@@ -60,11 +60,14 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_
         day_str  = _format_day(shift_doc.get("date", ""))
         start    = shift_doc.get("start_time", "")
         end      = shift_doc.get("end_time", "")
-        unit     = shift_doc.get("unit", "") or ""
         _rate    = shift_doc.get("rate", "")
         rate     = "REG" if not _rate or str(_rate) in ("0", "0.0", "") else str(_rate)
 
+        # WATI template parameters — order matches template placeholders
+        unit = shift_doc.get("unit", "") or ""
         # Template: shift_call_new
+        # Hi {{name}}, It's Alice from Xpress Health.
+        # {{Facility}}, {{County}} | {{Day}}, {{Date}} | {{Start}} – {{End}} | {{Rate}}/hour
         parameters = [
             {"name": "name",     "value": first_name or "there"},
             {"name": "facility", "value": facility or "the facility"},
@@ -76,11 +79,10 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_
             {"name": "rate",     "value": rate or "REG"},
         ]
 
-        # Unique broadcast name per shift to avoid WATI deduplication
         payload = {
-            "template_name":  WATI_TEMPLATE_NAME,
-            "broadcast_name": f"group_shift_{str(su_id)}_{shift_index}",
-            "parameters":     parameters,
+            "template_name": WATI_TEMPLATE_NAME,
+            "broadcast_name": f"shift_{str(su_id)}",
+            "parameters": parameters,
         }
 
         headers = {
@@ -89,18 +91,20 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_
             "Accept":        "application/json",
         }
 
-        _wati_send_url = (
-            f"{wati_url}/api/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
-            if "/api" not in wati_url else
-            f"{wati_url}/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
+        # Build URL — if endpoint already has /api in it, use as-is
+        _wati_send_url = f"{wati_url}/api/v1/sendTemplateMessage?whatsappNumber={phone_clean}" if "/api" not in wati_url else f"{wati_url}/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
+        resp = _req.post(
+            _wati_send_url,
+            json=payload,
+            headers=headers,
+            timeout=20,
         )
 
-        resp = _req.post(_wati_send_url, json=payload, headers=headers, timeout=20)
-
         if resp.status_code == 200:
-            log.info(f"[GROUP WA] ✓ Sent to {phone_clean}")
+            log.info(f"[WA] ✓ Sent to {phone_clean}")
             resp_data = resp.json()
-            app.db.shifts_group_users.update_one(
+            db_col = getattr(app.db, collection)
+            db_col.update_one(
                 {"_id": su_id},
                 {"$set": {
                     "wa_sent":            1,
@@ -112,156 +116,107 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_
                 }}
             )
         else:
-            log.error(f"[GROUP WA] ✗ Failed {phone_clean}: {resp.status_code} {resp.text[:200]}")
-            app.db.shifts_group_users.update_one(
+            log.error(f"[WA] ✗ Failed {phone_clean}: {resp.status_code} {resp.text[:200]}")
+            db_col = getattr(app.db, collection)
+            db_col.update_one(
                 {"_id": su_id},
                 {"$set": {"wa_error": f"{resp.status_code}: {resp.text[:200]}"}}
             )
 
     except Exception as e:
-        log.error(f"[GROUP WA] ✗ Exception for {phone}: {e}")
-        app.db.shifts_group_users.update_one(
+        log.error(f"[WA] ✗ Exception for {phone}: {e}")
+        db_col = getattr(app.db, collection)
+        db_col.update_one(
             {"_id": su_id},
             {"$set": {"wa_error": str(e)}}
         )
 
 
 def _get_shift_doc(app, record):
-    """Build shift_doc from first shift in the group."""
-    group_id = record.get("group_id")
+    """Build shift_doc from shifts collection."""
     shift_id = record.get("shift_id")
+    group_id = record.get("group_id")
     shift_doc = {}
 
-    if group_id:
+    if shift_id:
+        s = app.db.shifts.find_one({"_id": shift_id})
+        if s:
+            client = None
+            if s.get("client_id"):
+                client = app.db.clients.find_one(
+                    {"xn_client_id": str(s["client_id"])},
+                    {"county": 1}
+                )
+            shift_doc = {
+                "client_name":  s.get("client_name", "") or s.get("location", ""),
+                "location":     s.get("location", ""),
+                "client_county": s.get("client_county", "") or (client.get("county", "") if client else ""),
+                "date":         str(s.get("date", "")),
+                "start_time":   s.get("start_time", ""),
+                "end_time":     s.get("end_time", ""),
+                "rate":         s.get("rate", ""),
+            }
+    elif group_id:
         sg = app.db.shifts_group.find_one({"_id": group_id}, {"shift_ids": 1})
         if sg and sg.get("shift_ids"):
             s = app.db.shifts.find_one({"_id": sg["shift_ids"][0]})
             if s:
-                client = None
-                if s.get("client_id"):
-                    client = app.db.clients.find_one(
-                        {"xn_client_id": str(s["client_id"])},
-                        {"county": 1}
-                    )
                 shift_doc = {
                     "client_name":   s.get("client_name", "") or s.get("location", ""),
                     "location":      s.get("location", ""),
-                    "client_county": s.get("client_county", "") or (client.get("county", "") if client else ""),
+                    "client_county": s.get("client_county", ""),
                     "date":          str(s.get("date", "")),
                     "start_time":    s.get("start_time", ""),
                     "end_time":      s.get("end_time", ""),
-                    "unit":          s.get("unit") or "",
-                    "user_type":     s.get("user_type", ""),
                     "rate":          s.get("rate", ""),
                 }
-    elif shift_id:
-        s = app.db.shifts.find_one({"_id": shift_id})
-        if s:
-            shift_doc = {
-                "client_name":   s.get("client_name", "") or s.get("location", ""),
-                "location":      s.get("location", ""),
-                "client_county": s.get("client_county", ""),
-                "date":          str(s.get("date", "")),
-                "start_time":    s.get("start_time", ""),
-                "end_time":      s.get("end_time", ""),
-                "unit":          s.get("unit") or "",
-                "user_type":     s.get("user_type", ""),
-                "rate":          s.get("rate", ""),
-            }
     return shift_doc
 
 
-def register_shift_group_booking_whatsapp_routes(app):
+def register_shift_booking_whatsapp_routes(app):
 
-    @app.route('/shift_group_booking_whatsapp', methods=['GET'], endpoint='shift_group_booking_whatsapp_route')
-    def shift_group_booking_whatsapp():
+    def _process_batch(query, collection_name):
+        """Fetch and process up to BATCH_SIZE pending WhatsApp records."""
         allowed, server_time = is_within_call_window()
-        user_id_param = request.args.get('user_id')
-
         response_base = {
             "server_time":    server_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
             "allowed_window": f"{ALLOWED_START_HOUR}:00 - {ALLOWED_END_HOUR}:00 UTC",
             "call_allowed":   allowed,
-            "collection":     "shifts_group_users",
+            "collection":     collection_name,
         }
 
         if not allowed:
             return jsonify({**response_base, "status": "outside_hours"}), 200
 
-        if user_id_param:
-            query = {"user_id": ObjectId(user_id_param), "call_processed": 0, "channel": "WhatsApp"}
-        else:
-            query = {"call_processed": 0, "call_enabled": 1, "channel": "WhatsApp"}
-
-        records = list(app.db.shifts_group_users.find(
-            query, sort=[("assigned_at", 1)], limit=BATCH_SIZE
-        ))
+        db_col   = getattr(app.db, collection_name)
+        records  = list(db_col.find(query, sort=[("assigned_at", 1)], limit=BATCH_SIZE))
 
         if not records:
             return jsonify({**response_base, "status": "no_pending",
-                            "message": "No pending WhatsApp in shifts_group_users"}), 200
+                            "message": f"No pending WhatsApp in {collection_name}"}), 200
 
         triggered = []
         for record in records:
-            su_id   = record["_id"]
-            user_id = record.get("user_id")
+            su_id    = record["_id"]
+            user_id  = record.get("user_id")
 
             user = None
             if user_id:
                 user = app.db.users.find_one(
                     {"_id": user_id},
-                    {"phone": 1, "first_name": 1, "last_name": 1, "designation": 1}
+                    {"phone": 1, "first_name": 1, "last_name": 1}
                 )
 
             if not user or not user.get("phone"):
-                log.warning(f"[GROUP WA] No phone for su_id={su_id}")
+                log.warning(f"[WA] No phone for su_id={su_id}")
                 continue
 
             phone      = user["phone"]
             first_name = user.get("first_name", "")
-            full_name  = f"{first_name} {user.get('last_name', '')}".strip()
+            full_name  = f"{first_name} {user.get('last_name','')}".strip()
 
-            # Check designation matches shift user_type
-            user_designation = (user.get("designation") or "").strip().lower()
-            shift_doc = _get_shift_doc(app, record)
-            shift_user_type = (shift_doc.get("user_type") or "").strip().lower()
-            if user_designation and shift_user_type and user_designation != shift_user_type:
-                log.warning(f"[GROUP WA] Skipping {phone} — designation '{user_designation}' != shift user_type '{shift_user_type}'")
-                continue
-
-            # Build shift_docs — one per shift in group
-            group_id_rec = record.get("group_id")
-            shift_docs = []
-            if group_id_rec:
-                sg = app.db.shifts_group.find_one({"_id": group_id_rec}, {"shift_ids": 1})
-                if sg and sg.get("shift_ids"):
-                    for _sid in sg["shift_ids"]:
-                        _s = app.db.shifts.find_one({"_id": _sid})
-                        if _s:
-                            _stype = (_s.get("user_type") or "").strip().lower()
-                            if user_designation and _stype and user_designation != _stype:
-                                continue
-                            _client = None
-                            if _s.get("client_id"):
-                                _client = app.db.clients.find_one(
-                                    {"xn_client_id": str(_s["client_id"])}, {"county": 1}
-                                )
-                            shift_docs.append({
-                                "client_name":   _s.get("client_name", "") or _s.get("location", ""),
-                                "location":      _s.get("location", ""),
-                                "client_county": _s.get("client_county", "") or (_client.get("county", "") if _client else ""),
-                                "date":          str(_s.get("date", "")),
-                                "start_time":    _s.get("start_time", ""),
-                                "end_time":      _s.get("end_time", ""),
-                                "unit":          _s.get("unit") or "",
-                                "user_type":     _s.get("user_type", ""),
-                                "rate":          _s.get("rate", ""),
-                            })
-            if not shift_docs:
-                shift_docs = [shift_doc]
-
-            # Mark processed + availability=7 (Not Sent)
-            result = app.db.shifts_group_users.update_one(
+            # Mark processed + set availability=7 (Not Sent) before background send
+            result = db_col.update_one(
                 {"_id": su_id},
                 {"$set": {"call_processed": 1, "call_processed_at": datetime.utcnow(),
                            "availability": 7, "updated_at": datetime.utcnow()}}
@@ -269,14 +224,15 @@ def register_shift_group_booking_whatsapp_routes(app):
             if result.modified_count == 0:
                 continue
 
-            for _i, _sdoc in enumerate(shift_docs):
-                threading.Thread(
-                    target=_send_wati_whatsapp,
-                    args=(current_app._get_current_object(), record, _sdoc,
-                          phone, first_name, su_id, _i),
-                    daemon=True
-                ).start()
+            shift_doc = _get_shift_doc(app, record)
 
+            import threading
+            threading.Thread(
+                target=_send_wati_whatsapp,
+                args=(current_app._get_current_object(), record, shift_doc,
+                      phone, first_name, su_id, collection_name),
+                daemon=True
+            ).start()
 
             triggered.append({
                 "su_id":      str(su_id),
@@ -294,17 +250,208 @@ def register_shift_group_booking_whatsapp_routes(app):
             "data":         triggered,
         }), 200
 
-    @app.route('/debug-shift-group-booking-whatsapp', endpoint='debug_shift_group_booking_whatsapp_route')
-    def debug_shift_group_booking_whatsapp():
+    # ── Regular shifts_users (single shift outreach) ──────────────────────────
+    @app.route('/shift_booking_whatsapp', methods=['GET'])
+    def shift_booking_whatsapp():
+        user_id_param = request.args.get('user_id')
+        if user_id_param:
+            query = {"user_id": ObjectId(user_id_param), "call_processed": 0, "channel": "WhatsApp"}
+        else:
+            query = {"call_processed": 0, "call_enabled": 1, "channel": "WhatsApp"}
+        return _process_batch(query, "shifts_users")
+
+    # ── Group shifts_group_users (group outreach) ─────────────────────────────
+    @app.route('/shift_group_booking_whatsapp', methods=['GET'])
+    def shift_group_booking_whatsapp():
+        user_id_param = request.args.get('user_id')
+        if user_id_param:
+            query = {"user_id": ObjectId(user_id_param), "call_processed": 0, "channel": "WhatsApp"}
+        else:
+            query = {"call_processed": 0, "call_enabled": 1, "channel": "WhatsApp"}
+        return _process_batch(query, "shifts_group_users")
+
+    # ── Debug ─────────────────────────────────────────────────────────────────
+    @app.route('/debug-shift-booking-whatsapp')
+    def debug_shift_booking_whatsapp():
         allowed, now = is_within_call_window()
-        pending = app.db.shifts_group_users.count_documents(
+        pending_su  = app.db.shifts_users.count_documents(
+            {"call_processed": 0, "call_enabled": 1, "channel": "WhatsApp"}
+        )
+        pending_sgu = app.db.shifts_group_users.count_documents(
             {"call_processed": 0, "call_enabled": 1, "channel": "WhatsApp"}
         )
         return jsonify({
-            "debug":        "shift_group_booking_whatsapp.py loaded",
-            "server_time":  now.strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "template":     WATI_TEMPLATE_NAME,
-            "batch_size":   BATCH_SIZE,
-            "pending":      pending,
-            "wati_url":     os.getenv("WATI_API_ENDPOINT", "not set"),
+            "debug":            "shift_booking_whatsapp.py loaded",
+            "server_time":      now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "template":         WATI_TEMPLATE_NAME,
+            "batch_size":       BATCH_SIZE,
+            "pending_regular":  pending_su,
+            "pending_group":    pending_sgu,
+            "wati_url":         os.getenv("WATI_API_URL", "not set"),
         })
+
+
+def register_wati_webhook_routes(app):
+
+    @app.route('/wati/webhook', methods=['POST'])
+    def wati_webhook():
+        """
+        WATI sends button click responses here.
+        Configure in WATI dashboard → Settings → Webhook URL:
+        https://uat.expresshealth.ie/wati/webhook
+        """
+        try:
+            data = request.get_json(silent=True) or {}
+        except Exception:
+            data = {}
+
+        log.info(f"[WATI WEBHOOK] {data}")
+
+        # Save raw event to wati_messages collection
+        phone       = (data.get("waId") or data.get("phone") or "").replace("+", "").strip()
+        event_type  = data.get("eventType", "") or data.get("type", "")
+        msg_type    = data.get("type", "")
+        # WATI sends button replies at top level (not nested in waMessage)
+        btn_reply   = data.get("buttonReply") or {}
+        btn_text    = btn_reply.get("text", "") or btn_reply.get("title", "")
+        text        = data.get("text") or ""
+        # Also check nested waMessage
+        wa_message  = data.get("waMessage") or {}
+        if not btn_text:
+            nested_btn = wa_message.get("buttonReply") or {}
+            btn_text   = nested_btn.get("text", "") or nested_btn.get("title", "")
+        if not text:
+            text = (wa_message.get("text") or wa_message.get("body") or "")
+        direction   = "inbound" if (msg_type == "button" or event_type == "message") else "outbound"
+
+        # Save to DB
+        msg_doc = {
+            "phone":        phone,
+            "event_type":   event_type,
+            "direction":    direction,
+            "text":         btn_text or text,
+            "button_text":  btn_text,
+            "button_reply": btn_reply,
+            "raw":          {k: str(v)[:500] for k, v in data.items()},
+            "timestamp":    datetime.utcnow(),
+        }
+
+        # Link to user if phone matches
+        user = app.db.users.find_one(
+            {"phone": {"$regex": phone[-9:] if len(phone) >= 9 else phone, "$options": "i"}},
+            {"_id": 1}
+        )
+        if user:
+            msg_doc["user_id"] = user["_id"]
+
+        app.db.wati_messages.insert_one(msg_doc)
+
+        # Only process availability when it's a button click (type=button or has buttonReply)
+        is_button_event = (
+            msg_type == "button" or
+            bool(btn_reply) or
+            event_type in ("message", "ctaButtonClicked", "CTA Button Clicked")
+        ) and bool(btn_text)
+
+        if not is_button_event:
+            log.info(f"[WATI WEBHOOK] Skipping non-button event: eventType={event_type} type={msg_type}")
+            return {"success": True, "message": f"Skipped event: {event_type}"}, 200
+
+        # Determine availability from button clicked
+        btn_text_l  = btn_text.strip().lower()
+        text_l      = text.strip().lower()
+        combined    = btn_text_l or text_l
+        avail = None
+        if "yes" in combined or "available" in combined:
+            avail = 1
+        elif "no" in combined or "thanks" in combined:
+            avail = 0
+
+        if avail is None or not phone:
+            return {"success": True, "message": "No actionable response"}, 200
+
+        now = datetime.utcnow()
+        log.info(f"[WATI WEBHOOK] Processing — phone={phone} avail={avail} btn={btn_text} text={text}")
+
+        # Find shifts_users by user already resolved above
+        if not user:
+            log.warning(f"[WATI WEBHOOK] No user found for phone {phone}")
+            return {"success": True}, 200
+
+        log.info(f"[WATI WEBHOOK] User found: {user['_id']}")
+
+        su         = None
+        collection = "shifts_users"
+
+        # 1. Try by wa_phone
+        su = app.db.shifts_users.find_one(
+            {"wa_phone": phone, "wa_sent": 1},
+            sort=[("wa_sent_at", -1)]
+        )
+        log.info(f"[WATI WEBHOOK] wa_phone lookup ({phone}): {'found '+str(su['_id']) if su else 'NOT FOUND'}")
+
+        if not su:
+            su = app.db.shifts_group_users.find_one(
+                {"wa_phone": phone, "wa_sent": 1},
+                sort=[("wa_sent_at", -1)]
+            )
+            if su:
+                collection = "shifts_group_users"
+            log.info(f"[WATI WEBHOOK] group wa_phone lookup: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
+
+        # 2. Fallback by user_id
+        if not su:
+            su = app.db.shifts_users.find_one(
+                {"user_id": user["_id"], "wa_sent": 1},
+                sort=[("wa_sent_at", -1)]
+            )
+            log.info(f"[WATI WEBHOOK] user_id fallback: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
+            if not su:
+                su = app.db.shifts_group_users.find_one(
+                    {"user_id": user["_id"], "wa_sent": 1},
+                    sort=[("wa_sent_at", -1)]
+                )
+                if su:
+                    collection = "shifts_group_users"
+                log.info(f"[WATI WEBHOOK] group user_id fallback: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
+
+        if not su:
+            log.warning(f"[WATI WEBHOOK] No record found for phone={phone} user={user['_id']}")
+            return {"success": True}, 200
+
+        log.info(f"[WATI WEBHOOK] Updating su_id={su['_id']} in {collection} → availability={avail}")
+        db_col = getattr(app.db, collection)
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+        _set_fields = {
+            "availability":  avail,
+            "response_text": "Yes, I'm available." if avail == 1 else "No, thanks.",
+            "response_time": now_str,
+            "responded_at":  now,
+            "updated_at":    now,
+            "wa_response":   btn_text or text,
+        }
+        update_op = {"$set": _set_fields}
+
+        # For group outreach — also push to availability_details per shift
+        if collection == "shifts_group_users":
+            existing = su.get("availability_details") or []
+            group_id = su.get("group_id")
+            if group_id:
+                sg = app.db.shifts_group.find_one({"_id": group_id}, {"shift_ids": 1})
+                if sg and sg.get("shift_ids"):
+                    new_details = list(existing)
+                    for _sid in sg["shift_ids"]:
+                        _sid_str = str(_sid)
+                        already  = next((ad for ad in new_details if str(ad.get("shift_id","")) == _sid_str), None)
+                        if already:
+                            already["availability"] = avail
+                            already["responded_at"] = now_str
+                        else:
+                            new_details.append({"shift_id": _sid_str, "availability": avail, "responded_at": now_str})
+                    _set_fields["availability_details"] = new_details
+
+        result = db_col.update_one({"_id": su["_id"]}, update_op)
+        log.info(f"[WATI WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
+        return {"success": True, "availability": avail, "collection": collection, "su_id": str(su["_id"])}, 200
+
