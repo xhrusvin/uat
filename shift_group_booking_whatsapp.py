@@ -12,7 +12,7 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-ALLOWED_START_HOUR = 0
+ALLOWED_START_HOUR = 1
 ALLOWED_END_HOUR   = 23
 BATCH_SIZE         = 10
 WATI_TEMPLATE_NAME = "shift_call_new"
