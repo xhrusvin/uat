@@ -536,12 +536,15 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
         except Exception:
             pass  # fallback: no date filter
 
-    # Find shifts where staff_email matches within ±10 days
-    existing_shifts = await db["shifts"].find(
+    # Find shifts where staff_email matches within ±10 days (date-indexed query)
+    existing_shifts_raw = await db["shifts"].find(
         {"staff_email": user_email, **date_filter},
         {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
-         "shift_type": 1, "slots": 1}
+         "shift_type": 1, "slots": 1, "upstream_status": 1}
     ).to_list(length=200)
+
+    # Only consider Upcoming shifts for exclusion checks
+    existing_shifts = [s for s in existing_shifts_raw if s.get("upstream_status") == "Upcoming"]
 
     tags = []
 
@@ -613,7 +616,7 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
                             if "exceeds_16h" not in tags:
                                 tags.append("exceeds_16h")
 
-            # Rule 6: Minimum 5h gap (same or adjacent day only)
+            # Rule 6: Minimum 2h gap (same or adjacent day only)
             if tr_end and target_start and tr_date and target_date:
                 try:
                     td_d   = tr_date.date() if hasattr(tr_date, "date") else None
@@ -622,12 +625,12 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
                         day_diff = abs((tgt_d - td_d).days)
                         if day_diff <= 1:  # same or adjacent day only
                             gap = _gap_minutes(tr_end, target_start)
-                            if 0 < gap < 300:
+                            if 0 < gap < 120:
                                 if "under_6h_gap" not in tags:
                                     tags.append("under_6h_gap")
                             if target_end and tr_start:
                                 gap = _gap_minutes(target_end, tr_start)
-                                if 0 < gap < 300:
+                                if 0 < gap < 120:
                                     if "under_6h_gap" not in tags:
                                         tags.append("under_6h_gap")
                 except Exception:

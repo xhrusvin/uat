@@ -127,23 +127,61 @@ async def get_shift_group(request: Request, payload: ShiftGroupDetailRequest):
     # Enrich with shift details
     shift_oids = group.get("shift_ids") or []
     shifts = []
+
+    # Pool counts for the group
+    pool_selected_count = await db["shifts_group_pool"].count_documents({"group_id": group_oid, "selected": 1})
+
+    # Upstream client for available-staff-list
+    import httpx as _httpx_g
+    from app.core.config import settings as _settings_g
+    _upstream_url_g = f"{_settings_g.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list"
+    _upstream_headers_g = {
+        "Api-Key":      _settings_g.SHIFT_INTERNAL_API_KEY,
+        "Content-Type": "application/json",
+        "Accept":       "application/json",
+    }
+
     if shift_oids:
-        async for sh in db["shifts"].find(
-            {"_id": {"$in": shift_oids}},
-            {"name": 1, "shift_code": 1, "date": 1, "start_time": 1,
-             "end_time": 1, "location": 1, "user_type": 1, "shift_timing": 1}
-        ):
-            shifts.append({
-                "id":          str(sh["_id"]),
-                "name":        sh.get("name") or sh.get("shift_code"),
-                "shift_code":  sh.get("shift_code"),
-                "date":        sh["date"].isoformat() if sh.get("date") and hasattr(sh["date"], "isoformat") else str(sh.get("date", "")),
-                "start_time":  sh.get("start_time"),
-                "end_time":    sh.get("end_time"),
-                "location":    sh.get("location"),
-                "user_type":   sh.get("user_type"),
-                "shift_timing": sh.get("shift_timing"),
-            })
+        async with _httpx_g.AsyncClient(timeout=30.0) as _hc:
+            async for sh in db["shifts"].find(
+                {"_id": {"$in": shift_oids}},
+                {"name": 1, "shift_code": 1, "shift_id": 1, "date": 1, "start_time": 1,
+                 "end_time": 1, "location": 1, "client_name": 1, "user_type": 1, "shift_timing": 1}
+            ):
+                sh_id  = sh["_id"]
+                xn_id  = sh.get("shift_id")
+
+                # Get available staff count from upstream
+                available_from_bulk = 0
+                if xn_id:
+                    try:
+                        _resp = await _hc.post(
+                            _upstream_url_g,
+                            json={"shift_id": xn_id},
+                            headers=_upstream_headers_g
+                        )
+                        if _resp.status_code == 200:
+                            _data = _resp.json().get("data") or []
+                            available_from_bulk = len([
+                                s for s in _data
+                                if not s.get("is_excluded") and s.get("excluded") != 1
+                            ])
+                    except Exception:
+                        pass
+
+                shifts.append({
+                    "id":                  str(sh_id),
+                    "name":                sh.get("name") or sh.get("shift_code"),
+                    "shift_code":          sh.get("shift_code"),
+                    "date":                sh["date"].isoformat() if sh.get("date") and hasattr(sh["date"], "isoformat") else str(sh.get("date", "")),
+                    "start_time":          sh.get("start_time"),
+                    "end_time":            sh.get("end_time"),
+                    "location":            sh.get("location") or sh.get("client_name") or "",
+                    "user_type":           sh.get("user_type"),
+                    "shift_timing":        sh.get("shift_timing"),
+                    "staff_in_pool":       pool_selected_count,
+                    "from_bulk": available_from_bulk,
+                })
 
     s = _serialize(group)
     s["shifts"] = shifts
