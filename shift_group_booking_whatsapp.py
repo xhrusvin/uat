@@ -229,6 +229,37 @@ def register_shift_group_booking_whatsapp_routes(app):
                 log.warning(f"[GROUP WA] Skipping {phone} — designation '{user_designation}' != shift user_type '{shift_user_type}'")
                 continue
 
+            # Build shift_docs — one per shift in group
+            group_id_rec = record.get("group_id")
+            shift_docs = []
+            if group_id_rec:
+                sg = app.db.shifts_group.find_one({"_id": group_id_rec}, {"shift_ids": 1})
+                if sg and sg.get("shift_ids"):
+                    for _sid in sg["shift_ids"]:
+                        _s = app.db.shifts.find_one({"_id": _sid})
+                        if _s:
+                            _stype = (_s.get("user_type") or "").strip().lower()
+                            if user_designation and _stype and user_designation != _stype:
+                                continue
+                            _client = None
+                            if _s.get("client_id"):
+                                _client = app.db.clients.find_one(
+                                    {"xn_client_id": str(_s["client_id"])}, {"county": 1}
+                                )
+                            shift_docs.append({
+                                "client_name":   _s.get("client_name", "") or _s.get("location", ""),
+                                "location":      _s.get("location", ""),
+                                "client_county": _s.get("client_county", "") or (_client.get("county", "") if _client else ""),
+                                "date":          str(_s.get("date", "")),
+                                "start_time":    _s.get("start_time", ""),
+                                "end_time":      _s.get("end_time", ""),
+                                "unit":          _s.get("unit") or "",
+                                "user_type":     _s.get("user_type", ""),
+                                "rate":          _s.get("rate", ""),
+                            })
+            if not shift_docs:
+                shift_docs = [shift_doc]
+
             # Mark processed + availability=7 (Not Sent)
             result = app.db.shifts_group_users.update_one(
                 {"_id": su_id},
@@ -238,10 +269,10 @@ def register_shift_group_booking_whatsapp_routes(app):
             if result.modified_count == 0:
                 continue
 
-            for _i, shift_doc in enumerate(shift_docs):
+            for _i, _sdoc in enumerate(shift_docs):
                 threading.Thread(
                     target=_send_wati_whatsapp,
-                    args=(current_app._get_current_object(), record, shift_doc,
+                    args=(current_app._get_current_object(), record, _sdoc,
                           phone, first_name, su_id, _i),
                     daemon=True
                 ).start()
