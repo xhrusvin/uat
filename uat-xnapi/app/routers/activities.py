@@ -323,11 +323,12 @@ async def list_activities(request: Request, payload: ActivityListRequest):
         results.append(s)
 
     return {
-        "success":  True,
-        "total":    total,
-        "page":     payload.page,
-        "per_page": payload.per_page,
-        "tab":      tab,
+        "success":    True,
+        "total":      total,
+        "page":       payload.page,
+        "per_page":   payload.per_page,
+        "tab":        tab,
+        "export_url": f"/xnapi/activities/export?shift_id={payload.shift_id or ''}&outreach_id={payload.outreach_id or ''}&tab={tab}",
         "tabs": {
             "all":    count_all,
             "system": count_system,
@@ -336,6 +337,156 @@ async def list_activities(request: Request, payload: ActivityListRequest):
         },
         "data":     results,
     }
+
+
+@router.get("/export", summary="Download activities as CSV (GET with query params)",
+            dependencies=[Depends(verify_api_key)])
+@limiter.limit("10/minute")
+async def export_activities_get(
+    request:      Request,
+    shift_id:     Optional[str] = None,
+    outreach_id:  Optional[str] = None,
+    group_id:     Optional[str] = None,
+    activity_type: Optional[str] = None,
+    tab:          Optional[str] = "all",
+):
+    """Direct download URL: GET /xnapi/activities/export?shift_id=...&outreach_id=..."""
+    import csv, io
+    from fastapi.responses import StreamingResponse
+
+    db = _get_db()
+    filters: list = []
+
+    if shift_id and ObjectId.is_valid(shift_id):
+        filters.append({"shift_id": ObjectId(shift_id)})
+    if outreach_id and ObjectId.is_valid(outreach_id):
+        filters.append({"outreach_id": ObjectId(outreach_id)})
+    if group_id and ObjectId.is_valid(group_id):
+        filters.append({"group_id": ObjectId(group_id)})
+    if activity_type:
+        filters.append({"activity_type": activity_type})
+
+    _tab = (tab or "all").lower()
+    if _tab == "system":
+        filters.append({"activity_type": {"$in": ACTIVITY_TAB_MAP["system"]}})
+    elif _tab == "ai":
+        filters.append({"activity_type": {"$in": ACTIVITY_TAB_MAP["ai"]}})
+    elif _tab == "people":
+        all_known = ACTIVITY_TAB_MAP["system"] + ACTIVITY_TAB_MAP["ai"]
+        filters.append({"activity_type": {"$nin": all_known}})
+
+    mongo_filter = {"$and": filters} if filters else {}
+    docs = await db["activities"].find(mongo_filter).sort("created_at", -1).to_list(5000)
+
+    label_map = {
+        "round_paused": "Round paused", "round_completed": "Round completed",
+        "round_started": "Round started", "round_ended": "Round ended",
+        "available_response": "Available response", "ai_call_placed": "AI call placed",
+        "ai_whatsapp_sent": "AI WhatsApp sent",
+    }
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["#", "Activity Type", "Display Title", "Shift ID", "Outreach ID",
+                     "Round", "Available", "Declined", "No Reply", "Summary", "Created At"])
+
+    for i, d in enumerate(docs, 1):
+        meta = d.get("metadata") or {}
+        atype = d.get("activity_type", "")
+        label = label_map.get(atype, atype.replace("_", " ").title())
+        created = d.get("created_at")
+        created_str = created.strftime("%Y-%m-%d %H:%M:%S") if created and hasattr(created, "strftime") else str(created or "")
+        writer.writerow([
+            i, atype, label,
+            str(d["shift_id"]) if d.get("shift_id") else "",
+            str(d["outreach_id"]) if d.get("outreach_id") else "",
+            meta.get("round_number", ""), meta.get("available", ""),
+            meta.get("declined", ""), meta.get("no_reply", ""),
+            meta.get("summary", ""), created_str,
+        ])
+
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=activities_export.csv"}
+    )
+
+
+
+@router.post("/export", summary="Export activities to CSV",
+             dependencies=[Depends(verify_api_key)])
+@limiter.limit("10/minute")
+async def export_activities(request: Request, payload: ActivityListRequest):
+    """Export all activities matching filters to CSV"""
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+
+    db = _get_db()
+    filters: list = []
+
+    if payload.shift_id and ObjectId.is_valid(payload.shift_id):
+        filters.append({"shift_id": ObjectId(payload.shift_id)})
+    if payload.outreach_id and ObjectId.is_valid(payload.outreach_id):
+        filters.append({"outreach_id": ObjectId(payload.outreach_id)})
+    if payload.group_id and ObjectId.is_valid(payload.group_id):
+        filters.append({"group_id": ObjectId(payload.group_id)})
+    if payload.activity_type:
+        filters.append({"activity_type": payload.activity_type})
+
+    tab = (payload.tab or "all").lower()
+    if tab == "system":
+        filters.append({"activity_type": {"$in": ACTIVITY_TAB_MAP["system"]}})
+    elif tab == "ai":
+        filters.append({"activity_type": {"$in": ACTIVITY_TAB_MAP["ai"]}})
+    elif tab == "people":
+        all_known = ACTIVITY_TAB_MAP["system"] + ACTIVITY_TAB_MAP["ai"]
+        filters.append({"activity_type": {"$nin": all_known}})
+
+    mongo_filter = {"$and": filters} if filters else {}
+    docs = await db["activities"].find(mongo_filter).sort("created_at", -1).to_list(5000)
+
+    label_map = {
+        "round_paused":       "Round paused",
+        "round_completed":    "Round completed",
+        "round_started":      "Round started",
+        "round_ended":        "Round ended",
+        "available_response": "Available response",
+        "ai_call_placed":     "AI call placed",
+        "ai_whatsapp_sent":   "AI WhatsApp sent",
+    }
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["#", "Activity Type", "Display Title", "Shift ID", "Outreach ID",
+                     "Round", "Available", "Declined", "No Reply", "Summary", "Created At"])
+
+    for i, d in enumerate(docs, 1):
+        meta    = d.get("metadata") or {}
+        atype   = d.get("activity_type", "")
+        label   = label_map.get(atype, atype.replace("_", " ").title())
+        created = d.get("created_at")
+        created_str = created.strftime("%Y-%m-%d %H:%M:%S") if created and hasattr(created, "strftime") else str(created or "")
+        writer.writerow([
+            i, atype, label,
+            str(d["shift_id"]) if d.get("shift_id") else "",
+            str(d["outreach_id"]) if d.get("outreach_id") else "",
+            meta.get("round_number", ""),
+            meta.get("available", ""),
+            meta.get("declined", ""),
+            meta.get("no_reply", ""),
+            meta.get("summary", ""),
+            created_str,
+        ])
+
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=activities_export.csv"}
+    )
+
 
 
 @router.post("/", summary="Create an activity log entry",
