@@ -1470,6 +1470,43 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             user_filter = {"$and": [user_filter, {"$or": _search_or}]}
         else:
             user_filter["$or"] = _search_or
+
+    # ── Fetch upstream available-staff-list for each shift ───────────────────
+    upstream_xn_ids:       set  = set()
+    upstream_distance_map: dict = {}
+    try:
+        import httpx as _httpx_m
+        _upstream_url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list"
+        _upstream_headers = {
+            "Api-Key":      settings.SHIFT_INTERNAL_API_KEY,
+            "Content-Type": "application/json",
+            "Accept":       "application/json",
+        }
+        async with _httpx_m.AsyncClient(timeout=30.0) as _uc:
+            for _shift_oid in shift_oids:
+                _shift_doc = await db["shifts"].find_one({"_id": _shift_oid}, {"shift_id": 1})
+                _xn_id = _shift_doc.get("shift_id") if _shift_doc else None
+                if not _xn_id:
+                    continue
+                try:
+                    _resp = await _uc.post(
+                        _upstream_url,
+                        json={"shift_id": _xn_id},
+                        headers=_upstream_headers
+                    )
+                    if _resp.status_code == 200:
+                        for _s in (_resp.json().get("data") or []):
+                            _uid = str(_s.get("id", ""))
+                            if _uid:
+                                upstream_xn_ids.add(_uid)
+                                upstream_distance_map[_uid] = _s.get("staff_shift_distance")
+                except Exception:
+                    pass
+    except Exception as _e:
+        logger.warning(f"[list-multi] upstream available-staff-list failed: {_e}")
+
+    if upstream_xn_ids:
+        user_filter["xn_user_id"] = {"$in": list(upstream_xn_ids)}
     users = await db["users"].find(
         user_filter,
         {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
@@ -1696,7 +1733,6 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "last_contacted":      last_contacted,
             "visa_hours_remaining": visa_hours_remaining,
             "work_permit_exemption": u.get("work_permit_exemption"),
-            "work_permit_exemption": u.get("work_permit_exemption"),
             "user_sub_types":       ([{"id": str(oid), "name": sub_type_name_map.get(str(oid), "")} for oid in (u.get("user_sub_type_oids") or []) if ObjectId.is_valid(str(oid))]) or ([{"id": None, "name": n} for n in (u.get("user_sub_type_ids") or []) if n]),
             "qqi_status_number":    u.get("qqi_status_number"),
             "consumed_hours":       u.get("consumed_hours"),
@@ -1710,7 +1746,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             "user_type":           user_type_name,
             "user_latitude":       ucoords[0] if ucoords else None,
             "user_longitude":      ucoords[1] if ucoords else None,
-            "distance_km":         distance_km,
+            "distance_km":         distance_km or upstream_distance_map.get(str(u.get("xn_user_id", ""))) or None,
             "excluded":            excluded,
             "exclusion_tags":      exclusion_tags,
             "requested":           requested,
@@ -1721,6 +1757,8 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     desig_filter: dict = {"status": "Enabled"}
     if shift_user_types:
         desig_filter["designation"] = {"$in": shift_user_types}
+    if upstream_xn_ids:
+        desig_filter["xn_user_id"] = {"$in": list(upstream_xn_ids)}
 
     desig_map: dict = {}
     async for u in db["users"].find(desig_filter, {"designation": 1, "user_type_id": 1}):
