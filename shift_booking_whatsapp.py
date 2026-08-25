@@ -454,13 +454,20 @@ def register_wati_webhook_routes(app):
             new_details = list(existing)
             group_id    = su.get("group_id")
 
-            # Find which shift was clicked using wa_sent_shifts + broadcast_link_id
+            # Find which shift was clicked using wa_sent_shifts + local_message_id or wati_id
             clicked_shift_id = None
             if _broadcast_link_id and su.get("wa_sent_shifts"):
                 for ws in su["wa_sent_shifts"]:
-                    if ws.get("wati_id") == _broadcast_link_id:
+                    if ws.get("local_message_id") == _broadcast_link_id or ws.get("wati_id") == _broadcast_link_id:
                         clicked_shift_id = ws.get("shift_id")
+                        log.info(f"[WATI WEBHOOK] Matched shift_id={clicked_shift_id} via wa_sent_shifts")
                         break
+
+            # If no wa_sent_shifts match — only update shifts not yet responded
+            if not clicked_shift_id:
+                log.info(f"[WATI WEBHOOK] No wa_sent_shifts match for broadcast_id={_broadcast_link_id} — skipping availability_details update")
+                # Don't update availability_details if we can't identify which shift
+                # Only update top-level availability
 
             if clicked_shift_id:
                 # Update only the clicked shift
@@ -470,20 +477,8 @@ def register_wati_webhook_routes(app):
                     already["responded_at"] = now_str
                 else:
                     new_details.append({"shift_id": clicked_shift_id, "availability": avail, "responded_at": now_str})
-            else:
-                # Fallback — update all shifts in group
-                if group_id:
-                    sg = app.db.shifts_group.find_one({"_id": group_id}, {"shift_ids": 1})
-                    for _sid in (sg.get("shift_ids") or []) if sg else []:
-                        _sid_str = str(_sid)
-                        already  = next((ad for ad in new_details if str(ad.get("shift_id","")) == _sid_str), None)
-                        if already:
-                            already["availability"] = avail
-                            already["responded_at"] = now_str
-                        else:
-                            new_details.append({"shift_id": _sid_str, "availability": avail, "responded_at": now_str})
-
-            _set_fields["availability_details"] = new_details
+                _set_fields["availability_details"] = new_details
+            # else: don't update availability_details — can't identify which shift was clicked
 
         result = db_col.update_one({"_id": su["_id"]}, update_op)
         log.info(f"[WATI WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")

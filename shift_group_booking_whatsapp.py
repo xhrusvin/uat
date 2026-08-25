@@ -42,12 +42,110 @@ def _format_day(date_str: str) -> str:
         return ""
 
 
-def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_index=0, shift_id="", delay=0):
-    """Send WhatsApp message via WATI API and save to shifts_group_users."""
+def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_index=0, shift_id="", delay=0):
+    """Send WhatsApp synchronously and return WATI response."""
     try:
         if delay:
             import time as _time
             _time.sleep(delay)
+
+        wati_url   = (os.getenv("WATI_API_ENDPOINT") or os.getenv("WATI_API_URL", "")).rstrip("/")
+        wati_token = os.getenv("WATI_ACCESS_TOKEN") or os.getenv("WATI_API_TOKEN", "")
+
+        if not wati_url or not wati_token:
+            log.error("[GROUP WA] WATI_API_ENDPOINT or WATI_ACCESS_TOKEN not set")
+            return None
+
+        phone_clean = phone.replace("+", "").replace(" ", "").replace("-", "").strip()
+        facility = shift_doc.get("client_name", "") or shift_doc.get("location", "")
+        county   = shift_doc.get("client_county", "") or ""
+        date_str = _format_date(shift_doc.get("date", ""))
+        day_str  = _format_day(shift_doc.get("date", ""))
+        start    = shift_doc.get("start_time", "")
+        end      = shift_doc.get("end_time", "")
+        _rate    = shift_doc.get("rate", "")
+        rate     = "REG" if not _rate or str(_rate) in ("0", "0.0", "") else str(_rate)
+
+        parameters = [
+            {"name": "name",     "value": first_name or "there"},
+            {"name": "facility", "value": facility or "the facility"},
+            {"name": "county",   "value": county or "Ireland"},
+            {"name": "day",      "value": day_str or "Today"},
+            {"name": "date",     "value": date_str or "TBC"},
+            {"name": "start",    "value": start or "TBC"},
+            {"name": "end",      "value": end or "TBC"},
+            {"name": "rate",     "value": rate or "REG"},
+        ]
+
+        payload = {
+            "template_name":  WATI_TEMPLATE_NAME,
+            "broadcast_name": f"group_shift_{str(su_id)}_{shift_index}",
+            "parameters":     parameters,
+        }
+        headers = {
+            "Authorization": f"Bearer {wati_token}",
+            "Content-Type":  "application/json",
+            "Accept":        "application/json",
+        }
+        _wati_send_url = (
+            f"{wati_url}/api/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
+            if "/api" not in wati_url else
+            f"{wati_url}/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
+        )
+
+        resp = _req.post(_wati_send_url, json=payload, headers=headers, timeout=20)
+        resp_data = resp.json() if resp.status_code == 200 else {}
+
+        log.info(f"[GROUP WA] shift_index={shift_index} status={resp.status_code} local_message_id={resp_data.get('local_message_id', '')}")
+
+        if resp.status_code == 200:
+            local_msg_id = resp_data.get("local_message_id", "")
+            wati_id      = resp_data.get("id", "")
+            # Update base fields on first send only
+            if shift_index == 0:
+                app.db.shifts_group_users.update_one(
+                    {"_id": su_id},
+                    {"$set": {
+                        "wa_sent":            1,
+                        "wa_sent_at":         datetime.utcnow(),
+                        "wa_message_id":      wati_id,
+                        "wa_conversation_id": resp_data.get("conversationId", ""),
+                        "wa_phone":           phone_clean,
+                        "availability":       8,
+                    }}
+                )
+            else:
+                app.db.shifts_group_users.update_one(
+                    {"_id": su_id},
+                    {"$set": {"wa_sent": 1, "availability": 8}}
+                )
+            # Push to availability_details with local_message_id for per-shift tracking
+            app.db.shifts_group_users.update_one(
+                {"_id": su_id},
+                {"$push": {
+                    "availability_details": {
+                        "shift_id":         shift_id,
+                        "shift_index":      shift_index,
+                        "local_message_id": local_msg_id,
+                        "wati_id":          wati_id,
+                        "availability":     8,
+                        "responded_at":     None,
+                        "sent_at":          datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                }}
+            )
+            log.info(f"[GROUP WA] ✓ Sent shift_index={shift_index} local_message_id={local_msg_id}")
+            return resp_data
+        else:
+            log.error(f"[GROUP WA] ✗ Failed shift_index={shift_index}: {resp.status_code} {resp.text[:200]}")
+            app.db.shifts_group_users.update_one(
+                {"_id": su_id},
+                {"$set": {"wa_error": f"shift_{shift_index}: {resp.status_code}: {resp.text[:200]}"}}
+            )
+            return None
+    except Exception as e:
+        log.error(f"[GROUP WA] ✗ Exception shift_index={shift_index}: {e}")
+        return None
         wati_url   = (os.getenv("WATI_API_ENDPOINT") or os.getenv("WATI_API_URL", "")).rstrip("/")
         wati_token = os.getenv("WATI_ACCESS_TOKEN") or os.getenv("WATI_API_TOKEN", "")
 
@@ -285,23 +383,19 @@ def register_shift_group_booking_whatsapp_routes(app):
 
             log.info(f"[GROUP WA] Sending {len(shift_docs)} messages to {phone} for su_id={su_id}")
 
-            # Mark processed + availability=7 (Not Sent)
-            result = app.db.shifts_group_users.update_one(
-                {"_id": su_id},
-                {"$set": {"call_processed": 1, "call_processed_at": datetime.utcnow(),
-                           "availability": 7, "updated_at": datetime.utcnow()}}
-            )
-            if result.modified_count == 0:
-                continue
+            def _send_all_shifts(app_obj, shift_docs_list, shift_id_list_, phone_, first_name_, su_id_):
+                for _i, (_sdoc, _sid) in enumerate(zip(shift_docs_list, shift_id_list_)):
+                    if _i > 0:
+                        import time as _t
+                        _t.sleep(3)
+                    _send_wati_whatsapp_sync(app_obj, _sdoc, phone_, first_name_, su_id_, _i, _sid)
 
-            for _i, (_sdoc, _shift_id_str) in enumerate(zip(shift_docs, shift_id_list)):
-                threading.Thread(
-                    target=_send_wati_whatsapp,
-                    args=(current_app._get_current_object(), record, _sdoc,
-                          phone, first_name, su_id, _i, _shift_id_str),
-                    kwargs={"delay": _i * 2},
-                    daemon=True
-                ).start()
+            threading.Thread(
+                target=_send_all_shifts,
+                args=(current_app._get_current_object(), shift_docs, shift_id_list,
+                      phone, first_name, su_id),
+                daemon=True
+            ).start()
 
 
             triggered.append({
