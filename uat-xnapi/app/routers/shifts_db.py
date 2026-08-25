@@ -854,11 +854,10 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     results = deduped
 
     # Aggregate outreach counts (across all shifts, not just filtered)
-    automation_shift_ids = await db["outreach"].distinct("shift_id", {"outreach_status": {"$gt": 0}})
-    automation_count     = len(set(str(s) for s in automation_shift_ids))
-    total_shifts         = await db["shifts"].count_documents({})
     outreach_active      = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
     outreach_completed   = await db["outreach"].count_documents({"outreach_status": 10})
+    automation_count     = outreach_active + outreach_completed
+    total_shifts         = await db["shifts"].count_documents({})
     to_be_filled_count   = await db["shifts"].count_documents({"upstream_status": "To Be Filled"})
 
     # Apply pagination to combined results (regular + group outreach)
