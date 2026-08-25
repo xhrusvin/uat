@@ -65,15 +65,15 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id):
         rate     = "REG" if not _rate or str(_rate) in ("0", "0.0", "") else str(_rate)
 
         parameters = [
-            {"name": "county",   "value": county or "your area"},
-            {"name": "name",     "value": first_name},
-            {"name": "facility", "value": facility},
-            {"name": "unit",     "value": unit or "—"},
-            {"name": "date",     "value": date_str},
-            {"name": "start",    "value": start},
-            {"name": "end",      "value": end},
-            {"name": "role",     "value": shift_doc.get("user_type", "") or "—"},
-            {"name": "rate",     "value": rate},
+            {"name": "county",   "value": county or "Ireland"},
+            {"name": "name",     "value": first_name or "there"},
+            {"name": "facility", "value": facility or "the facility"},
+            {"name": "unit",     "value": unit or "General"},
+            {"name": "date",     "value": date_str or "TBC"},
+            {"name": "start",    "value": start or "TBC"},
+            {"name": "end",      "value": end or "TBC"},
+            {"name": "role",     "value": shift_doc.get("user_type", "") or "Nurse"},
+            {"name": "rate",     "value": rate or "REG"},
         ]
 
         payload = {
@@ -172,7 +172,7 @@ def _get_shift_doc(app, record):
 
 def register_shift_group_booking_whatsapp_routes(app):
 
-    @app.route('/shift_group_booking_whatsapp', methods=['GET'])
+    @app.route('/shift_group_booking_whatsapp', methods=['GET'], endpoint='shift_group_booking_whatsapp_route')
     def shift_group_booking_whatsapp():
         allowed, server_time = is_within_call_window()
         user_id_param = request.args.get('user_id')
@@ -260,7 +260,7 @@ def register_shift_group_booking_whatsapp_routes(app):
             "data":         triggered,
         }), 200
 
-    @app.route('/debug-shift-group-booking-whatsapp')
+    @app.route('/debug-shift-group-booking-whatsapp', endpoint='debug_shift_group_booking_whatsapp_route')
     def debug_shift_group_booking_whatsapp():
         allowed, now = is_within_call_window()
         pending = app.db.shifts_group_users.count_documents(
