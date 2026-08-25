@@ -42,7 +42,7 @@ def _format_day(date_str: str) -> str:
         return ""
 
 
-def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_index=0):
+def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_index=0, shift_id=""):
     """Send WhatsApp message via WATI API and save to shifts_group_users."""
     try:
         wati_url   = (os.getenv("WATI_API_ENDPOINT") or os.getenv("WATI_API_URL", "")).rstrip("/")
@@ -98,8 +98,9 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_
         resp = _req.post(_wati_send_url, json=payload, headers=headers, timeout=20)
 
         if resp.status_code == 200:
-            log.info(f"[GROUP WA] ✓ Sent to {phone_clean}")
+            log.info(f"[GROUP WA] ✓ Sent to {phone_clean} shift_index={shift_index}")
             resp_data = resp.json()
+            # Push per-shift record to wa_sent_shifts array
             app.db.shifts_group_users.update_one(
                 {"_id": su_id},
                 {"$set": {
@@ -109,6 +110,15 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_
                     "wa_conversation_id": resp_data.get("conversationId", ""),
                     "wa_phone":           phone_clean,
                     "availability":       8,
+                },
+                "$push": {
+                    "wa_sent_shifts": {
+                        "shift_id":       shift_id,
+                        "shift_index":    shift_index,
+                        "broadcast_name": f"group_shift_{str(su_id)}_{shift_index}",
+                        "wati_id":        resp_data.get("id", ""),
+                        "sent_at":        datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    }
                 }}
             )
         else:
@@ -231,7 +241,8 @@ def register_shift_group_booking_whatsapp_routes(app):
 
             # Build shift_docs — one per shift in group
             group_id_rec = record.get("group_id")
-            shift_docs = []
+            shift_docs    = []
+            shift_id_list = []
             if group_id_rec:
                 sg = app.db.shifts_group.find_one({"_id": group_id_rec}, {"shift_ids": 1})
                 if sg and sg.get("shift_ids"):
@@ -257,8 +268,10 @@ def register_shift_group_booking_whatsapp_routes(app):
                                 "user_type":     _s.get("user_type", ""),
                                 "rate":          _s.get("rate", ""),
                             })
+                            shift_id_list.append(str(_sid))
             if not shift_docs:
-                shift_docs = [shift_doc]
+                shift_docs    = [shift_doc]
+                shift_id_list = [str(record.get("group_id", ""))]
 
             # Mark processed + availability=7 (Not Sent)
             result = app.db.shifts_group_users.update_one(
@@ -269,11 +282,11 @@ def register_shift_group_booking_whatsapp_routes(app):
             if result.modified_count == 0:
                 continue
 
-            for _i, _sdoc in enumerate(shift_docs):
+            for _i, (_sdoc, _shift_id_str) in enumerate(zip(shift_docs, shift_id_list)):
                 threading.Thread(
                     target=_send_wati_whatsapp,
                     args=(current_app._get_current_object(), record, _sdoc,
-                          phone, first_name, su_id, _i),
+                          phone, first_name, su_id, _i, _shift_id_str),
                     daemon=True
                 ).start()
 

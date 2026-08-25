@@ -314,6 +314,18 @@ def register_wati_webhook_routes(app):
         # WATI sends button replies at top level (not nested in waMessage)
         btn_reply   = data.get("buttonReply") or {}
         btn_text    = btn_reply.get("text", "") or btn_reply.get("title", "")
+
+        # Extract shift_index from broadcast payload — e.g. group_shift_{su_id}_1
+        _broadcast_link_id = ""
+        _shift_index       = None
+        try:
+            import json as _json
+            _payload_str = btn_reply.get("payload", "") or ""
+            if _payload_str:
+                _p = _json.loads(_payload_str) if isinstance(_payload_str, str) else _payload_str
+                _broadcast_link_id = str(_p.get("BroadcastLinkId", ""))
+        except Exception:
+            pass
         text        = data.get("text") or ""
         # Also check nested waMessage
         wa_message  = data.get("waMessage") or {}
@@ -434,15 +446,33 @@ def register_wati_webhook_routes(app):
         }
         update_op = {"$set": _set_fields}
 
-        # For group outreach — also push to availability_details per shift
+        # For group outreach — update only the specific shift from broadcast_link_id
         if collection == "shifts_group_users":
-            existing = su.get("availability_details") or []
-            group_id = su.get("group_id")
-            if group_id:
-                sg = app.db.shifts_group.find_one({"_id": group_id}, {"shift_ids": 1})
-                if sg and sg.get("shift_ids"):
-                    new_details = list(existing)
-                    for _sid in sg["shift_ids"]:
+            existing    = su.get("availability_details") or []
+            new_details = list(existing)
+            group_id    = su.get("group_id")
+
+            # Find which shift was clicked using wa_sent_shifts + broadcast_link_id
+            clicked_shift_id = None
+            if _broadcast_link_id and su.get("wa_sent_shifts"):
+                for ws in su["wa_sent_shifts"]:
+                    if ws.get("wati_id") == _broadcast_link_id:
+                        clicked_shift_id = ws.get("shift_id")
+                        break
+
+            if clicked_shift_id:
+                # Update only the clicked shift
+                already = next((ad for ad in new_details if str(ad.get("shift_id","")) == clicked_shift_id), None)
+                if already:
+                    already["availability"] = avail
+                    already["responded_at"] = now_str
+                else:
+                    new_details.append({"shift_id": clicked_shift_id, "availability": avail, "responded_at": now_str})
+            else:
+                # Fallback — update all shifts in group
+                if group_id:
+                    sg = app.db.shifts_group.find_one({"_id": group_id}, {"shift_ids": 1})
+                    for _sid in (sg.get("shift_ids") or []) if sg else []:
                         _sid_str = str(_sid)
                         already  = next((ad for ad in new_details if str(ad.get("shift_id","")) == _sid_str), None)
                         if already:
@@ -450,7 +480,8 @@ def register_wati_webhook_routes(app):
                             already["responded_at"] = now_str
                         else:
                             new_details.append({"shift_id": _sid_str, "availability": avail, "responded_at": now_str})
-                    _set_fields["availability_details"] = new_details
+
+            _set_fields["availability_details"] = new_details
 
         result = db_col.update_one({"_id": su["_id"]}, update_op)
         log.info(f"[WATI WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
