@@ -42,9 +42,12 @@ def _format_day(date_str: str) -> str:
         return ""
 
 
-def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_index=0, shift_id=""):
+def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_index=0, shift_id="", delay=0):
     """Send WhatsApp message via WATI API and save to shifts_group_users."""
     try:
+        if delay:
+            import time as _time
+            _time.sleep(delay)
         wati_url   = (os.getenv("WATI_API_ENDPOINT") or os.getenv("WATI_API_URL", "")).rstrip("/")
         wati_token = os.getenv("WATI_ACCESS_TOKEN") or os.getenv("WATI_API_TOKEN", "")
 
@@ -292,13 +295,11 @@ def register_shift_group_booking_whatsapp_routes(app):
                 continue
 
             for _i, (_sdoc, _shift_id_str) in enumerate(zip(shift_docs, shift_id_list)):
-                if _i > 0:
-                    import time as _time
-                    _time.sleep(2)  # 2s delay between messages to avoid WATI dedup
                 threading.Thread(
                     target=_send_wati_whatsapp,
                     args=(current_app._get_current_object(), record, _sdoc,
                           phone, first_name, su_id, _i, _shift_id_str),
+                    kwargs={"delay": _i * 2},
                     daemon=True
                 ).start()
 
