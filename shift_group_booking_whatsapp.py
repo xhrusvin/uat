@@ -42,7 +42,7 @@ def _format_day(date_str: str) -> str:
         return ""
 
 
-def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id):
+def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, shift_index=0):
     """Send WhatsApp message via WATI API and save to shifts_group_users."""
     try:
         wati_url   = (os.getenv("WATI_API_ENDPOINT") or os.getenv("WATI_API_URL", "")).rstrip("/")
@@ -65,8 +65,6 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id):
         rate     = "REG" if not _rate or str(_rate) in ("0", "0.0", "") else str(_rate)
 
         # Template: shift_call_new
-        # Hi {{name}}, It's Alice from Xpress Health.
-        # {{Facility}}, {{County}} | {{Day}}, {{Date}} | {{Start}} – {{End}} | {{Rate}}/hour
         parameters = [
             {"name": "name",     "value": first_name or "there"},
             {"name": "facility", "value": facility or "the facility"},
@@ -78,9 +76,10 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id):
             {"name": "rate",     "value": rate or "REG"},
         ]
 
+        # Unique broadcast name per shift to avoid WATI deduplication
         payload = {
             "template_name":  WATI_TEMPLATE_NAME,
-            "broadcast_name": f"group_shift_{str(su_id)}",
+            "broadcast_name": f"group_shift_{str(su_id)}_{shift_index}",
             "parameters":     parameters,
         }
 
@@ -239,12 +238,14 @@ def register_shift_group_booking_whatsapp_routes(app):
             if result.modified_count == 0:
                 continue
 
-            threading.Thread(
-                target=_send_wati_whatsapp,
-                args=(current_app._get_current_object(), record, shift_doc,
-                      phone, first_name, su_id),
-                daemon=True
-            ).start()
+            for _i, shift_doc in enumerate(shift_docs):
+                threading.Thread(
+                    target=_send_wati_whatsapp,
+                    args=(current_app._get_current_object(), record, shift_doc,
+                          phone, first_name, su_id, _i),
+                    daemon=True
+                ).start()
+
 
             triggered.append({
                 "su_id":      str(su_id),
