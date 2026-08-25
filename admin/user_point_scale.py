@@ -22,6 +22,7 @@ Endpoints
 GET/POST  /admin/users/<user_id>/point-scale/generate   -> build + cache the assessment
 GET       /admin/users/<user_id>/point-scale/preview    -> inline PDF (?refresh=1 to rebuild)
 GET       /admin/users/<user_id>/point-scale/download    -> PDF as attachment
+POST      /admin/users/<user_id>/point-scale/upload      -> push the PDF to the HSE document API
 GET       /admin/users/<user_id>/point-scale/json        -> cached JSON (debug)
 GET       /admin/users/<user_id>/point-scale/documents   -> raw XN Portal document list (debug)
 
@@ -36,6 +37,11 @@ LIVE_STAFF_URL       base url of the XN Portal API
 XN_PORTAL_API_KEY    Api-Key header
 XN_APP_COUNTRY       X-App-Country header
 GEMINI_API_KEY       Gemini key
+
+Upload env (see admin/hse_document_upload.py)
+---------------------------------------------
+HSE_UPLOAD_URL       base url of the admin API (falls back to LIVE_STAFF_URL)
+HSE_UPLOAD_API_KEY   Api-Key header (falls back to XN_PORTAL_API_KEY)
 """
 
 from flask import request, jsonify, Response
@@ -49,6 +55,7 @@ import re
 from database import db
 from . import admin_bp
 from admin.views import admin_required
+from admin.hse_document_upload import upload_hse_document, HSE_POINT_SCALE
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -870,6 +877,18 @@ def _generate_for_user(user_id, force=False, assessment_date=None):
     }, 200
 
 
+def _staff_id_for(user):
+    """
+    The HSE upload API validates staff_id against the user service, so it
+    wants the staff/XN id — not the local Mongo _id. Prefer the explicit
+    fields, fall back to the Mongo id as a last resort.
+    """
+    for key in ('staff_id', 'xn_user_id', 'xn_staff_id', 'user_service_id'):
+        if _v(user.get(key)):
+            return _v(user.get(key))
+    return _v(user.get('_id'))
+
+
 def _pdf_filename(user_block, fallback='point_scale'):
     name = _v(user_block.get('name')) or fallback
     safe = re.sub(r'[^A-Za-z0-9]+', '_', name).strip('_') or fallback
@@ -985,3 +1004,75 @@ def user_point_scale_documents(user_id):
              if (d.get('document_type_name') or '').strip().lower() == 'cv'),
             None),
     })
+
+
+@admin_bp.route('/users/<user_id>/point-scale/upload', methods=['POST'])
+@admin_required
+def user_point_scale_upload(user_id):
+    """
+    Generate the Verification of Service PDF and push it to the HSE document
+    upload API as hse_document_type = point_scale_document.
+
+    ?refresh=1                   rebuild before uploading
+    ?assessment_date=YYYY-MM-DD  override the assessment date
+    ?staff_id=...                override the staff id sent to the API
+    """
+    try:
+        oid = _oid(user_id)
+        if oid is None:
+            return jsonify({"success": False, "error": "Invalid user id"}), 400
+
+        user = _users_col().find_one({"_id": oid})
+        if not user:
+            return jsonify({"success": False, "error": "User not found"}), 404
+
+        force = request.args.get('refresh') in ('1', 'true', 'yes')
+        adate = _parse_assessment_date(request.args.get('assessment_date'))
+        payload, status = _generate_for_user(user_id, force=force,
+                                             assessment_date=adate)
+        if status != 200 or not payload.get('success'):
+            return jsonify(payload), status
+
+        body = request.get_json(silent=True) or {}
+        staff_id = (_v(request.args.get('staff_id'))
+                    or _v(body.get('staff_id'))
+                    or _staff_id_for(user))
+        if not staff_id:
+            return jsonify({"success": False,
+                            "error": "No staff id available for this user"}), 400
+
+        filename  = _pdf_filename(payload['user'], user_id)
+        pdf_bytes = _build_point_scale_pdf(payload['assessment'], payload['user'])
+
+        ok, result = upload_hse_document(pdf_bytes, filename, staff_id,
+                                         HSE_POINT_SCALE)
+        if not ok:
+            return jsonify({
+                "success":  False,
+                "user_id":  str(oid),
+                "staff_id": staff_id,
+                "filename": filename,
+                "upload":   result,
+            }), result.get('status_code') or 502
+
+        _point_scales_col().update_one(
+            {"user_id": str(oid)},
+            {"$set": {
+                "uploaded_at":       datetime.utcnow(),
+                "uploaded_staff_id": staff_id,
+                "upload_response":   result.get('data') or {},
+                "hse_document_type": HSE_POINT_SCALE,
+            }},
+            upsert=True,
+        )
+
+        return jsonify({
+            "success":           True,
+            "user_id":           str(oid),
+            "staff_id":          staff_id,
+            "filename":          filename,
+            "hse_document_type": HSE_POINT_SCALE,
+            "upload":            result,
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500

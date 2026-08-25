@@ -20,6 +20,7 @@ Endpoints
 GET/POST  /admin/users/<user_id>/cv/generate     -> build + cache the CV JSON
 GET       /admin/users/<user_id>/cv/preview      -> inline PDF (?refresh=1 to rebuild)
 GET       /admin/users/<user_id>/cv/download     -> PDF as attachment
+POST      /admin/users/<user_id>/cv/upload       -> push the PDF to the HSE document API
 GET       /admin/users/<user_id>/cv/json         -> cached JSON (debug)
 GET       /admin/users/<user_id>/cv/documents    -> raw XN Portal document list (debug)
 
@@ -30,6 +31,11 @@ XN_PORTAL_API_KEY    Api-Key header
 XN_APP_COUNTRY       X-App-Country header
 GEMINI_API_KEY       Gemini key
 CRON_SECRET          optional, protects the unauthenticated variants
+
+Upload env (see admin/hse_document_upload.py)
+---------------------------------------------
+HSE_UPLOAD_URL       base url of the admin API (falls back to LIVE_STAFF_URL)
+HSE_UPLOAD_API_KEY   Api-Key header (falls back to XN_PORTAL_API_KEY)
 """
 
 from flask import request, jsonify, Response
@@ -43,6 +49,7 @@ import re
 from database import db
 from . import admin_bp
 from admin.views import admin_required
+from admin.hse_document_upload import upload_hse_document, HSE_CV
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -741,6 +748,18 @@ def _generate_for_user(user_id, force=False):
     }, 200
 
 
+def _staff_id_for(user):
+    """
+    The HSE upload API validates staff_id against the user service, so it
+    wants the staff/XN id — not the local Mongo _id. Prefer the explicit
+    fields, fall back to the Mongo id as a last resort.
+    """
+    for key in ('staff_id', 'xn_user_id', 'xn_staff_id', 'user_service_id'):
+        if _v(user.get(key)):
+            return _v(user.get(key))
+    return _v(user.get('_id'))
+
+
 def _cv_filename(cv, fallback='cv'):
     name = _v((cv.get('personal_details') or {}).get('full_name')) or fallback
     safe = re.sub(r'[^A-Za-z0-9]+', '_', name).strip('_') or fallback
@@ -853,3 +872,71 @@ def user_cv_documents(user_id):
              if (d.get('document_type_name') or '').strip().lower() == 'cv'),
             None),
     })
+
+
+@admin_bp.route('/users/<user_id>/cv/upload', methods=['POST'])
+@admin_required
+def user_cv_upload(user_id):
+    """
+    Generate the CV PDF and push it to the HSE document upload API as
+    hse_document_type = hse_cv.
+
+    ?refresh=1    rebuild before uploading
+    ?staff_id=... override the staff id sent to the API
+    """
+    try:
+        oid = _oid(user_id)
+        if oid is None:
+            return jsonify({"success": False, "error": "Invalid user id"}), 400
+
+        user = _users_col().find_one({"_id": oid})
+        if not user:
+            return jsonify({"success": False, "error": "User not found"}), 404
+
+        force = request.args.get('refresh') in ('1', 'true', 'yes')
+        payload, status = _generate_for_user(user_id, force=force)
+        if status != 200 or not payload.get('success'):
+            return jsonify(payload), status
+
+        body = request.get_json(silent=True) or {}
+        staff_id = (_v(request.args.get('staff_id'))
+                    or _v(body.get('staff_id'))
+                    or _staff_id_for(user))
+        if not staff_id:
+            return jsonify({"success": False,
+                            "error": "No staff id available for this user"}), 400
+
+        filename  = _cv_filename(payload['cv'], user_id)
+        pdf_bytes = _build_cv_pdf(payload['cv'])
+
+        ok, result = upload_hse_document(pdf_bytes, filename, staff_id, HSE_CV)
+        if not ok:
+            return jsonify({
+                "success":  False,
+                "user_id":  str(oid),
+                "staff_id": staff_id,
+                "filename": filename,
+                "upload":   result,
+            }), result.get('status_code') or 502
+
+        _user_cvs_col().update_one(
+            {"user_id": str(oid)},
+            {"$set": {
+                "uploaded_at":       datetime.utcnow(),
+                "uploaded_staff_id": staff_id,
+                "upload_response":   result.get('data') or {},
+                "hse_document_type": HSE_CV,
+            }},
+            upsert=True,
+        )
+
+        return jsonify({
+            "success":           True,
+            "user_id":           str(oid),
+            "staff_id":          staff_id,
+            "filename":          filename,
+            "hse_document_type": HSE_CV,
+            "upload":            result,
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
