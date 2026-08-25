@@ -399,6 +399,7 @@ def register_wati_webhook_routes(app):
         # Check shifts_group_users FIRST (most recent group outreach takes priority)
         su = app.db.shifts_group_users.find_one(
             {"wa_phone": phone, "wa_sent": 1},
+            {"availability_details": 1, "group_id": 1, "user_id": 1, "wa_sent_shifts": 1},
             sort=[("wa_sent_at", -1)]
         )
         if su:
@@ -415,6 +416,7 @@ def register_wati_webhook_routes(app):
         if not su and user:
             su = app.db.shifts_group_users.find_one(
                 {"user_id": user["_id"], "wa_sent": 1},
+                {"availability_details": 1, "group_id": 1, "user_id": 1, "wa_sent_shifts": 1},
                 sort=[("wa_sent_at", -1)]
             )
             if su:
