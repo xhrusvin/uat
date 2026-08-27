@@ -92,7 +92,7 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
         }
 
         # Build URL — if endpoint already has /api in it, use as-is
-        _wati_send_url = f"{wati_url}/api/v1/sendTemplateMessage?whatsappNumber={phone_clean}" if "/api" not in wati_url else f"{wati_url}/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
+        _wati_send_url = f"{wati_url}/api/v2/sendTemplateMessage?whatsappNumber={phone_clean}" if "/api" not in wati_url else f"{wati_url}/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
         resp = _req.post(
             _wati_send_url,
             json=payload,
@@ -448,39 +448,28 @@ def register_wati_webhook_routes(app):
         }
         update_op = {"$set": _set_fields}
 
-        # For group outreach — update only the specific shift from broadcast_link_id
+        # For group outreach — find specific shift by localMessageId in availability_details
         if collection == "shifts_group_users":
             existing    = su.get("availability_details") or []
             new_details = list(existing)
-            group_id    = su.get("group_id")
-
-            # Find which shift was clicked using wa_sent_shifts + local_message_id or wati_id
             clicked_shift_id = None
-            if _broadcast_link_id and su.get("wa_sent_shifts"):
-                for ws in su["wa_sent_shifts"]:
-                    if ws.get("local_message_id") == _broadcast_link_id or ws.get("wati_id") == _broadcast_link_id:
-                        clicked_shift_id = ws.get("shift_id")
-                        log.info(f"[WATI WEBHOOK] Matched shift_id={clicked_shift_id} via wa_sent_shifts")
-                        break
-
-            # If no wa_sent_shifts match — only update shifts not yet responded
-            if not clicked_shift_id:
-                log.info(f"[WATI WEBHOOK] No wa_sent_shifts match for broadcast_id={_broadcast_link_id} — skipping availability_details update")
-                # Don't update availability_details if we can't identify which shift
-                # Only update top-level availability
-
+            for ad in existing:
+                ad_local_id = ad.get("local_message_id") or ad.get("localMessageId", "")
+                if ad_local_id and ad_local_id == _broadcast_link_id:
+                    clicked_shift_id = ad.get("shift_id")
+                    log.info(f"[WATI WEBHOOK] Matched shift_id={clicked_shift_id} via localMessageId={_broadcast_link_id}")
+                    break
             if clicked_shift_id:
-                # Update only the clicked shift
-                already = next((ad for ad in new_details if str(ad.get("shift_id","")) == clicked_shift_id), None)
-                if already:
-                    already["availability"] = avail
-                    already["responded_at"] = now_str
-                else:
-                    new_details.append({"shift_id": clicked_shift_id, "availability": avail, "responded_at": now_str})
+                for ad in new_details:
+                    if str(ad.get("shift_id","")) == clicked_shift_id:
+                        ad["availability"] = avail
+                        ad["responded_at"] = now_str
+                        break
                 _set_fields["availability_details"] = new_details
-            # else: don't update availability_details — can't identify which shift was clicked
+                log.info(f"[WATI WEBHOOK] Updated shift_id={clicked_shift_id} → availability={avail}")
+            else:
+                log.info(f"[WATI WEBHOOK] No localMessageId match for {_broadcast_link_id} — skipping availability_details")
 
-        result = db_col.update_one({"_id": su["_id"]}, update_op)
         log.info(f"[WATI WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
         return {"success": True, "availability": avail, "collection": collection, "su_id": str(su["_id"])}, 200
 

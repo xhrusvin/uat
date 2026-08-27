@@ -87,20 +87,18 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
             "Content-Type":  "application/json",
             "Accept":        "application/json",
         }
-        _wati_send_url = (
-            f"{wati_url}/api/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
-            if "/api" not in wati_url else
-            f"{wati_url}/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
-        )
+        _wati_send_url = f"{wati_url}/api/v2/sendTemplateMessage?whatsappNumber={phone_clean}"
 
         resp = _req.post(_wati_send_url, json=payload, headers=headers, timeout=20)
         resp_data = resp.json() if resp.status_code == 200 else {}
-
-        log.info(f"[GROUP WA] shift_index={shift_index} status={resp.status_code} local_message_id={resp_data.get('local_message_id', '')}")
+        _inner    = resp_data.get("data") or resp_data
+        _receiver = (_inner.get("receivers") or [{}])[0] if _inner.get("receivers") else {}
+        local_msg_id_log = _receiver.get("localMessageId", "") or resp_data.get("local_message_id", "")
+        log.info(f"[GROUP WA] shift_index={shift_index} status={resp.status_code} localMessageId={local_msg_id_log}")
 
         if resp.status_code == 200:
-            local_msg_id = resp_data.get("local_message_id", "")
-            wati_id      = resp_data.get("id", "")
+            local_msg_id = _receiver.get("localMessageId", "")
+            wati_id      = ""
             # Update base fields on first send only
             if shift_index == 0:
                 app.db.shifts_group_users.update_one(
@@ -119,18 +117,17 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
                     {"_id": su_id},
                     {"$set": {"wa_sent": 1, "availability": 8}}
                 )
-            # Push to availability_details with local_message_id for per-shift tracking
+            # Push to availability_details with localMessageId for per-shift tracking
             app.db.shifts_group_users.update_one(
                 {"_id": su_id},
                 {"$push": {
                     "availability_details": {
-                        "shift_id":         shift_id,
-                        "shift_index":      shift_index,
-                        "local_message_id": local_msg_id,
-                        "wati_id":          wati_id,
-                        "availability":     8,
-                        "responded_at":     None,
-                        "sent_at":          datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                        "shift_id":       shift_id,
+                        "shift_index":    shift_index,
+                        "localMessageId": local_msg_id,
+                        "availability":   8,
+                        "responded_at":   None,
+                        "sent_at":        datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                     }
                 }}
             )
@@ -190,11 +187,7 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
             "Accept":        "application/json",
         }
 
-        _wati_send_url = (
-            f"{wati_url}/api/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
-            if "/api" not in wati_url else
-            f"{wati_url}/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
-        )
+        _wati_send_url = f"{wati_url}/api/v2/sendTemplateMessage?whatsappNumber={phone_clean}"
 
         resp = _req.post(_wati_send_url, json=payload, headers=headers, timeout=20)
 
