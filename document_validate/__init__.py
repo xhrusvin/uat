@@ -15,3 +15,5 @@ from . import staff_details
 from . import shift_updated
 from . import client_updated
 from . import document_status
+from . import human_validation      
+from . import validation_accuracy   
