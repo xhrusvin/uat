@@ -159,8 +159,11 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
         msg["Subject"]    = f"Shift Availability Request – Co. {_county_s}" if _county_s else f"Shift Availability Request – {shift_doc.get('client_name','')}"
         msg["From"]       = f"{os.getenv('SHIFT_SMTP_FROM_NAME','XpressHealth')} <{os.getenv('SHIFT_FROM_EMAIL','')}>"
         msg["X-Shift-Id"] = su_id_str  # Track back to shifts_users._id
-        reply_domain = os.getenv("SHIFT_REPLY_DOMAIN", "uat.expresshealth.ie")
-        msg["Reply-To"] = f"reply+{su_id_str}@{reply_domain}"
+        _reply_to = os.getenv("SHIFT_REPLY_TO_EMAIL", "")
+        if not _reply_to:
+            reply_domain = os.getenv("SHIFT_REPLY_DOMAIN", "uat.expresshealth.ie")
+            _reply_to = f"reply+{su_id_str}@{reply_domain}"
+        msg["Reply-To"] = _reply_to
         msg["To"]      = to_email
 
         cc  = os.getenv("SHIFT_CC_EMAIL",  "")
