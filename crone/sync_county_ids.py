@@ -4,6 +4,9 @@ sync_county_ids.py
 Finds all users missing county_id and syncs them via /xnapi/recruitments/detail
 Usage: python3 sync_county_ids.py
 Cron:  0 3 * * * python3 /home/dev_xpresshealth/uat/sync_county_ids.py >> /home/dev_xpresshealth/uat/sync_county_ids.log 2>&1
+SYNC_FROM=0 SYNC_TO=200 python3 sync_county_ids.py
+SYNC_FROM=200 SYNC_TO=400 python3 sync_county_ids.py
+SYNC_FROM=400 SYNC_TO=600 python3 sync_county_ids.py
 """
 import os
 import time
@@ -20,7 +23,8 @@ MONGO_DB     = os.getenv("MONGODB_DB", "xpress_health")
 API_BASE_URL = os.getenv("APP_BASE_URL", "https://uat.expresshealth.ie")
 API_KEY      = os.getenv("API_KEY", "xh-uat-9f4a2c8b1d6e3f7a0b5c9d2e4f8a1b3c")
 BATCH_DELAY  = float(os.getenv("SYNC_DELAY", "0.3"))  # seconds between calls
-BATCH_SIZE   = int(os.getenv("SYNC_BATCH", "200"))     # max users per run
+BATCH_FROM   = int(os.getenv("SYNC_FROM", "200"))      # start offset
+BATCH_TO     = int(os.getenv("SYNC_TO", "400"))        # end offset
 
 def run():
     client = MongoClient(MONGO_URI)
@@ -33,9 +37,11 @@ def run():
         "status": "Enabled",
     }
     total = db["users"].count_documents(query)
-    log.info(f"Found {total} users missing county_id — processing up to {BATCH_SIZE}")
+    log.info(f"Found {total} users missing county_id — processing range {BATCH_FROM}–{BATCH_TO}")
 
-    users = list(db["users"].find(query, {"_id": 1, "xn_user_id": 1, "first_name": 1, "last_name": 1}).limit(BATCH_SIZE))
+    batch_size = BATCH_TO - BATCH_FROM
+    log.info(f"Processing range {BATCH_FROM}–{BATCH_TO} ({batch_size} users)")
+    users = list(db["users"].find(query, {"_id": 1, "xn_user_id": 1, "first_name": 1, "last_name": 1}).skip(BATCH_FROM).limit(batch_size))
 
     import requests as _req
 
