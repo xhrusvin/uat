@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI validation accuracy</title>
+<style>
+  :root{
+    --ink:#16202b;
+    --ink-2:#4a5b6c;
+    --ink-3:#7d8d9c;
+    --surface:#ffffff;
+    --canvas:#e9eef2;
+    --line:#d3dde4;
+    --line-soft:#e6edf1;
+    --agree:#0f7a6e;        /* AI and human agreed */
+    --lenient:#b1432b;      /* AI passed, human rejected */
+    --strict:#4a5bb8;       /* AI blocked, human approved */
+    --warn-bg:#fdf3e7;
+    --radius:3px;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--canvas);color:var(--ink);
+    font-family:var(--sans);font-size:14px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1320px;margin:0 auto;padding:28px 20px 64px}
+
+  /* ---------- header ---------- */
+  header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px}
+  h1{
+    margin:0;font-size:21px;font-weight:600;letter-spacing:-.015em;
+  }
+  .eyebrow{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink-3);margin-bottom:6px;
+  }
+  .sub{color:var(--ink-2);font-size:13px;margin-top:4px;max-width:62ch}
+  .head-actions{display:flex;align-items:center;gap:10px}
+  .stamp{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+
+  /* ---------- controls ---------- */
+  button,input,select{font-family:inherit;font-size:13px;color:var(--ink)}
+  .btn{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:7px 12px;cursor:pointer;
+  }
+  .btn:hover{border-color:var(--ink-3)}
+  .btn-primary{background:var(--ink);border-color:var(--ink);color:#fff}
+  .btn-primary:hover{background:#0d1720}
+  .btn:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,tr:focus-visible{
+    outline:2px solid var(--agree);outline-offset:1px
+  }
+
+  .filters{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 16px;display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-end;margin-bottom:18px;
+  }
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{
+    font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  }
+  .field input,.field select{
+    border:1px solid var(--line);border-radius:var(--radius);padding:6px 8px;background:#fff;min-width:132px;
+  }
+  .filters .spacer{flex:1}
+
+  /* ---------- kpi strip ---------- */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:22px}
+  .kpi{background:var(--surface);padding:14px 16px}
+  .kpi .k-label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .kpi .k-value{font-family:var(--mono);font-size:26px;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin-top:6px}
+  .kpi .k-note{font-size:11.5px;color:var(--ink-2);margin-top:2px}
+  .kpi.lead .k-value{font-size:34px}
+  .kpi .k-value.tone-lenient{color:var(--lenient)}
+  .kpi .k-value.tone-strict{color:var(--strict)}
+
+  /* ---------- tables ---------- */
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .panel-head{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    padding:13px 16px;border-bottom:1px solid var(--line);
+  }
+  .panel-head h2{margin:0;font-size:14px;font-weight:600}
+  .panel-head .hint{font-size:12px;color:var(--ink-3)}
+
+  table{width:100%;border-collapse:collapse}
+  th{
+    text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-3);font-weight:400;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  td{padding:11px 12px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .row-main{cursor:pointer}
+  .row-main:hover{background:#f6f9fa}
+  .row-main.open{background:#f2f7f8}
+  .doc-name{font-weight:550}
+  .caret{display:inline-block;width:12px;color:var(--ink-3);font-family:var(--mono);margin-right:6px}
+
+  .acc{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:16px}
+  .acc small{font-size:11px;color:var(--ink-3)}
+
+  /* signature: one aligned agreement bar per document type */
+  .bar{display:flex;height:9px;width:100%;min-width:130px;background:var(--line-soft);border-radius:1px;overflow:hidden}
+  .bar span{display:block;height:100%}
+  .bar .s-agree{background:var(--agree)}
+  .bar .s-lenient{background:var(--lenient)}
+  .bar .s-strict{background:var(--strict)}
+  .bar-legend{display:flex;gap:14px;flex-wrap:wrap;padding:11px 16px;border-top:1px solid var(--line);
+    font-size:11.5px;color:var(--ink-2);background:#fbfcfd}
+  .swatch{display:inline-block;width:9px;height:9px;border-radius:1px;margin-right:5px;vertical-align:-1px}
+
+  .band{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    padding:2px 6px;border-radius:2px;border:1px solid}
+  .band-strong{color:var(--agree);border-color:#a9d3ce;background:#eef8f6}
+  .band-watch{color:#8a5a12;border-color:#e2c99a;background:var(--warn-bg)}
+  .band-poor{color:var(--lenient);border-color:#e0b3a8;background:#fbeeeb}
+  .band-insufficient{color:var(--ink-3);border-color:var(--line);background:#f4f7f8}
+
+  .pill{font-size:11px;padding:2px 7px;border-radius:2px;white-space:nowrap;border:1px solid}
+  .pill-agree{color:var(--agree);border-color:#a9d3ce;background:#eef8f6}
+  .pill-lenient{color:var(--lenient);border-color:#e0b3a8;background:#fbeeeb}
+  .pill-strict{color:var(--strict);border-color:#b8bfe0;background:#eff1fb}
+  .pill-pending{color:var(--ink-3);border-color:var(--line);background:#f4f7f8}
+
+  .verdict{font-family:var(--mono);font-size:11.5px}
+  .v-yes{color:var(--agree)}
+  .v-no{color:var(--lenient)}
+
+  /* ---------- drill-down ---------- */
+  .detail-cell{padding:0;background:#f8fafb}
+  .detail-inner{padding:14px 16px 18px}
+  .detail-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:#fff}
+  .seg button{border:none;background:none;padding:6px 11px;cursor:pointer;color:var(--ink-2);
+    border-right:1px solid var(--line-soft);font-size:12.5px}
+  .seg button:last-child{border-right:none}
+  .seg button[aria-pressed="true"]{background:var(--ink);color:#fff}
+  .detail-table{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .detail-table td{font-size:13px}
+  .reason{color:var(--ink-2);font-size:12.5px;max-width:34ch}
+  .reason strong{color:var(--ink);font-weight:550}
+  .mono-id{font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+  .tags{margin-top:4px}
+  .tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-2);
+    border:1px solid var(--line);border-radius:2px;padding:1px 5px;margin-right:4px;background:#fff}
+  .pager{display:flex;align-items:center;gap:10px;justify-content:flex-end;padding:10px 2px 0;
+    font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+
+  .state{padding:34px 16px;text-align:center;color:var(--ink-2)}
+  .state h3{margin:0 0 6px;font-size:14px;color:var(--ink)}
+  .state code{font-family:var(--mono);font-size:12px;background:#f2f5f7;padding:1px 5px;border-radius:2px}
+  .notice{background:var(--warn-bg);border:1px solid #e2c99a;border-radius:var(--radius);
+    padding:10px 14px;margin-bottom:16px;font-size:12.5px;color:#7a4f10}
+  .skeleton{padding:22px 16px;color:var(--ink-3);font-family:var(--mono);font-size:12px}
+
+  @media (max-width:780px){
+    .hide-sm{display:none}
+    .kpi.lead .k-value{font-size:28px}
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .row-main,.btn{transition:background .12s ease,border-color .12s ease}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <div class="eyebrow">Document validation &middot; quality control</div>
+      <h1>AI validation accuracy</h1>
+      <div class="sub">How often the AI checker's verdict matched the reviewer who looked at the same document. Open a row to see every document behind the number.</div>
+    </div>
+    <div class="head-actions">
+      <span class="stamp" id="stamp"></span>
+      <button class="btn btn-primary" id="refresh">Refresh</button>
+    </div>
+  </header>
+
+  <div id="notice-slot"></div>
+
+  <div class="filters">
+    <div class="field">
+      <label for="f-from">Reviewed from</label>
+      <input type="date" id="f-from">
+    </div>
+    <div class="field">
+      <label for="f-to">Reviewed to</label>
+      <input type="date" id="f-to">
+    </div>
+    <div class="field">
+      <label for="f-type">Document type</label>
+      <input type="text" id="f-type" placeholder="e.g. NMBI">
+    </div>
+    <div class="field">
+      <label for="f-level">Level</label>
+      <input type="text" id="f-level" placeholder="any">
+    </div>
+    <div class="field">
+      <label for="f-min">Min reviews</label>
+      <select id="f-min">
+        <option value="0">Show all</option>
+        <option value="10">10+</option>
+        <option value="20" selected>20+</option>
+        <option value="50">50+</option>
+      </select>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="apply">Apply filters</button>
+    <button class="btn" id="clear">Clear</button>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Accuracy by document type</h2>
+      <span class="hint">Accumulated across every human review in range &middot; lowest first</span>
+    </div>
+    <div id="table-slot">
+      <div class="skeleton">Loading accuracy…</div>
+    </div>
+    <div class="bar-legend">
+      <span><i class="swatch" style="background:var(--agree)"></i>Agreed with reviewer</span>
+      <span><i class="swatch" style="background:var(--lenient)"></i>AI passed, reviewer rejected</span>
+      <span><i class="swatch" style="background:var(--strict)"></i>AI rejected, reviewer approved</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = "/document-validate";
+const state = { summary:null, openType:null, detail:{} };
+
+/* ---------- helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const nf = (n) => (n ?? 0).toLocaleString();
+const fmtPct = (n) => (n === null || n === undefined) ? "—" : n.toFixed(1);
+
+function fmtDate(iso){
+  if(!iso) return "—";
+  const d = new Date(iso);
+  if(isNaN(d)) return "—";
+  return d.toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"2-digit"});
+}
+function fmtDateTime(iso){
+  if(!iso) return "—";
+  const d = new Date(iso);
+  if(isNaN(d)) return "—";
+  return d.toLocaleString(undefined,{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});
+}
+
+function filterParams(){
+  const p = new URLSearchParams();
+  const map = { from:"f-from", to:"f-to", document_type:"f-type", level:"f-level" };
+  for(const [key,id] of Object.entries(map)){
+    const v = $(id).value.trim();
+    if(v) p.set(key,v);
+  }
+  const min = $("f-min").value;
+  if(min !== "0") p.set("min_samples", min);
+  return p;
+}
+
+/* ---------- birdview ---------- */
+async function loadSummary(){
+  $("table-slot").innerHTML = '<div class="skeleton">Loading accuracy…</div>';
+  $("notice-slot").innerHTML = "";
+  try{
+    const res = await fetch(`${API_BASE}/accuracy/summary?${filterParams()}`, {credentials:"same-origin"});
+    if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const data = await res.json();
+    if(data.status !== "success") throw new Error(data.message || "Unexpected response");
+    state.summary = data;
+    renderKpis(data);
+    renderTable(data);
+    $("stamp").textContent = "as of " + fmtDateTime(data.as_of);
+  }catch(err){
+    renderError(err.message);
+  }
+}
+
+function renderKpis(d){
+  const o = d.overall || {};
+  const cards = [
+    { label:"Overall accuracy", value: fmtPct(o.accuracy_percentage) + "%",
+      note: `${nf(o.matched)} of ${nf(o.reviewed)} reviews agreed`, lead:true },
+    { label:"Documents reviewed", value: nf(o.reviewed),
+      note: `${nf(o.mismatched)} disagreements` },
+    { label:"AI too lenient", value: nf(o.ai_false_accept), tone:"lenient",
+      note: `${fmtPct(o.false_accept_rate)}% of reviews — passed, then rejected` },
+    { label:"AI too strict", value: nf(o.ai_false_reject), tone:"strict",
+      note: `${fmtPct(o.false_reject_rate)}% of reviews — blocked, then approved` },
+    { label:"Awaiting AI verdict", value: nf(d.pending_ai_rows),
+      note: "reviewed before the AI ran" },
+  ];
+  $("kpis").innerHTML = cards.map(c => `
+    <div class="kpi${c.lead ? " lead" : ""}">
+      <div class="k-label">${esc(c.label)}</div>
+      <div class="k-value${c.tone ? " tone-"+c.tone : ""}">${esc(c.value)}</div>
+      <div class="k-note">${esc(c.note)}</div>
+    </div>`).join("");
+}
+
+function bandLabel(band){
+  return { strong:"On target", watch:"Watch", poor:"Off target", insufficient:"Low sample" }[band] || band;
+}
+
+function renderTable(d){
+  const docs = (d.documents || []).slice().sort((a,b) => {
+    if(a.band === "insufficient" && b.band !== "insufficient") return 1;
+    if(b.band === "insufficient" && a.band !== "insufficient") return -1;
+    return a.accuracy_percentage - b.accuracy_percentage;
+  });
+
+  if(!docs.length){
+    $("table-slot").innerHTML = `
+      <div class="state">
+        <h3>No reviews in this range yet</h3>
+        <p>Accuracy appears once XN Portal posts human decisions to
+        <code>POST ${API_BASE}/human-validation</code>. Widen the dates or lower the minimum review count.</p>
+      </div>`;
+    return;
+  }
+
+  const rows = docs.map(doc => {
+    const total = doc.reviewed || 1;
+    const w = (n) => (n / total * 100).toFixed(2) + "%";
+    return `
+    <tr class="row-main" tabindex="0" data-type="${esc(doc.document_type)}">
+      <td>
+        <span class="caret">+</span><span class="doc-name">${esc(doc.document_type)}</span>
+        ${doc.level != null ? `<span class="mono-id"> · L${esc(doc.level)}</span>` : ""}
+      </td>
+      <td class="num">${nf(doc.reviewed)}</td>
+      <td class="num"><span class="acc">${fmtPct(doc.accuracy_percentage)}<small>%</small></span></td>
+      <td class="hide-sm">
+        <div class="bar" role="img" aria-label="${fmtPct(doc.accuracy_percentage)}% agreed">
+          <span class="s-agree" style="width:${w(doc.matched)}"></span>
+          <span class="s-lenient" style="width:${w(doc.ai_false_accept)}"></span>
+          <span class="s-strict" style="width:${w(doc.ai_false_reject)}"></span>
+        </div>
+      </td>
+      <td class="num" style="color:var(--lenient)">${nf(doc.ai_false_accept)}</td>
+      <td class="num" style="color:var(--strict)">${nf(doc.ai_false_reject)}</td>
+      <td><span class="band band-${esc(doc.band)}">${esc(bandLabel(doc.band))}</span></td>
+      <td class="num hide-sm" style="color:var(--ink-3)">${fmtDate(doc.last_reviewed_at)}</td>
+    </tr>
+    <tr class="detail-row" data-detail="${esc(doc.document_type)}" hidden>
+      <td class="detail-cell" colspan="8"><div class="detail-inner"></div></td>
+    </tr>`;
+  }).join("");
+
+  $("table-slot").innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Document type</th>
+          <th class="num">Reviews</th>
+          <th class="num">Accuracy</th>
+          <th class="hide-sm">Agreement split</th>
+          <th class="num">Too lenient</th>
+          <th class="num">Too strict</th>
+          <th>Status</th>
+          <th class="num hide-sm">Last review</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  $("table-slot").querySelectorAll(".row-main").forEach(tr => {
+    tr.addEventListener("click", () => toggleType(tr.dataset.type));
+    tr.addEventListener("keydown", (e) => {
+      if(e.key === "Enter" || e.key === " "){ e.preventDefault(); toggleType(tr.dataset.type); }
+    });
+  });
+}
+
+function renderError(message){
+  $("table-slot").innerHTML = `
+    <div class="state">
+      <h3>Could not load accuracy</h3>
+      <p>${esc(message)}</p>
+      <p>Check that <code>GET ${API_BASE}/accuracy/summary</code> responds and that your admin session is still valid.</p>
+    </div>`;
+  $("kpis").innerHTML = "";
+}
+
+/* ---------- drill-down ---------- */
+function toggleType(type){
+  const rowMain = $("table-slot").querySelector(`.row-main[data-type="${CSS.escape(type)}"]`);
+  const rowDetail = $("table-slot").querySelector(`.detail-row[data-detail="${CSS.escape(type)}"]`);
+  const opening = rowDetail.hasAttribute("hidden");
+
+  if(opening){
+    rowDetail.removeAttribute("hidden");
+    rowMain.classList.add("open");
+    rowMain.querySelector(".caret").textContent = "\u2212";
+    state.detail[type] = state.detail[type] || { page:1, filter:"all" };
+    loadDetail(type);
+  }else{
+    rowDetail.setAttribute("hidden","");
+    rowMain.classList.remove("open");
+    rowMain.querySelector(".caret").textContent = "+";
+  }
+}
+
+async function loadDetail(type){
+  const cfg = state.detail[type];
+  const host = $("table-slot")
+    .querySelector(`.detail-row[data-detail="${CSS.escape(type)}"] .detail-inner`);
+  host.innerHTML = `<div class="skeleton">Loading documents…</div>`;
+
+  const p = filterParams();
+  p.delete("min_samples");
+  p.set("document_type", type);
+  p.set("page", cfg.page);
+  p.set("limit", 25);
+  if(cfg.filter === "mismatch") p.set("match","false");
+  if(cfg.filter === "match") p.set("match","true");
+  if(cfg.filter === "lenient") p.set("outcome","ai_false_accept");
+  if(cfg.filter === "strict") p.set("outcome","ai_false_reject");
+  const search = cfg.search ? cfg.search.trim() : "";
+  if(search) p.set("search", search);
+
+  try{
+    const res = await fetch(`${API_BASE}/accuracy/documents?${p}`, {credentials:"same-origin"});
+    if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const data = await res.json();
+    if(data.status !== "success") throw new Error(data.message || "Unexpected response");
+    renderDetail(host, type, data);
+  }catch(err){
+    host.innerHTML = `<div class="state"><h3>Could not load documents</h3><p>${esc(err.message)}</p></div>`;
+  }
+}
+
+const OUTCOME_META = {
+  agree_approve:   ["pill-agree","Agreed — approved"],
+  agree_reject:    ["pill-agree","Agreed — rejected"],
+  ai_false_accept: ["pill-lenient","AI too lenient"],
+  ai_false_reject: ["pill-strict","AI too strict"],
+  pending_ai:      ["pill-pending","No AI verdict"],
+};
+
+function verdict(status){
+  if(status === true)  return '<span class="verdict v-yes">valid</span>';
+  if(status === false) return '<span class="verdict v-no">invalid</span>';
+  return '<span class="verdict" style="color:var(--ink-3)">—</span>';
+}
+function humanVerdict(status){
+  if(status === true)  return '<span class="verdict v-yes">approved</span>';
+  if(status === false) return '<span class="verdict v-no">rejected</span>';
+  return '<span class="verdict" style="color:var(--ink-3)">—</span>';
+}
+
+function renderDetail(host, type, data){
+  const cfg = state.detail[type];
+  const tabs = [
+    ["all","All"], ["mismatch","Disagreements"], ["lenient","Too lenient"],
+    ["strict","Too strict"], ["match","Agreements"],
+  ].map(([key,label]) =>
+    `<button data-f="${key}" aria-pressed="${cfg.filter===key}">${label}</button>`).join("");
+
+  const rows = data.data.map(d => {
+    const [cls,label] = OUTCOME_META[d.outcome] || ["pill-pending", d.outcome || "—"];
+    const tags = (d.mismatch_tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("");
+    const analysis = d.mismatch_analysis && d.mismatch_analysis.explanation
+      ? `<div class="reason" style="margin-top:4px"><strong>Difference:</strong> ${esc(d.mismatch_analysis.explanation)}${
+          d.mismatch_analysis.likely_correct ? ` <span class="tag">likely ${esc(d.mismatch_analysis.likely_correct)}</span>` : ""}</div>`
+      : "";
+    return `
+      <tr>
+        <td>
+          <div class="mono-id">${esc(d.document_id)}</div>
+          <div class="mono-id" style="color:var(--ink-3)">user ${esc(d.xn_user_id)}</div>
+        </td>
+        <td>${verdict(d.ai_status)}<div class="reason">${esc(d.ai_reason || "—")}</div></td>
+        <td>${humanVerdict(d.human_status)}<div class="reason">${esc(d.human_reason || "—")}</div></td>
+        <td>
+          <span class="pill ${cls}">${esc(label)}</span>
+          ${tags ? `<div class="tags">${tags}</div>` : ""}
+          ${analysis}
+        </td>
+        <td class="hide-sm">
+          <div class="reason">${esc(d.human_validated_by || "—")}</div>
+          <div class="mono-id" style="color:var(--ink-3)">${fmtDateTime(d.human_validated_at)}</div>
+        </td>
+        <td class="num">${d.score === null || d.score === undefined ? "—" : d.score}</td>
+      </tr>`;
+  }).join("");
+
+  host.innerHTML = `
+    <div class="detail-bar">
+      <div class="seg">${tabs}</div>
+      <input type="text" id="s-${CSS.escape(type)}" placeholder="Document or user ID"
+             value="${esc(cfg.search || "")}" style="border:1px solid var(--line);border-radius:3px;padding:6px 8px">
+      <span class="mono-id">${nf(data.total)} document${data.total === 1 ? "" : "s"}</span>
+    </div>
+    <div class="detail-table">
+      ${data.data.length ? `
+      <table>
+        <thead><tr>
+          <th>Document / user</th><th>AI verdict</th><th>Reviewer verdict</th>
+          <th>Outcome &amp; reason for difference</th><th class="hide-sm">Reviewed by</th><th class="num">Score</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>` : `<div class="state"><h3>Nothing matches this view</h3><p>Switch tabs or clear the ID search.</p></div>`}
+    </div>
+    <div class="pager">
+      <button class="btn" data-nav="prev" ${data.page <= 1 ? "disabled" : ""}>Previous</button>
+      <span>Page ${data.page} of ${Math.max(data.total_pages,1)}</span>
+      <button class="btn" data-nav="next" ${data.page >= data.total_pages ? "disabled" : ""}>Next</button>
+    </div>`;
+
+  host.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+    cfg.filter = b.dataset.f; cfg.page = 1; loadDetail(type);
+  }));
+  host.querySelectorAll("[data-nav]").forEach(b => b.addEventListener("click", () => {
+    cfg.page += (b.dataset.nav === "next" ? 1 : -1); loadDetail(type);
+  }));
+  const searchInput = host.querySelector("input[type=text]");
+  searchInput.addEventListener("keydown", (e) => {
+    if(e.key === "Enter"){ cfg.search = searchInput.value; cfg.page = 1; loadDetail(type); }
+  });
+}
+
+/* ---------- wiring ---------- */
+$("refresh").addEventListener("click", loadSummary);
+$("apply").addEventListener("click", loadSummary);
+$("clear").addEventListener("click", () => {
+  ["f-from","f-to","f-type","f-level"].forEach(id => $(id).value = "");
+  $("f-min").value = "20";
+  loadSummary();
+});
+loadSummary();
+</script>
+</body>
+</html>
