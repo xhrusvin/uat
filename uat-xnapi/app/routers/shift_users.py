@@ -654,6 +654,7 @@ class ListShiftUsersRequest(BaseModel):
     in_pool:            Optional[int]   = None
     search:             Optional[str]   = None
     gender_id:          Optional[str]   = None
+    gender_multiple:    Optional[list]  = None
     visa_type_id:       Optional[str]   = None
 
     qqi_status_number:      Optional[int]   = None
@@ -739,8 +740,11 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     # Gender filter
     if payload.gender_id:
-        gid = payload.gender_id.strip()
-        user_filter["gender_id"] = gid
+        user_filter["gender_id"] = payload.gender_id.strip()
+    if getattr(payload, "gender_multiple", None):
+        _gids = [str(g).strip() for g in payload.gender_multiple if g]
+        if _gids:
+            user_filter["gender_id"] = {"$in": _gids}
 
     # Visa type filter
     if payload.visa_type_id:
@@ -1018,7 +1022,8 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     results = []
     # For post-filter mode, only run full exclusion on current page slice to save time
-    # When filtering by excluded status, run exclusion for ALL users (not just page slice)
+    # When excluded filter active, run exclusion for all users to filter correctly
+    # But use cache to keep it fast
     _excluded_filter_active = payload.excluded is not None
     page_user_ids_set = {str(u["_id"]) for u in (users if _excluded_filter_active else (users[skip:skip+limit] if needs_post_filter else users))}
     for u in users:
@@ -1410,8 +1415,11 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     # Gender filter
     if payload.gender_id:
-        gid = payload.gender_id.strip()
-        user_filter["gender_id"] = gid
+        user_filter["gender_id"] = payload.gender_id.strip()
+    if getattr(payload, "gender_multiple", None):
+        _gids = [str(g).strip() for g in payload.gender_multiple if g]
+        if _gids:
+            user_filter["gender_id"] = {"$in": _gids}
 
     # Visa type filter
     if payload.visa_type_id:
