@@ -15,8 +15,9 @@ from flask import jsonify
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-ALLOWED_START_HOUR = 0
+ALLOWED_START_HOUR = 1
 ALLOWED_END_HOUR   = 23
+BATCH_SIZE         = 5
 
 
 def is_within_call_window():
@@ -143,6 +144,12 @@ def _build_email_html(first_name, shift, base_url, shifts_users_id, staff_name='
 def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users_id):
     """Send shift booking email via SMTP."""
     try:
+        # Safety check — skip if designation doesn't match shift user_type
+        _designation  = (record.get("designation") or "").strip().lower()
+        _shift_type   = (shift_doc.get("user_type") or "").strip().lower()
+        if _designation and _shift_type and _designation != _shift_type:
+            log.warning(f"[EMAIL] Blocked send to {to_email} — designation '{_designation}' != shift user_type '{_shift_type}'")
+            return
         base_url = os.getenv("APP_BASE_URL", "https://uat.expresshealth.ie")
         html     = _build_email_html(first_name, shift_doc, base_url, shifts_users_id, staff_name=f"{first_name} {record.get('last_name', '')}".strip())
 
@@ -179,7 +186,7 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
             server.sendmail(msg["From"], recipients, msg.as_string())
 
         log.info(f"[EMAIL] ✓ Sent to {to_email}")
-        app.db.shifts_users.update_one(
+        result = app.db.shifts_users.update_one(
             {"_id": shifts_users_id},
             {"$set": {
                 "email_sent":       1,
@@ -189,6 +196,7 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
                 "availability":     8,
             }}
         )
+        log.info(f"[EMAIL] DB update matched={result.matched_count} modified={result.modified_count} for {su_id_str}")
 
     except Exception as e:
         log.error(f"[EMAIL] ✗ Failed to send to {to_email}: {e}")
@@ -201,6 +209,7 @@ def _send_shift_email(app, record, shift_doc, to_email, first_name, shifts_users
 def register_shift_booking_email_routes(app):
 
     @app.route('/shift_booking_email', methods=['GET'])
+    # ?limit=N overrides BATCH_SIZE for this call
     def shift_booking_email():
         allowed, server_time = is_within_call_window()
         user_id_param = request.args.get('user_id')
@@ -220,104 +229,106 @@ def register_shift_booking_email_routes(app):
         else:
             query = {"call_processed": 0, "call_enabled": 1, "channel": "Email"}
 
-        record = app.db.shifts_users.find_one(query, sort=[("assigned_at", 1)])
+        _limit  = BATCH_SIZE
+        records = list(app.db.shifts_users.find(query, sort=[("assigned_at", 1)], limit=_limit))
 
-        if not record:
+        if not records:
             return jsonify({**response_base, "status": "no_pending", "message": "No pending emails."}), 200
 
-        if record.get("call_processed") == 1 and not user_id_param:
-            return jsonify({**response_base, "status": "already_processed", "message": "Already processed."}), 200
+        triggered = []
+        for record in records:
+            shifts_users_id = record["_id"]
+            shift_id        = str(record.get("shift_id",    ""))
+            outreach_id     = str(record.get("outreach_id", ""))
+            user_id         = str(record.get("user_id",     ""))
 
-        shifts_users_id = record["_id"]
-        shift_id        = str(record.get("shift_id",    ""))
-        outreach_id     = str(record.get("outreach_id", ""))
-        user_id         = str(record.get("user_id",     ""))
+            user = None
+            if user_id and ObjectId.is_valid(user_id):
+                user = app.db.users.find_one(
+                    {"_id": ObjectId(user_id)},
+                    {"email": 1, "first_name": 1, "last_name": 1, "designation": 1}
+                )
 
-        user = None
-        if user_id and ObjectId.is_valid(user_id):
-            user = app.db.users.find_one(
-                {"_id": ObjectId(user_id)},
-                {"email": 1, "first_name": 1, "last_name": 1}
+            if not user or not user.get("email"):
+                continue
+
+            email      = user.get("email")
+            first_name = user.get("first_name", "")
+            last_name  = user.get("last_name",  "")
+            full_name  = f"{first_name} {last_name}".strip()
+
+            result = app.db.shifts_users.update_one(
+                {"_id": shifts_users_id},
+                {"$set": {"call_processed": 1, "call_processed_at": datetime.utcnow(),
+                          "updated_at": datetime.utcnow()}}
             )
+            if result.modified_count == 0:
+                continue
 
-        if not user:
-            return jsonify({**response_base, "status": "no_user",
-                            "message": "User not found.", "shifts_users_id": str(shifts_users_id)}), 200
+            shift_doc = {}
+            if shift_id and ObjectId.is_valid(shift_id):
+                s = app.db.shifts.find_one({"_id": ObjectId(shift_id)})
+                if s:
+                    client = None
+                    if s.get("client_id"):
+                        client = app.db.clients.find_one(
+                            {"xn_client_id": str(s["client_id"])},
+                            {"address": 1, "county": 1, "latitude": 1, "longitude": 1}
+                        )
+                    shift_doc = {
+                        "id":             str(s["_id"]),
+                        "shift_code":     s.get("shift_code") or s.get("name", ""),
+                        "date":           str(s.get("date", "")),
+                        "start_time":     s.get("start_time", ""),
+                        "end_time":       s.get("end_time", ""),
+                        "client_name":    s.get("client_name", ""),
+                        "location":       s.get("location", ""),
+                        "user_type":          s.get("user_type", ""),
+                        "unit":               s.get("unit") or "",
+                        "shift_type":         s.get("shift_timing") or s.get("shift_type") or "",
+                        "shift_preference":   ", ".join([sp.get("name","") for sp in (s.get("shift_preferences") or []) if sp.get("name")]) or "—",
+                        "client_address": client.get("address", "") if client else "",
+                        "client_county":  s.get("client_county", "") or (client.get("county", "") if client else ""),
+                        "client_lat":     client.get("latitude", "") if client else "",
+                        "client_lng":     client.get("longitude", "") if client else "",
+                    }
 
-        email      = user.get("email")
-        first_name = user.get("first_name", "")
-        last_name  = user.get("last_name",  "")
-        full_name  = f"{first_name} {last_name}".strip()
+            record["email"]       = email
+            record["first_name"]  = first_name
+            record["last_name"]   = last_name
+            record["designation"] = user.get("designation", "")
+            record["full_name"]   = full_name
 
-        if not email:
-            return jsonify({**response_base, "status": "no_email",
-                            "message": "No email found.", "shifts_users_id": str(shifts_users_id)}), 200
+            threading.Thread(
+                target=_send_shift_email,
+                args=(current_app._get_current_object(), record, shift_doc, email, first_name, shifts_users_id),
+                daemon=True
+            ).start()
 
-        result = app.db.shifts_users.update_one(
-            {"_id": shifts_users_id},
-            {"$set": {"call_processed": 1, "call_processed_at": datetime.utcnow(),
-                      "updated_at": datetime.utcnow()}}
-        )
-        if result.modified_count == 0:
-            return jsonify({**response_base, "status": "failed", "message": "Failed to update record."}), 500
+            threading.Thread(
+                target=_check_and_end_outreach,
+                args=(current_app._get_current_object(), shift_id, outreach_id),
+                daemon=True
+            ).start()
 
-        shift_doc = {}
-        if shift_id and ObjectId.is_valid(shift_id):
-            s = app.db.shifts.find_one({"_id": ObjectId(shift_id)})
-            if s:
-                # Join client data
-                client = None
-                if s.get("client_id"):
-                    client = app.db.clients.find_one(
-                        {"xn_client_id": str(s["client_id"])},
-                        {"address": 1, "county": 1, "latitude": 1, "longitude": 1}
-                    )
-                shift_doc = {
-                    "id":             str(s["_id"]),
-                    "shift_code":     s.get("shift_code") or s.get("name", ""),
-                    "date":           str(s.get("date", "")),
-                    "start_time":     s.get("start_time", ""),
-                    "end_time":       s.get("end_time", ""),
-                    "client_name":    s.get("client_name", ""),
-                    "location":       s.get("location", ""),
-                    "user_type":          s.get("user_type", ""),
-                    "unit":               s.get("unit") or "",
-                    "shift_type":         s.get("shift_timing") or s.get("shift_type") or "",
-                    "shift_preference":   ", ".join([sp.get("name","") for sp in (s.get("shift_preferences") or []) if sp.get("name")]) or "—",
-                    "client_address": client.get("address", "") if client else "",
-                    "client_county":  s.get("client_county", "") or (client.get("county", "") if client else ""),
-                    "client_lat":     client.get("latitude", "") if client else "",
-                    "client_lng":     client.get("longitude", "") if client else "",
-                }
-
-        record["email"]      = email
-        record["first_name"] = first_name
-        record["last_name"]  = last_name
-        record["full_name"]  = full_name
-
-        threading.Thread(
-            target=_send_shift_email,
-            args=(current_app._get_current_object(), record, shift_doc, email, first_name, shifts_users_id),
-            daemon=True
-        ).start()
-
-        threading.Thread(
-            target=_check_and_end_outreach,
-            args=(current_app._get_current_object(), shift_id, outreach_id),
-            daemon=True
-        ).start()
+            triggered.append({
+                "shifts_users_id": str(shifts_users_id),
+                "shift_id":        shift_id,
+                "outreach_id":     outreach_id,
+                "user_id":         user_id,
+                "staff_name":      full_name,
+                "email":           email,
+            })
 
         return jsonify({
             **response_base,
-            "status":          "triggered",
-            "shifts_users_id": str(shifts_users_id),
-            "shift_id":        shift_id,
-            "outreach_id":     outreach_id,
-            "user_id":         user_id,
-            "staff_name":      full_name,
-            "email":           email,
-            "triggered_at":    datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "status":       "triggered",
+            "triggered":    len(triggered),
+            "batch_size":   _limit,
+            "triggered_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "data":         triggered,
         }), 200
+
 
 
     @app.route('/shift_booking_email/respond/<shifts_users_id>', methods=['GET'])
@@ -372,7 +383,7 @@ def register_shift_booking_email_routes(app):
                 args=(app, shift_id, outreach_id), daemon=True
             ).start()
             html = f"""<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
-  <h2 style="color:#1e7a38">&#x2705; Thank you for marking your availability</h2>
+  <h2 style="color:#1e7a38">&#x2705; Great, you're confirmed!</h2>
   <p>We've marked you as <strong>available</strong> for this shift.</p>
   <div style="background:#f9f9f9;border-left:4px solid #1e7a38;padding:16px;border-radius:6px;text-align:left;margin:20px 0">
     <p>&#x1F4CD; {shift_doc.get('client_name')}, {shift_doc.get('location')}</p>

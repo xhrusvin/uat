@@ -15,7 +15,7 @@ from flask import jsonify
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-ALLOWED_START_HOUR = 0
+ALLOWED_START_HOUR = 1
 ALLOWED_END_HOUR   = 23
 BATCH_SIZE         = 5   # emails per trigger
 
@@ -206,6 +206,7 @@ def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_i
 def register_shift_group_booking_email_routes(app):
 
     @app.route('/shift_group_booking_email', methods=['GET'])
+    # ?limit=N overrides BATCH_SIZE for this call
     def shift_group_booking_email():
         allowed, server_time = is_within_call_window()
         user_id_param = request.args.get('user_id')
@@ -226,8 +227,9 @@ def register_shift_group_booking_email_routes(app):
         else:
             query = {"call_processed": 0, "call_enabled": 1, "channel": "Email"}
 
+        _limit = min(int(request.args.get('limit', BATCH_SIZE)), 50)
         records = list(app.db.shifts_group_users.find(
-            query, sort=[("assigned_at", 1)], limit=BATCH_SIZE
+            query, sort=[("assigned_at", 1)], limit=_limit
         ))
 
         if not records:
@@ -461,7 +463,7 @@ def register_shift_group_booking_email_routes(app):
                 _conf_shift = shift_doc
 
             html = f"""<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
-  <h2 style="color:#1e7a38">&#x2705; Thank you for marking your availability</h2>
+  <h2 style="color:#1e7a38">&#x2705; Great, you're confirmed!</h2>
   <p>We've marked you as <strong>available</strong> for this shift.</p>
   <div style="background:#f9f9f9;border-left:4px solid #1e7a38;padding:16px;border-radius:6px;text-align:left;margin:20px 0">
     <p>&#x1F4CD; {_conf_shift.get('client_name','')}, {_conf_shift.get('location','')}</p>

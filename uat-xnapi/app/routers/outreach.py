@@ -1193,6 +1193,8 @@ def _format_call_time(dt) -> str:
 class OutreachStaffListRequest(BaseModel):
     outreach_id: str
     shift_id:    Optional[str] = None
+    page:        int = 1
+    per_page:    int = 20
 
 
 @router.post(
@@ -1507,6 +1509,11 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
     pending   = sum(1 for s in shifts_users_list if s["call_enabled"] == 1 and s["call_processed"] == 0)
     processed = sum(1 for s in shifts_users_list if s["call_processed"] == 1)
 
+
+    # Apply pagination
+    _skip = (payload.page - 1) * payload.per_page
+    shifts_users_paginated = shifts_users_list[_skip: _skip + payload.per_page]
+
     o_status = outreach.get("outreach_status", 0)
 
     return {
@@ -1533,7 +1540,10 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
                 "pending":   pending,
                 "processed": processed,
             },
-            "shifts_users": shifts_users_list,
+            "total":     total,
+            "page":      payload.page,
+            "per_page":  payload.per_page,
+            "shifts_users": shifts_users_paginated,
         },
     }
 

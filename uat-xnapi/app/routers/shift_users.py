@@ -481,21 +481,29 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
     if not user_email:
         return []
 
+    tags: list = []
+
     # ── 0. Check user staff tags ──────────────────────────────────────────────
     EXCLUDED_TAG_NAMES = {"last-resort booking", "avoid booking"}
     if user_tags:
         for tag in user_tags:
             tag_name = (tag.get("name", "") if isinstance(tag, dict) else str(tag)).lower().strip()
             if tag_name in EXCLUDED_TAG_NAMES:
-                return [f"tag:{tag.get('name', tag_name) if isinstance(tag, dict) else tag_name}"]
+                tags.append(f"tag:{tag.get('name', tag_name) if isinstance(tag, dict) else tag_name}")
 
-    # ── 0b. Check if client is banned by this staff ───────────────────────────
+    # ── 0b. Check if client is banned by this staff (priority) ───────────────
     if banned_clients:
         shift_client_id = str(target_shift.get("client_id", ""))
         for bc in banned_clients:
             bc_id = str(bc.get("id", "")) if isinstance(bc, dict) else str(bc)
             if bc_id and bc_id == shift_client_id:
-                return ["banned_client"]
+                # Insert at front for priority, keep any tag: entries after
+                tags.insert(0, "Client Banned Staff")
+                break
+
+    # Return early if we have any tags so far
+    if tags:
+        return tags
 
     # ── 0c. Check Level 1 documents ──────────────────────────────────────────
     if user_oid:
@@ -729,14 +737,25 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     if not payload.user_type_multiple:
         shift_user_type = target_shift.get("user_type") if target_shift else None
         if shift_user_type:
-            user_filter["$or"] = [
-                {"designation":  shift_user_type},
-                {"user_type_id": {"$exists": True}},
-            ]
-            # Use designation match only
             user_filter = {"status": "Enabled", "designation": shift_user_type}
     if upstream_filter:
         user_filter.update(upstream_filter)
+
+    # Pre-fetch banned user IDs for fast filtering (applies when excluded=1 or null)
+    if payload.excluded in (1, None):
+        shift_client_id = str(target_shift.get("client_id", ""))
+        if shift_client_id:
+            banned_oids = [u["_id"] async for u in db["users"].find(
+                {"banned_clients.id": shift_client_id, "status": "Enabled"},
+                {"_id": 1}
+            )]
+            if banned_oids:
+                existing_xn = user_filter.pop("xn_user_id", None)
+                if existing_xn:
+                    user_filter["$or"] = [
+                        {"xn_user_id": existing_xn},
+                        {"_id": {"$in": banned_oids}},
+                    ]
 
     # Gender filter
     if payload.gender_id:
@@ -1518,6 +1537,22 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     if upstream_xn_ids:
         user_filter["xn_user_id"] = {"$in": list(upstream_xn_ids)}
+
+    # Pre-fetch banned user IDs for first shift in group (excluded=1 or null)
+    if getattr(payload, "excluded", None) in (1, None) and shift_oids:
+        _first_shift = await db["shifts"].find_one({"_id": shift_oids[0]}, {"client_id": 1})
+        _shift_client_id = str(_first_shift.get("client_id", "")) if _first_shift else ""
+        if _shift_client_id:
+            _banned_oids = [u["_id"] async for u in db["users"].find(
+                {"banned_clients.id": _shift_client_id, "status": "Enabled"}, {"_id": 1}
+            )]
+            if _banned_oids:
+                _existing_xn = user_filter.pop("xn_user_id", None)
+                if _existing_xn:
+                    user_filter["$or"] = [
+                        {"xn_user_id": _existing_xn},
+                        {"_id": {"$in": _banned_oids}},
+                    ]
     users = await db["users"].find(
         user_filter,
         {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
