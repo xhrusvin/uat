@@ -1455,6 +1455,58 @@ class ListMultiShiftUsersRequest(BaseModel):
     user_sub_type_multiple: Optional[list]  = None
     visa_type_id:           Optional[str]   = None
     search:                 Optional[str]   = None  # search by name, email, phone
+# ── POST /shift-users/list-multi/export ───────────────────────────────────────
+
+@router.post(
+    "/list-multi/export",
+    summary="Export list-multi shift users as CSV",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("10/minute")
+async def export_shift_users_list_multi(request: Request, payload: ListMultiShiftUsersRequest):
+    """Same payload as /list-multi — exports all matching users as CSV."""
+    import csv, io
+    from fastapi.responses import StreamingResponse
+
+    payload.page     = 1
+    payload.per_page = 5000
+
+    result = await list_shift_users_multi(request, payload)
+    users  = result.get("data", [])
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["#", "Name", "Email", "Phone", "Designation", "County",
+                     "Distance (km)", "Rating", "Excluded", "Exclusion Tags",
+                     "Availability", "Prior Shifts", "In Pool"])
+
+    for i, u in enumerate(users, 1):
+        writer.writerow([
+            i,
+            u.get("name", ""),
+            u.get("email", ""),
+            u.get("phone", ""),
+            u.get("designation", ""),
+            u.get("county", ""),
+            u.get("distance_km", ""),
+            u.get("rating", ""),
+            u.get("excluded", ""),
+            ", ".join(u.get("exclusion_tags") or []),
+            u.get("availability_text", ""),
+            u.get("prior_shifts", ""),
+            u.get("in_pool", ""),
+        ])
+
+    buf.seek(0)
+    shift_label = "_".join(payload.shift_ids[:2]) if payload.shift_ids else "multi"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=shift_users_{shift_label}.csv"}
+    )
+
+
+# ── POST /shift-users/list-multi ──────────────────────────────────────────────
 @router.post(
     "/list-multi",
     summary="List users for multiple shifts with same enrichment as /list",

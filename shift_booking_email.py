@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 ALLOWED_START_HOUR = 1
 ALLOWED_END_HOUR   = 23
-BATCH_SIZE         = 5
+BATCH_SIZE         = 50
 
 
 def is_within_call_window():
@@ -386,7 +386,7 @@ def register_shift_booking_email_routes(app):
                 args=(app, shift_id, outreach_id), daemon=True
             ).start()
             html = f"""<html><body style="font-family:Arial;max-width:500px;margin:40px auto;text-align:center;color:#333">
-  <h2 style="color:#1e7a38">&#x2705; Great, you're confirmed!</h2>
+  <h2 style="color:#1e7a38">&#x2705; Your availability has been recorded</h2>
   <p>We've marked you as <strong>available</strong> for this shift.</p>
   <div style="background:#f9f9f9;border-left:4px solid #1e7a38;padding:16px;border-radius:6px;text-align:left;margin:20px 0">
     <p>&#x1F4CD; {shift_doc.get('client_name')}, {shift_doc.get('location')}</p>

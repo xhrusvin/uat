@@ -1463,6 +1463,30 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         {"user_id": 1, "availability": 1, "call_processed_at": 1, "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "response_text": 1, "response_time": 1, "ignored": 1, "flag": 1, "channel": 1, "wa_phone": 1}
     ).to_list(length=500)
 
+    # Also include available staff from group outreach (shifts_group_users)
+    group_available_su = await db["shifts_group_users"].find(
+        {"availability": 1},
+        {"user_id": 1, "availability": 1, "group_id": 1, "outreach_id": 1, "channel": 1, "wa_phone": 1, "availability_details": 1}
+    ).to_list(length=500)
+
+    # Filter group users to those whose group contains this shift
+    if group_available_su:
+        _group_ids = list({su["group_id"] for su in group_available_su if su.get("group_id")})
+        _groups_with_shift = set()
+        async for sg in db["shifts_group"].find(
+            {"_id": {"$in": _group_ids}, "shift_ids": shift_oid},
+            {"_id": 1}
+        ):
+            _groups_with_shift.add(str(sg["_id"]))
+        group_available_su = [su for su in group_available_su if str(su.get("group_id","")) in _groups_with_shift]
+
+        # Merge into available_su — avoid duplicates by user_id
+        existing_user_ids = {str(su.get("user_id","")) for su in available_su}
+        for gsu in group_available_su:
+            if str(gsu.get("user_id","")) not in existing_user_ids:
+                gsu["from_group_outreach"] = True
+                available_su.append(gsu)
+
     available_staff = []
     if available_su:
         avail_user_oids = [
