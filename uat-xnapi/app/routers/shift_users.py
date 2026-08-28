@@ -1094,9 +1094,15 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             else:
                 staff_tags.append({"id": "", "name": str(t)})
 
-        # last_contacted from shifts_users.call_processed_at (latest)
-        lc_dt = last_contacted_map.get(uid_str)
-        last_contacted = _format_time_ago(lc_dt)
+        # last_contacted from shifts_users / shifts_group_users (latest) + channel
+        lc_entry = last_contacted_map.get(uid_str)
+        if lc_entry:
+            lc_dt, lc_channel = lc_entry
+            last_contacted = _format_time_ago(lc_dt)
+            if last_contacted and lc_channel:
+                last_contacted = f"{last_contacted} · {lc_channel}"
+        else:
+            last_contacted = None
 
         # Resolve county_id — use cached or join via country_id
         county_id   = None
