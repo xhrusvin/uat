@@ -261,7 +261,7 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
 # ── LIST users for a shift ────────────────────────────────────────────────────
 
 @router.get(
-    "/{shift_id}",
+    "/by-shift/{shift_id}",
     summary="List all users assigned to a shift",
     dependencies=[Depends(verify_api_key)],
 )
