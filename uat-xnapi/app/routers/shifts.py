@@ -444,11 +444,12 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
                     "outreach_status": {"$in": [1, 2, 3]},
                 },
                 {"$set": {
-                    "outreach_status": 10,
-                    "status": "completed",
-                    "ended_at": now,
-                    "updated_at": now,
-                    "end_reason": end_reason,
+                    # "outreach_status": 10,
+                    # "status": "completed",
+                    # "ended_at": now,
+                    # "updated_at": now,
+                    # "end_reason": end_reason,
+                    #temporory disabled this bcz its making issue in bulk shifts
                 }}
             )
 
