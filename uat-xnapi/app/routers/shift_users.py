@@ -664,7 +664,7 @@ class ListShiftUsersRequest(BaseModel):
     gender_id:          Optional[str]   = None
     gender_multiple:    Optional[list]  = None
     visa_type_id:       Optional[str]   = None
-    outreach_id:        Optional[str]   = None
+    group_id:           Optional[str]   = None
 
     qqi_status_number:      Optional[int]   = None
     user_sub_type_multiple: Optional[list]  = None
@@ -1007,16 +1007,16 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     ).to_list(5000)
     pool_user_set = {str(p["user_id"]) for p in pool_records}
 
-    # ── Batch: checked flag via shifts_group_users.outreach_id ─────────────────
-    # If outreach_id is provided, mark users present in that outreach as checked=1
+    # ── Batch: checked flag via shifts_group_pool.group_id ─────────────────────
+    # If group_id is provided, mark users present in that group pool as checked=1
     checked_user_set: set = set()
-    if payload.outreach_id and ObjectId.is_valid(str(payload.outreach_id)):
-        outreach_oid = ObjectId(str(payload.outreach_id))
-        async for sgu in db["shifts_group_users"].find(
-            {"outreach_id": outreach_oid, "user_id": {"$in": user_oids_page}},
+    if payload.group_id and ObjectId.is_valid(str(payload.group_id)):
+        group_oid = ObjectId(str(payload.group_id))
+        async for gp in db["shifts_group_pool"].find(
+            {"group_id": group_oid, "user_id": {"$in": user_oids_page}},
             {"user_id": 1}
         ):
-            checked_user_set.add(str(sgu["user_id"]))
+            checked_user_set.add(str(gp["user_id"]))
 
     # ── Batch: prior shifts count at same client ──────────────────────────────
     # Get client_id for this shift
