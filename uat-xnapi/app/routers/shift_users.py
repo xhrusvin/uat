@@ -1209,6 +1209,16 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     if needs_post_filter:
         results = results[skip: skip + limit]
 
+    # Build export URL with current filters
+    import urllib.parse as _up
+    _export_params = {"shift_id": payload.shift_id}
+    if payload.search:           _export_params["search"]    = payload.search
+    if payload.excluded is not None: _export_params["excluded"] = payload.excluded
+    if payload.radius:           _export_params["radius"]    = payload.radius
+    if payload.order_by:         _export_params["order_by"]  = payload.order_by
+    if payload.sort:             _export_params["sort"]       = payload.sort
+    _export_url = f"/xnapi/shift-users/export?{_up.urlencode(_export_params)}"
+
     return {
         "success":         True,
         "total":           filtered_total,
@@ -1220,8 +1230,85 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         "radius":          payload.radius,
         "order_by":        order_by,
         "sort":            payload.sort or "asc",
+        "export_url":      _export_url,
         "data":            results,
     }
+
+
+# ── GET /shift-users/export ───────────────────────────────────────────────────
+
+@router.get(
+    "/export",
+    summary="Export shift users list as CSV",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("10/minute")
+async def export_shift_users(
+    request:  Request,
+    shift_id: str,
+    search:   Optional[str] = None,
+    excluded: Optional[int] = None,
+    radius:   Optional[float] = None,
+    order_by: Optional[str] = "distance_km",
+    sort:     Optional[str] = "asc",
+):
+    import csv, io
+    from fastapi.responses import StreamingResponse
+
+    # Re-use list payload with large per_page
+    class _FakePayload:
+        pass
+    p = _FakePayload()
+    p.shift_id = shift_id
+    p.search   = search
+    p.excluded = excluded
+    p.radius   = radius
+    p.order_by = order_by
+    p.sort     = sort
+    p.page     = 1
+    p.per_page = 5000
+    p.user_type_multiple    = None
+    p.county_multiple       = None
+    p.gender_id             = None
+    p.gender_multiple       = None
+    p.visa_type_id          = None
+    p.qqi_status_number     = None
+    p.user_sub_type_multiple = None
+    p.in_pool               = None
+
+    # Call the list function
+    result = await list_shift_users(request, p)
+    users  = result.get("data", [])
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["#", "Name", "Email", "Phone", "Designation", "County",
+                     "Distance (km)", "Rating", "Excluded", "Exclusion Tags",
+                     "Availability", "Prior Shifts", "In Pool"])
+
+    for i, u in enumerate(users, 1):
+        writer.writerow([
+            i,
+            u.get("name", ""),
+            u.get("email", ""),
+            u.get("phone", ""),
+            u.get("designation", ""),
+            u.get("county", ""),
+            u.get("distance_km", ""),
+            u.get("rating", ""),
+            u.get("excluded", ""),
+            ", ".join(u.get("exclusion_tags") or []),
+            u.get("availability_text", ""),
+            u.get("prior_shifts", ""),
+            u.get("in_pool", ""),
+        ])
+
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=shift_users_{shift_id}.csv"}
+    )
 
 
 # ── POST /shift-users/assign ──────────────────────────────────────────────────
@@ -1486,21 +1573,6 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
                 {"designation":  {"$in": type_names_filter}},
             ]
 
-    if payload.search:
-        _s = payload.search.strip()
-        _search_or = [
-            {"first_name": {"$regex": _s, "$options": "i"}},
-            {"last_name":  {"$regex": _s, "$options": "i"}},
-            {"email":      {"$regex": _s, "$options": "i"}},
-            {"phone":      {"$regex": _s, "$options": "i"}},
-        ]
-        # Also try full name match
-        _search_or.append({"$expr": {"$regexMatch": {"input": {"$concat": ["$first_name", " ", "$last_name"]}, "regex": _s, "options": "i"}}})
-        if "$or" in user_filter:
-            user_filter = {"$and": [user_filter, {"$or": _search_or}]}
-        else:
-            user_filter["$or"] = _search_or
-
     # ── Fetch upstream available-staff-list for each shift ───────────────────
     upstream_xn_ids:       set  = set()
     upstream_distance_map: dict = {}
@@ -1537,6 +1609,22 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     if upstream_xn_ids:
         user_filter["xn_user_id"] = {"$in": list(upstream_xn_ids)}
+
+    # Search filter — apply AFTER upstream so it combines correctly
+    if payload.search:
+        _s = payload.search.strip()
+        _search_or = [
+            {"first_name": {"$regex": _s, "$options": "i"}},
+            {"last_name":  {"$regex": _s, "$options": "i"}},
+            {"email":      {"$regex": _s, "$options": "i"}},
+            {"phone":      {"$regex": _s, "$options": "i"}},
+        ]
+        _search_or.append({"$expr": {"$regexMatch": {"input": {"$concat": ["$first_name", " ", "$last_name"]}, "regex": _s, "options": "i"}}})
+        # Wrap existing filter with $and to combine with search
+        if user_filter:
+            user_filter = {"$and": [user_filter, {"$or": _search_or}]}
+        else:
+            user_filter["$or"] = _search_or
 
     # Pre-fetch banned user IDs for first shift in group (excluded=1 or null)
     if getattr(payload, "excluded", None) in (1, None) and shift_oids:

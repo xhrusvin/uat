@@ -875,7 +875,9 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     }
 
 class ShiftDetailRequest(BaseModel):
-    id: str   # shift _id, shift_xn_id, or shift_code
+    id:            str   # shift _id, shift_xn_id, or shift_code
+    pool_page:     int = 1
+    pool_per_page: int = 20
 
 
 
@@ -890,11 +892,10 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
         "shift_id":    shift_oid,
         "outreach_id": {"$exists": True, "$ne": None},
     })
-    # declined = availability 0, 3, 4
-    declined = await db["shifts_users"].count_documents({
-        "shift_id":     shift_oid,
-        "availability": {"$in": [0, 3, 4]},
-    })
+    # declined = channel-aware
+    phone_declined_l    = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": {"$in": [0, 3, 4]}, "channel": {"$in": ["Phone", None]}})
+    email_wa_declined_l = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 0, "channel": {"$in": ["Email", "WhatsApp", "SMS"]}})
+    declined = phone_declined_l + email_wa_declined_l
     # no_reply = availability 6 (call not triggered)
     no_reply = await db["shifts_users"].count_documents({
         "shift_id":     shift_oid,
@@ -905,7 +906,8 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
         "call_enabled":  1,
         "call_processed": 0,
     })
-    requested = await db["requested_confirm"].count_documents({"shift_id": shift_oid})
+    shift_doc_req = await db["shifts"].find_one({"_id": shift_oid}, {"requested_staff_list": 1})
+    requested = len(shift_doc_req.get("requested_staff_list") or []) if shift_doc_req else 0
     return {
         "available":     available,
         "requested":     requested,
@@ -935,8 +937,11 @@ async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
     call_not_attended  = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 4})
     call_not_triggered = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 6})
 
-    # declined = not_available + voicemail + call_not_attended
-    declined = not_available + voicemail + call_not_attended
+    # declined = not_available (0) + voicemail (3) + call_not_attended (4) for Phone
+    # For Email/WhatsApp: only not_available (0)
+    phone_declined   = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": {"$in": [0, 3, 4]}, "channel": {"$in": ["Phone", None]}})
+    email_wa_declined = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 0, "channel": {"$in": ["Email", "WhatsApp", "SMS"]}})
+    declined = phone_declined + email_wa_declined
     # no_reply = call_not_triggered
     no_reply = call_not_triggered
 
@@ -948,7 +953,8 @@ async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
         "shift_id":    shift_oid,
         "outreach_id": {"$exists": True, "$ne": None},
     })
-    requested = await db["requested_confirm"].count_documents({"shift_id": shift_oid})
+    shift_doc_req2 = await db["shifts"].find_one({"_id": shift_oid}, {"requested_staff_list": 1})
+    requested = len(shift_doc_req2.get("requested_staff_list") or []) if shift_doc_req2 else 0
     return {
         "number_of_staff":    total,
         "available":          available,
@@ -1287,7 +1293,9 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     s.pop("requested_staff_list", None)
 
     # Fetch pool users from shifts_pool collection
-    pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid}).to_list(length=500)
+    pool_total = await db["shifts_pool"].count_documents({"shift_id": shift_oid})
+    _pool_skip = (payload.pool_page - 1) * payload.pool_per_page
+    pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid}).skip(_pool_skip).limit(payload.pool_per_page).to_list(length=payload.pool_per_page)
     pool_user_oids = [p["user_id"] for p in pool_docs if p.get("user_id") and ObjectId.is_valid(str(p.get("user_id", "")))]
     pool_user_map: dict = {}
     if pool_user_oids:
@@ -1321,7 +1329,10 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "added_at":    _iso_irl(p.get("added_at")),
             "added_by":    p.get("added_by"),
         })
-    s["pool_users"] = pool_users
+    s["pool_users"]      = pool_users
+    s["pool_total"]      = pool_total
+    s["pool_page"]       = payload.pool_page
+    s["pool_per_page"]   = payload.pool_per_page
 
     # Resolve user_type_id — always look up from user_types by shifts.user_type name
     user_type_id = None
