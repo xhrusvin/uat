@@ -260,6 +260,82 @@ async def add_users_to_shift_bulk(request: Request, payload: AddUsersToShiftRequ
 
 # ── LIST users for a shift ────────────────────────────────────────────────────
 
+# ── GET /shift-users/export ───────────────────────────────────────────────────
+
+@router.get(
+    "/export",
+    summary="Export shift users list as CSV",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("10/minute")
+async def export_shift_users(
+    request:  Request,
+    shift_id: str,
+    search:   Optional[str] = None,
+    excluded: Optional[int] = None,
+    radius:   Optional[float] = None,
+    order_by: Optional[str] = "distance_km",
+    sort:     Optional[str] = "asc",
+):
+    import csv, io
+    from fastapi.responses import StreamingResponse
+
+    # Re-use list payload with large per_page
+    class _FakePayload:
+        pass
+    p = _FakePayload()
+    p.shift_id = shift_id
+    p.search   = search
+    p.excluded = excluded
+    p.radius   = radius
+    p.order_by = order_by
+    p.sort     = sort
+    p.page     = 1
+    p.per_page = 5000
+    p.user_type_multiple    = None
+    p.county_multiple       = None
+    p.gender_id             = None
+    p.gender_multiple       = None
+    p.visa_type_id          = None
+    p.qqi_status_number     = None
+    p.user_sub_type_multiple = None
+    p.in_pool               = None
+
+    # Call the list function
+    result = await list_shift_users(request, p)
+    users  = result.get("data", [])
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["#", "Name", "Email", "Phone", "Designation", "County",
+                     "Distance (km)", "Rating", "Excluded", "Exclusion Tags",
+                     "Availability", "Prior Shifts", "In Pool"])
+
+    for i, u in enumerate(users, 1):
+        writer.writerow([
+            i,
+            u.get("name", ""),
+            u.get("email", ""),
+            u.get("phone", ""),
+            u.get("designation", ""),
+            u.get("county", ""),
+            u.get("distance_km", ""),
+            u.get("rating", ""),
+            u.get("excluded", ""),
+            ", ".join(u.get("exclusion_tags") or []),
+            u.get("availability_text", ""),
+            u.get("prior_shifts", ""),
+            u.get("in_pool", ""),
+        ])
+
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=shift_users_{shift_id}.csv"}
+    )
+
+
 @router.get(
     "/{shift_id}",
     summary="List all users assigned to a shift",
@@ -1233,82 +1309,6 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         "export_url":      _export_url,
         "data":            results,
     }
-
-
-# ── GET /shift-users/export ───────────────────────────────────────────────────
-
-@router.get(
-    "/export",
-    summary="Export shift users list as CSV",
-    dependencies=[Depends(verify_api_key)],
-)
-@limiter.limit("10/minute")
-async def export_shift_users(
-    request:  Request,
-    shift_id: str,
-    search:   Optional[str] = None,
-    excluded: Optional[int] = None,
-    radius:   Optional[float] = None,
-    order_by: Optional[str] = "distance_km",
-    sort:     Optional[str] = "asc",
-):
-    import csv, io
-    from fastapi.responses import StreamingResponse
-
-    # Re-use list payload with large per_page
-    class _FakePayload:
-        pass
-    p = _FakePayload()
-    p.shift_id = shift_id
-    p.search   = search
-    p.excluded = excluded
-    p.radius   = radius
-    p.order_by = order_by
-    p.sort     = sort
-    p.page     = 1
-    p.per_page = 5000
-    p.user_type_multiple    = None
-    p.county_multiple       = None
-    p.gender_id             = None
-    p.gender_multiple       = None
-    p.visa_type_id          = None
-    p.qqi_status_number     = None
-    p.user_sub_type_multiple = None
-    p.in_pool               = None
-
-    # Call the list function
-    result = await list_shift_users(request, p)
-    users  = result.get("data", [])
-
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["#", "Name", "Email", "Phone", "Designation", "County",
-                     "Distance (km)", "Rating", "Excluded", "Exclusion Tags",
-                     "Availability", "Prior Shifts", "In Pool"])
-
-    for i, u in enumerate(users, 1):
-        writer.writerow([
-            i,
-            u.get("name", ""),
-            u.get("email", ""),
-            u.get("phone", ""),
-            u.get("designation", ""),
-            u.get("county", ""),
-            u.get("distance_km", ""),
-            u.get("rating", ""),
-            u.get("excluded", ""),
-            ", ".join(u.get("exclusion_tags") or []),
-            u.get("availability_text", ""),
-            u.get("prior_shifts", ""),
-            u.get("in_pool", ""),
-        ])
-
-    buf.seek(0)
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=shift_users_{shift_id}.csv"}
-    )
 
 
 # ── POST /shift-users/assign ──────────────────────────────────────────────────
