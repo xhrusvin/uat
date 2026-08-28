@@ -1845,9 +1845,10 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             else {"id": "", "name": str(t)} for t in raw_tags
         ]
 
-        lc_dt = last_contacted_map.get(uid_str)
+        lc_entry = last_contacted_map.get(uid_str)
         last_contacted = None
-        if lc_dt:
+        if lc_entry:
+            lc_dt, lc_channel = lc_entry
             if hasattr(lc_dt, "tzinfo") and lc_dt.tzinfo is None:
                 from datetime import timezone as _tz
                 lc_dt = lc_dt.replace(tzinfo=_tz.utc)
@@ -1857,6 +1858,8 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
             elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
             else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
+            if last_contacted and lc_channel:
+                last_contacted = f"{last_contacted} · {lc_channel}"
 
         visa_used  = u.get("visa_hours_used")
         visa_total = u.get("visa_hours_total")
