@@ -922,15 +922,28 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                     await _asyncio.gather(*[_fetch_visa(_vc, u) for u in missing])
             except Exception as _e2:
                 logger.error(f"[visa] outer: {_e2}")
-    last_contacted_map: dict = {}
+        last_contacted_map: dict = {}  # uid → (call_processed_at, channel)
     if user_ids_page:
+        # shifts_users
         async for su in db["shifts_users"].find(
             {"user_id": {"$in": user_ids_page}, "call_processed_at": {"$ne": None}},
-            {"user_id": 1, "call_processed_at": 1}
+            {"user_id": 1, "call_processed_at": 1, "channel": 1}
         ).sort("call_processed_at", -1):
             uid = str(su.get("user_id", ""))
             if uid not in last_contacted_map:
-                last_contacted_map[uid] = su.get("call_processed_at")
+                last_contacted_map[uid] = (su.get("call_processed_at"), su.get("channel") or "")
+
+        # shifts_group_users — keep only if newer than existing entry
+        async for gu in db["shifts_group_users"].find(
+            {"user_id": {"$in": user_ids_page}, "call_processed_at": {"$ne": None}},
+            {"user_id": 1, "call_processed_at": 1, "channel": 1}
+        ).sort("call_processed_at", -1):
+            uid = str(gu.get("user_id", ""))
+            dt = gu.get("call_processed_at")
+            ch = gu.get("channel") or ""
+            existing = last_contacted_map.get(uid)
+            if existing is None or (dt and existing[0] and dt > existing[0]):
+                last_contacted_map[uid] = (dt, ch)
 
     # Build batch lookup maps for county_id and user_type_id
     # Collect users missing county_id or user_type_id for batch resolution
@@ -1684,17 +1697,30 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     # Last contacted across all provided shifts
     user_ids_page = [u["_id"] for u in users]
-    last_contacted_map: dict = {}
+    last_contacted_map: dict = {}  # uid → (call_processed_at, channel)
     if user_ids_page:
+                # shifts_users (scoped to provided shifts)
         async for su in db["shifts_users"].find(
             {"user_id": {"$in": user_ids_page},
              "shift_id": {"$in": shift_oids},
              "call_processed_at": {"$ne": None}},
-            {"user_id": 1, "call_processed_at": 1}
+            {"user_id": 1, "call_processed_at": 1, "channel": 1}
         ).sort("call_processed_at", -1):
             uid = str(su.get("user_id", ""))
             if uid not in last_contacted_map:
-                last_contacted_map[uid] = su.get("call_processed_at")
+                last_contacted_map[uid] = (su.get("call_processed_at"), su.get("channel") or "")
+
+        # shifts_group_users — keep only if newer than existing entry
+        async for gu in db["shifts_group_users"].find(
+            {"user_id": {"$in": user_ids_page}, "call_processed_at": {"$ne": None}},
+            {"user_id": 1, "call_processed_at": 1, "channel": 1}
+        ).sort("call_processed_at", -1):
+            uid = str(gu.get("user_id", ""))
+            dt = gu.get("call_processed_at")
+            ch = gu.get("channel") or ""
+            existing = last_contacted_map.get(uid)
+            if existing is None or (dt and existing[0] and dt > existing[0]):
+                last_contacted_map[uid] = (dt, ch)
 
     # Client coords — use first shift
     primary_oid   = shift_oids[0]
