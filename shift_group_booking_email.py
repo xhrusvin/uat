@@ -198,25 +198,37 @@ def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_i
             }}
         )
 
-        # Auto-end outreach if this was the last pending email
+        # ── Auto-end outreach when this was the last pending email ──────────
         try:
             outreach_id = record.get("outreach_id")
-            group_id = record.get("group_id")
+            group_id    = record.get("group_id")
+
             if outreach_id and group_id:
-                # Run the check in a background thread so we don't block SMTP
                 def _check_and_end():
-                    from app.db.database import _client          # adjust import if needed
-                    from app.core.config import settings
-                    db = _client[settings.MONGODB_DB]
-                    pending = db.shifts_group_users.count_documents({
-                        "outreach_id": outreach_id,
-                        "channel": "Email",
-                        "call_processed": 0,
-                    })
-                    if pending == 0:
+                    try:
+                        # Count remaining unprocessed Email records for this outreach
+                        pending = app.db.shifts_group_users.count_documents({
+                            "outreach_id": outreach_id,
+                            "channel": "Email",
+                            "call_processed": 0,
+                        })
+
+                        if pending > 0:
+                            return  # still more emails left
+
+                        # Only update if outreach is still Live / Paused
+                        outreach = app.db.outreach_shift_group.find_one({
+                            "_id": outreach_id,
+                            "outreach_status": {"$in": [1, 2]}
+                        })
+                        if not outreach:
+                            return
+
                         now = datetime.utcnow()
-                        res = db.outreach_shift_group.update_one(
-                            {"_id": outreach_id, "outreach_status": {"$in": [1, 2]}},
+
+                        # Update the exact document shape you showed
+                        res = app.db.outreach_shift_group.update_one(
+                            {"_id": outreach_id},
                             {"$set": {
                                 "outreach_status": 3,
                                 "status": "ended",
@@ -225,26 +237,43 @@ def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_i
                                 "end_reason": "All emails sent",
                             }}
                         )
+
                         if res.modified_count:
-                            db.shifts_group_users.update_many(
+                            # Disable any remaining pending staff
+                            app.db.shifts_group_users.update_many(
                                 {"group_id": group_id, "call_processed": 0},
-                                {"$set": {"call_enabled": 0, "updated_at": now}}
+                                {"$set": {
+                                    "call_enabled": 0,
+                                    "updated_at": now
+                                }}
                             )
-                            db.activities.insert_one({
+
+                            rn = outreach.get("round_number", 1)
+                            app.db.activities.insert_one({
                                 "activity_type": "round_ended",
                                 "group_id": group_id,
                                 "outreach_id": outreach_id,
                                 "metadata": {
+                                    "round_number": rn,
                                     "end_reason": "All emails sent",
                                     "auto_ended": True,
-                                    "summary": "Round auto-ended · all emails sent",
+                                    "summary": f"Round {rn} auto-ended · all emails sent",
                                 },
                                 "created_at": now,
                             })
-                            log.info(f"[AUTO-END] Outreach {outreach_id} ended – all emails sent")
+
+                            log.info(
+                                f"[AUTO-END] outreach_shift_group {outreach_id} "
+                                f"→ outreach_status=3, status='ended' "
+                                f"(last email sent for group {group_id})"
+                            )
+                    except Exception as e:
+                        log.error(f"[AUTO-END] failed for outreach {outreach_id}: {e}")
+
                 threading.Thread(target=_check_and_end, daemon=True).start()
+
         except Exception as auto_err:
-            log.warning(f"[AUTO-END] check failed: {auto_err}")
+            log.warning(f"[AUTO-END] outer check failed: {auto_err}")
 
     except Exception as e:
         log.error(f"[GROUP EMAIL] ✗ Failed to send to {to_email}: {e}")
