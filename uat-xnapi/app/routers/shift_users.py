@@ -301,8 +301,8 @@ async def export_shift_users(
     p.user_sub_type_multiple = None
     p.in_pool               = None
 
-    # Call the list function
-    result = await list_shift_users(request, p)
+    # Call the paginated list function
+    result = await list_shift_users_paginated(request, p)
     users  = result.get("data", [])
 
     buf = io.StringIO()
