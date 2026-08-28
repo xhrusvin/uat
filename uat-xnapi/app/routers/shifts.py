@@ -409,14 +409,16 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         from app.db.database import _client as _mc2
         _db2 = _mc2[settings.MONGODB_DB]
 
-        # Complete any live/paused/ended outreach (10=Completed)
+        end_reason = f"shift_status_changed:{status_name or status_val}"
+
+        # 1) Single-shift outreach → Completed (10)
         await _db2["outreach"].update_many(
             {"shift_id": shift_oid, "outreach_status": {"$in": [1, 2, 3]}},
             {"$set": {
                 "outreach_status": 10,
                 "completed_at":    now,
                 "updated_at":      now,
-                "end_reason":      f"shift_status_changed:{status_name or status_val}",
+                "end_reason":      end_reason,
             }}
         )
 
@@ -425,7 +427,45 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
             {"shift_id": shift_oid, "call_processed": {"$ne": 1}},
             {"$set": {"call_enabled": 0, "updated_at": now}}
         )
-        logger.info(f"[sync-detail] shift {data.get('shift_code')} status={status_name} → ended outreach, disabled calls")
+
+        # 2) Group outreach → also end any live/paused group that contains this shift
+        groups = await _db2["shifts_group"].find(
+            {"shift_ids": shift_oid},
+            {"_id": 1}
+        ).to_list(100)
+
+        for grp in groups:
+            group_oid = grp["_id"]
+
+            # Complete live / paused / ended group outreach (→ 10 Completed)
+            await _db2["outreach_shift_group"].update_many(
+                {
+                    "group_id": group_oid,
+                    "outreach_status": {"$in": [1, 2, 3]},
+                },
+                {"$set": {
+                    "outreach_status": 10,
+                    "status": "completed",
+                    "ended_at": now,
+                    "updated_at": now,
+                    "end_reason": end_reason,
+                }}
+            )
+
+            # Disable remaining pending staff in the group
+            await _db2["shifts_group_users"].update_many(
+                {"group_id": group_oid, "call_processed": 0},
+                {"$set": {
+                    "call_enabled": 0,
+                    "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+                }}
+            )
+
+        logger.info(
+            f"[sync-detail] shift {data.get('shift_code')} status={status_name} "
+            f"→ ended single + group outreach, disabled calls "
+            f"(groups affected: {len(groups)})"
+        )
 
     return {
         "success": True,
