@@ -1102,6 +1102,13 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     s["outreach_status"]        = outreach_info["outreach_status"]
     s["outreach_status_text"]   = outreach_info["outreach_status_text"]
     s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
+    # If shift is no longer "To Be Filled" / "To Be Assigned", treat Ended (3) as Completed (10)
+    _shift_status = (doc.get("upstream_status") or doc.get("status") or "").strip().lower()
+    _open_statuses = {"to be filled", "to be assigned"}
+    if _shift_status not in _open_statuses:
+        s["outreach_status"] = 10
+        s["outreach_status_text"] = "Completed"
+
     s["shift_preference"]       = doc.get("shift_preferences") or s.get("shift_preferences") or []
     s["ghost_booking"]          = 1 if doc.get("ghost_booking") else 0
     s["radius"]                 = doc.get("radius")
