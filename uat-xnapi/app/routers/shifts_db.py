@@ -1290,7 +1290,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "decline_notes":      rs.get("decline_notes"),
             "declined_at":        rs.get("declined_at"),
             "flag":              rs.get("flag", 0),
-            "confirmed":         1 if str(sid) == str(doc.get("staff_id", "")) or u.get("email") == doc.get("staff_email") else 0,
+            "confirmed":         1 if str(sid) == str(doc.get("staff_id", "")) or str(rs.get("xn_staff_id", "")) == str(doc.get("staff_id", "")) else 0,
             "confirm": {
                 "staff_label":   f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip() or rs.get('staff') or '—'} · ★ {u.get('rating') or '—'}",
                 "rating":        u.get("rating"),
@@ -1685,7 +1685,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 "flag":                su.get("flag", 0),
                 "ignored":             su.get("ignored", 0),
                 "wa_phone":            su.get("wa_phone", ""),
-                "confirmed":           1 if str(uid_str) == str(doc.get("staff_id", "")) or u.get("email") == doc.get("staff_email") else 0,
+                "confirmed":           1 if str(uid_str) == str(doc.get("staff_id", "")) or str(u.get("xn_user_id", "")) == str(doc.get("staff_id", "")) else 0,
                 # Confirm staff modal fields (Image 2)
                 "confirm": {
                     "staff_label":       f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip()} · ★ {u.get('rating') or '—'} · {prior_shifts_here} prior shifts here",
