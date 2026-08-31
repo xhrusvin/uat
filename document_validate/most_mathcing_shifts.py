@@ -63,12 +63,10 @@ def most_matching_shifts():
         # 3. Look up user in DB
         query = None
         try:
-            query = {"_id": ObjectId(user_id)}
+            query = {"_id": user_id}
         except Exception:
             query = {
                 "$or": [
-                    {"_id": user_id},
-                    {"user_id": user_id},
                     {"xn_user_id": user_id},
                 ]
             }
