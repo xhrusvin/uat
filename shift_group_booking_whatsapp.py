@@ -73,15 +73,20 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
         # Date: {{date}}
         # Time: {{from_time}} – {{to_time}}
         # Rate: {{rate}}
+        def _nz(v, fallback):
+            s = str(v or "").strip()
+            return s if s else fallback
+
         parameters = [
-            {"name": "county",    "value": county or "Ireland"},
-            {"name": "facility",  "value": facility or "the facility"},
-            {"name": "unit",      "value": unit or "-"},
-            {"name": "date",      "value": date_str or "TBC"},
-            {"name": "from_time", "value": start or "TBC"},
-            {"name": "to_time",   "value": end or "TBC"},
-            {"name": "rate",      "value": rate or "REG"},
+            {"name": "county",    "value": _nz(county, "Ireland")},
+            {"name": "facility",  "value": _nz(facility, "the facility")},
+            {"name": "unit",      "value": _nz(unit, "-")},
+            {"name": "date",      "value": _nz(date_str, "TBC")},
+            {"name": "from_time", "value": _nz(start, "TBC")},
+            {"name": "to_time",   "value": _nz(end, "TBC")},
+            {"name": "rate",      "value": _nz(rate, "REG")},
         ]
+        log.info(f"[GROUP WA] params={parameters} phone={phone_clean}")
 
         payload = {
             "template_name":  WATI_TEMPLATE_NAME,
@@ -140,7 +145,8 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
             log.info(f"[GROUP WA] ✓ Sent shift_index={shift_index} local_message_id={local_msg_id}")
             return resp_data
         else:
-            log.error(f"[GROUP WA] ✗ Failed shift_index={shift_index}: {resp.status_code} {resp.text[:200]}")
+            log.error(f"[GROUP WA] ✗ Failed shift_index={shift_index}: {resp.status_code} {resp.text[:500]}")
+            log.error(f"[GROUP WA] payload was: {payload}")
             app.db.shifts_group_users.update_one(
                 {"_id": su_id},
                 {"$set": {"wa_error": f"shift_{shift_index}: {resp.status_code}: {resp.text[:200]}"}}

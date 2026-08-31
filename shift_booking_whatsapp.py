@@ -71,15 +71,20 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
         # Date: {{date}}
         # Time: {{from_time}} – {{to_time}}
         # Rate: {{rate}}
+        def _nz(v, fallback):
+            s = str(v or "").strip()
+            return s if s else fallback
+
         parameters = [
-            {"name": "county",    "value": county or "Ireland"},
-            {"name": "facility",  "value": facility or "the facility"},
-            {"name": "unit",      "value": unit or "-"},
-            {"name": "date",      "value": date_str or "TBC"},
-            {"name": "from_time", "value": start or "TBC"},
-            {"name": "to_time",   "value": end or "TBC"},
-            {"name": "rate",      "value": rate or "REG"},
+            {"name": "county",    "value": _nz(county, "Ireland")},
+            {"name": "facility",  "value": _nz(facility, "the facility")},
+            {"name": "unit",      "value": _nz(unit, "-")},
+            {"name": "date",      "value": _nz(date_str, "TBC")},
+            {"name": "from_time", "value": _nz(start, "TBC")},
+            {"name": "to_time",   "value": _nz(end, "TBC")},
+            {"name": "rate",      "value": _nz(rate, "REG")},
         ]
+        log.info(f"[GROUP WA] params={parameters} phone={phone_clean}")
 
         payload = {
             "template_name": WATI_TEMPLATE_NAME,
@@ -450,7 +455,6 @@ def register_wati_webhook_routes(app):
             "updated_at":    now,
             "wa_response":   btn_text or text,
         }
-        update_op = {"$set": _set_fields}
 
         # For group outreach — find specific shift by localMessageId in availability_details
         if collection == "shifts_group_users":
@@ -465,7 +469,7 @@ def register_wati_webhook_routes(app):
                     break
             if clicked_shift_id:
                 for ad in new_details:
-                    if str(ad.get("shift_id","")) == clicked_shift_id:
+                    if str(ad.get("shift_id", "")) == str(clicked_shift_id):
                         ad["availability"] = avail
                         ad["responded_at"] = now_str
                         break
@@ -474,6 +478,6 @@ def register_wati_webhook_routes(app):
             else:
                 log.info(f"[WATI WEBHOOK] No localMessageId match for {_broadcast_link_id} — skipping availability_details")
 
+        result = db_col.update_one({"_id": su["_id"]}, {"$set": _set_fields})
         log.info(f"[WATI WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
         return {"success": True, "availability": avail, "collection": collection, "su_id": str(su["_id"])}, 200
-
