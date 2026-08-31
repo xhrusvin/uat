@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 ALLOWED_START_HOUR = 1
 ALLOWED_END_HOUR   = 23
 BATCH_SIZE         = 10
-WATI_TEMPLATE_NAME = "shift_call_new"
+WATI_TEMPLATE_NAME = "shift_kiran"
 
 
 def is_within_call_window():
@@ -59,22 +59,28 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
         phone_clean = phone.replace("+", "").replace(" ", "").replace("-", "").strip()
         facility = shift_doc.get("client_name", "") or shift_doc.get("location", "")
         county   = shift_doc.get("client_county", "") or ""
+        unit     = shift_doc.get("unit", "") or ""
         date_str = _format_date(shift_doc.get("date", ""))
-        day_str  = _format_day(shift_doc.get("date", ""))
         start    = shift_doc.get("start_time", "")
         end      = shift_doc.get("end_time", "")
         _rate    = shift_doc.get("rate", "")
         rate     = "REG" if not _rate or str(_rate) in ("0", "0.0", "") else str(_rate)
 
+        # Template: shift_kiran
+        # Shift Availability – Co. {{county}}
+        # Facility: {{facility}}
+        # Unit: {{unit}}
+        # Date: {{date}}
+        # Time: {{from_time}} – {{to_time}}
+        # Rate: {{rate}}
         parameters = [
-            {"name": "name",     "value": first_name or "there"},
-            {"name": "facility", "value": facility or "the facility"},
-            {"name": "county",   "value": county or "Ireland"},
-            {"name": "day",      "value": day_str or "Today"},
-            {"name": "date",     "value": date_str or "TBC"},
-            {"name": "start",    "value": start or "TBC"},
-            {"name": "end",      "value": end or "TBC"},
-            {"name": "rate",     "value": rate or "REG"},
+            {"name": "county",    "value": county or "Ireland"},
+            {"name": "facility",  "value": facility or "the facility"},
+            {"name": "unit",      "value": unit or "-"},
+            {"name": "date",      "value": date_str or "TBC"},
+            {"name": "from_time", "value": start or "TBC"},
+            {"name": "to_time",   "value": end or "TBC"},
+            {"name": "rate",      "value": rate or "REG"},
         ]
 
         payload = {
@@ -143,98 +149,6 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
     except Exception as e:
         log.error(f"[GROUP WA] ✗ Exception shift_index={shift_index}: {e}")
         return None
-        wati_url   = (os.getenv("WATI_API_ENDPOINT") or os.getenv("WATI_API_URL", "")).rstrip("/")
-        wati_token = os.getenv("WATI_ACCESS_TOKEN") or os.getenv("WATI_API_TOKEN", "")
-
-        if not wati_url or not wati_token:
-            log.error("[GROUP WA] WATI_API_ENDPOINT or WATI_ACCESS_TOKEN not set")
-            return
-
-        phone_clean = phone.replace("+", "").replace(" ", "").replace("-", "").strip()
-
-        facility = shift_doc.get("client_name", "") or shift_doc.get("location", "")
-        county   = shift_doc.get("client_county", "") or ""
-        date_str = _format_date(shift_doc.get("date", ""))
-        day_str  = _format_day(shift_doc.get("date", ""))
-        start    = shift_doc.get("start_time", "")
-        end      = shift_doc.get("end_time", "")
-        unit     = shift_doc.get("unit", "") or ""
-        _rate    = shift_doc.get("rate", "")
-        rate     = "REG" if not _rate or str(_rate) in ("0", "0.0", "") else str(_rate)
-
-        # Template: shift_call_new
-        parameters = [
-            {"name": "name",     "value": first_name or "there"},
-            {"name": "facility", "value": facility or "the facility"},
-            {"name": "county",   "value": county or "Ireland"},
-            {"name": "day",      "value": day_str or "Today"},
-            {"name": "date",     "value": date_str or "TBC"},
-            {"name": "start",    "value": start or "TBC"},
-            {"name": "end",      "value": end or "TBC"},
-            {"name": "rate",     "value": rate or "REG"},
-        ]
-
-        # Unique broadcast name per shift to avoid WATI deduplication
-        payload = {
-            "template_name":  WATI_TEMPLATE_NAME,
-            "broadcast_name": f"group_shift_{str(su_id)}_{shift_index}",
-            "parameters":     parameters,
-        }
-
-        headers = {
-            "Authorization": f"Bearer {wati_token}",
-            "Content-Type":  "application/json",
-            "Accept":        "application/json",
-        }
-
-        _wati_send_url = f"{wati_url}/api/v2/sendTemplateMessage?whatsappNumber={phone_clean}"
-
-        resp = _req.post(_wati_send_url, json=payload, headers=headers, timeout=20)
-
-        if resp.status_code == 200:
-            log.info(f"[GROUP WA] ✓ Sent to {phone_clean} shift_index={shift_index}")
-            resp_data = resp.json()
-            wati_id   = resp_data.get("id", "")
-
-            # Update base fields
-            app.db.shifts_group_users.update_one(
-                {"_id": su_id},
-                {"$set": {
-                    "wa_sent":            1,
-                    "wa_sent_at":         datetime.utcnow(),
-                    "wa_message_id":      wati_id,
-                    "wa_conversation_id": resp_data.get("conversationId", ""),
-                    "wa_phone":           phone_clean,
-                    "availability":       8,
-                }}
-            )
-            # Push shift record separately
-            app.db.shifts_group_users.update_one(
-                {"_id": su_id},
-                {"$push": {
-                    "wa_sent_shifts": {
-                        "shift_id":       shift_id,
-                        "shift_index":    shift_index,
-                        "broadcast_name": f"group_shift_{str(su_id)}_{shift_index}",
-                        "wati_id":        wati_id,
-                        "sent_at":        datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                    }
-                }}
-            )
-            log.info(f"[GROUP WA] ✓ Saved wa_sent_shifts for shift_id={shift_id} wati_id={wati_id}")
-        else:
-            log.error(f"[GROUP WA] ✗ Failed {phone_clean}: {resp.status_code} {resp.text[:200]}")
-            app.db.shifts_group_users.update_one(
-                {"_id": su_id},
-                {"$set": {"wa_error": f"{resp.status_code}: {resp.text[:200]}"}}
-            )
-
-    except Exception as e:
-        log.error(f"[GROUP WA] ✗ Exception for {phone}: {e}")
-        app.db.shifts_group_users.update_one(
-            {"_id": su_id},
-            {"$set": {"wa_error": str(e)}}
-        )
 
 
 def _get_shift_doc(app, record):
