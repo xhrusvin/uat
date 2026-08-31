@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import os
 from datetime import datetime
 from bson import ObjectId
+from bson.errors import InvalidId
 
 from . import bp
 
@@ -27,15 +28,15 @@ users_col    = db['users']
 @bp.route("/most-matching-shifts", methods=["POST"])
 def most_matching_shifts():
     """
-    Accepts user_id and returns user details from the users collection
-    (looked up via xn_user_id / _id / user_id).
+    Accepts user_id (which is actually xn_user_id) and returns
+    the full user document details from the users collection.
 
     Expected Headers:
         Api-Key: <XN_PORTAL_WEBHOOK_KEY>
         X-App-Country: ie   (optional)
 
     Expected JSON Body:
-        { "user_id": "64f1a2b3c4d5e6f7a8b9c0d1" }
+        { "user_id": "67ef75c2c9ede4cc5506bc1b" }   # = xn_user_id
     """
     try:
         # 1. Validate Headers
@@ -60,18 +61,23 @@ def most_matching_shifts():
 
         user_id = str(user_id).strip()
 
-        # 3. Look up user in DB
-        query = None
-        try:
-            query = {"_id": user_id}
-        except Exception:
-            query = {
-                "$or": [
-                    {"xn_user_id": user_id},
-                ]
-            }
+        # 3. Look up user – priority: xn_user_id (what the client sends)
+        #    Also try _id / user_id as fallback
+        or_conditions = [
+            {"xn_user_id": user_id},
+            {"user_id": user_id},
+        ]
 
-        user_doc = users_col.find_one(query)
+        # Only add ObjectId(_id) if the string is a valid ObjectId
+        try:
+            or_conditions.append({"_id": ObjectId(user_id)})
+        except (InvalidId, TypeError):
+            pass
+
+        # Also allow plain string _id match (rare)
+        or_conditions.append({"_id": user_id})
+
+        user_doc = users_col.find_one({"$or": or_conditions})
 
         if not user_doc:
             return jsonify({
@@ -79,22 +85,34 @@ def most_matching_shifts():
                 "message": f"User not found for user_id: {user_id}"
             }), 404
 
-        xn_user_id = user_doc.get("xn_user_id")
-        if not xn_user_id:
-            return jsonify({
-                "status": "error",
-                "message": "User found but xn_user_id is missing"
-            }), 400
-
-        # 4. Prepare user details
+        # 4. Build response with the important fields
         user_details = {
-            "user_id":    str(user_doc.get("_id", user_id)),
-            "xn_user_id": xn_user_id,
-            "name":       user_doc.get("name") or user_doc.get("full_name"),
-            "email":      user_doc.get("email"),
-            "phone":      user_doc.get("phone") or user_doc.get("mobile"),
-            "country":    user_doc.get("country") or app_country,
-            # add any extra fields you need from the document
+            "user_id":          str(user_doc.get("_id")),
+            "xn_user_id":       user_doc.get("xn_user_id"),
+            "first_name":       user_doc.get("first_name"),
+            "last_name":        user_doc.get("last_name"),
+            "email":            user_doc.get("email"),
+            "phone":            user_doc.get("phone"),
+            "designation":      user_doc.get("designation"),
+            "job_title":        user_doc.get("job_title"),
+            "company_name":     user_doc.get("company_name"),
+            "address":          user_doc.get("address"),
+            "dob":              user_doc.get("dob"),
+            "gender_id":        user_doc.get("gender_id"),
+            "country_id":       user_doc.get("country_id"),
+            "county_id":        user_doc.get("county_id"),
+            "experience_year":  user_doc.get("experience_year"),
+            "experience_month": user_doc.get("experience_month"),
+            "rating":           user_doc.get("rating"),
+            "status":           user_doc.get("status"),
+            "is_active":        user_doc.get("is_active"),
+            "onboarded":        user_doc.get("onboarded"),
+            "user_sub_type_ids": user_doc.get("user_sub_type_ids"),
+            "tags":             user_doc.get("tags"),
+            "location":         user_doc.get("location"),
+            "created_at":       user_doc.get("created_at").isoformat() if user_doc.get("created_at") else None,
+            "updated_at":       user_doc.get("updated_at").isoformat() if user_doc.get("updated_at") else None,
+            # add / remove fields as needed
         }
 
         return jsonify({
