@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 ALLOWED_START_HOUR = 1
 ALLOWED_END_HOUR   = 23
 BATCH_SIZE         = 10
-WATI_TEMPLATE_NAME = "shift_call_new"
+WATI_TEMPLATE_NAME = "shift_kiran"
 
 
 def is_within_call_window():
@@ -56,27 +56,29 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
 
         facility = shift_doc.get("client_name", "") or shift_doc.get("location", "")
         county   = shift_doc.get("client_county", "") or ""
+        unit     = shift_doc.get("unit", "") or ""
         date_str = _format_date(shift_doc.get("date", ""))
-        day_str  = _format_day(shift_doc.get("date", ""))
         start    = shift_doc.get("start_time", "")
         end      = shift_doc.get("end_time", "")
         _rate    = shift_doc.get("rate", "")
         rate     = "REG" if not _rate or str(_rate) in ("0", "0.0", "") else str(_rate)
 
         # WATI template parameters — order matches template placeholders
-        unit = shift_doc.get("unit", "") or ""
-        # Template: shift_call_new
-        # Hi {{name}}, It's Alice from Xpress Health.
-        # {{Facility}}, {{County}} | {{Day}}, {{Date}} | {{Start}} – {{End}} | {{Rate}}/hour
+        # Template: shift_kiran
+        # Shift Availability – Co. {{county}}
+        # Facility: {{facility}}
+        # Unit: {{unit}}
+        # Date: {{date}}
+        # Time: {{from_time}} – {{to_time}}
+        # Rate: {{rate}}
         parameters = [
-            {"name": "name",     "value": first_name or "there"},
-            {"name": "facility", "value": facility or "the facility"},
-            {"name": "county",   "value": county or "Ireland"},
-            {"name": "day",      "value": day_str or "Today"},
-            {"name": "date",     "value": date_str or "TBC"},
-            {"name": "start",    "value": start or "TBC"},
-            {"name": "end",      "value": end or "TBC"},
-            {"name": "rate",     "value": rate or "REG"},
+            {"name": "county",    "value": county or "Ireland"},
+            {"name": "facility",  "value": facility or "the facility"},
+            {"name": "unit",      "value": unit or "-"},
+            {"name": "date",      "value": date_str or "TBC"},
+            {"name": "from_time", "value": start or "TBC"},
+            {"name": "to_time",   "value": end or "TBC"},
+            {"name": "rate",      "value": rate or "REG"},
         ]
 
         payload = {
@@ -148,13 +150,14 @@ def _get_shift_doc(app, record):
                     {"county": 1}
                 )
             shift_doc = {
-                "client_name":  s.get("client_name", "") or s.get("location", ""),
-                "location":     s.get("location", ""),
+                "client_name":   s.get("client_name", "") or s.get("location", ""),
+                "location":      s.get("location", ""),
                 "client_county": s.get("client_county", "") or (client.get("county", "") if client else ""),
-                "date":         str(s.get("date", "")),
-                "start_time":   s.get("start_time", ""),
-                "end_time":     s.get("end_time", ""),
-                "rate":         s.get("rate", ""),
+                "date":          str(s.get("date", "")),
+                "start_time":    s.get("start_time", ""),
+                "end_time":      s.get("end_time", ""),
+                "rate":          s.get("rate", ""),
+                "unit":          s.get("unit", ""),
             }
     elif group_id:
         sg = app.db.shifts_group.find_one({"_id": group_id}, {"shift_ids": 1})
@@ -169,6 +172,7 @@ def _get_shift_doc(app, record):
                     "start_time":    s.get("start_time", ""),
                     "end_time":      s.get("end_time", ""),
                     "rate":          s.get("rate", ""),
+                    "unit":          s.get("unit", ""),
                 }
     return shift_doc
 
