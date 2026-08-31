@@ -85,7 +85,7 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
 
         payload = {
             "template_name":  WATI_TEMPLATE_NAME,
-            "broadcast_name": f"group_shift_{str(su_id)}_{shift_index}",
+            "broadcast_name": f"group_shift_{str(su_id)}_{shift_index}_{datetime.utcnow().strftime('%H%M%S')}",
             "parameters":     parameters,
         }
         headers = {
@@ -290,17 +290,31 @@ def register_shift_group_booking_whatsapp_routes(app):
 
             log.info(f"[GROUP WA] Sending {len(shift_docs)} messages to {phone} for su_id={su_id}")
 
+            result = app.db.shifts_group_users.update_one(
+                {"_id": su_id},
+                {"$set": {
+                    "call_processed":    1,
+                    "call_processed_at": datetime.utcnow(),
+                    "availability":      7,
+                    "updated_at":        datetime.utcnow(),
+                }}
+            )
+            if result.modified_count == 0:
+                continue
+
             def _send_all_shifts(app_obj, shift_docs_list, shift_id_list_, phone_, first_name_, su_id_):
                 try:
                     log.info(f"[GROUP WA] Thread started — {len(shift_docs_list)} shifts for {phone_}")
                     for _i, (_sdoc, _sid) in enumerate(zip(shift_docs_list, shift_id_list_)):
                         if _i > 0:
                             import time as _t
-                            _t.sleep(5)
+                            _t.sleep(20)  # longer gap so WhatsApp/WATI is less likely to drop repeats
                         log.info(f"[GROUP WA] Sending shift {_i+1}/{len(shift_docs_list)} shift_id={_sid}")
                         _send_wati_whatsapp_sync(app_obj, _sdoc, phone_, first_name_, su_id_, _i, _sid)
                 except Exception as _e:
                     log.error(f"[GROUP WA] Thread error: {_e}", exc_info=True)
+
+
 
             threading.Thread(
                 target=_send_all_shifts,
@@ -311,10 +325,12 @@ def register_shift_group_booking_whatsapp_routes(app):
 
 
             triggered.append({
-                "su_id":      str(su_id),
-                "user_id":    str(user_id),
-                "staff_name": full_name,
-                "phone":      phone,
+                "su_id":        str(su_id),
+                "user_id":      str(user_id),
+                "staff_name":   full_name,
+                "phone":        phone,
+                "shifts_count": len(shift_docs),
+                "shift_ids":    shift_id_list,
             })
 
         return jsonify({
