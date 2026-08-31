@@ -368,27 +368,45 @@ def register_wati_webhook_routes(app):
         app.db.wati_messages.insert_one(msg_doc)
 
         # Only process availability when it's a button click (type=button or has buttonReply)
+                # Also treat explicit reply events; text may arrive in other fields
+        reply_text = (
+            btn_text
+            or text
+            or data.get("replyText")
+            or data.get("buttonText")
+            or (wa_message.get("text") if isinstance(wa_message, dict) else "")
+            or (wa_message.get("body") if isinstance(wa_message, dict) else "")
+            or ""
+        )
+        reply_text = str(reply_text).strip()
+
         is_button_event = (
-            msg_type == "button" or
-            bool(btn_reply) or
-            event_type in ("message", "ctaButtonClicked", "CTA Button Clicked")
-        ) and bool(btn_text)
+            msg_type == "button"
+            or bool(btn_reply)
+            or bool(reply_text)
+            or event_type in (
+                "message",
+                "ctaButtonClicked",
+                "CTA Button Clicked",
+                "sentMessageREPLIED_v2",
+                "button",
+            )
+        )
 
         if not is_button_event:
             log.info(f"[WATI WEBHOOK] Skipping non-button event: eventType={event_type} type={msg_type}")
             return {"success": True, "message": f"Skipped event: {event_type}"}, 200
 
         # Determine availability from button clicked
-        btn_text_l  = btn_text.strip().lower()
-        text_l      = text.strip().lower()
-        combined    = btn_text_l or text_l
+        combined = (reply_text or btn_text or text or "").strip().lower()
         avail = None
-        if "yes" in combined or "available" in combined:
+        if "yes" in combined or "i'm available" in combined or "im available" in combined:
             avail = 1
-        elif "no" in combined or "thanks" in combined:
+        elif "no" in combined or "not available" in combined or "thanks" in combined:
             avail = 0
 
         if avail is None or not phone:
+            log.info(f"[WATI WEBHOOK] No actionable reply text. eventType={event_type} reply_text={reply_text!r}")
             return {"success": True, "message": "No actionable response"}, 200
 
         now = datetime.utcnow()
