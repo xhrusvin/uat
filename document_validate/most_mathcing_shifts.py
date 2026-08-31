@@ -136,34 +136,22 @@ def most_matching_shifts():
                 "message": f"User not found for user_id: {user_id}"
             }), 404
 
-        # 4. Build user response
+                # 4. Build user response
         user_details = {
-            "user_id":          str(user_doc.get("_id")),
-            "xn_user_id":       user_doc.get("xn_user_id"),
-            "first_name":       user_doc.get("first_name"),
-            "last_name":        user_doc.get("last_name"),
-            "email":            user_doc.get("email"),
-            "phone":            user_doc.get("phone"),
-            "designation":      user_doc.get("designation"),
-            "job_title":        user_doc.get("job_title"),
-            "company_name":     user_doc.get("company_name"),
-            "address":          user_doc.get("address"),
-            "dob":              user_doc.get("dob"),
-            "gender_id":        user_doc.get("gender_id"),
-            "country_id":       user_doc.get("country_id"),
-            "county_id":        user_doc.get("county_id"),
-            "experience_year":  user_doc.get("experience_year"),
-            "experience_month": user_doc.get("experience_month"),
-            "rating":           user_doc.get("rating"),
-            "status":           user_doc.get("status"),
-            "is_active":        user_doc.get("is_active"),
-            "onboarded":        user_doc.get("onboarded"),
-            "user_type_id":     str(user_doc.get("user_type_id")) if user_doc.get("user_type_id") else None,
+            "user_id":           str(user_doc.get("_id")),
+            "xn_user_id":        user_doc.get("xn_user_id"),
+            "first_name":        user_doc.get("first_name"),
+            "last_name":         user_doc.get("last_name"),
+            "email":             user_doc.get("email"),
+            "phone":             user_doc.get("phone"),
+            "designation":       user_doc.get("designation"),
+            "job_title":         user_doc.get("job_title"),
+            "rating":            user_doc.get("rating"),
+            "status":            user_doc.get("status"),
+            "is_active":         user_doc.get("is_active"),
+            "user_type_id":      str(user_doc.get("user_type_id")) if user_doc.get("user_type_id") else None,
             "user_sub_type_ids": user_doc.get("user_sub_type_ids"),
-            "tags":             user_doc.get("tags"),
-            "location":         user_doc.get("location"),
-            "created_at":       user_doc.get("created_at").isoformat() if user_doc.get("created_at") else None,
-            "updated_at":       user_doc.get("updated_at").isoformat() if user_doc.get("updated_at") else None,
+            "tags":              user_doc.get("tags"),
         }
 
         # 5. Fetch matching shifts
