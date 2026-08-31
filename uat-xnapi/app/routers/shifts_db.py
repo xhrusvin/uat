@@ -466,6 +466,7 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["shift_preferences"]      = doc.get("shift_preferences") or []
         s["ghost_booking"]          = 0
         s["shift_timing"]           = _normalize_shift_timing(doc)
+        s["rate"] = s.get("pay_rate") if s.get("pay_rate") is not None else s.get("rate")
         results.append(s)
 
     # Aggregate outreach counts (global — not filtered)
@@ -760,6 +761,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         s["client_preference"]      = cl.get("client_preference") or [] if cl else []
         s["ghost_booking"]          = 0
         s["group_id"]               = group_shift_map.get(str(shift_oid_l))
+        s["rate"] = s.get("pay_rate") if s.get("pay_rate") is not None else s.get("rate")
         results.append(s)
 
     # ── Also include group outreach shifts ───────────────────────────────────
