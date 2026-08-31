@@ -138,34 +138,7 @@ def _score_shift(shift, user_doc, history, user_lat, user_lng):
     shift_client   = (shift.get("client_name") or "").strip()
     shift_timing   = (shift.get("shift_timing") or "").strip()
 
-    # County match — worked in this county before
-    if shift_county and history["top_counties"].get(shift_county, 0) > 0:
-        times = history["top_counties"][shift_county]
-        pts   = min(30, 15 + times * 3)
-        score += pts
-        reasons.append(f"Worked in {shift_county} {times}x (+{pts})")
-
-    # Home county match
-    user_county = (user_doc.get("county") or "").strip()
-    if shift_county and user_county and shift_county.lower() == user_county.lower():
-        score += 15
-        reasons.append(f"Home county match: {shift_county} (+15)")
-
-    # Client match — worked at this client before
-    if shift_client and history["top_clients"].get(shift_client, 0) > 0:
-        times = history["top_clients"][shift_client]
-        pts   = min(20, 10 + times * 2)
-        score += pts
-        reasons.append(f"Worked at {shift_client} {times}x (+{pts})")
-
-    # Shift timing preference
-    if shift_timing and history["top_shift_timings"].get(shift_timing, 0) > 0:
-        times = history["top_shift_timings"][shift_timing]
-        pts   = min(20, 10 + times * 2)
-        score += pts
-        reasons.append(f"Preferred timing: {shift_timing} {times}x (+{pts})")
-
-    # Distance score (max 25 pts for <5km, 0 for >100km)
+    # Priority 1: Distance <5km (+50)
     if user_lat and user_lng:
         shift_lat = shift.get("latitude") or shift.get("client_lat")
         shift_lng = shift.get("longitude") or shift.get("client_lng")
@@ -182,20 +155,47 @@ def _score_shift(shift, user_doc, history, user_lat, user_lng):
             try:
                 dist_km = _haversine_km(float(user_lat), float(user_lng), float(shift_lat), float(shift_lng))
                 if dist_km is not None:
-                    if dist_km <= 5:
-                        pts = 25
-                    elif dist_km <= 20:
-                        pts = int(25 - (dist_km - 5) * 1.0)
-                    elif dist_km <= 50:
+                    if dist_km <= 5:       # Priority 1
+                        pts = 50
+                    elif dist_km <= 20:    # Priority 5
+                        pts = int(30 - (dist_km - 5) * 1.5)
+                    elif dist_km <= 50:    # Priority 7
                         pts = int(10 - (dist_km - 20) * 0.3)
                     elif dist_km <= 100:
-                        pts = max(0, int(1 - (dist_km - 50) * 0.02))
+                        pts = max(0, int(2 - (dist_km - 50) * 0.04))
                     else:
                         pts = 0
                     score += pts
                     reasons.append(f"Distance: {dist_km:.1f}km (+{pts})")
             except Exception:
                 pass
+
+    # Priority 2: Preferred shift timing (+40)
+    if shift_timing and history["top_shift_timings"].get(shift_timing, 0) > 0:
+        times = history["top_shift_timings"][shift_timing]
+        pts   = min(40, 25 + times * 3)
+        score += pts
+        reasons.append(f"Preferred timing: {shift_timing} {times}x (+{pts})")
+
+    # Priority 3: Home county match (+35)
+    user_county = (user_doc.get("county") or "").strip()
+    if shift_county and user_county and shift_county.lower() == user_county.lower():
+        score += 35
+        reasons.append(f"Home county match: {shift_county} (+35)")
+
+    # Priority 4: Worked at this client before (+30)
+    if shift_client and history["top_clients"].get(shift_client, 0) > 0:
+        times = history["top_clients"][shift_client]
+        pts   = min(30, 18 + times * 2)
+        score += pts
+        reasons.append(f"Worked at {shift_client} {times}x (+{pts})")
+
+    # Priority 6: Worked in this county before (+20)
+    if shift_county and history["top_counties"].get(shift_county, 0) > 0:
+        times = history["top_counties"][shift_county]
+        pts   = min(20, 10 + times * 2)
+        score += pts
+        reasons.append(f"Worked in {shift_county} {times}x (+{pts})")
 
     # Deprioritise if already worked this exact shift
     if shift_id_str in history["worked_shift_oids"]:
