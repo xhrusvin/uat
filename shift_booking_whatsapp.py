@@ -247,8 +247,16 @@ def register_shift_booking_whatsapp_routes(app):
     su_id,
     collection_name
 )
-            return jsonify(response), 200
+            try:
+                resp_data = response.json()
+            except ValueError:
+                resp_data = {"raw_response": response.text}
 
+            return {
+                "status_code": response.status_code,
+                "success": response.ok,
+                "data": response.json()
+            }
             # import threading
             # threading.Thread(
             #     target=_send_wati_whatsapp,
