@@ -1104,12 +1104,67 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     s["outreach_status"]        = outreach_info["outreach_status"]
     s["outreach_status_text"]   = outreach_info["outreach_status_text"]
     s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
-    # If shift is no longer "To Be Filled" / "To Be Assigned", treat Ended (3) as Completed (10)
+    # If shift is no longer "To Be Filled"/"To be assigned", treat Ended (3) as Completed (10)
     _shift_status = (doc.get("upstream_status") or doc.get("status") or "").strip().lower()
     _open_statuses = {"to be filled", "to be assigned"}
     if _shift_status not in _open_statuses:
         s["outreach_status"] = 10
         s["outreach_status_text"] = "Completed"
+
+        # ── Activity log: automation_completed ────────────────────────────
+        try:
+            _detail_now = datetime.now(timezone.utc)
+            # Find latest outreach for this shift that isn't already logged as completed
+            _latest_outreach = await db["outreach"].find_one(
+                {"shift_id": shift_oid},
+                sort=[("created_at", -1)]
+            )
+            if _latest_outreach:
+                _lo_oid  = _latest_outreach["_id"]
+                _lo_seq  = _latest_outreach.get("sequence_id")
+                _lo_round = _latest_outreach.get("round_number", 1)
+
+                # Check if we already logged this — avoid duplicate logs on repeated detail calls
+                _existing_log = await db["activities"].find_one({
+                    "activity_type": "automation_completed",
+                    "shift_id":      shift_oid,
+                    "outreach_id":   _lo_oid,
+                })
+                if not _existing_log:
+                    _ac_available = await db["shifts_users"].count_documents({
+                        "shift_id": shift_oid, "outreach_id": _lo_oid, "availability": 1,
+                    })
+                    _ac_declined = await db["shifts_users"].count_documents({
+                        "shift_id": shift_oid, "outreach_id": _lo_oid, "availability": 0,
+                    })
+                    _ac_no_reply = await db["shifts_users"].count_documents({
+                        "shift_id": shift_oid, "outreach_id": _lo_oid, "availability": {"$in": [3, 4, 6, 7, 8]},
+                    })
+
+                    _ac_activity = {
+                        "activity_type": "automation_completed",
+                        "shift_id":      shift_oid,
+                        "outreach_id":   _lo_oid,
+                        "metadata": {
+                            "sequence_id":   str(_lo_seq) if _lo_seq else None,
+                            "shift_id":      str(shift_oid),
+                            "outreach_id":   str(_lo_oid),
+                            "round_number":  _lo_round,
+                            "shift_code":    doc.get("shift_code") or doc.get("shift_xn_id"),
+                            "shift_status":  doc.get("upstream_status") or doc.get("status"),
+                            "reason":        "shift_status_not_open",
+                            "available":     _ac_available,
+                            "declined":      _ac_declined,
+                            "no_reply":      _ac_no_reply,
+                            "summary":       f"Automation completed · shift status '{doc.get('upstream_status') or doc.get('status')}' · {_ac_available} available, {_ac_declined} declined, {_ac_no_reply} no-reply",
+                        },
+                        "created_at": _detail_now,
+                    }
+                    if _lo_seq:
+                        _ac_activity["sequence_id"] = _lo_seq
+                    await db["activities"].insert_one(_ac_activity)
+        except Exception as _ac_err:
+            logger.error(f"[shifts-db/detail] Activity log error: {_ac_err}")
 
     s["shift_preference"]       = doc.get("shift_preferences") or s.get("shift_preferences") or []
     s["ghost_booking"]          = 1 if doc.get("ghost_booking") else 0
