@@ -43,7 +43,7 @@ def _format_day(date_str: str) -> str:
 
 def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collection="shifts_users"):
     """Send WhatsApp message via WATI API."""
-    if true:
+    if True:
         wati_url   = (os.getenv("WATI_API_ENDPOINT") or os.getenv("WATI_API_URL", "")).rstrip("/")
         wati_token = os.getenv("WATI_ACCESS_TOKEN") or os.getenv("WATI_API_TOKEN", "")
 
