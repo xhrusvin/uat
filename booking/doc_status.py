@@ -9,6 +9,7 @@ from admin.views import admin_required
 
 
 @bp.route('/doc-statuses')
+@admin_required
 def doc_statuses():
     page = int(request.args.get('page', 1))
     search = request.args.get('search', '').strip()
@@ -22,8 +23,12 @@ def doc_statuses():
     )
     latest_synced_at = latest["synced_at"] if latest else None
 
-    # Query documents matching that latest sync and url_status=1
-    query = {"url_status": 1}
+    # Query: url_status=1, document_id not null, not yet synced
+    query = {
+        "url_status": 1,
+        "document_id": {"$ne": None},
+        "synced": {"$ne": 1},
+    }
     if latest_synced_at:
         query["synced_at"] = latest_synced_at
     if search:
@@ -41,6 +46,15 @@ def doc_statuses():
         .skip((page - 1) * per_page)
         .limit(per_page)
     )
+
+    # Mark fetched docs as synced so they are excluded on the next call
+    if docs:
+        doc_ids = [d["_id"] for d in docs]
+        db.documents_new.update_many(
+            {"_id": {"$in": doc_ids}},
+            {"$set": {"synced": 1}}
+        )
+
     for d in docs:
         for key, val in d.items():
             if isinstance(val, ObjectId):
