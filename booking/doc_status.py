@@ -9,7 +9,6 @@ from admin.views import admin_required
 
 
 @bp.route('/doc-statuses')
-@admin_required
 def doc_statuses():
     page = int(request.args.get('page', 1))
     search = request.args.get('search', '').strip()
