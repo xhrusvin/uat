@@ -464,6 +464,58 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
                 }}
             )
 
+                # ── Activity log: automation_ended ────────────────────────────────
+        try:
+            shift_oid_log = existing["_id"]
+
+            # Find all outreach records that were just completed for this shift
+            completed_outreaches = await _db2["outreach"].find(
+                {"shift_id": shift_oid_log, "outreach_status": 10, "end_reason": end_reason},
+                {"_id": 1, "sequence_id": 1, "round_number": 1}
+            ).to_list(100)
+
+            for _co in completed_outreaches:
+                _co_oid  = _co["_id"]
+                _seq_oid = _co.get("sequence_id")
+                _round   = _co.get("round_number", 1)
+
+                available_count = await _db2["shifts_users"].count_documents({
+                    "shift_id": shift_oid_log, "outreach_id": _co_oid, "availability": 1,
+                })
+                declined_count = await _db2["shifts_users"].count_documents({
+                    "shift_id": shift_oid_log, "outreach_id": _co_oid, "availability": 0,
+                })
+                no_reply_count = await _db2["shifts_users"].count_documents({
+                    "shift_id": shift_oid_log, "outreach_id": _co_oid, "availability": {"$in": [3, 4, 6, 7, 8]},
+                })
+
+                activity_doc = {
+                    "activity_type": "automation_ended",
+                    "shift_id":      shift_oid_log,
+                    "outreach_id":   _co_oid,
+                    "metadata": {
+                        "sequence_id":    str(_seq_oid) if _seq_oid else None,
+                        "shift_id":       str(shift_oid_log),
+                        "outreach_id":    str(_co_oid),
+                        "round_number":   _round,
+                        "shift_code":     data.get("shift_code"),
+                        "new_status":     status_name or str(status_val),
+                        "end_reason":     end_reason,
+                        "available":      available_count,
+                        "declined":       declined_count,
+                        "no_reply":       no_reply_count,
+                        "groups_affected": len(groups),
+                        "summary":        f"Automation ended · shift status changed to '{status_name or status_val}' · {available_count} available, {declined_count} declined, {no_reply_count} no-reply",
+                    },
+                    "created_at": now,
+                }
+                if _seq_oid:
+                    activity_doc["sequence_id"] = _seq_oid
+                await _db2["activities"].insert_one(activity_doc)
+
+        except Exception as _log_err:
+            logger.error(f"[sync-detail] Activity log error: {_log_err}")
+
         logger.info(
             f"[sync-detail] shift {data.get('shift_code')} status={status_name} "
             f"→ ended single + group outreach, disabled calls "
