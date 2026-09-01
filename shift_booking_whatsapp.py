@@ -458,39 +458,72 @@ def register_wati_webhook_routes(app):
 
         su         = None
         collection = "shifts_users"
+        local_message_id = None
 
-        # Check shifts_group_users FIRST (most recent group outreach takes priority)
-        su = app.db.shifts_group_users.find_one(
-            {"wa_phone": phone, "wa_sent": 1},
-            {"availability_details": 1, "group_id": 1, "user_id": 1, "wa_sent_shifts": 1},
-            sort=[("wa_sent_at", -1)]
-        )
-        if su:
-            collection = "shifts_group_users"
-            log.info(f"[WATI WEBHOOK] wa_phone lookup ({phone}): found {su['_id']} in shifts_group_users")
-        else:
-            su = app.db.shifts_users.find_one(
-                {"wa_phone": phone, "wa_sent": 1},
-                sort=[("wa_sent_at", -1)]
+        # ---------- Option 2: Get localMessageId via BroadcastLinkId ----------
+        if _broadcast_link_id:
+            original_msg = app.db.wati_messages.find_one(
+                {
+                    "event_type": "templateMessageSent_v2",
+                    "raw.id": _broadcast_link_id
+                },
+                sort=[("timestamp", -1)]
             )
-            log.info(f"[WATI WEBHOOK] wa_phone lookup ({phone}): {'found '+str(su['_id']) if su else 'NOT FOUND'} in shifts_users")
+            if original_msg:
+                local_message_id = (
+                    original_msg.get("raw", {}).get("localMessageId")
+                    or original_msg.get("localMessageId")
+                )
+                log.info(f"[WATI WEBHOOK] Found localMessageId={local_message_id} from BroadcastLinkId={_broadcast_link_id}")
 
-        # Fallback by user_id
-        if not su and user:
+        # ---------- 1. Prefer match by localMessageId ----------
+        if local_message_id:
             su = app.db.shifts_group_users.find_one(
-                {"user_id": user["_id"], "wa_sent": 1},
-                {"availability_details": 1, "group_id": 1, "user_id": 1, "wa_sent_shifts": 1},
+                {"localMessageId": local_message_id, "wa_sent": 1}
+            )
+            if su:
+                collection = "shifts_group_users"
+                log.info(f"[WATI WEBHOOK] Matched by localMessageId in shifts_group_users → {su['_id']}")
+            else:
+                su = app.db.shifts_users.find_one(
+                    {"localMessageId": local_message_id, "wa_sent": 1}
+                )
+                if su:
+                    log.info(f"[WATI WEBHOOK] Matched by localMessageId in shifts_users → {su['_id']}")
+
+        # ---------- 2. Fallback by phone ----------
+        if not su:
+            su = app.db.shifts_group_users.find_one(
+                {"wa_phone": phone, "wa_sent": 1},
                 sort=[("wa_sent_at", -1)]
             )
             if su:
                 collection = "shifts_group_users"
-                log.info(f"[WATI WEBHOOK] user_id fallback: found {su['_id']} in shifts_group_users")
+                log.info(f"[WATI WEBHOOK] Fallback wa_phone → shifts_group_users {su['_id']}")
+            else:
+                su = app.db.shifts_users.find_one(
+                    {"wa_phone": phone, "wa_sent": 1},
+                    sort=[("wa_sent_at", -1)]
+                )
+                if su:
+                    log.info(f"[WATI WEBHOOK] Fallback wa_phone → shifts_users {su['_id']}")
+
+        # ---------- 3. Fallback by user_id ----------
+        if not su and user:
+            su = app.db.shifts_group_users.find_one(
+                {"user_id": user["_id"], "wa_sent": 1},
+                sort=[("wa_sent_at", -1)]
+            )
+            if su:
+                collection = "shifts_group_users"
+                log.info(f"[WATI WEBHOOK] Fallback user_id → shifts_group_users {su['_id']}")
             else:
                 su = app.db.shifts_users.find_one(
                     {"user_id": user["_id"], "wa_sent": 1},
                     sort=[("wa_sent_at", -1)]
                 )
-                log.info(f"[WATI WEBHOOK] user_id fallback shifts_users: {'found '+str(su['_id']) if su else 'NOT FOUND'}")
+                if su:
+                    log.info(f"[WATI WEBHOOK] Fallback user_id → shifts_users {su['_id']}")
 
 
         if not su:
@@ -510,17 +543,19 @@ def register_wati_webhook_routes(app):
             "wa_response":   btn_text or text,
         }
 
-        # For group outreach — find specific shift by localMessageId in availability_details
-        if collection == "shifts_group_users":
+                # For group outreach — match by localMessageId
+        if collection == "shifts_group_users" and local_message_id:
             existing    = su.get("availability_details") or []
             new_details = list(existing)
             clicked_shift_id = None
+
             for ad in existing:
                 ad_local_id = ad.get("local_message_id") or ad.get("localMessageId", "")
-                if ad_local_id and ad_local_id == _broadcast_link_id:
+                if ad_local_id and ad_local_id == local_message_id:
                     clicked_shift_id = ad.get("shift_id")
-                    log.info(f"[WATI WEBHOOK] Matched shift_id={clicked_shift_id} via localMessageId={_broadcast_link_id}")
+                    log.info(f"[WATI WEBHOOK] Matched shift_id={clicked_shift_id} via localMessageId={local_message_id}")
                     break
+
             if clicked_shift_id:
                 for ad in new_details:
                     if str(ad.get("shift_id", "")) == str(clicked_shift_id):
@@ -530,7 +565,7 @@ def register_wati_webhook_routes(app):
                 _set_fields["availability_details"] = new_details
                 log.info(f"[WATI WEBHOOK] Updated shift_id={clicked_shift_id} → availability={avail}")
             else:
-                log.info(f"[WATI WEBHOOK] No localMessageId match for {_broadcast_link_id} — skipping availability_details")
+                log.info(f"[WATI WEBHOOK] No localMessageId match for {local_message_id} — skipping availability_details")
 
         result = db_col.update_one({"_id": su["_id"]}, {"$set": _set_fields})
         log.info(f"[WATI WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
