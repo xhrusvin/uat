@@ -270,7 +270,6 @@ async def sync_xn_user_id(request: Request, limit: int = 100):
 @router.post(
     "/{user_id}/clear-exclusion-cache",
     summary="Clear exclusion cache for a user",
-    dependencies=[Depends(verify_api_key)],
 )
 async def clear_exclusion_cache(request: Request, user_id: str):
     if not ObjectId.is_valid(user_id):
