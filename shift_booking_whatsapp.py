@@ -108,23 +108,43 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
             timeout=20,
         )
 
-        return resp
+        
 
         if resp.status_code == 200:
-            log.info(f"[WA] ✓ Sent to {phone_clean}")
-            resp_data = resp.json()
-            db_col = getattr(app.db, collection)
-            db_col.update_one(
-                {"_id": su_id},
-                {"$set": {
-                    "wa_sent":            1,
-                    "wa_sent_at":         datetime.utcnow(),
-                    "wa_message_id":      resp_data.get("id", ""),
-                    "wa_conversation_id": resp_data.get("conversationId", ""),
-                    "wa_phone":           phone_clean,
-                    "availability":       8,
-                }}
-            )
+           log.info(f"[WA] ✓ Sent to {phone_clean}")
+
+           try:
+               resp_data = resp.json()
+           except ValueError:
+               resp_data = {"raw_response": resp.text}
+
+           # Get localMessageId from WATI response
+           local_message_id = ""
+
+           receivers = resp_data.get("data", {}).get("receivers", [])
+
+           if receivers:
+               local_message_id = receivers[0].get("localMessageId", "")
+
+           log.info(
+               f"[WA] localMessageId={local_message_id} "
+               f"phone={phone_clean}"
+           )
+
+           db_col = getattr(app.db, collection)
+
+           db_col.update_one(
+        {"_id": su_id},
+        {"$set": {
+            "wa_sent": 1,
+            "wa_sent_at": datetime.utcnow(),
+            "wa_message_id": resp_data.get("id", ""),
+            "wa_conversation_id": resp_data.get("conversationId", ""),
+            "localMessageId": local_message_id,
+            "wa_phone": phone_clean,
+            "availability": 8,
+        }}
+           )
         else:
             log.error(f"[WA] ✗ Failed {phone_clean}: {resp.status_code} {resp.text[:200]}")
             db_col = getattr(app.db, collection)
