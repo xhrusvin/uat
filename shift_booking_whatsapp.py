@@ -123,12 +123,10 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
            # Get localMessageId from WATI response
            local_message_id = ""
 
-           receivers = resp_data.get("data", {}).get("receivers", [])
-
-           return resp_data
-
+           receivers = resp_data.get("receivers", [])
+           
            if receivers:
-               local_message_id = receivers[0].get("localMessageId", "")
+               local_message_id = resp_data["receivers"][0]["localMessageId"]
 
            log.info(
                f"[WA] localMessageId={local_message_id} "
