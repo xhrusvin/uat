@@ -43,7 +43,7 @@ def _format_day(date_str: str) -> str:
 
 def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collection="shifts_users"):
     """Send WhatsApp message via WATI API."""
-    try:
+    if true:
         wati_url   = (os.getenv("WATI_API_ENDPOINT") or os.getenv("WATI_API_URL", "")).rstrip("/")
         wati_token = os.getenv("WATI_ACCESS_TOKEN") or os.getenv("WATI_API_TOKEN", "")
 
@@ -97,6 +97,7 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
             "Content-Type":  "application/json",
             "Accept":        "application/json",
         }
+        
 
         # Build URL — if endpoint already has /api in it, use as-is
         _wati_send_url = f"{wati_url}/api/v2/sendTemplateMessage?whatsappNumber={phone_clean}" if "/api" not in wati_url else f"{wati_url}/v1/sendTemplateMessage?whatsappNumber={phone_clean}"
@@ -106,6 +107,8 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
             headers=headers,
             timeout=20,
         )
+
+        return resp
 
         if resp.status_code == 200:
             log.info(f"[WA] ✓ Sent to {phone_clean}")
@@ -130,13 +133,13 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
                 {"$set": {"wa_error": f"{resp.status_code}: {resp.text[:200]}"}}
             )
 
-    except Exception as e:
-        log.error(f"[WA] ✗ Exception for {phone}: {e}")
-        db_col = getattr(app.db, collection)
-        db_col.update_one(
-            {"_id": su_id},
-            {"$set": {"wa_error": str(e)}}
-        )
+    # except Exception as e:
+    #     log.error(f"[WA] ✗ Exception for {phone}: {e}")
+    #     db_col = getattr(app.db, collection)
+    #     db_col.update_one(
+    #         {"_id": su_id},
+    #         {"$set": {"wa_error": str(e)}}
+    #     )
 
 
 def _get_shift_doc(app, record):
@@ -235,13 +238,23 @@ def register_shift_booking_whatsapp_routes(app):
 
             shift_doc = _get_shift_doc(app, record)
 
-            import threading
-            threading.Thread(
-                target=_send_wati_whatsapp,
-                args=(current_app._get_current_object(), record, shift_doc,
-                      phone, first_name, su_id, collection_name),
-                daemon=True
-            ).start()
+            _send_wati_whatsapp(
+    current_app._get_current_object(),
+    record,
+    shift_doc,
+    phone,
+    first_name,
+    su_id,
+    collection_name
+)
+
+            # import threading
+            # threading.Thread(
+            #     target=_send_wati_whatsapp,
+            #     args=(current_app._get_current_object(), record, shift_doc,
+            #           phone, first_name, su_id, collection_name),
+            #     daemon=True
+            # ).start()
 
             triggered.append({
                 "su_id":      str(su_id),
