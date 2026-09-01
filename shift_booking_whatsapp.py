@@ -238,7 +238,7 @@ def register_shift_booking_whatsapp_routes(app):
 
             shift_doc = _get_shift_doc(app, record)
 
-            _send_wati_whatsapp(
+            response = _send_wati_whatsapp(
     current_app._get_current_object(),
     record,
     shift_doc,
@@ -247,6 +247,7 @@ def register_shift_booking_whatsapp_routes(app):
     su_id,
     collection_name
 )
+            return response
 
             # import threading
             # threading.Thread(
