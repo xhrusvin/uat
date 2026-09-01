@@ -484,7 +484,16 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
     tags: list = []
 
     # ── 0. Check user staff tags ──────────────────────────────────────────────
-    EXCLUDED_TAG_NAMES = {"last-resort booking", "avoid booking"}
+    EXCLUDED_TAG_NAMES = {
+    "last-resort booking",
+    "avoid booking",
+    "temporarily unavailable",
+    "no calls or emails",
+    "no bulk emails",
+    "no calls",
+    "direct bookings only",
+    "contact on request only",
+    }
     if user_tags:
         for tag in user_tags:
             tag_name = (tag.get("name", "") if isinstance(tag, dict) else str(tag)).lower().strip()
