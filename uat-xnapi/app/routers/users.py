@@ -282,6 +282,7 @@ async def sync_xn_user_id(request: Request, limit: int = 100):
 @router.get(
     "/clear-oldest-exclusion-cache",
     summary="Clear exclusion cache for the 3 users with the oldest cache",
+    dependencies=[],
 )
 async def clear_oldest_exclusion_cache(request: Request):
     db = _get_db()
