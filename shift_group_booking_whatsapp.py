@@ -108,8 +108,35 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
         log.info(f"[GROUP WA] shift_index={shift_index} status={resp.status_code} localMessageId={local_msg_id_log}")
 
         if resp.status_code == 200:
-            local_msg_id = _receiver.get("localMessageId", "")
+            # ---- Extract localMessageId & WATI id (same pattern as single-shift) ----
+            local_msg_id = ""
             wati_id      = ""
+
+            receivers = resp_data.get("receivers") or (_inner.get("receivers") if _inner else []) or []
+            if receivers and isinstance(receivers, list) and len(receivers) > 0:
+                local_msg_id = receivers[0].get("localMessageId", "") or ""
+                wati_id      = receivers[0].get("id", "") or ""
+
+            # Fallbacks
+            if not local_msg_id:
+                local_msg_id = (
+                    resp_data.get("localMessageId")
+                    or resp_data.get("local_message_id")
+                    or _receiver.get("localMessageId", "")
+                    or ""
+                )
+            if not wati_id:
+                wati_id = (
+                    resp_data.get("id")
+                    or _receiver.get("id", "")
+                    or ""
+                )
+
+            log.info(
+                f"[GROUP WA] shift_index={shift_index} "
+                f"localMessageId={local_msg_id} wati_id={wati_id}"
+            )
+
             # Update base fields on first send only
             if shift_index == 0:
                 app.db.shifts_group_users.update_one(
@@ -117,10 +144,11 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
                     {"$set": {
                         "wa_sent":            1,
                         "wa_sent_at":         datetime.utcnow(),
-                        "wa_message_id":      wati_id,
+                        "wa_message_id":      wati_id,          # useful for BroadcastLinkId matching
                         "wa_conversation_id": resp_data.get("conversationId", ""),
                         "wa_phone":           phone_clean,
                         "availability":       8,
+                        "localMessageId":     local_msg_id,     # also keep top-level for convenience
                     }}
                 )
             else:
@@ -128,21 +156,23 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
                     {"_id": su_id},
                     {"$set": {"wa_sent": 1, "availability": 8}}
                 )
-            # Push to availability_details with localMessageId for per-shift tracking
+
+            # Always push to availability_details (one entry per shift)
             app.db.shifts_group_users.update_one(
                 {"_id": su_id},
                 {"$push": {
                     "availability_details": {
-                        "shift_id":       shift_id,
-                        "shift_index":    shift_index,
-                        "localMessageId": local_msg_id,
-                        "availability":   8,
-                        "responded_at":   None,
-                        "sent_at":        datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                        "shift_id":         shift_id,
+                        "shift_index":      shift_index,
+                        "localMessageId":   local_msg_id,   # ← this is what webhook will match
+                        "wa_message_id":    wati_id,        # optional but useful
+                        "availability":     8,
+                        "responded_at":     None,
+                        "sent_at":          datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                     }
                 }}
             )
-            log.info(f"[GROUP WA] ✓ Sent shift_index={shift_index} local_message_id={local_msg_id}")
+            log.info(f"[GROUP WA] ✓ Sent shift_index={shift_index} localMessageId={local_msg_id}")
             return resp_data
         else:
             log.error(f"[GROUP WA] ✗ Failed shift_index={shift_index}: {resp.status_code} {resp.text[:500]}")
