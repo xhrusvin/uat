@@ -381,6 +381,63 @@ def register_shift_booking_email_routes(app):
                     "updated_at":     _now,
                 }}
             )
+
+            # ── Activity log: staff_available ─────────────────────────────
+            try:
+                _shift_oid    = ObjectId(shift_id)    if shift_id    and ObjectId.is_valid(shift_id)    else None
+                _outreach_oid = ObjectId(outreach_id) if outreach_id and ObjectId.is_valid(outreach_id) else None
+
+                # Get counts for activity log
+                _log_query = {"shift_id": _shift_oid} if _shift_oid else {}
+                if _outreach_oid:
+                    _log_query["outreach_id"] = _outreach_oid
+                available_count = app.db.shifts_users.count_documents({**_log_query, "availability": 1})
+                declined_count  = app.db.shifts_users.count_documents({**_log_query, "availability": 0})
+                no_reply_count  = app.db.shifts_users.count_documents({**_log_query, "availability": {"$in": [3, 4, 6, 7, 8]}})
+
+                # Get user name
+                _user_name = ""
+                _user_oid  = record.get("user_id")
+                if _user_oid:
+                    _u = app.db.users.find_one({"_id": _user_oid}, {"first_name": 1, "last_name": 1})
+                    if _u:
+                        _user_name = f"{_u.get('first_name', '')} {_u.get('last_name', '')}".strip()
+
+                # Get round number from outreach
+                _round_number = 1
+                if _outreach_oid:
+                    _outreach_doc = app.db.outreach.find_one({"_id": _outreach_oid}, {"round_number": 1, "sequence_id": 1})
+                    if _outreach_doc:
+                        _round_number = _outreach_doc.get("round_number", 1)
+
+                _seq_oid = _outreach_doc.get("sequence_id") if _outreach_doc else None
+
+                activity_doc = {
+                    "activity_type": "staff_available",
+                    "shift_id":      _shift_oid,
+                    "outreach_id":   _outreach_oid,
+                    "metadata": {
+                        "sequence_id":   str(_seq_oid) if _seq_oid else None,
+                        "shift_id":      shift_id,
+                        "outreach_id":   outreach_id,
+                        "round_number":  _round_number,
+                        "user_id":       str(record.get("user_id", "")),
+                        "user_name":     _user_name,
+                        "channel":       "Email",
+                        "response":      "yes",
+                        "available":     available_count,
+                        "declined":      declined_count,
+                        "no_reply":      no_reply_count,
+                        "summary":       f"{_user_name or 'Staff'} marked available via email · {available_count} available, {declined_count} declined, {no_reply_count} no-reply",
+                    },
+                    "created_at": _now,
+                }
+                if _seq_oid:
+                    activity_doc["sequence_id"] = _seq_oid
+                app.db.activities.insert_one(activity_doc)
+            except Exception as _log_err:
+                log.error(f"[EMAIL RESPOND] Activity log error: {_log_err}")
+
             threading.Thread(
                 target=_check_and_end_outreach,
                 args=(app, shift_id, outreach_id), daemon=True
