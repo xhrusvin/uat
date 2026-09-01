@@ -108,7 +108,7 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
             timeout=20,
         )
 
-        return resp
+        
 
         
 
@@ -124,6 +124,8 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
            local_message_id = ""
 
            receivers = resp_data.get("data", {}).get("receivers", [])
+
+           return receivers
 
            if receivers:
                local_message_id = receivers[0].get("localMessageId", "")
