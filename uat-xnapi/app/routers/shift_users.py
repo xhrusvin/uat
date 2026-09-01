@@ -499,6 +499,9 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
             tag_name = (tag.get("name", "") if isinstance(tag, dict) else str(tag)).lower().strip()
             if tag_name in EXCLUDED_TAG_NAMES:
                 tags.append(f"tag:{tag.get('name', tag_name) if isinstance(tag, dict) else tag_name}")
+            # Premium Shifts Only — exclude when shift is NOT premium
+            if tag_name == "premium shifts only" and not target_shift.get("is_premium"):
+                tags.append("tag:Premium Shifts Only")
 
     # ── 0b. Check if client is banned by this staff (priority) ───────────────
     if banned_clients:
@@ -557,7 +560,7 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
     existing_shifts_raw = await db["shifts"].find(
         {"staff_email": user_email, **date_filter},
         {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
-         "shift_type": 1, "slots": 1, "upstream_status": 1}
+         "shift_type": 1, "slots": 1, "upstream_status": 1, "is_premium": 1}
     ).to_list(length=200)
 
     # Only consider Upcoming shifts for exclusion checks
@@ -1749,7 +1752,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     # Primary shift for exclusion checks
     target_shift = await db["shifts"].find_one(
         {"_id": primary_oid},
-        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1}
+        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1, "is_premium": 1}
     ) or {}
 
     # Batch county / user_type lookups
