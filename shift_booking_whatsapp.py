@@ -271,6 +271,7 @@ def register_shift_booking_whatsapp_routes(app):
     su_id,
     collection_name
 )
+            return jsonify(response), 200
             try:
                 resp_data = response.json()
             except ValueError:
