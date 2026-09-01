@@ -247,7 +247,7 @@ def register_shift_booking_whatsapp_routes(app):
     su_id,
     collection_name
 )
-            return response
+            return jsonify(response), 200
 
             # import threading
             # threading.Thread(
