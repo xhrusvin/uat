@@ -137,40 +137,40 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
                 f"localMessageId={local_msg_id} wati_id={wati_id}"
             )
 
-            # Update base fields on first send only
-            if shift_index == 0:
-                app.db.shifts_group_users.update_one(
-                    {"_id": su_id},
-                    {"$set": {
-                        "wa_sent":            1,
-                        "wa_sent_at":         datetime.utcnow(),
-                        "wa_message_id":      wati_id,          # useful for BroadcastLinkId matching
-                        "wa_conversation_id": resp_data.get("conversationId", ""),
-                        "wa_phone":           phone_clean,
-                        "availability":       8,
-                        "localMessageId":     local_msg_id,     # also keep top-level for convenience
-                    }}
-                )
-            else:
-                app.db.shifts_group_users.update_one(
-                    {"_id": su_id},
-                    {"$set": {"wa_sent": 1, "availability": 8}}
-                )
+                        # Build the detail entry
+            detail_entry = {
+                "shift_id":         shift_id,
+                "shift_index":      shift_index,
+                "localMessageId":   local_msg_id,
+                "wa_message_id":    wati_id,
+                "availability":     8,
+                "responded_at":     None,
+                "sent_at":          datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            }
 
-            # Always push to availability_details (one entry per shift)
+            update_ops = {
+                "$set": {
+                    "wa_sent":       1,
+                    "availability":  8,
+                },
+                "$push": {
+                    "availability_details": detail_entry
+                }
+            }
+
+            # Extra fields only on the first message
+            if shift_index == 0:
+                update_ops["$set"].update({
+                    "wa_sent_at":         datetime.utcnow(),
+                    "wa_message_id":      wati_id,
+                    "wa_conversation_id": resp_data.get("conversationId", ""),
+                    "wa_phone":           phone_clean,
+                    "localMessageId":     local_msg_id,
+                })
+
             app.db.shifts_group_users.update_one(
                 {"_id": su_id},
-                {"$push": {
-                    "availability_details": {
-                        "shift_id":         shift_id,
-                        "shift_index":      shift_index,
-                        "localMessageId":   local_msg_id,   # ← this is what webhook will match
-                        "wa_message_id":    wati_id,        # optional but useful
-                        "availability":     8,
-                        "responded_at":     None,
-                        "sent_at":          datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                    }
-                }}
+                update_ops
             )
             log.info(f"[GROUP WA] ✓ Sent shift_index={shift_index} localMessageId={local_msg_id}")
             return resp_data
