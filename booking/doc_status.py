@@ -1,5 +1,7 @@
 # booking/doc_status.py
 from flask import request, jsonify
+from bson import ObjectId
+from datetime import datetime
 from database import db
 
 from . import bp
@@ -41,7 +43,11 @@ def doc_statuses():
         .limit(per_page)
     )
     for d in docs:
-        d["_id"] = str(d["_id"])
+        for key, val in d.items():
+            if isinstance(val, ObjectId):
+                d[key] = str(val)
+            elif isinstance(val, datetime):
+                d[key] = val.isoformat()
 
     return jsonify({
         "doc_statuses": docs,
