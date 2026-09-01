@@ -84,15 +84,30 @@ async def list_users(
     filters = [not_admin]
 
     if search:
-        filters.append({"$or": [
-            {"email":       {"$regex": search, "$options": "i"}},
-            {"first_name":  {"$regex": search, "$options": "i"}},
-            {"last_name":   {"$regex": search, "$options": "i"}},
-            {"phone":       {"$regex": search, "$options": "i"}},
-            {"xn_user_id":  {"$regex": search, "$options": "i"}},
-            {"designation": {"$regex": search, "$options": "i"}},
-            {"tags.name":   {"$regex": search, "$options": "i"}},
-        ]})
+        search_terms = search.strip().split()
+        if len(search_terms) > 1:
+            term_filters = []
+            for term in search_terms:
+                term_filters.append({"$or": [
+                    {"email":       {"$regex": term, "$options": "i"}},
+                    {"first_name":  {"$regex": term, "$options": "i"}},
+                    {"last_name":   {"$regex": term, "$options": "i"}},
+                    {"phone":       {"$regex": term, "$options": "i"}},
+                    {"xn_user_id":  {"$regex": term, "$options": "i"}},
+                    {"designation": {"$regex": term, "$options": "i"}},
+                    {"tags.name":   {"$regex": term, "$options": "i"}},
+                ]})
+            filters.append({"$and": term_filters})
+        else:
+            filters.append({"$or": [
+                {"email":       {"$regex": search, "$options": "i"}},
+                {"first_name":  {"$regex": search, "$options": "i"}},
+                {"last_name":   {"$regex": search, "$options": "i"}},
+                {"phone":       {"$regex": search, "$options": "i"}},
+                {"xn_user_id":  {"$regex": search, "$options": "i"}},
+                {"designation": {"$regex": search, "$options": "i"}},
+                {"tags.name":   {"$regex": search, "$options": "i"}},
+            ]})
 
     date_filter = _build_date_filter(date_from, date_to)
     if date_filter:
