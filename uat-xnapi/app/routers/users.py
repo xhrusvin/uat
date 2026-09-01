@@ -279,6 +279,47 @@ async def sync_xn_user_id(request: Request, limit: int = 100):
         "processing":    min(limit, total_missing),
     }
 
+@router.get(
+    "/clear-oldest-exclusion-cache",
+    summary="Clear exclusion cache for the 3 users with the oldest cache",
+)
+async def clear_oldest_exclusion_cache(request: Request):
+    db = _get_db()
+
+    cursor = db["users"].find(
+        {"exclusion_cache_at": {"$exists": True, "$ne": None}},
+        {"_id": 1, "email": 1, "exclusion_cache_at": 1},
+    ).sort("exclusion_cache_at", 1).limit(3)
+
+    users = await cursor.to_list(3)
+
+    if not users:
+        return {
+            "success": True,
+            "message": "No users with exclusion cache found",
+            "cleared": 0,
+            "users": [],
+        }
+
+    cleared = []
+    for u in users:
+        await db["users"].update_one(
+            {"_id": u["_id"]},
+            {"$set": {"exclusion_cache": []}, "$unset": {"exclusion_cache_at": ""}}
+        )
+        cleared.append({
+            "user_id": str(u["_id"]),
+            "email": u.get("email", ""),
+            "old_cache_at": str(u.get("exclusion_cache_at", "")),
+        })
+
+    return {
+        "success": True,
+        "message": f"Cleared exclusion cache for {len(cleared)} oldest cached users",
+        "cleared": len(cleared),
+        "users": cleared,
+    }
+
 
 # ── POST /users/{id}/clear-exclusion-cache ────────────────────────────────────
 
