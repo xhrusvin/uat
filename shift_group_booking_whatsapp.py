@@ -102,35 +102,17 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
 
         resp = _req.post(_wati_send_url, json=payload, headers=headers, timeout=20)
         resp_data = resp.json() if resp.status_code == 200 else {}
-        _inner    = resp_data.get("data") or resp_data
-        _receiver = (_inner.get("receivers") or [{}])[0] if _inner.get("receivers") else {}
-        local_msg_id_log = _receiver.get("localMessageId", "") or resp_data.get("local_message_id", "")
-        log.info(f"[GROUP WA] shift_index={shift_index} status={resp.status_code} localMessageId={local_msg_id_log}")
+        log.info(f"[GROUP WA] shift_index={shift_index} status={resp.status_code} resp={resp_data}")
 
         if resp.status_code == 200:
-            # ---- Extract localMessageId & WATI id (same pattern as single-shift) ----
+            # Exact same extraction as working single-shift code
             local_msg_id = ""
-            wati_id      = ""
+            wati_id = ""
 
-            receivers = resp_data.get("receivers") or (_inner.get("receivers") if _inner else []) or []
-            if receivers and isinstance(receivers, list) and len(receivers) > 0:
+            receivers = resp_data.get("receivers", [])
+            if receivers:
                 local_msg_id = receivers[0].get("localMessageId", "") or ""
-                wati_id      = receivers[0].get("id", "") or ""
-
-            # Fallbacks
-            if not local_msg_id:
-                local_msg_id = (
-                    resp_data.get("localMessageId")
-                    or resp_data.get("local_message_id")
-                    or _receiver.get("localMessageId", "")
-                    or ""
-                )
-            if not wati_id:
-                wati_id = (
-                    resp_data.get("id")
-                    or _receiver.get("id", "")
-                    or ""
-                )
+                wati_id = receivers[0].get("id", "") or ""
 
             log.info(
                 f"[GROUP WA] shift_index={shift_index} "
@@ -168,11 +150,16 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
                     "localMessageId":     local_msg_id,
                 })
 
-            app.db.shifts_group_users.update_one(
+            update_result = app.db.shifts_group_users.update_one(
                 {"_id": su_id},
                 update_ops
             )
-            log.info(f"[GROUP WA] ✓ Sent shift_index={shift_index} localMessageId={local_msg_id}")
+            log.info(
+                f"[GROUP WA] ✓ Sent shift_index={shift_index} "
+                f"localMessageId={local_msg_id} "
+                f"matched={update_result.matched_count} "
+                f"modified={update_result.modified_count}"
+            )
             return resp_data
         else:
             log.error(f"[GROUP WA] ✗ Failed shift_index={shift_index}: {resp.status_code} {resp.text[:500]}")
@@ -329,10 +316,11 @@ def register_shift_group_booking_whatsapp_routes(app):
             result = app.db.shifts_group_users.update_one(
                 {"_id": su_id},
                 {"$set": {
-                    "call_processed":    1,
-                    "call_processed_at": datetime.utcnow(),
-                    "availability":      7,
-                    "updated_at":        datetime.utcnow(),
+                    "call_processed":       1,
+                    "call_processed_at":    datetime.utcnow(),
+                    "availability":         7,
+                    "updated_at":           datetime.utcnow(),
+                    "availability_details": [],   # ← important
                 }}
             )
             if result.modified_count == 0:
