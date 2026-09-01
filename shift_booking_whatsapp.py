@@ -108,6 +108,8 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
             timeout=20,
         )
 
+        return resp
+
         
 
         if resp.status_code == 200:
