@@ -2619,10 +2619,11 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
             v = v.replace(tzinfo=timezone.utc)
         return v.astimezone(_irl3).strftime("%d %b %Y")
 
-    AVAIL = {0:"Not Available",1:"Available",7:"Not Sent",8:"No Response"}
+        AVAIL = {0:"Not Available",1:"Available",7:"Not Sent",8:"No Response"}
     av    = su.get("availability", 7)
+    now   = datetime.now(timezone.utc)
 
-        # Build chat bubbles — collect all as (timestamp, html) then sort
+    # Build chat bubbles — collect all as (timestamp, html) then sort
     _all_bubbles = []
 
     # Sent template message bubble
@@ -2697,5 +2698,42 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
         _all_bubbles.append((_resp_ts, _b))
 
     # Sort all bubbles by timestamp — latest message last
-    _all_bubbles.sort(key=lambda x: x[0] if x[0] and hasattr(x[0], 'timestamp') else now)
+    _all_bubbles.sort(key=lambda x: x[0] if x[0] and hasattr(x[0], 'isoformat') else now)
     bubbles_html = "".join(b[1] for b in _all_bubbles)
+
+    avail_color = {"1":"#1e7a38","0":"#dc2626","7":"#6b7280","8":"#d97706"}.get(str(av),"#6b7280")
+    avail_text  = AVAIL.get(av,"Unknown")
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhatsApp – {name}</title>
+</head>
+<body style="margin:0;padding:0;background:#f0f0f0;font-family:Inter,Arial,sans-serif;">
+<div style="max-width:600px;margin:0 auto;">
+
+  <!-- Header -->
+  <div style="background:#075E54;color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px;">
+    <div style="width:40px;height:40px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">{(name[0] if name else 'U').upper()}</div>
+    <div style="flex:1;">
+      <div style="font-weight:700;font-size:15px;">{name}</div>
+      <div style="font-size:12px;opacity:0.85;">{phone}</div>
+    </div>
+    <div style="background:{avail_color};padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;">{avail_text}</div>
+  </div>
+
+  <!-- Chat area -->
+  <div id="chatBox" style="padding:16px;min-height:300px;max-height:70vh;overflow-y:auto;background:#ECE5DD;">
+    {bubbles_html if bubbles_html else '<div style="text-align:center;color:#888;font-size:13px;padding:40px;">No messages yet</div>'}
+    <div id="chatEnd"></div>
+  </div>
+
+  <!-- Footer -->
+  <div style="background:#fff;padding:10px 18px;font-size:11px;color:#aaa;text-align:center;border-top:1px solid #e5e7eb;">
+    📱 WhatsApp · Template: shift_call_new · Shift: {s.get('shift_code','—')} · Page {payload.page} of {max(1, -(-_total_msgs // payload.per_page))} ({_total_msgs} messages)
+  </div>
+
+</div>
+<script>document.getElementById('chatEnd').scrollIntoView(false);</script>
+</body></html>"""
+
+    return _HR2(content=html)
