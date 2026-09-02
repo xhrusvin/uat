@@ -2626,8 +2626,8 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
     _all_bubbles = []
 
     # Sent template message bubble
-    wa_sent_at = su.get("wa_sent_at")
-    if su.get("wa_sent") and wa_sent_at:
+    wa_sent_at = su.get("wa_sent_at") or su.get("assigned_at") or now
+    if su.get("wa_sent"):
         _shift_text = ""
         if s:
             _shift_text = f"<br><small style='color:#aaa;'>{s.get('client_name','') or s.get('location','')} · {s.get('user_type','')} · {s.get('start_time','')}–{s.get('end_time','')}</small>"
@@ -2683,7 +2683,7 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
 
     # User response from shifts_users (fallback when no WATI messages)
     if su.get("response_text") and not wati_msgs:
-        _resp_ts   = su.get("responded_at") or datetime.now(timezone.utc)
+        _resp_ts   = su.get("responded_at") or now
         _resp_time = _fmt_time(_resp_ts)
         _color     = "#DCF8C6" if av == 1 else "#fff0f0"
         _b = f"""
@@ -2697,5 +2697,5 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
         _all_bubbles.append((_resp_ts, _b))
 
     # Sort all bubbles by timestamp — latest message last
-    _all_bubbles.sort(key=lambda x: x[0] if x[0] else datetime.min.replace(tzinfo=timezone.utc))
+    _all_bubbles.sort(key=lambda x: x[0] if x[0] and hasattr(x[0], 'timestamp') else now)
     bubbles_html = "".join(b[1] for b in _all_bubbles)
