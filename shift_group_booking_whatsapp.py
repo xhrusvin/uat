@@ -92,6 +92,7 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
             "template_name":  WATI_TEMPLATE_NAME,
             "broadcast_name": f"group_shift_{str(su_id)}_{shift_index}_{datetime.utcnow().strftime('%H%M%S')}",
             "parameters":     parameters,
+            "channel_number": "353894618556"
         }
         headers = {
             "Authorization": f"Bearer {wati_token}",
