@@ -2622,16 +2622,16 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
     AVAIL = {0:"Not Available",1:"Available",7:"Not Sent",8:"No Response"}
     av    = su.get("availability", 7)
 
-    # Build chat bubbles
-    bubbles_html = ""
+        # Build chat bubbles — collect all as (timestamp, html) then sort
+    _all_bubbles = []
 
     # Sent template message bubble
     wa_sent_at = su.get("wa_sent_at")
-    if su.get("wa_sent"):
+    if su.get("wa_sent") and wa_sent_at:
         _shift_text = ""
         if s:
-            _shift_text = f"<br><small style='color:#aaa;'>{s.get('client_name','')} · {s.get('user_type','')} · {s.get('start_time','')}–{s.get('end_time','')}</small>"
-        bubbles_html += f"""
+            _shift_text = f"<br><small style='color:#aaa;'>{s.get('client_name','') or s.get('location','')} · {s.get('user_type','')} · {s.get('start_time','')}–{s.get('end_time','')}</small>"
+        _tmpl_html = f"""
     <div style="display:flex;gap:8px;margin-bottom:16px;">
       <div style="width:32px;height:32px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">XH</div>
       <div>
@@ -2647,12 +2647,14 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
         </div>
       </div>
     </div>"""
+        _all_bubbles.append((wa_sent_at, _tmpl_html))
 
     # WATI message history
     for msg in wati_msgs:
         is_inbound = msg.get("type") == "inbound" or msg.get("direction") == "inbound"
         msg_text   = msg.get("text") or msg.get("body") or msg.get("message", "")
-        msg_time   = _fmt_time(msg.get("timestamp") or msg.get("created_at"))
+        msg_ts     = msg.get("timestamp") or msg.get("created_at")
+        msg_time   = _fmt_time(msg_ts)
         btn_text   = (msg.get("button_reply") or {}).get("title") or msg.get("button_text", "")
         display    = btn_text or msg_text
 
@@ -2660,8 +2662,7 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
             continue
 
         if is_inbound:
-            # User reply — right side green
-            bubbles_html += f"""
+            _b = f"""
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
       <div>
         <div style="background:#DCF8C6;border-radius:18px 18px 4px 18px;padding:10px 16px;max-width:280px;font-size:14px;color:#111;">{display}</div>
@@ -2670,8 +2671,7 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
       <div style="width:32px;height:32px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;margin-left:8px;flex-shrink:0;">{(name[0] if name else 'U').upper()}</div>
     </div>"""
         else:
-            # Outbound — left side white
-            bubbles_html += f"""
+            _b = f"""
     <div style="display:flex;gap:8px;margin-bottom:12px;">
       <div style="width:32px;height:32px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">XH</div>
       <div>
@@ -2679,12 +2679,14 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
         <div style="font-size:10px;color:#aaa;margin-top:3px;">Xpress Health · {msg_time}</div>
       </div>
     </div>"""
+        _all_bubbles.append((msg_ts, _b))
 
-    # User response from shifts_users
+    # User response from shifts_users (fallback when no WATI messages)
     if su.get("response_text") and not wati_msgs:
-        _resp_time = _fmt_time(su.get("responded_at"))
+        _resp_ts   = su.get("responded_at") or datetime.now(timezone.utc)
+        _resp_time = _fmt_time(_resp_ts)
         _color     = "#DCF8C6" if av == 1 else "#fff0f0"
-        bubbles_html += f"""
+        _b = f"""
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
       <div>
         <div style="background:{_color};border-radius:18px 18px 4px 18px;padding:10px 16px;max-width:280px;font-size:14px;color:#111;">{su.get('response_text')}</div>
@@ -2692,40 +2694,8 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
       </div>
       <div style="width:32px;height:32px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;margin-left:8px;flex-shrink:0;">{(name[0] if name else 'U').upper()}</div>
     </div>"""
+        _all_bubbles.append((_resp_ts, _b))
 
-    avail_color = {"1":"#1e7a38","0":"#dc2626","7":"#6b7280","8":"#d97706"}.get(str(av),"#6b7280")
-    avail_text  = AVAIL.get(av,"Unknown")
-
-    html = f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WhatsApp – {name}</title>
-</head>
-<body style="margin:0;padding:0;background:#f0f0f0;font-family:Inter,Arial,sans-serif;">
-<div style="max-width:600px;margin:0 auto;">
-
-  <!-- Header -->
-  <div style="background:#075E54;color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px;">
-    <div style="width:40px;height:40px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">{(name[0] if name else 'U').upper()}</div>
-    <div style="flex:1;">
-      <div style="font-weight:700;font-size:15px;">{name}</div>
-      <div style="font-size:12px;opacity:0.85;">{phone}</div>
-    </div>
-    <div style="background:{avail_color};padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;">{avail_text}</div>
-  </div>
-
-  <!-- Chat area -->
-  <div id="chatBox" style="padding:16px;min-height:300px;max-height:70vh;overflow-y:auto;background:#ECE5DD;">
-    {bubbles_html if bubbles_html else '<div style="text-align:center;color:#888;font-size:13px;padding:40px;">No messages yet</div>'}
-    <div id="chatEnd"></div>
-  </div>
-
-  <!-- Footer -->
-  <div style="background:#fff;padding:10px 18px;font-size:11px;color:#aaa;text-align:center;border-top:1px solid #e5e7eb;">
-    📱 WhatsApp · Template: shift_call_new · Shift: {s.get('shift_code','—')} · Page {payload.page} of {max(1, -(-_total_msgs // payload.per_page))} ({_total_msgs} messages)
-  </div>
-
-</div>
-<script>document.getElementById('chatEnd').scrollIntoView(false);</script>
-</body></html>"""
-
-    return _HR2(content=html)
+    # Sort all bubbles by timestamp — latest message last
+    _all_bubbles.sort(key=lambda x: x[0] if x[0] else datetime.min.replace(tzinfo=timezone.utc))
+    bubbles_html = "".join(b[1] for b in _all_bubbles)
