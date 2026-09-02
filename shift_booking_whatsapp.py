@@ -3,6 +3,7 @@
 # Processes up to 10 pending messages per trigger call
 import logging
 import os
+import threading
 import requests as _req
 from flask import current_app, jsonify, request
 from bson import ObjectId
@@ -23,6 +24,28 @@ def is_within_call_window():
     allowed = ALLOWED_START_HOUR <= hour < ALLOWED_END_HOUR
     log.info(f"[WA TIME CHECK] {now.strftime('%Y-%m-%d %H:%M:%S UTC')} → Hour {hour} → Allowed: {allowed}")
     return allowed, now
+
+def _check_and_end_outreach(app, shift_id: str, outreach_id: str, collection="shifts_users"):
+    """End outreach automatically when all records in the batch have been processed."""
+    try:
+        shift_oid    = ObjectId(shift_id)    if shift_id    and ObjectId.is_valid(shift_id)    else None
+        outreach_oid = ObjectId(outreach_id) if outreach_id and ObjectId.is_valid(outreach_id) else None
+        if not shift_oid or not outreach_oid:
+            return
+        db_col    = getattr(app.db, collection)
+        total     = db_col.count_documents({"shift_id": shift_oid, "outreach_id": outreach_oid})
+        processed = db_col.count_documents({"shift_id": shift_oid, "outreach_id": outreach_oid, "call_processed": 1})
+        if total > 0 and processed >= total:
+            app.db.outreach.update_one(
+                {"_id": outreach_oid, "outreach_status": {"$nin": [3, 10]}},
+                {"$set": {"outreach_status": 3, "ended_at": datetime.utcnow(),
+                          "updated_at": datetime.utcnow(), "end_reason": "all_wa_processed"}}
+            )
+            log.info(f"[WA END CHECK] Outreach {outreach_id} ended — all {total} records processed in {collection}")
+    except Exception as e:
+        log.error(f"[WA END CHECK] Error: {e}")
+ 
+ 
 
 
 def _format_date(date_str: str) -> str:
@@ -272,11 +295,19 @@ def register_shift_booking_whatsapp_routes(app):
 # )
 #             return jsonify(response), 200
             
-            import threading
             threading.Thread(
                 target=_send_wati_whatsapp,
                 args=(current_app._get_current_object(), record, shift_doc,
                       phone, first_name, su_id, collection_name),
+                daemon=True
+            ).start()
+
+            # ── Auto-end outreach if all records processed ────────────────
+            shift_id    = str(record.get("shift_id", ""))
+            outreach_id = str(record.get("outreach_id", ""))
+            threading.Thread(
+                target=_check_and_end_outreach,
+                args=(current_app._get_current_object(), shift_id, outreach_id, collection_name),
                 daemon=True
             ).start()
 
@@ -619,4 +650,14 @@ def register_wati_webhook_routes(app):
 
         result = db_col.update_one({"_id": su["_id"]}, {"$set": _set_fields})
         log.info(f"[WATI WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
+
+        # ── Auto-end outreach after webhook response ──────────────────
+        _wh_shift_id    = str(su.get("shift_id", ""))
+        _wh_outreach_id = str(su.get("outreach_id", ""))
+        threading.Thread(
+            target=_check_and_end_outreach,
+            args=(app, _wh_shift_id, _wh_outreach_id, collection),
+            daemon=True
+        ).start()
+
         return {"success": True, "availability": avail, "collection": collection, "su_id": str(su["_id"])}, 200
