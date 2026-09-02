@@ -2586,7 +2586,7 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
             {"phone": _wa_phone},
             {"user_id": su.get("user_id")},
         ]} if _wa_phone else {"user_id": su.get("user_id")},
-        sort=[("timestamp", 1)]
+        sort=[("timestamp", -1)]
     ).skip(_skip).limit(payload.per_page).to_list(length=payload.per_page)
 
     try:
