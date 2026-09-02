@@ -81,7 +81,7 @@ def validate_document():
     # 3. Fetch Users
     users_list = list(
         current_app.db.users.find(query)
-        .sort("created_at", -1)
+        .sort("created_at", 1)
         .skip((page - 1) * per_page)
         .limit(per_page)
     )
