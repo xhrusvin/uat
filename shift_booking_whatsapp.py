@@ -453,18 +453,31 @@ def register_wati_webhook_routes(app):
             _fb_collection = "shifts_users"
 
             if user:
-                # Match to the most recent wa_sent shift for this user
-                _fb_su = app.db.shifts_group_users.find_one(
+                _fb_sgu = app.db.shifts_group_users.find_one(
                     {"user_id": user["_id"], "wa_sent": 1},
                     sort=[("wa_sent_at", -1)]
                 )
-                if _fb_su:
+                _fb_su_reg = app.db.shifts_users.find_one(
+                    {"user_id": user["_id"], "wa_sent": 1},
+                    sort=[("wa_sent_at", -1)]
+                )
+
+                # Pick whichever was sent more recently
+                if _fb_sgu and _fb_su_reg:
+                    sgu_time = _fb_sgu.get("wa_sent_at") or datetime.min
+                    reg_time = _fb_su_reg.get("wa_sent_at") or datetime.min
+                    if sgu_time >= reg_time:
+                        _fb_su = _fb_sgu
+                        _fb_collection = "shifts_group_users"
+                    else:
+                        _fb_su = _fb_su_reg
+                        _fb_collection = "shifts_users"
+                elif _fb_sgu:
+                    _fb_su = _fb_sgu
                     _fb_collection = "shifts_group_users"
-                else:
-                    _fb_su = app.db.shifts_users.find_one(
-                        {"user_id": user["_id"], "wa_sent": 1},
-                        sort=[("wa_sent_at", -1)]
-                    )
+                elif _fb_su_reg:
+                    _fb_su = _fb_su_reg
+                    _fb_collection = "shifts_users"
 
             if _fb_su:
                 _fb_col = getattr(app.db, _fb_collection)
