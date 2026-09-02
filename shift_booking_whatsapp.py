@@ -90,6 +90,7 @@ def _send_wati_whatsapp(app, record, shift_doc, phone, first_name, su_id, collec
             "template_name": WATI_TEMPLATE_NAME,
             "broadcast_name": f"shift_{str(su_id)}",
             "parameters": parameters,
+            "channel_number": "353894618556"
         }
 
         headers = {
