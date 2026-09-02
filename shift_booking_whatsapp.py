@@ -449,26 +449,21 @@ def register_wati_webhook_routes(app):
         if avail is None:
             log.info(f"[WATI WEBHOOK] Non-standard reply — storing as customer_feedback. phone={phone} reply_text={reply_text!r}")
 
-            # Find the matching record to attach feedback
             _fb_su = None
             _fb_collection = "shifts_users"
 
-            if local_message_id:
-                _fb_su = app.db.shifts_group_users.find_one({"localMessageId": local_message_id, "wa_sent": 1})
-                if _fb_su:
-                    _fb_collection = "shifts_group_users"
-                else:
-                    _fb_su = app.db.shifts_users.find_one({"localMessageId": local_message_id, "wa_sent": 1})
-
-            if not _fb_su and user:
+            if user:
+                # Match to the most recent wa_sent shift for this user
                 _fb_su = app.db.shifts_group_users.find_one(
-                    {"user_id": user["_id"], "wa_sent": 1}, sort=[("wa_sent_at", -1)]
+                    {"user_id": user["_id"], "wa_sent": 1},
+                    sort=[("wa_sent_at", -1)]
                 )
                 if _fb_su:
                     _fb_collection = "shifts_group_users"
                 else:
                     _fb_su = app.db.shifts_users.find_one(
-                        {"user_id": user["_id"], "wa_sent": 1}, sort=[("wa_sent_at", -1)]
+                        {"user_id": user["_id"], "wa_sent": 1},
+                        sort=[("wa_sent_at", -1)]
                     )
 
             if _fb_su:
