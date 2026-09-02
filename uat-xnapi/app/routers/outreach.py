@@ -2705,8 +2705,9 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
   </div>
 
   <!-- Chat area -->
-  <div style="padding:16px;min-height:300px;background:#ECE5DD;">
+  <div id="chatBox" style="padding:16px;min-height:300px;max-height:70vh;overflow-y:auto;background:#ECE5DD;">
     {bubbles_html if bubbles_html else '<div style="text-align:center;color:#888;font-size:13px;padding:40px;">No messages yet</div>'}
+    <div id="chatEnd"></div>
   </div>
 
   <!-- Footer -->
@@ -2714,6 +2715,8 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
     📱 WhatsApp · Template: shift_call_new · Shift: {s.get('shift_code','—')} · Page {payload.page} of {max(1, -(-_total_msgs // payload.per_page))} ({_total_msgs} messages)
   </div>
 
-</div></body></html>"""
+</div>
+<script>document.getElementById('chatEnd').scrollIntoView(false);</script>
+</body></html>"""
 
     return _HR2(content=html)
