@@ -441,9 +441,50 @@ def register_wati_webhook_routes(app):
         elif "no" in combined or "not available" in combined or "thanks" in combined:
             avail = 0
 
-        if avail is None or not phone:
-            log.info(f"[WATI WEBHOOK] No actionable reply text. eventType={event_type} reply_text={reply_text!r}")
-            return {"success": True, "message": "No actionable response"}, 200
+        if not phone:
+            log.info(f"[WATI WEBHOOK] No phone. eventType={event_type}")
+            return {"success": True, "message": "No phone"}, 200
+
+        if avail is None:
+            log.info(f"[WATI WEBHOOK] Non-standard reply — storing as customer_feedback. phone={phone} reply_text={reply_text!r}")
+
+            # Find the matching record to attach feedback
+            _fb_su = None
+            _fb_collection = "shifts_users"
+
+            if local_message_id:
+                _fb_su = app.db.shifts_group_users.find_one({"localMessageId": local_message_id, "wa_sent": 1})
+                if _fb_su:
+                    _fb_collection = "shifts_group_users"
+                else:
+                    _fb_su = app.db.shifts_users.find_one({"localMessageId": local_message_id, "wa_sent": 1})
+
+            if not _fb_su and user:
+                _fb_su = app.db.shifts_group_users.find_one(
+                    {"user_id": user["_id"], "wa_sent": 1}, sort=[("wa_sent_at", -1)]
+                )
+                if _fb_su:
+                    _fb_collection = "shifts_group_users"
+                else:
+                    _fb_su = app.db.shifts_users.find_one(
+                        {"user_id": user["_id"], "wa_sent": 1}, sort=[("wa_sent_at", -1)]
+                    )
+
+            if _fb_su:
+                _fb_col = getattr(app.db, _fb_collection)
+                _fb_col.update_one(
+                    {"_id": _fb_su["_id"]},
+                    {"$set": {
+                        "customer_feedback": combined,
+                        "customer_feedback_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow(),
+                    }}
+                )
+                log.info(f"[WATI WEBHOOK] ✓ Saved customer_feedback on {_fb_collection} {_fb_su['_id']}")
+                return {"success": True, "message": "Stored as customer_feedback", "collection": _fb_collection, "su_id": str(_fb_su["_id"])}, 200
+
+            log.warning(f"[WATI WEBHOOK] No record found to attach feedback for phone={phone}")
+            return {"success": True, "message": "No actionable response, no record found"}, 200
 
         now = datetime.utcnow()
         log.info(f"[WATI WEBHOOK] Processing — phone={phone} avail={avail} btn={btn_text} text={text}")
