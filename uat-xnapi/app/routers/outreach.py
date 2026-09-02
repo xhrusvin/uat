@@ -2601,7 +2601,16 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
         if hasattr(v, "tzinfo") and v.tzinfo is None:
             from datetime import timezone
             v = v.replace(tzinfo=timezone.utc)
-        return v.astimezone(_irl3).strftime("%H:%M")
+        v_local = v.astimezone(_irl3)
+        now_local = datetime.now(_irl3)
+        time_str = v_local.strftime("%H:%M")
+        diff_days = (now_local.date() - v_local.date()).days
+        if diff_days == 0:
+            return f"Today {time_str}"
+        elif diff_days == 1:
+            return f"Yesterday {time_str}"
+        else:
+            return v_local.strftime("%-d %b %H:%M")
 
     def _fmt_date(v):
         if not v: return ""
