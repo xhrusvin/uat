@@ -2619,9 +2619,11 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
             v = v.replace(tzinfo=timezone.utc)
         return v.astimezone(_irl3).strftime("%d %b %Y")
 
-        AVAIL = {0:"Not Available",1:"Available",7:"Not Sent",8:"No Response"}
+    AVAIL = {0:"Not Available",1:"Available",7:"Not Sent",8:"No Response"}
     av    = su.get("availability", 7)
     now   = datetime.now(timezone.utc)
+    avail_color = {"1":"#1e7a38","0":"#dc2626","7":"#6b7280","8":"#d97706"}.get(str(av),"#6b7280")
+    avail_text  = AVAIL.get(av,"Unknown")
 
     # Build chat bubbles — collect all as (timestamp, html) then sort
     _all_bubbles = []
@@ -2701,8 +2703,7 @@ async def whatsapp_detail(request: Request, payload: WhatsAppDetailRequest):
     _all_bubbles.sort(key=lambda x: x[0] if x[0] and hasattr(x[0], 'isoformat') else now)
     bubbles_html = "".join(b[1] for b in _all_bubbles)
 
-    avail_color = {"1":"#1e7a38","0":"#dc2626","7":"#6b7280","8":"#d97706"}.get(str(av),"#6b7280")
-    avail_text  = AVAIL.get(av,"Unknown")
+    
 
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
