@@ -64,7 +64,7 @@ def _map_user_fields(data: dict, now: datetime) -> dict:
         "work_permit_exemption", "visa_type_id", "uniform_size",
         "tuberculosis_vaccine", "hepatitis_antibody", "mmr_vaccine",
         "covid_19_vaccine", "face_verification_status", "recruitment_status",
-        "user_sub_type_ids", "location", "tags", "banned_clients", "references",
+        "user_sub_type_ids", "location", "tags", "banned_clients", "references", "source",
     ]
     for f in extra:
         if f in data:
