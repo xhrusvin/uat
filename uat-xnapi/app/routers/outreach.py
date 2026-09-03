@@ -1338,13 +1338,19 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
 
     shifts_users_list = []
     # Get shift user_type for designation filtering
-    _shift_user_type_filter = (shift_info.get("user_type") or "").strip().lower() if shift_info else ""
+    _shift_user_type_filter = (
+        (shift_info.get("user_type") or "").strip().lower() if shift_info
+        else (shift_doc_for_staff.get("user_type") or "").strip().lower() if shift_doc_for_staff
+        else ""
+    )
 
     for su in su_docs:
         uid_str = str(su.get("user_id", ""))
         u = user_map.get(uid_str, {})
 
         # Skip if user designation doesn't match shift user_type
+        if not u:
+            continue
         if _shift_user_type_filter:
             _user_desig = (u.get("designation") or "").strip().lower()
             if _user_desig != _shift_user_type_filter:
