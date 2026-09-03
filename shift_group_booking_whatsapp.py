@@ -304,7 +304,7 @@ def _get_shift_doc(app, record):
 
 def register_shift_group_booking_whatsapp_routes(app):
 
-    @app.route('/shift_group_booking_whatsapp111', methods=['GET'], endpoint='shift_group_booking_whatsapp_route')
+    @app.route('/shift_group_booking_whatsapp', methods=['GET'], endpoint='shift_group_booking_whatsapp_route')
     def shift_group_booking_whatsapp():
         allowed, server_time = is_within_call_window()
         user_id_param = request.args.get('user_id')
