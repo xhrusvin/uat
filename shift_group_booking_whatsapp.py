@@ -356,11 +356,6 @@ def register_shift_group_booking_whatsapp_routes(app):
 
             # Check designation matches shift user_type
             user_designation = (user.get("designation") or "").strip().lower()
-            shift_doc = _get_shift_doc(app, record)
-            shift_user_type = (shift_doc.get("user_type") or "").strip().lower()
-            if user_designation and shift_user_type and user_designation != shift_user_type:
-                log.warning(f"[GROUP WA] Skipping {phone} — designation '{user_designation}' != shift user_type '{shift_user_type}'")
-                continue
 
             # Build shift_docs — one per shift in group
             group_id_rec = record.get("group_id")
@@ -393,8 +388,8 @@ def register_shift_group_booking_whatsapp_routes(app):
                             })
                             shift_id_list.append(str(_sid))
             if not shift_docs:
-                shift_docs    = [shift_doc]
-                shift_id_list = [str(record.get("group_id", ""))]
+                log.warning(f"[GROUP WA] No shifts match designation '{user_designation}' for su_id={su_id} — skipping")
+                continue
 
             log.info(f"[GROUP WA] Sending {len(shift_docs)} messages to {phone} for su_id={su_id}")
 
