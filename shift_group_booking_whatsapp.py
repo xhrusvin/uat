@@ -316,7 +316,7 @@ def register_shift_group_booking_whatsapp_routes(app):
             "collection":     "shifts_group_users",
         }
 
-        return response_base
+        
 
         if not allowed:
             return jsonify({**response_base, "status": "outside_hours"}), 200
@@ -408,7 +408,6 @@ def register_shift_group_booking_whatsapp_routes(app):
                     "availability_details": [],   # ← important
                 }}
             )
-            return shift_docs
 
             if result.modified_count == 0:
                 continue
