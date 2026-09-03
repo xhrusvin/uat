@@ -1347,7 +1347,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         # Skip if user designation doesn't match shift user_type
         if _shift_user_type_filter:
             _user_desig = (u.get("designation") or "").strip().lower()
-            if _user_desig and _user_desig != _shift_user_type_filter:
+            if _user_desig != _shift_user_type_filter:
                 continue
 
         avail_val    = su.get("availability")
