@@ -406,6 +406,8 @@ def register_shift_group_booking_whatsapp_routes(app):
                     "availability_details": [],   # ← important
                 }}
             )
+            return shift_docs
+            
             if result.modified_count == 0:
                 continue
 
@@ -421,7 +423,7 @@ def register_shift_group_booking_whatsapp_routes(app):
                 except Exception as _e:
                     log.error(f"[GROUP WA] Thread error: {_e}", exc_info=True)
 
-            return shift_docs
+            
 
             threading.Thread(
                 target=_send_all_shifts,
