@@ -1523,6 +1523,7 @@ class ListMultiShiftUsersRequest(BaseModel):
     excluded:           Optional[int]   = None
     in_pool:            Optional[int]   = None  # 1 = in pool for ANY shift or the group
     gender_id:          Optional[str]   = None  # filter by users.gender_id
+    gender_multiple:    Optional[list]  = None   # ← ADD THIS
 
 
     qqi_status_number:      Optional[int]   = None
@@ -1610,12 +1611,12 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     user_filter: dict = {"status": "Enabled"}
 
     # Gender filter
-    if payload.gender_id:
-        user_filter["gender_id"] = payload.gender_id.strip()
-    if getattr(payload, "gender_multiple", None):
+    if payload.gender_multiple:
         _gids = [str(g).strip() for g in payload.gender_multiple if g]
         if _gids:
             user_filter["gender_id"] = {"$in": _gids}
+    elif payload.gender_id:
+        user_filter["gender_id"] = payload.gender_id.strip()
 
     # Visa type filter
     if payload.visa_type_id:
