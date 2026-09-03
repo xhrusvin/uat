@@ -1234,8 +1234,12 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
         if seq:
             seq_name = seq.get("name")
 
-    # Shift info
-    shift_oid  = outreach.get("shift_id")
+    # Shift info — prefer payload.shift_id if provided
+    shift_oid = (
+        ObjectId(payload.shift_id)
+        if payload.shift_id and ObjectId.is_valid(payload.shift_id)
+        else outreach.get("shift_id")
+    )
     shift_info = None
     if shift_oid:
         sh = await db["shifts"].find_one(
@@ -1300,7 +1304,11 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
     }
 
     # Get shift info for client coords + shift label
-    shift_oid_for_staff = outreach.get("shift_id")
+    shift_oid_for_staff = (
+        ObjectId(payload.shift_id)
+        if payload.shift_id and ObjectId.is_valid(payload.shift_id)
+        else outreach.get("shift_id")
+    )
     shift_doc_for_staff = None
     client_lat_s = client_lng_s = None
     shift_label_s = placed_at_s = ""
@@ -1533,7 +1541,7 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
             "outreach_status":      o_status,
             "outreach_status_text": STATUS_TEXT.get(o_status, "Not Started"),
             "is_group_outreach":    is_group_outreach,
-            "wa_phone":             su.get("wa_phone", ""),
+            "wa_phone":             su_docs[0].get("wa_phone", "") if su_docs else "",
             "end_reason":           outreach.get("end_reason"),
             "started_at":           outreach["started_at"].isoformat() if outreach.get("started_at") and hasattr(outreach["started_at"], "isoformat") else None,
             "paused_at":            outreach["paused_at"].isoformat() if outreach.get("paused_at") and hasattr(outreach["paused_at"], "isoformat") else None,
