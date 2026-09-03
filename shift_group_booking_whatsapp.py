@@ -161,6 +161,88 @@ def _send_wati_whatsapp_sync(app, shift_doc, phone, first_name, su_id, shift_ind
                 f"matched={update_result.matched_count} "
                 f"modified={update_result.modified_count}"
             )
+                        # ── Auto-end outreach when this was the last pending WhatsApp ──
+            try:
+                outreach_id = None
+                group_id    = None
+                _rec = app.db.shifts_group_users.find_one(
+                    {"_id": su_id}, {"outreach_id": 1, "group_id": 1}
+                )
+                if _rec:
+                    outreach_id = _rec.get("outreach_id")
+                    group_id    = _rec.get("group_id")
+
+                if outreach_id and group_id:
+                    def _check_and_end_wa():
+                        try:
+                            # Count remaining unprocessed WhatsApp records for this outreach
+                            pending = app.db.shifts_group_users.count_documents({
+                                "outreach_id": outreach_id,
+                                "channel":     "WhatsApp",
+                                "call_processed": 0,
+                            })
+
+                            if pending > 0:
+                                return  # still more WhatsApp messages left
+
+                            # Only update if outreach is still Live / Paused
+                            outreach = app.db.outreach_shift_group.find_one({
+                                "_id": outreach_id,
+                                "outreach_status": {"$in": [1, 2]}
+                            })
+                            if not outreach:
+                                return
+
+                            now = datetime.utcnow()
+
+                            res = app.db.outreach_shift_group.update_one(
+                                {"_id": outreach_id},
+                                {"$set": {
+                                    "outreach_status": 3,
+                                    "status":          "ended",
+                                    "ended_at":        now,
+                                    "updated_at":      now,
+                                    "end_reason":      "All WhatsApp messages sent",
+                                }}
+                            )
+
+                            if res.modified_count:
+                                # Disable any remaining pending staff
+                                app.db.shifts_group_users.update_many(
+                                    {"group_id": group_id, "call_processed": 0},
+                                    {"$set": {
+                                        "call_enabled": 0,
+                                        "updated_at":   now,
+                                    }}
+                                )
+
+                                rn = outreach.get("round_number", 1)
+                                app.db.activities.insert_one({
+                                    "activity_type": "round_ended",
+                                    "group_id":      group_id,
+                                    "outreach_id":   outreach_id,
+                                    "metadata": {
+                                        "round_number": rn,
+                                        "end_reason":   "All WhatsApp messages sent",
+                                        "auto_ended":   True,
+                                        "summary":      f"Round {rn} auto-ended · all WhatsApp messages sent",
+                                    },
+                                    "created_at": now,
+                                })
+
+                                log.info(
+                                    f"[WA AUTO-END] outreach_shift_group {outreach_id} "
+                                    f"→ outreach_status=3, status='ended' "
+                                    f"(last WhatsApp sent for group {group_id})"
+                                )
+                        except Exception as e:
+                            log.error(f"[WA AUTO-END] failed for outreach {outreach_id}: {e}")
+
+                    threading.Thread(target=_check_and_end_wa, daemon=True).start()
+
+            except Exception as auto_err:
+                log.warning(f"[WA AUTO-END] outer check failed: {auto_err}")
+
             return resp_data
         else:
             log.error(f"[GROUP WA] ✗ Failed shift_index={shift_index}: {resp.status_code} {resp.text[:500]}")
