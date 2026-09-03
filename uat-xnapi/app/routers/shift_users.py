@@ -312,8 +312,9 @@ async def list_shift_users(request: Request, shift_id: str):
 @limiter.limit("60/minute")
 async def remove_user_from_shift(request: Request, payload: RemoveUserFromShiftRequest):
     """
-    Body: { "id": "<shift_users._id>" }
-    Removes the shift_users record by its own _id.
+    Body: { "id": "<user._id>", "shift_id": "<shift._id>" }
+    Removes the user from shifts_pool, shifts_users, and any shifts_group_pool
+    where the shift belongs to a group.
     """
     db        = _get_db()
     user_oid  = _resolve_oid(payload.id,       "id")
@@ -331,13 +332,41 @@ async def remove_user_from_shift(request: Request, payload: RemoveUserFromShiftR
         "shift_id": shift_oid,
     })
 
+    # Find any shift groups that contain this shift
+    group_oids = []
+    async for g in db["shifts_group"].find(
+        {"shift_ids": shift_oid},
+        {"_id": 1}
+    ):
+        group_oids.append(g["_id"])
+
+    # Remove from shifts_group_pool and shifts_group_users for each group
+    group_pool_removed       = 0
+    group_users_removed      = 0
+
+    if group_oids:
+        gp_result = await db["shifts_group_pool"].delete_many({
+            "group_id": {"$in": group_oids},
+            "user_id":  user_oid,
+        })
+        group_pool_removed = gp_result.deleted_count
+
+        gu_result = await db["shifts_group_users"].delete_many({
+            "group_id": {"$in": group_oids},
+            "user_id":  user_oid,
+        })
+        group_users_removed = gu_result.deleted_count
+
     return {
-        "success":              True,
-        "message":              "User removed from pool and shifts_users",
-        "user_id":              payload.id,
-        "shift_id":             payload.shift_id,
-        "pool_removed":         pool_result.deleted_count > 0,
-        "shifts_users_removed": su_result.deleted_count,
+        "success":                    True,
+        "message":                    "User removed from pool, shifts_users, and group pool",
+        "user_id":                    payload.id,
+        "shift_id":                   payload.shift_id,
+        "pool_removed":               pool_result.deleted_count > 0,
+        "shifts_users_removed":       su_result.deleted_count,
+        "groups_affected":            [str(g) for g in group_oids],
+        "group_pool_removed":         group_pool_removed,
+        "group_users_removed":        group_users_removed,
     }
 
 
