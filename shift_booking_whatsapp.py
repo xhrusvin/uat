@@ -336,16 +336,7 @@ def register_shift_booking_whatsapp_routes(app):
         else:
             query = {"call_processed": 0, "call_enabled": 1, "channel": "WhatsApp"}
         return _process_batch(query, "shifts_users")
-
-    # ── Group shifts_group_users (group outreach) ─────────────────────────────
-    # @app.route('/shift_group_booking_whatsapp', methods=['GET'])
-    # def shift_group_booking_whatsapp():
-    #     user_id_param = request.args.get('user_id')
-    #     if user_id_param:
-    #         query = {"user_id": ObjectId(user_id_param), "call_processed": 0, "channel": "WhatsApp"}
-    #     else:
-    #         query = {"call_processed": 0, "call_enabled": 1, "channel": "WhatsApp"}
-    #     return _process_batch(query, "shifts_group_users")
+        
 
     # ── Debug ─────────────────────────────────────────────────────────────────
     @app.route('/debug-shift-booking-whatsapp')

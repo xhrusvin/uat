@@ -418,7 +418,7 @@ def register_shift_group_booking_whatsapp_routes(app):
                     for _i, (_sdoc, _sid) in enumerate(zip(shift_docs_list, shift_id_list_)):
                         if _i > 0:
                             import time as _t
-                            _t.sleep(20)  # longer gap so WhatsApp/WATI is less likely to drop repeats
+                            _t.sleep(10)  # longer gap so WhatsApp/WATI is less likely to drop repeats
                         log.info(f"[GROUP WA] Sending shift {_i+1}/{len(shift_docs_list)} shift_id={_sid}")
                         _send_wati_whatsapp_sync(app_obj, _sdoc, phone_, first_name_, su_id_, _i, _sid)
                 except Exception as _e:
