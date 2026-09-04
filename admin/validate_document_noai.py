@@ -135,7 +135,7 @@ def validate_document_noai():
                     if doc.get('document_id') not in already_checked_ids
                 ]
                 # HARD CAP: only process 2 docs per request
-                docs_to_process = pending_docs[:2]
+                docs_to_process = pending_docs[:200000000]
 
             checked_count = 0
 
