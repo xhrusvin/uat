@@ -141,7 +141,19 @@ def validate_document_noai():
 
             for doc in docs_to_process:
                 doc_url = doc.get('url')
+                doc_name = doc.get('document_type_name', 'Unknown')
                 url_flag = 1 if doc_url else 0
+
+                # ── Get level from prompts collection ──────────────────────
+                level = None
+                try:
+                    prompt_record = current_app.db.prompts.find_one({
+                        "document_type_code": {"$regex": re.escape(doc_name), "$options": "i"}
+                    })
+                    if prompt_record:
+                        level = prompt_record.get('level')
+                except Exception:
+                    level = None
 
                 # Keep original fields from API + our own fields
                 doc_to_save = {
@@ -158,7 +170,7 @@ def validate_document_noai():
                     "url_status": url_flag,
                     "ai_status": None,
                     "ai_reason": "AI checking disabled",
-                    "level": None,
+                    "level": level,                     # ← level now saved
                     "ai_attempted": True,
                     "ai_raw_response": "",
                     "synced_at": datetime.now(pytz.UTC)
