@@ -21,7 +21,6 @@ def get_remote_ip():
     that set X-Forwarded-For or X-Real-IP headers.
     """
     if request.headers.get('X-Forwarded-For'):
-        # X-Forwarded-For can be a comma-separated list; first IP is the client
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     elif request.headers.get('X-Real-IP'):
         return request.headers.get('X-Real-IP').strip()
@@ -52,7 +51,7 @@ def validate_document_noai():
     email_filter = request.args.get('email', '').strip()
     user_id_filter = request.args.get('user_id', '').strip()
     xn_user_id_filter = request.args.get('xn_user_id', '').strip()
-    document_id_filter = request.args.get('document_id', '').strip()  # NEW
+    document_id_filter = request.args.get('document_id', '').strip()
 
     # 2. Build Query
     query = {"is_admin": {"$ne": True}}
@@ -99,6 +98,7 @@ def validate_document_noai():
             payload = {"staff_id": xn_user_id}
             if document_id_filter:
                 payload["document_id"] = document_id_filter
+
             response = requests.get(api_url, headers=headers, json=payload, timeout=15)
 
             if response.status_code != 200:
@@ -112,15 +112,13 @@ def validate_document_noai():
                 docs_array = resp_data
                 api_user_name = ''
 
-            # ── Filter or find pending docs based on document_id_filter ────
+            # ── Filter docs ────────────────────────────────────────────────
             if document_id_filter:
-                # Only process the specific document
                 docs_to_process = [
                     doc for doc in docs_array
                     if str(doc.get('document_id')) == document_id_filter
                 ]
             else:
-                # Normal flow: exclude already processed docs
                 already_checked_ids = set(
                     d['document_id']
                     for d in current_app.db.documents_new.find(
@@ -130,6 +128,7 @@ def validate_document_noai():
                         },
                         {"document_id": 1}
                     )
+                    if d.get('document_id') is not None
                 )
                 pending_docs = [
                     doc for doc in docs_array
@@ -139,71 +138,48 @@ def validate_document_noai():
                 docs_to_process = pending_docs[:2]
 
             checked_count = 0
-            verify_payload = ""
-            verify_resp = None
 
             for doc in docs_to_process:
                 doc_url = doc.get('url')
-                doc_name = doc.get('document_type_name', 'Unknown')
-                user_name = (
-                    api_user_name or
-                    u.get('name') or
-                    f"{u.get('first_name', '')} {u.get('last_name', '')}".strip()
-                )
+                url_flag = 1 if doc_url else 0
 
-                # ── Save doc result (no AI checking) ───────────────────────
-                url = doc.get('url')
-                url_flag = 1 if url else 0
-                doc.pop('url', None)
-                doc.update({
+                # Keep original fields from API + our own fields
+                doc_to_save = {
+                    "document_id": doc.get('document_id'),
+                    "document_category_type": doc.get('document_category_type'),
+                    "document_type_name": doc.get('document_type_name'),
+                    "sub_type_id": doc.get('sub_type_id'),
+                    "sub_type_name": doc.get('sub_type_name'),
+                    "expiry_date": doc.get('expiry_date'),
+                    "status": doc.get('status'),
+                    "updated_at": doc.get('updated_at'),
                     "user_id": local_id,
                     "xn_user_id": xn_user_id,
-                    "ai_status": None,          # No AI validation performed
+                    "url_status": url_flag,
+                    "ai_status": None,
                     "ai_reason": "AI checking disabled",
                     "level": None,
-                    "url_status": url_flag,
                     "ai_attempted": True,
                     "ai_raw_response": "",
                     "synced_at": datetime.now(pytz.UTC)
-                })
+                }
+
+                # Unique key for upsert
+                filter_query = {"user_id": local_id}
+                if doc.get('document_id') is not None:
+                    filter_query["document_id"] = doc.get('document_id')
+                else:
+                    # Fallback for docs that have null document_id
+                    filter_query["document_type_name"] = doc.get('document_type_name')
 
                 current_app.db.documents_new.update_one(
-                    {"document_id": doc.get('document_id'), "user_id": local_id},
-                    {"$set": doc},
+                    filter_query,
+                    {"$set": doc_to_save},
                     upsert=True
                 )
                 checked_count += 1
 
-                # ── Call external verification update when both xn_user_id
-                #    and document_id are provided as URL parameters ──────────
-                verify_payload = ""
-                verify_resp = None
-                if xn_user_id_filter and document_id_filter:
-                    try:
-                        verify_url = f"{BASE_URL}/ai/document-validate/external-verification-update"
-                        verify_payload = {
-                            "user_id": xn_user_id,
-                            "document_id": doc.get('document_id'),
-                            "document_type": "",
-                            "status": None,                 # No AI status
-                            "reject_reason": "AI checking disabled"
-                        }
-                        verify_resp = requests.post(
-                            verify_url,
-                            headers=headers,
-                            json=verify_payload,
-                            timeout=15
-                        )
-                        current_app.logger.info(
-                            f"External verify update for doc {doc.get('document_id')}: "
-                            f"status={verify_resp.status_code}, body={verify_resp.text[:200]}"
-                        )
-                    except Exception as ve:
-                        current_app.logger.error(
-                            f"External verify update failed for doc {doc.get('document_id')}: {ve}"
-                        )
-
-            # ── Check if ALL docs for this user are now complete ───────────
+            # ── Mark user as fully done if all docs processed ──────────────
             total_docs = len(docs_array)
             total_saved = current_app.db.documents_new.count_documents({
                 "user_id": local_id,
@@ -224,9 +200,7 @@ def validate_document_noai():
                 "total_docs": total_docs,
                 "checked_this_request": checked_count,
                 "total_checked_so_far": total_saved,
-                "user_fully_done": fully_done,
-                "verify_payload": verify_payload,
-                "verify_response": verify_resp.text if verify_resp else ""
+                "user_fully_done": fully_done
             })
 
         except Exception as e:
