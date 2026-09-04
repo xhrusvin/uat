@@ -22,6 +22,16 @@ DEFAULT_PAGE     = 1
 DEFAULT_PAGE_SIZE = 10
 MAX_PAGE_SIZE    = 100
 
+# ==================== TEST SHIFT EXCLUSION LIST ====================
+# Set EXCLUDE_TEST_SHIFTS = True to filter out the shifts listed in
+# TEST_SHIFT_IDS from results. Set to False to include them.
+EXCLUDE_TEST_SHIFTS = True
+
+TEST_SHIFT_IDS = [
+    # "TEST-001",
+    # "SHIFT-XN-9999",
+]
+
 if not all([MONGO_URI, DB_NAME]):
     raise ValueError("Required env vars missing (MONGO_URI, DB_NAME)")
 
@@ -280,9 +290,15 @@ def most_matching_shifts():
         # Fetch up to 500 candidates then score + sort in Python
         candidates = list(shifts_col.find(shift_filter).sort("date", 1).limit(500))
 
-        # 8. Score all candidates
+        # 8. Score all candidates, excluding test shifts if flag is enabled
+        test_ids_set = set(TEST_SHIFT_IDS)
         scored = []
         for shift in candidates:
+            if EXCLUDE_TEST_SHIFTS and (
+                shift.get("shift_xn_id") in test_ids_set or
+                shift.get("shift_code") in test_ids_set
+            ):
+                continue
             score, reasons = _score_shift(shift, user_doc, history, user_lat, user_lng)
             scored.append((shift, score, reasons))
 
