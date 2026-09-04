@@ -54,7 +54,7 @@ def validate_document_noai():
     document_id_filter = request.args.get('document_id', '').strip()
 
     # 2. Build Query
-    query = {"is_admin": {"$ne": True}}
+    query = {"is_admin": {"$ne": True}, "source": "staff"}
 
     if email_filter:
         query["email"] = email_filter
