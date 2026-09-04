@@ -1,0 +1,258 @@
+from flask import (
+    redirect, url_for, flash, current_app, jsonify,
+    request, session, render_template, Response
+)
+from functools import wraps
+from . import admin_bp
+from datetime import datetime
+import pytz
+from bson import ObjectId
+import os
+import requests
+import json
+import re
+from bson.json_util import dumps
+
+ALLOWED_IPS = ["34.52.131.152", "103.146.175.179", "10.0.0.5"]
+
+def get_remote_ip():
+    """
+    Extracts the real client IP, accounting for proxies/load balancers
+    that set X-Forwarded-For or X-Real-IP headers.
+    """
+    if request.headers.get('X-Forwarded-For'):
+        # X-Forwarded-For can be a comma-separated list; first IP is the client
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    elif request.headers.get('X-Real-IP'):
+        return request.headers.get('X-Real-IP').strip()
+    return request.remote_addr
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session or not session.get('is_admin'):
+            return redirect(url_for('admin.admin_login'))
+        return f(*args, **kwargs)
+    return decorated
+
+@admin_bp.route('/validate_document_noai')
+def validate_document_noai():
+    client_ip = get_remote_ip()
+
+    # if client_ip not in ALLOWED_IPS:
+    #     return jsonify({
+    #         "status": "error",
+    #         "message": f"Access denied: IP {client_ip} is not whitelisted"
+    #     }), 403
+
+    # 1. Get URL Parameters
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('limit', 10))
+    search = request.args.get('search', '').strip()
+    email_filter = request.args.get('email', '').strip()
+    user_id_filter = request.args.get('user_id', '').strip()
+    xn_user_id_filter = request.args.get('xn_user_id', '').strip()
+    document_id_filter = request.args.get('document_id', '').strip()  # NEW
+
+    # 2. Build Query
+    query = {"is_admin": {"$ne": True}}
+
+    if email_filter:
+        query["email"] = email_filter
+    elif user_id_filter:
+        query["_id"] = ObjectId(user_id_filter)
+    elif xn_user_id_filter:
+        query["xn_user_id"] = xn_user_id_filter
+    else:
+        query["$or"] = [
+            {"document_fetched": 0},
+            {"document_fetched": {"$exists": False}}
+        ]
+        query["xn_user_id"] = {"$exists": True, "$ne": ""}
+
+    if search:
+        query["email"] = {"$regex": search, "$options": "i"}
+
+    # 3. Fetch Users
+    users_list = list(
+        current_app.db.users.find(query)
+        .sort("created_at", 1)
+        .skip((page - 1) * per_page)
+        .limit(per_page)
+    )
+
+    BASE_URL = os.getenv('XN_PORTAL_BASE_URL')
+    headers = {
+        "Api-Key": os.getenv('XN_PORTAL_API_KEY'),
+        "X-App-Country": os.getenv('XN_APP_COUNTRY'),
+        "Content-Type": "application/json"
+    }
+
+    processed_results = []
+
+    for u in users_list:
+        local_id = u['_id']
+        xn_user_id = u.get('xn_user_id')
+
+        try:
+            api_url = f"{BASE_URL}/ai/recruitments/user-document-list"
+            payload = {"staff_id": xn_user_id}
+            if document_id_filter:
+                payload["document_id"] = document_id_filter
+            response = requests.get(api_url, headers=headers, json=payload, timeout=15)
+
+            if response.status_code != 200:
+                continue
+
+            resp_data = response.json().get('data', {}) or {}
+            if isinstance(resp_data, dict):
+                docs_array = resp_data.get('documents', []) or []
+                api_user_name = (resp_data.get('name') or '').strip()
+            else:
+                docs_array = resp_data
+                api_user_name = ''
+
+            # ── Filter or find pending docs based on document_id_filter ────
+            if document_id_filter:
+                # Only process the specific document
+                docs_to_process = [
+                    doc for doc in docs_array
+                    if str(doc.get('document_id')) == document_id_filter
+                ]
+            else:
+                # Normal flow: exclude already processed docs
+                already_checked_ids = set(
+                    d['document_id']
+                    for d in current_app.db.documents_new.find(
+                        {
+                            "user_id": local_id,
+                            "ai_attempted": True
+                        },
+                        {"document_id": 1}
+                    )
+                )
+                pending_docs = [
+                    doc for doc in docs_array
+                    if doc.get('document_id') not in already_checked_ids
+                ]
+                # HARD CAP: only process 2 docs per request
+                docs_to_process = pending_docs[:2]
+
+            checked_count = 0
+            verify_payload = ""
+            verify_resp = None
+
+            for doc in docs_to_process:
+                doc_url = doc.get('url')
+                doc_name = doc.get('document_type_name', 'Unknown')
+                user_name = (
+                    api_user_name or
+                    u.get('name') or
+                    f"{u.get('first_name', '')} {u.get('last_name', '')}".strip()
+                )
+
+                # ── Save doc result (no AI checking) ───────────────────────
+                url = doc.get('url')
+                url_flag = 1 if url else 0
+                doc.pop('url', None)
+                doc.update({
+                    "user_id": local_id,
+                    "xn_user_id": xn_user_id,
+                    "ai_status": None,          # No AI validation performed
+                    "ai_reason": "AI checking disabled",
+                    "level": None,
+                    "url_status": url_flag,
+                    "ai_attempted": True,
+                    "ai_raw_response": "",
+                    "synced_at": datetime.now(pytz.UTC)
+                })
+
+                current_app.db.documents_new.update_one(
+                    {"document_id": doc.get('document_id'), "user_id": local_id},
+                    {"$set": doc},
+                    upsert=True
+                )
+                checked_count += 1
+
+                # ── Call external verification update when both xn_user_id
+                #    and document_id are provided as URL parameters ──────────
+                verify_payload = ""
+                verify_resp = None
+                if xn_user_id_filter and document_id_filter:
+                    try:
+                        verify_url = f"{BASE_URL}/ai/document-validate/external-verification-update"
+                        verify_payload = {
+                            "user_id": xn_user_id,
+                            "document_id": doc.get('document_id'),
+                            "document_type": "",
+                            "status": None,                 # No AI status
+                            "reject_reason": "AI checking disabled"
+                        }
+                        verify_resp = requests.post(
+                            verify_url,
+                            headers=headers,
+                            json=verify_payload,
+                            timeout=15
+                        )
+                        current_app.logger.info(
+                            f"External verify update for doc {doc.get('document_id')}: "
+                            f"status={verify_resp.status_code}, body={verify_resp.text[:200]}"
+                        )
+                    except Exception as ve:
+                        current_app.logger.error(
+                            f"External verify update failed for doc {doc.get('document_id')}: {ve}"
+                        )
+
+            # ── Check if ALL docs for this user are now complete ───────────
+            total_docs = len(docs_array)
+            total_saved = current_app.db.documents_new.count_documents({
+                "user_id": local_id,
+                "ai_attempted": True
+            })
+
+            if total_saved >= total_docs:
+                current_app.db.users.update_one(
+                    {"_id": local_id},
+                    {"$set": {"document_fetched": 1}}
+                )
+                fully_done = True
+            else:
+                fully_done = False
+
+            processed_results.append({
+                "email": u.get('email'),
+                "total_docs": total_docs,
+                "checked_this_request": checked_count,
+                "total_checked_so_far": total_saved,
+                "user_fully_done": fully_done,
+                "verify_payload": verify_payload,
+                "verify_response": verify_resp.text if verify_resp else ""
+            })
+
+        except Exception as e:
+            current_app.logger.error(f"Sync error for {u.get('email')}: {e}")
+            return jsonify({"status": "error", "message": str(e)})
+
+    return jsonify({
+        "status": "Batch processed",
+        "count": len(processed_results),
+        "processed_users": processed_results
+    })
+
+
+@admin_bp.route('/get_user_documents_noai/<user_id>')
+@admin_required
+def get_user_documents_noai(user_id):
+    try:
+        target_id = ObjectId(user_id)
+        user_docs = list(current_app.db.documents_new.find({"user_id": target_id}))
+
+        for doc in user_docs:
+            doc['_id'] = str(doc['_id'])
+            doc['user_id'] = str(doc['user_id'])
+            if 'synced_at' in doc and isinstance(doc['synced_at'], datetime):
+                doc['synced_at'] = doc['synced_at'].isoformat()
+
+        return jsonify({"success": True, "data": user_docs})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500

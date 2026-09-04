@@ -53,3 +53,4 @@ from . import user_point_scale
 from . import user_appform
 from . import user_screening_record
 from . import document_console
+from . import validate_document_noai

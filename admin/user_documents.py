@@ -214,7 +214,6 @@ def user_documents():
 @admin_bp.route('/api/user-documents/list', methods=['GET'])
 @admin_required
 def api_list_user_documents():
-    # unchanged
     lead_id = request.args.get('lead_id')
 
     if not lead_id or not ObjectId.is_valid(lead_id):
@@ -222,7 +221,7 @@ def api_list_user_documents():
 
     user = current_app.db.users.find_one(
         {"_id": ObjectId(lead_id)},
-        {"xn_user_id": 1, "email": 1, "first_name": 1, "last_name": 1}
+        {"xn_user_id": 1, "email": 1, "first_name": 1, "last_name": 1, "source": 1}
     )
 
     if not user or "xn_user_id" not in user:
@@ -250,11 +249,16 @@ def api_list_user_documents():
         "Content-Type": "application/json"
     }
 
+    # Build request payload based on user source
+    if user.get("source") == "staff":
+        request_payload = {"staff_id": xn_user_id}
+    else:
+        request_payload = {"_id": xn_user_id}
+
     try:
-        resp = requests.get(api_url, headers=headers, json={"_id": xn_user_id}, timeout=10)
+        resp = requests.get(api_url, headers=headers, json=request_payload, timeout=10)
         resp.raise_for_status()
         api_data = resp.json()
-
 
         if not api_data.get("success"):
             current_app.logger.warning(f"External API non-success: {api_data}")
@@ -263,52 +267,6 @@ def api_list_user_documents():
         fresh_documents = api_data.get("data", []) or []
         if isinstance(fresh_documents, dict):
             fresh_documents = fresh_documents.get("documents", []) or []
-        # documents = []
-        # for doc in fresh_documents:
-        #     doc_name = (doc.get("document_type_name") or "").strip()
-        #     if not doc_name:
-        #         continue
-        #     documents.append({
-        #         "document_type_name": doc_name,
-        #         "url": doc.get("url"),
-        #         "fetched_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M")
-        #     })
-
-        # documents = []
-        # for doc in fresh_documents:
-        #     doc_name = (doc.get("document_type_name") or "").strip()
-        #     doc_code = DOC_TYPE_MAP.get(doc_name, doc_name.upper().replace(" ", "_"))
-        #     if not doc_name:
-        #         continue
-
-        #     doc_url = doc.get("url")
-
-        #     # 🔹 Fetch latest validation
-        #     validation = current_app.db.validations.find_one(
-        #         {
-        #             "user_id": ObjectId(lead_id),
-        #             "document_type_code": doc_name,
-        #             "document_type_code": doc_code
-        #         },
-        #         sort=[("validated_at", -1)]
-        #     )
-
-        #     verification_data = None
-        #     if validation:
-        #         verification_data = {
-        #             "status": validation.get("status"),
-        #             "result": validation.get("result"),
-        #             "failed_reason": validation.get("failed_reason"),
-        #             "validation_id": str(validation["_id"])
-        #         }
-
-        #     documents.append({
-        #         "document_type_name": doc_name,
-        #         "document_type_code": doc_code,
-        #         "url": doc_url,
-        #         "fetched_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
-        #         "verification": verification_data
-        #     })
 
         documents = []
 
@@ -320,7 +278,6 @@ def api_list_user_documents():
             doc_code = DOC_TYPE_MAP.get(doc_name, doc_name.upper().replace(" ", "_"))
             doc_url = doc.get("url")
 
-            
             current_app.db.documents.update_one(
                 {
                     "user_id": ObjectId(lead_id),
@@ -338,7 +295,6 @@ def api_list_user_documents():
                 upsert=True
             )
 
-            # 🔹 Existing validation fetch (keep this)
             validation = current_app.db.validations.find_one(
                 {
                     "user_id": ObjectId(lead_id),
@@ -355,16 +311,6 @@ def api_list_user_documents():
                 sort=[("validated_at", -1)]
             )
 
-
-
-            verification_data = None
-            # if validation:
-            #     verification_data = {
-            #         "status": validation.get("status"),
-            #         "result": validation.get("result"),
-            #         "failed_reason": validation.get("failed_reason"),
-            #         "validation_id": str(validation["_id"])
-            #     }
             if document_data:
                 verification_data = {
                     "status": document_data.get("ai_status"),
@@ -383,7 +329,6 @@ def api_list_user_documents():
                     "document_id": "",
                     "validation_id": ""
                 }
-               
 
             documents.append({
                 "document_type_name": doc_name,
@@ -405,16 +350,18 @@ def api_list_user_documents():
     except requests.RequestException as e:
         current_app.logger.error(f"External API request failed: {e}")
         return jsonify({"status": "error", "message": f"External service unreachable: {str(e)}"}), 502
+
     except ValueError as e:
         current_app.logger.error(f"Invalid JSON from external API: {e}")
         return jsonify({"status": "error", "message": "Invalid response format"}), 502
+
     except Exception as e:
         traceback.print_exc()
         current_app.logger.exception(e)
         return jsonify({
-         "status": "error",
-         "message": str(e),
-         "traceback": traceback.format_exc()   # Remove in production
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc()
         }), 500
     
 
