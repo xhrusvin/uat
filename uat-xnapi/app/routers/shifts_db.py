@@ -367,8 +367,15 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         filters.append({"is_premium": payload.is_premium == 1})
 
     if payload.has_available is not None:
+        current_outreach_ids = [
+            o["_id"] for sid, o in shift_outreach_map.items()
+        ]
         avail_shift_ids = await db["shifts_users"].distinct(
-            "shift_id", {"availability": 1}
+            "shift_id",
+            {
+                "availability": 1,
+                "outreach_id": {"$in": current_outreach_ids},
+            }
         )
         if payload.has_available == 1:
             filters.append({"_id": {"$in": avail_shift_ids}})
@@ -665,8 +672,15 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         filters.append({"is_premium": payload.is_premium == 1})
 
     if payload.has_available is not None:
+        current_outreach_ids = [
+            o["_id"] for sid, o in shift_outreach_map.items()
+        ]
         avail_shift_ids = await db["shifts_users"].distinct(
-            "shift_id", {"availability": 1}
+            "shift_id",
+            {
+                "availability": 1,
+                "outreach_id": {"$in": current_outreach_ids},
+            }
         )
         if payload.has_available == 1:
             filters.append({"_id": {"$in": avail_shift_ids}})

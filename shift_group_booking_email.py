@@ -1,6 +1,6 @@
 # shift_group_booking_email.py
 # Sends outreach emails for GROUP shifts (shifts_group_users collection)
-# Processes up to 5 pending emails per trigger call
+# Processes up to BATCH_SIZE pending emails per trigger call
 import threading
 import logging
 import smtplib
@@ -19,6 +19,46 @@ ALLOWED_START_HOUR = 1
 ALLOWED_END_HOUR   = 23
 BATCH_SIZE         = 50   # emails per trigger
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Designation → accepted shift user_type mapping.
+#
+# A user is offered a shift when their `designation` equals the shift's
+# `user_type` (case/whitespace insensitive), OR when the shift's user_type
+# appears in that designation's accepted set below.
+#
+# Populate this from your data. To list every pair currently in play:
+#
+#   const pairs = {};
+#   db.shifts_group_users.find({call_processed:0, channel:"Email"}).forEach(r => {
+#     const u  = db.users.findOne({_id: r.user_id}, {designation:1});
+#     const sg = db.shifts_group.findOne({_id: r.group_id}, {shift_ids:1});
+#     if (!u || !sg || !sg.shift_ids) return;
+#     const t = db.shifts.distinct("user_type", {_id: {$in: sg.shift_ids}});
+#     const k = (u.designation||"∅") + " -> [" + t.join(" | ") + "]";
+#     pairs[k] = (pairs[k]||0) + 1;
+#   });
+#   Object.entries(pairs).sort((a,b)=>b[1]-a[1]).forEach(([k,n])=>print(n+"\t"+k));
+#
+# NOTE: whether a general Nurse may work an ICU Nurse shift is a business /
+# compliance decision, not a code one. Confirm this table with the bookings
+# team before widening it.
+# ─────────────────────────────────────────────────────────────────────────────
+DESIGNATION_MATCHES = {
+    "nurse": {"nurse", "general nurse", "staff nurse", "icu nurse"},
+    # "healthcare assistant": {"healthcare assistant", "hca", "care assistant"},
+}
+
+
+def _designation_matches(designation: str, user_type: str) -> bool:
+    """True when a user with `designation` may be offered a shift of `user_type`."""
+    d = (designation or "").strip().lower()
+    t = (user_type or "").strip().lower()
+    if not d or not t:
+        return True            # unknown on either side -> don't block
+    if d == t:
+        return True
+    return t in DESIGNATION_MATCHES.get(d, set())
+
 
 def is_within_call_window():
     now     = datetime.utcnow()
@@ -34,6 +74,25 @@ def _format_date(date_str: str) -> str:
         return dt.strftime("%A, %d %B %Y")
     except Exception:
         return str(date_str)
+
+
+def _build_shift_dict(s, client=None, fallback_county=""):
+    """Normalise a shifts document into the dict shape used by the email template."""
+    c = s.get("client_county", "") or (client.get("county", "") if client else "") or fallback_county
+    _rate = s.get("rate", "")
+    return {
+        "id":            str(s["_id"]),
+        "date":          str(s.get("date", "")),
+        "start_time":    s.get("start_time", ""),
+        "end_time":      s.get("end_time", ""),
+        "client_name":   s.get("client_name", "") or s.get("location", ""),
+        "location":      s.get("location", ""),
+        "user_type":     s.get("user_type", ""),
+        "unit":          s.get("unit") or "",
+        "shift_type":    s.get("shift_timing") or s.get("shift_type") or "",
+        "rate":          "REG" if not _rate or str(_rate) in ("0", "0.0") else str(_rate),
+        "client_county": c,
+    }
 
 
 def _build_email_html(first_name, shifts_list, base_url, shifts_users_id, staff_name='', county=''):
@@ -118,33 +177,35 @@ def _build_email_html(first_name, shifts_list, base_url, shifts_users_id, staff_
     return html
 
 
-
 def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_id, county=""):
-    """Send group shift booking email via SMTP."""
+    """Send group shift booking email via SMTP.
+
+    `shifts_list` is ALREADY filtered to shifts matching the user's designation
+    by the route — this function does not re-filter. Keeping the filter in one
+    place avoids the two copies drifting apart.
+    """
     try:
-        # Safety check — filter shifts to only those matching user designation
-        user_id = record.get("user_id")
-        if user_id:
-            _u = app.db.users.find_one({"_id": user_id}, {"designation": 1})
-            _designation = (_u.get("designation") or "").strip().lower() if _u else ""
-            if _designation and shifts_list:
-                filtered_shifts = [
-                    s for s in shifts_list
-                    if not s.get("user_type") or s.get("user_type", "").strip().lower() == _designation
-                ]
-                if not filtered_shifts:
-                    log.warning(f"[GROUP EMAIL] Blocked send to {to_email} — no shifts match designation '{_designation}'")
-                    return
-                if len(filtered_shifts) < len(shifts_list):
-                    log.info(f"[GROUP EMAIL] Filtered {len(shifts_list) - len(filtered_shifts)} shifts not matching '{_designation}' for {to_email}")
-                    shifts_list = filtered_shifts
+        if not shifts_list:
+            # Defensive: route guarantees this is non-empty, so reaching here is a bug.
+            log.error(f"[GROUP EMAIL] Refusing to send empty shift list to {to_email} (su_id={su_id})")
+            app.db.shifts_group_users.update_one(
+                {"_id": su_id},
+                {"$set": {
+                    "email_sent":   0,
+                    "email_status": "aborted_empty_shift_list",
+                    "updated_at":   datetime.utcnow(),
+                }}
+            )
+            return
+
         base_url  = os.getenv("APP_BASE_URL", "https://uat.expresshealth.ie")
         last_name = record.get("last_name", "")
         html      = _build_email_html(first_name, shifts_list, base_url, su_id,
-                                       staff_name=f"{first_name} {last_name}".strip(), county=county)
+                                      staff_name=f"{first_name} {last_name}".strip(), county=county)
 
         su_id_str = str(su_id)
         msg = MIMEMultipart("alternative")
+
         # Build subject with all unique counties
         _all_counties = list(dict.fromkeys([
             (s.get("client_county") or "").strip()
@@ -155,14 +216,16 @@ def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_i
             msg["Subject"] = f"Shift Availability Request – Co. {_counties_str}"
         else:
             msg["Subject"] = f"Shift Availability Request – Co. {county}" if county else "Shift Availability Request – Xpress Health"
+
         msg["From"]       = f"{os.getenv('SHIFT_SMTP_FROM_NAME', 'XpressHealth')} <{os.getenv('SHIFT_FROM_EMAIL', '')}>"
         msg["X-Shift-Id"] = su_id_str
+
         _reply_to = os.getenv("SHIFT_REPLY_TO_EMAIL", "")
         if not _reply_to:
             reply_domain = os.getenv("SHIFT_REPLY_DOMAIN", "uat.expresshealth.ie")
             _reply_to = f"reply+{su_id_str}@{reply_domain}"
         msg["Reply-To"] = _reply_to
-        msg["To"]         = to_email
+        msg["To"]       = to_email
 
         cc  = os.getenv("SHIFT_CC_EMAIL", "")
         bcc = os.getenv("SHIFT_BCC_EMAIL", "")
@@ -186,15 +249,20 @@ def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_i
             server.login(smtp_user, smtp_pass)
             server.sendmail(msg["From"], recipients, msg.as_string())
 
-        log.info(f"[GROUP EMAIL] ✓ Sent to {to_email}")
+        log.info(f"[GROUP EMAIL] ✓ Sent to {to_email} — {len(shifts_list)} shift(s)")
+
+        # Record exactly which shifts were included, so a partial send is auditable
         app.db.shifts_group_users.update_one(
             {"_id": su_id},
             {"$set": {
-                "email_sent":       1,
-                "email_sent_at":    datetime.utcnow(),
-                "email_status":     "delivered",
-                "email_message_id": su_id_str,
-                "availability":     8,
+                "email_sent":         1,
+                "email_sent_at":      datetime.utcnow(),
+                "email_status":       "delivered",
+                "email_message_id":   su_id_str,
+                "availability":       8,
+                "emailed_shift_ids":  [s.get("id") for s in shifts_list],
+                "emailed_shift_count": len(shifts_list),
+                "updated_at":         datetime.utcnow(),
             }}
         )
 
@@ -226,7 +294,22 @@ def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_i
 
                         now = datetime.utcnow()
 
-                        # Update the exact document shape you showed
+                        # Build an honest end reason: skipped records are now
+                        # call_processed=1 too, so "All emails sent" could be a lie.
+                        _sent = app.db.shifts_group_users.count_documents({
+                            "outreach_id": outreach_id, "channel": "Email", "email_sent": 1,
+                        })
+                        _skipped = app.db.shifts_group_users.count_documents({
+                            "outreach_id": outreach_id, "channel": "Email",
+                            "email_status": "skipped_no_matching_shifts",
+                        })
+                        if _sent and _skipped:
+                            _reason = f"All emails processed · {_sent} sent, {_skipped} skipped (no matching shifts)"
+                        elif _sent:
+                            _reason = f"All emails sent ({_sent})"
+                        else:
+                            _reason = f"No emails sent · {_skipped} skipped (no matching shifts)"
+
                         res = app.db.outreach_shift_group.update_one(
                             {"_id": outreach_id},
                             {"$set": {
@@ -234,12 +317,17 @@ def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_i
                                 "status": "ended",
                                 "ended_at": now,
                                 "updated_at": now,
-                                "end_reason": "All emails sent",
+                                "end_reason": _reason,
+                                "emails_sent": _sent,
+                                "emails_skipped": _skipped,
                             }}
                         )
 
                         if res.modified_count:
-                            # Disable any remaining pending staff
+                            # Disable any remaining pending staff for this group.
+                            # NOTE: this also catches non-Email channels (e.g. "Call")
+                            # even though the pending count above only looked at Email.
+                            # Scope it with "channel": "Email" if Call outreach should survive.
                             app.db.shifts_group_users.update_many(
                                 {"group_id": group_id, "call_processed": 0},
                                 {"$set": {
@@ -255,17 +343,18 @@ def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_i
                                 "outreach_id": outreach_id,
                                 "metadata": {
                                     "round_number": rn,
-                                    "end_reason": "All emails sent",
+                                    "end_reason": _reason,
                                     "auto_ended": True,
-                                    "summary": f"Round {rn} auto-ended · all emails sent",
+                                    "emails_sent": _sent,
+                                    "emails_skipped": _skipped,
+                                    "summary": f"Round {rn} auto-ended · {_reason}",
                                 },
                                 "created_at": now,
                             })
 
                             log.info(
                                 f"[AUTO-END] outreach_shift_group {outreach_id} "
-                                f"→ outreach_status=3, status='ended' "
-                                f"(last email sent for group {group_id})"
+                                f"→ outreach_status=3, status='ended' ({_reason})"
                             )
                     except Exception as e:
                         log.error(f"[AUTO-END] failed for outreach {outreach_id}: {e}")
@@ -277,9 +366,17 @@ def _send_group_shift_email(app, record, shifts_list, to_email, first_name, su_i
 
     except Exception as e:
         log.error(f"[GROUP EMAIL] ✗ Failed to send to {to_email}: {e}")
+        # NOTE: call_processed stays 1, so this record will NOT be retried.
+        # To enable retries, reset call_processed to 0 here and increment an
+        # attempt counter, capped so a permanently bad address can't loop.
         app.db.shifts_group_users.update_one(
             {"_id": su_id},
-            {"$set": {"email_error": str(e)}}
+            {"$set": {
+                "email_error":  str(e),
+                "email_sent":   0,
+                "email_status": "failed",
+                "updated_at":   datetime.utcnow(),
+            }}
         )
 
 
@@ -317,11 +414,13 @@ def register_shift_group_booking_email_routes(app):
                             "message": "No pending group emails."}), 200
 
         triggered = []
+        skipped   = []
+
         for record in records:
-            su_id      = record["_id"]
-            shift_id   = str(record.get("shift_id", ""))
-            outreach_id= str(record.get("outreach_id", ""))
-            user_id    = str(record.get("user_id", ""))
+            su_id       = record["_id"]
+            shift_id    = str(record.get("shift_id", ""))
+            outreach_id = str(record.get("outreach_id", ""))
+            user_id     = str(record.get("user_id", ""))
 
             user = None
             if user_id and ObjectId.is_valid(user_id):
@@ -332,6 +431,11 @@ def register_shift_group_booking_email_routes(app):
 
             if not user or not user.get("email"):
                 log.warning(f"[GROUP EMAIL] No user/email for su_id={su_id}")
+                skipped.append({
+                    "shifts_group_users_id": str(su_id),
+                    "reason":                "no_user_or_email",
+                    "user_id":               user_id,
+                })
                 continue
 
             email      = user["email"]
@@ -339,80 +443,93 @@ def register_shift_group_booking_email_routes(app):
             last_name  = user.get("last_name", "")
             full_name  = f"{first_name} {last_name}".strip()
 
-            # Check user designation matches shift user_type
-            user_designation = user.get("designation", "").strip().lower()
-            # Get user_type from group's first shift
-            _shift_user_type = ""
-            _group_id_check  = record.get("group_id")
-            if _group_id_check:
-                _sg_check = app.db.shifts_group.find_one({"_id": _group_id_check}, {"shift_ids": 1})
-                if _sg_check and _sg_check.get("shift_ids"):
-                    _s_check = app.db.shifts.find_one({"_id": _sg_check["shift_ids"][0]}, {"user_type": 1})
-                    if _s_check:
-                        _shift_user_type = (_s_check.get("user_type") or "").strip().lower()
-            if user_designation and _shift_user_type and user_designation != _shift_user_type:
-                log.warning(f"[GROUP EMAIL] Skipping {email} — designation '{user_designation}' != shift user_type '{_shift_user_type}'")
-                continue
+            user_designation = (user.get("designation") or "").strip().lower()
 
-            # Mark as processed
-            result = app.db.shifts_group_users.update_one(
-                {"_id": su_id},
-                {"$set": {"call_processed": 1, "call_processed_at": datetime.utcnow(),
-                           "updated_at": datetime.utcnow()}}
-            )
-            if result.modified_count == 0:
-                continue
-
-            # Build shifts_list — all shifts from the group
+            # ── Build the full shift list FIRST (before claiming the record) ──
             shifts_list = []
-            county      = ""
             group_id    = record.get("group_id")
             if group_id:
                 sg = app.db.shifts_group.find_one({"_id": group_id}, {"shift_ids": 1})
                 if sg and sg.get("shift_ids"):
                     for sid in sg["shift_ids"]:
                         s = app.db.shifts.find_one({"_id": sid})
-                        if s:
-                            client = None
-                            if s.get("client_id"):
-                                client = app.db.clients.find_one(
-                                    {"xn_client_id": str(s["client_id"])},
-                                    {"address": 1, "county": 1, "latitude": 1, "longitude": 1}
-                                )
-                            c = s.get("client_county", "") or (client.get("county", "") if client else "")
-                            if not county and c:
-                                county = c
-                            shifts_list.append({
-                                "id":               str(s["_id"]),
-                                "date":             str(s.get("date", "")),
-                                "start_time":       s.get("start_time", ""),
-                                "end_time":         s.get("end_time", ""),
-                                "client_name":      s.get("client_name", "") or s.get("location", ""),
-                                "location":         s.get("location", ""),
-                                "user_type":        s.get("user_type", ""),
-                                "unit":             s.get("unit") or "",
-                                "shift_type":       s.get("shift_timing") or s.get("shift_type") or "",
-                                "rate":             "REG" if not s.get("rate") or str(s.get("rate","")) in ("0","0.0") else str(s.get("rate","")),
-                                "client_county":    c,
-                            })
+                        if not s:
+                            continue
+                        client = None
+                        if s.get("client_id"):
+                            client = app.db.clients.find_one(
+                                {"xn_client_id": str(s["client_id"])},
+                                {"address": 1, "county": 1, "latitude": 1, "longitude": 1}
+                            )
+                        shifts_list.append(_build_shift_dict(s, client))
+
             # Fallback — single shift_id on record
             if not shifts_list and shift_id and ObjectId.is_valid(shift_id):
                 s = app.db.shifts.find_one({"_id": ObjectId(shift_id)})
                 if s:
-                    county = s.get("client_county", "")
-                    shifts_list.append({
-                        "id":          str(s["_id"]),
-                        "date":        str(s.get("date", "")),
-                        "start_time":  s.get("start_time", ""),
-                        "end_time":    s.get("end_time", ""),
-                        "client_name": s.get("client_name", "") or s.get("location", ""),
-                        "location":    s.get("location", ""),
-                        "user_type":   s.get("user_type", ""),
-                        "unit":        s.get("unit") or "",
-                        "shift_type":  s.get("shift_timing") or s.get("shift_type") or "",
-                        "rate":        "REG" if not s.get("rate") or str(s.get("rate","")) in ("0","0.0") else str(s.get("rate","")),
-                        "client_county": county,
-                    })
+                    shifts_list.append(_build_shift_dict(s))
+
+            if not shifts_list:
+                log.warning(f"[GROUP EMAIL] No shifts resolved for su_id={su_id} (group_id={group_id})")
+                skipped.append({
+                    "shifts_group_users_id": str(su_id),
+                    "reason":                "no_shifts_resolved",
+                    "email":                 email,
+                })
+                continue
+
+            # ── Filter to shifts this designation is allowed to work ─────────
+            matched = [
+                s for s in shifts_list
+                if _designation_matches(user_designation, s.get("user_type"))
+            ]
+
+            if not matched:
+                _all_types = sorted({(s.get("user_type") or "").strip() for s in shifts_list})
+                log.warning(
+                    f"[GROUP EMAIL] No matching shifts for {email} — "
+                    f"designation '{user_designation}' vs {_all_types} (su_id={su_id})"
+                )
+                # Mark processed so it stops re-occupying the head of the
+                # assigned_at batch on every trigger. email_sent stays 0.
+                app.db.shifts_group_users.update_one(
+                    {"_id": su_id, "call_processed": 0},
+                    {"$set": {
+                        "call_processed":    1,
+                        "call_processed_at": datetime.utcnow(),
+                        "email_sent":        0,
+                        "email_status":      "skipped_no_matching_shifts",
+                        "skip_reason":       f"designation '{user_designation}' matches none of {_all_types}",
+                        "updated_at":        datetime.utcnow(),
+                        # "call_enabled":    0,   # uncomment for a hard never-contact flag
+                    }}
+                )
+                skipped.append({
+                    "shifts_group_users_id": str(su_id),
+                    "reason":                "designation_no_match",
+                    "email":                 email,
+                    "designation":           user_designation,
+                    "shift_user_types":      _all_types,
+                })
+                continue
+
+            if len(matched) < len(shifts_list):
+                log.info(
+                    f"[GROUP EMAIL] {email}: sending {len(matched)}/{len(shifts_list)} shifts "
+                    f"matching designation '{user_designation}'"
+                )
+
+            # County derived from the MATCHED shifts only
+            county = next((s["client_county"] for s in matched if s.get("client_county")), "")
+
+            # ── Only now claim the record (atomic guard against double-send) ──
+            result = app.db.shifts_group_users.update_one(
+                {"_id": su_id, "call_processed": 0},
+                {"$set": {"call_processed": 1, "call_processed_at": datetime.utcnow(),
+                          "updated_at": datetime.utcnow()}}
+            )
+            if result.modified_count == 0:
+                continue   # another worker claimed it first
 
             record["email"]      = email
             record["first_name"] = first_name
@@ -420,7 +537,7 @@ def register_shift_group_booking_email_routes(app):
 
             threading.Thread(
                 target=_send_group_shift_email,
-                args=(current_app._get_current_object(), record, shifts_list, email, first_name, su_id, county),
+                args=(current_app._get_current_object(), record, matched, email, first_name, su_id, county),
                 daemon=True
             ).start()
 
@@ -429,15 +546,21 @@ def register_shift_group_booking_email_routes(app):
                 "user_id":               user_id,
                 "staff_name":            full_name,
                 "email":                 email,
+                "designation":           user_designation,
+                "shifts_sent":           len(matched),
+                "shifts_in_group":       len(shifts_list),
             })
 
         return jsonify({
             **response_base,
             "status":       "triggered",
             "triggered":    len(triggered),
+            "skipped":      len(skipped),
+            "fetched":      len(records),
             "batch_size":   BATCH_SIZE,
             "triggered_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
             "data":         triggered,
+            "skipped_data": skipped,
         }), 200
 
 
@@ -557,7 +680,6 @@ def register_shift_group_booking_email_routes(app):
         elif answer == "no":
             _now       = datetime.utcnow()
             _avail_new = 0
-            _resp_text = "No, thanks."
             _set_fields = {
                 "response_time": _now.strftime("%Y-%m-%d %H:%M:%S"),
                 "responded_at":  _now,
@@ -696,10 +818,11 @@ def register_shift_group_booking_email_routes(app):
     def debug_shift_group_booking_email():
         allowed, now = is_within_call_window()
         return jsonify({
-            "debug":          "shift_group_booking_email.py loaded",
-            "server_time":    now.strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "allowed_window": f"{ALLOWED_START_HOUR}:00 - {ALLOWED_END_HOUR}:00 UTC",
-            "call_allowed":   allowed,
-            "batch_size":     BATCH_SIZE,
-            "collection":     "shifts_group_users",
+            "debug":               "shift_group_booking_email.py loaded",
+            "server_time":         now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "allowed_window":      f"{ALLOWED_START_HOUR}:00 - {ALLOWED_END_HOUR}:00 UTC",
+            "call_allowed":        allowed,
+            "batch_size":          BATCH_SIZE,
+            "collection":          "shifts_group_users",
+            "designation_matches": {k: sorted(v) for k, v in DESIGNATION_MATCHES.items()},
         })
