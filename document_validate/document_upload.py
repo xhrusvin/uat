@@ -31,7 +31,6 @@ leads_collection = db['users']
 
 
 # ==================== ROUTE ====================
-# ==================== ROUTE ====================
 @bp.route("/document-upload", methods=["POST", "GET"])
 def document_upload_webhook():
     """

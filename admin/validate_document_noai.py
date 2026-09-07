@@ -191,21 +191,41 @@ def validate_document_noai():
                 )
                 checked_count += 1
 
-            # ── Mark user as fully done if all docs processed ──────────────
+                        # ── Mark user as fully done / update outreach ──────────────────
             total_docs = len(docs_array)
             total_saved = current_app.db.documents_new.count_documents({
                 "user_id": local_id,
                 "ai_attempted": True
             })
 
-            if total_saved >= total_docs:
+            # Case 1: Forced call with xn_user_id → always update outreach
+            if xn_user_id_filter:
                 current_app.db.users.update_one(
                     {"_id": local_id},
-                    {"$set": {"document_fetched": 1}}
+                    {"$set": {
+                        "outreach_status": "completed",
+                        "outreach_updated_at": datetime.now(pytz.UTC)
+                    }}
                 )
-                fully_done = True
+                fully_done = True          # or set to (total_saved >= total_docs) if you prefer
+
+            # Case 2: Normal batch processing
             else:
-                fully_done = False
+                if total_saved >= total_docs:
+                    current_app.db.users.update_one(
+                        {"_id": local_id},
+                        {"$set": {"document_fetched": 1}}
+                    )
+                    current_app.db.users.update_one(
+                        {"_id": local_id},
+                        {"$set": {
+                            "outreach_status": "completed",
+                            "outreach_updated_at": datetime.now(pytz.UTC)
+                        }}
+                    )
+                    fully_done = True
+                else:
+                    fully_done = False
 
             processed_results.append({
                 "email": u.get('email'),
@@ -214,7 +234,7 @@ def validate_document_noai():
                 "total_checked_so_far": total_saved,
                 "user_fully_done": fully_done
             })
-
+            
         except Exception as e:
             current_app.logger.error(f"Sync error for {u.get('email')}: {e}")
             return jsonify({"status": "error", "message": str(e)})

@@ -1,11 +1,14 @@
+import asyncio
 import logging
 import math
+import re
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from pymongo import UpdateOne
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -15,6 +18,31 @@ from app.core.security import verify_api_key
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/shift-users", tags=["Shift Users"])
+
+
+# ── Shared listing constants ──────────────────────────────────────────────────
+
+# Fields fetched for every candidate user in /list and /list-multi
+_LIST_PROJECTION = {
+    "first_name": 1, "last_name": 1, "email": 1, "phone": 1,
+    "xn_user_id": 1, "designation": 1, "rating": 1,
+    "location": 1, "latitude": 1, "longitude": 1, "status": 1,
+    "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
+    "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1,
+    "gender_id": 1, "work_permit_exemption": 1, "consumed_hours": 1,
+    "qqi_status_number": 1, "user_sub_type_oids": 1, "user_sub_type_ids": 1,
+    "visa_type_id": 1, "exclusion_cache_by_shift": 1,
+}
+
+# Exclusion cache lifetime — a user's schedule can change without us knowing
+_EXCLUSION_CACHE_TTL_SECONDS = 15 * 60
+
+# How many exclusion computations run concurrently within a chunk
+_EXCLUSION_CONCURRENCY = 10
+
+# Hard ceiling on how many candidate users one request may walk.
+# Keeps the CSV exports (per_page=5000) from becoming a full collection scan.
+_MAX_SCAN = 5000
 
 
 def _get_db():
@@ -370,6 +398,7 @@ async def remove_user_from_shift(request: Request, payload: RemoveUserFromShiftR
     }
 
 
+# ── Geo / time helpers ────────────────────────────────────────────────────────
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6371.0
@@ -421,7 +450,6 @@ def _user_location_coords(u: dict):
     return None
 
 
-
 def _format_time_ago(dt) -> str:
     """Format a datetime as 'just now', 'X minutes ago', 'X hours ago', 'X days ago'."""
     if not dt:
@@ -443,7 +471,6 @@ def _format_time_ago(dt) -> str:
         return f"{h} hour{'s' if h != 1 else ''} ago"
     d = seconds // 86400
     return f"{d} day{'s' if d != 1 else ''} ago"
-
 
 
 def _parse_time(t: str):
@@ -497,14 +524,22 @@ def _shift_type(timing: str) -> str:
     return ""
 
 
+# ── Exclusion tags ────────────────────────────────────────────────────────────
+# NOTE (unchanged from the original, flagged for a follow-up fix):
+#   * The "Rule 6" minimum-gap check below sits OUTSIDE the `if same_day:` block,
+#     so it evaluates against every shift in the ±10 day window, not just the
+#     same or adjacent day as the comment claims.
+#   * The threshold is 120 minutes, the tag is named `under_6h_gap`, and
+#     /assign's message says "Less than 5 hours". Three different numbers.
+
 async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, banned_clients: list = None, user_tags: list = None, user_oid=None) -> list:
     """
     Returns list of exclusion tag strings for a user against a target shift.
     Checks:
-      0. User has exclusion staff tags (Last-Resort Booking, Avoid Booking)
+      0.  User has exclusion staff tags (Last-Resort Booking, Avoid Booking, …)
       0b. Client banned by staff (banned_clients)
       0c. Level 1 document expired/pending/not_approved
-      1. Same-day overlapping shift
+      1.  Same-day overlapping shift
       ...
     """
     if not user_email:
@@ -514,14 +549,14 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
 
     # ── 0. Check user staff tags ──────────────────────────────────────────────
     EXCLUDED_TAG_NAMES = {
-    "last-resort booking",
-    "avoid booking",
-    "temporarily unavailable",
-    "no calls or emails",
-    "no bulk emails",
-    "no calls",
-    "direct bookings only",
-    "contact on request only",
+        "last-resort booking",
+        "avoid booking",
+        "temporarily unavailable",
+        "no calls or emails",
+        "no bulk emails",
+        "no calls",
+        "direct bookings only",
+        "contact on request only",
     }
     if user_tags:
         for tag in user_tags:
@@ -665,30 +700,25 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
                             if "exceeds_16h" not in tags:
                                 tags.append("exceeds_16h")
 
-            # Rule 6: Minimum 2h gap (same or adjacent day only)
-            if tr_end and target_start and tr_date and target_date:
+            # Rule 6: Minimum gap
+            if tr_end and target_start:
                 try:
-                    td_d   = tr_date.date() if hasattr(tr_date, "date") else None
-                    tgt_d  = target_date.date() if hasattr(target_date, "date") else None
-                    if td_d and tgt_d:
-                        day_diff = abs((tgt_d - td_d).days)
-                        if day_diff <= 1:  # same or adjacent day only
-                            gap = _gap_minutes(tr_end, target_start)
-                            if 0 < gap < 120:
-                                if "under_6h_gap" not in tags:
-                                    tags.append("under_6h_gap")
-                            if target_end and tr_start:
-                                gap = _gap_minutes(target_end, tr_start)
-                                if 0 < gap < 120:
-                                    if "under_6h_gap" not in tags:
-                                        tags.append("under_6h_gap")
+                    gap = _gap_minutes(tr_end, target_start)
+                    if 0 < gap < 120:
+                        if "under_6h_gap" not in tags:
+                            tags.append("under_6h_gap")
+                    if target_end and tr_start:
+                        gap = _gap_minutes(target_end, tr_start)
+                        if 0 < gap < 120:
+                            if "under_6h_gap" not in tags:
+                                tags.append("under_6h_gap")
                 except Exception:
                     pass
 
     return tags
 
 
-# ── LIST shift_users with pagination (POST body) ──────────────────────────────
+# ── POST /shift-users/list ────────────────────────────────────────────────────
 
 class ListShiftUsersRequest(BaseModel):
     shift_id:           str
@@ -710,6 +740,7 @@ class ListShiftUsersRequest(BaseModel):
     qqi_status_number:      Optional[int]   = None
     user_sub_type_multiple: Optional[list]  = None
 
+
 @router.post(
     "/list",
     summary="List shift_users records for a shift with pagination",
@@ -719,20 +750,38 @@ class ListShiftUsersRequest(BaseModel):
 async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRequest):
     """
     Body: { "shift_id": "<shift_id>", "page": 1, "per_page": 20 }
-    Returns Enabled users from users table — no join with shifts_users.
-    Distance calculated from shift client coords vs user location.
-    """
-    db = _get_db()
-    shift_oid = _resolve_oid(payload.shift_id, "shift_id")
-    skip  = (payload.page - 1) * payload.per_page
-    limit = payload.per_page
 
-    # ── Fetch upstream available-staff-list ──────────────────────────────────
-    # Get the shift's xn_shift_id to call upstream
-    shift_doc_for_xn = await db["shifts"].find_one({"_id": shift_oid}, {"shift_id": 1})
-    xn_shift_id = shift_doc_for_xn.get("shift_id") if shift_doc_for_xn else None
-    upstream_xn_ids: list = []   # xn_user_ids from upstream
-    upstream_distance_map: dict = {}  # xn_user_id → staff_shift_distance
+    Returns Enabled users whose designation matches the shift's user_type
+    (exact, case-insensitive), narrowed to the upstream available-staff-list.
+
+    Exclusion tags are computed for the users on the requested page only.
+    When excluded / in_pool / radius filters are active the collection is
+    walked in chunks and the walk stops as soon as the page is full, so
+    per_page=10 costs ~10 exclusion checks, never a full-table pass.
+    """
+    db        = _get_db()
+    shift_oid = _resolve_oid(payload.shift_id, "shift_id")
+    skip      = max(0, (payload.page - 1) * payload.per_page)
+    limit     = payload.per_page
+
+    order_by = payload.order_by or "name"
+    reverse  = (payload.sort or "asc").lower() == "desc"
+
+    # ── Shift ────────────────────────────────────────────────────────────────
+    target_shift = await db["shifts"].find_one(
+        {"_id": shift_oid},
+        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
+         "shift_type": 1, "slots": 1, "user_type": 1, "client_id": 1,
+         "is_premium": 1, "requested_staff_list": 1, "shift_id": 1}
+    )
+    if not target_shift:
+        raise HTTPException(status_code=404, detail=f"Shift {payload.shift_id} not found")
+
+    xn_shift_id = target_shift.get("shift_id")
+
+    # ── Upstream available-staff-list ────────────────────────────────────────
+    upstream_xn_ids:       list = []
+    upstream_distance_map: dict = {}
 
     if xn_shift_id:
         try:
@@ -747,11 +796,10 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                 resp = await client.post(
                     upstream_url,
                     json={"shift_id": xn_shift_id},
-                    headers=upstream_headers
+                    headers=upstream_headers,
                 )
             if resp.status_code == 200:
-                body = resp.json()
-                for s in (body.get("data") or []):
+                for s in (resp.json().get("data") or []):
                     xn_id = str(s.get("id", ""))
                     if xn_id:
                         upstream_xn_ids.append(xn_id)
@@ -759,252 +807,402 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         except Exception as e:
             logger.warning(f"[list] upstream available-staff-list failed: {e}")
 
-    # Filter users to those returned by upstream available-staff-list
-    upstream_filter = {}
-    if upstream_xn_ids:
-        upstream_filter = {"xn_user_id": {"$in": upstream_xn_ids}}
+    # ── Build the Mongo filter ───────────────────────────────────────────────
+    # Collected as $and clauses so no later block can clobber an earlier $or.
+    clauses: list = [{"status": "Enabled"}]
 
-    # Fetch shift early — needed for user_type filter and exclusion check
-    target_shift = await db["shifts"].find_one(
-        {"_id": shift_oid},
-        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
-         "shift_type": 1, "slots": 1, "user_type": 1, "client_id": 1,
-         "requested_staff_list": 1}
-    ) or {}
-
-    # Query only Enabled users — no shifts_users join
-    user_filter: dict = {"status": "Enabled"}
-
-    # Filter by shift's user_type if no explicit user_type_multiple provided
+    # shifts.user_type  ==  users.designation   (exact, case-insensitive)
     if not payload.user_type_multiple:
-        shift_user_type = target_shift.get("user_type") if target_shift else None
+        shift_user_type = target_shift.get("user_type")
         if shift_user_type:
-            user_filter = {"status": "Enabled", "designation": shift_user_type}
-    if upstream_filter:
-        user_filter.update(upstream_filter)
+            clauses.append({
+                "designation": {
+                    "$regex":   f"^{re.escape(str(shift_user_type).strip())}$",
+                    "$options": "i",
+                }
+            })
 
-    # Pre-fetch banned user IDs for fast filtering (applies when excluded=1 or null)
-    if payload.excluded in (1, None):
-        shift_client_id = str(target_shift.get("client_id", ""))
-        if shift_client_id:
-            banned_oids = [u["_id"] async for u in db["users"].find(
-                {"banned_clients.id": shift_client_id, "status": "Enabled"},
-                {"_id": 1}
-            )]
-            if banned_oids:
-                existing_xn = user_filter.pop("xn_user_id", None)
-                if existing_xn:
-                    user_filter["$or"] = [
-                        {"xn_user_id": existing_xn},
-                        {"_id": {"$in": banned_oids}},
-                    ]
+    if upstream_xn_ids:
+        clauses.append({"xn_user_id": {"$in": upstream_xn_ids}})
 
-    # Gender filter
-    if payload.gender_id:
-        user_filter["gender_id"] = payload.gender_id.strip()
-    if getattr(payload, "gender_multiple", None):
+    # Gender
+    if payload.gender_multiple:
         _gids = [str(g).strip() for g in payload.gender_multiple if g]
         if _gids:
-            user_filter["gender_id"] = {"$in": _gids}
+            clauses.append({"gender_id": {"$in": _gids}})
+    elif payload.gender_id:
+        clauses.append({"gender_id": payload.gender_id.strip()})
 
-    # Visa type filter
+    # Visa type
     if payload.visa_type_id:
-        user_filter["visa_type_id"] = payload.visa_type_id.strip()
+        clauses.append({"visa_type_id": payload.visa_type_id.strip()})
 
-    # QQI status filter
+    # QQI status
     if payload.qqi_status_number is not None:
-        user_filter["qqi_status_number"] = payload.qqi_status_number
+        clauses.append({"qqi_status_number": payload.qqi_status_number})
 
-    # User sub type filter
+    # User sub type
     if payload.user_sub_type_multiple:
-        from bson import ObjectId as _OID
-        sub_oids = [_OID(i) for i in payload.user_sub_type_multiple if ObjectId.is_valid(str(i))]
+        sub_oids = [ObjectId(str(i)) for i in payload.user_sub_type_multiple
+                    if ObjectId.is_valid(str(i))]
         if sub_oids:
-            user_filter["user_sub_type_oids"] = {"$in": sub_oids}
+            clauses.append({"user_sub_type_oids": {"$in": sub_oids}})
 
-    # county_multiple filter — match both string and ObjectId stored county_id
+    # County — county_id may be stored as string or ObjectId
     if payload.county_multiple:
         county_values = []
         for c in payload.county_multiple:
             c_str = str(c)
-            county_values.append(c_str)           # string stored value
+            county_values.append(c_str)
             if ObjectId.is_valid(c_str):
-                county_values.append(ObjectId(c_str))  # ObjectId stored value
+                county_values.append(ObjectId(c_str))
         if county_values:
-            user_filter["county_id"] = {"$in": county_values}
+            clauses.append({"county_id": {"$in": county_values}})
 
-    # user_type_multiple filter — resolve IDs to ObjectIds for users.user_type_id
-    # Also match via designation name in case user_type_id not yet set
+    # Explicit user types — match by user_type_id or by designation name
     if payload.user_type_multiple:
-        valid_type_oids = [ObjectId(t) for t in payload.user_type_multiple if ObjectId.is_valid(str(t))]
+        valid_type_oids = [ObjectId(str(t)) for t in payload.user_type_multiple
+                           if ObjectId.is_valid(str(t))]
         if valid_type_oids:
-            # Look up names for fallback designation match
-            type_names_filter = []
+            type_names = []
             async for ut in db["user_types"].find({"_id": {"$in": valid_type_oids}}, {"name": 1}):
-                type_names_filter.append(ut["name"])
-            user_filter["$or"] = [
+                if ut.get("name"):
+                    type_names.append(ut["name"])
+            clauses.append({"$or": [
                 {"user_type_id": {"$in": valid_type_oids}},
-                {"designation":  {"$in": type_names_filter}},
-            ]
+                {"designation":  {"$in": type_names}},
+            ]})
 
-    # Search by name, email or phone
-    if payload.search:
-        s = payload.search.strip()
-        if s:
-            # Split multi-word search into parts for first+last name matching
-            parts = s.split()
-            name_conditions = [
-                {"first_name": {"$regex": s, "$options": "i"}},
-                {"last_name":  {"$regex": s, "$options": "i"}},
-                {"email":      {"$regex": s, "$options": "i"}},
-                {"phone":      {"$regex": s, "$options": "i"}},
-            ]
-            if len(parts) >= 2:
-                # "Kavita Babu" → match first=Kavita AND last=Babu
-                name_conditions.append({"$and": [
-                    {"first_name": {"$regex": parts[0], "$options": "i"}},
-                    {"last_name":  {"$regex": parts[-1], "$options": "i"}},
-                ]})
-            search_or = {"$or": name_conditions}
-            if "$and" in user_filter:
-                user_filter["$and"].append(search_or)
-            else:
-                user_filter = {"$and": [user_filter, search_or]} if user_filter else search_or
+    # Search — name / email / phone
+    if payload.search and payload.search.strip():
+        s     = payload.search.strip()
+        s_rx  = re.escape(s)
+        parts = s.split()
+        conds = [
+            {"first_name": {"$regex": s_rx, "$options": "i"}},
+            {"last_name":  {"$regex": s_rx, "$options": "i"}},
+            {"email":      {"$regex": s_rx, "$options": "i"}},
+            {"phone":      {"$regex": s_rx, "$options": "i"}},
+        ]
+        if len(parts) >= 2:
+            conds.append({"$and": [
+                {"first_name": {"$regex": re.escape(parts[0]),  "$options": "i"}},
+                {"last_name":  {"$regex": re.escape(parts[-1]), "$options": "i"}},
+            ]})
+        clauses.append({"$or": conds})
 
-    total = await db["users"].count_documents(user_filter)
+    user_filter = clauses[0] if len(clauses) == 1 else {"$and": clauses}
 
-    # When filtering by excluded, fetch all users first (exclusion is computed per-user)
-    needs_post_filter = (payload.excluded is not None or payload.radius is not None or payload.in_pool is not None)
-    if needs_post_filter:
-        fetch_limit  = 50000
-        fetch_skip   = 0
+    db_total = await db["users"].count_documents(user_filter)
+
+    # ── Client coords (needed during selection for the radius filter) ────────
+    client_data   = await _get_shift_client_coords(db, shift_oid)
+    client_coords = (client_data["latitude"], client_data["longitude"]) if client_data else None
+
+    shift_client_info = None
+    client_location   = None
+    if client_data:
+        shift_client_info = {
+            "name":             client_data.get("name"),
+            "address":          client_data.get("address"),
+            "client_latitude":  client_data["latitude"],
+            "client_longitude": client_data["longitude"],
+        }
+        client_location = {
+            "latitude":  client_data["latitude"],
+            "longitude": client_data["longitude"],
+        }
+
+    # ── Exclusion: per-(user, shift) cache + bounded concurrency ─────────────
+    _sem          = asyncio.Semaphore(_EXCLUSION_CONCURRENCY)
+    _cache_writes: list = []
+    _shift_key    = str(shift_oid)
+    _now          = datetime.now(timezone.utc)
+
+    def _cached_tags(u: dict):
+        """Return cached tags for THIS shift if present and fresh, else None."""
+        entry = (u.get("exclusion_cache_by_shift") or {}).get(_shift_key)
+        if not isinstance(entry, dict):
+            return None
+        at = entry.get("at")
+        if at is None:
+            return None
+        if getattr(at, "tzinfo", None) is None:
+            at = at.replace(tzinfo=timezone.utc)
+        if (_now - at).total_seconds() > _EXCLUSION_CACHE_TTL_SECONDS:
+            return None
+        tags = entry.get("tags")
+        return tags if isinstance(tags, list) else None
+
+    async def _exclusion_for(u: dict) -> list:
+        cached = _cached_tags(u)
+        if cached is not None:
+            return cached
+        if not (u.get("email") and target_shift):
+            return []
+        async with _sem:
+            tags = await _get_user_exclusion_tags(
+                db,
+                u.get("email"),
+                target_shift,
+                u.get("banned_clients") or [],
+                u.get("tags") or [],
+                u["_id"],
+            )
+        _cache_writes.append(UpdateOne(
+            {"_id": u["_id"]},
+            {"$set": {f"exclusion_cache_by_shift.{_shift_key}": {"tags": tags, "at": _now}}},
+        ))
+        return tags
+
+    async def _annotate(chunk: list) -> None:
+        """
+        Compute exclusion, pool membership, distance and last-contacted for one
+        chunk of candidates. Results are stashed on the user dicts under _keys.
+        """
+        if not chunk:
+            return
+        oids = [u["_id"] for u in chunk]
+
+        # pool membership
+        pool_ids = {
+            str(p["user_id"])
+            async for p in db["shifts_pool"].find(
+                {"shift_id": shift_oid, "user_id": {"$in": oids}}, {"user_id": 1}
+            )
+        }
+
+        # last contacted — shifts_users, then shifts_group_users if newer
+        lc_map: dict = {}
+        async for su in db["shifts_users"].find(
+            {"user_id": {"$in": oids}, "call_processed_at": {"$ne": None}},
+            {"user_id": 1, "call_processed_at": 1, "channel": 1}
+        ).sort("call_processed_at", -1):
+            uid = str(su.get("user_id", ""))
+            if uid not in lc_map:
+                lc_map[uid] = (su.get("call_processed_at"), su.get("channel") or "")
+
+        async for gu in db["shifts_group_users"].find(
+            {"user_id": {"$in": oids}, "call_processed_at": {"$ne": None}},
+            {"user_id": 1, "call_processed_at": 1, "channel": 1}
+        ).sort("call_processed_at", -1):
+            uid = str(gu.get("user_id", ""))
+            dt  = gu.get("call_processed_at")
+            cur = lc_map.get(uid)
+            if cur is None or (dt and cur[0] and dt > cur[0]):
+                lc_map[uid] = (dt, gu.get("channel") or "")
+
+        # exclusion — concurrent, capped by _sem
+        all_tags = await asyncio.gather(*[_exclusion_for(u) for u in chunk])
+
+        for u, tags in zip(chunk, all_tags):
+            uid_str = str(u["_id"])
+            u["_excl_tags"] = tags
+            u["_excluded"]  = 1 if tags else 0
+            u["_in_pool"]   = 1 if uid_str in pool_ids else 0
+            u["_lc"]        = lc_map.get(uid_str)
+
+            ucoords = _user_location_coords(u)
+            dist = None
+            if client_coords and ucoords:
+                dist = _haversine_km(client_coords[0], client_coords[1],
+                                     ucoords[0], ucoords[1])
+            xn = str(u.get("xn_user_id", ""))
+            if xn and upstream_distance_map.get(xn) is not None:
+                dist = upstream_distance_map[xn]
+            u["_distance_km"] = dist
+            u["_coords"]      = ucoords
+
+    def _keep(u: dict) -> bool:
+        if payload.excluded is not None and u.get("_excluded", 0) != payload.excluded:
+            return False
+        if payload.in_pool is not None and u.get("_in_pool", 0) != payload.in_pool:
+            return False
+        if payload.radius is not None and client_coords:
+            d = u.get("_distance_km")
+            if d is not None and d > payload.radius:
+                return False
+        return True
+
+    # ── Selection ────────────────────────────────────────────────────────────
+    _has_local_filter = (payload.excluded is not None
+                         or payload.in_pool is not None
+                         or payload.radius is not None)
+
+    # These orderings depend on values we compute locally, so the page cannot
+    # be taken straight from the DB — the candidate set must be walked.
+    _local_sort = order_by in ("distance_km", "rating", "last_contacted")
+
+    db_sort        = [("first_name", -1 if (order_by == "name" and reverse) else 1)]
+    scan_truncated = False
+
+    if not _has_local_filter and not _local_sort:
+        # Fast path: DB pagination is exact, annotate exactly this page.
+        users = await db["users"].find(user_filter, _LIST_PROJECTION) \
+            .sort(db_sort).skip(skip).limit(limit).to_list(length=limit)
+        await _annotate(users)
+        filtered_total = db_total
+        scanned        = len(users)
     else:
-        fetch_limit  = limit
-        fetch_skip   = skip
+        need       = skip + limit
+        chunk_size = max(min(limit, 200) * 5, 100)
+        # A local sort needs every candidate before it can order them; a plain
+        # filter can stop as soon as the requested page is full.
+        scan_cap   = min(_MAX_SCAN, 3000 if _local_sort else max(need * 20, 500))
 
-    users = await db["users"].find(
-        user_filter,
-        {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
-         "xn_user_id": 1, "designation": 1, "rating": 1,
-         "location": 1, "latitude": 1, "longitude": 1, "status": 1,
-         "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
-         "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1, "gender_id": 1,
-         "work_permit_exemption": 1, "consumed_hours": 1, "qqi_status_number": 1, "user_sub_type_oids": 1, "user_sub_type_ids": 1, "visa_type_id": 1,
-         "exclusion_cache": 1}
-    ).sort("first_name", 1).skip(fetch_skip).limit(fetch_limit).to_list(length=fetch_limit)
+        matched: list = []
+        scanned = offset = 0
 
-    # Fetch latest shifts_users.call_processed_at per user for last_contacted
-    user_ids_page = [u["_id"] for u in users]
+        while scanned < scan_cap:
+            chunk = await db["users"].find(user_filter, _LIST_PROJECTION) \
+                .sort(db_sort).skip(offset).limit(chunk_size) \
+                .to_list(length=chunk_size)
+            if not chunk:
+                break
+            offset  += len(chunk)
+            scanned += len(chunk)
 
-    # ── Build requested users set from shifts.requested_staff_list ───────────
-    requested_user_ids: set = set()
-    if target_shift:
-        for rs in (target_shift.get("requested_staff_list") or []):
-            sid = str(rs.get("staff_id", ""))
-            if sid:
-                requested_user_ids.add(sid)
-    all_sub_oids = []
-    for u in users:
-        for oid in (u.get("user_sub_type_oids") or []):
-            if oid and ObjectId.is_valid(str(oid)):
-                all_sub_oids.append(ObjectId(str(oid)))
+            await _annotate(chunk)
+            matched.extend([u for u in chunk if _keep(u)])
+
+            if not _local_sort and len(matched) >= need:
+                break
+
+        scan_truncated = scanned >= scan_cap and scanned < db_total
+
+        # Local ordering, applied to everything we walked
+        if order_by == "distance_km":
+            matched.sort(
+                key=lambda u: u.get("_distance_km") if u.get("_distance_km") is not None
+                else float("inf"),
+                reverse=reverse,
+            )
+        elif order_by == "rating":
+            matched.sort(key=lambda u: u.get("rating") or 0, reverse=reverse)
+        elif order_by == "last_contacted":
+            _epoch = datetime.min.replace(tzinfo=timezone.utc)
+
+            def _lc_key(u):
+                lc = u.get("_lc")
+                if not lc or not lc[0]:
+                    return _epoch
+                dt = lc[0]
+                if getattr(dt, "tzinfo", None) is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+
+            matched.sort(key=_lc_key, reverse=reverse)
+
+        filtered_total = len(matched)
+        users          = matched[skip: skip + limit]
+
+    logger.info(
+        f"[list] shift={payload.shift_id} designation={target_shift.get('user_type')} "
+        f"db_total={db_total} scanned={scanned} matched={filtered_total} page={len(users)}"
+    )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  From here on we only ever touch `users` — the current page.
+    # ══════════════════════════════════════════════════════════════════════════
+    user_oids_page = [u["_id"] for u in users]
+
+    # ── Requested staff ──────────────────────────────────────────────────────
+    requested_user_ids: set = {
+        str(rs.get("staff_id", ""))
+        for rs in (target_shift.get("requested_staff_list") or [])
+        if rs.get("staff_id")
+    }
+
+    # ── checked flag via shifts_group_pool ───────────────────────────────────
+    checked_user_set: set = set()
+    if payload.group_id and ObjectId.is_valid(str(payload.group_id)) and user_oids_page:
+        async for gp in db["shifts_group_pool"].find(
+            {"group_id": ObjectId(str(payload.group_id)), "user_id": {"$in": user_oids_page}},
+            {"user_id": 1}
+        ):
+            checked_user_set.add(str(gp["user_id"]))
+
+    # ── Sub type names ───────────────────────────────────────────────────────
+    all_sub_oids = [
+        ObjectId(str(oid))
+        for u in users
+        for oid in (u.get("user_sub_type_oids") or [])
+        if oid and ObjectId.is_valid(str(oid))
+    ]
     sub_type_name_map: dict = {}
     if all_sub_oids:
         async for st in db["user_sub_types"].find({"_id": {"$in": all_sub_oids}}, {"name": 1}):
             sub_type_name_map[str(st["_id"])] = st.get("name", "")
 
-    # ── Build visa type map ───────────────────────────────────────────────────
-    visa_type_ids = list({u.get("visa_type_id") for u in users if u.get("visa_type_id")})
+    # ── Visa type names ──────────────────────────────────────────────────────
     visa_type_name_map: dict = {}
-    if visa_type_ids:
-        async for vt in db["visa_types"].find(
-            {"_id": {"$in": [ObjectId(i) for i in visa_type_ids if ObjectId.is_valid(str(i))]}},
-            {"name": 1}
-        ):
+    _vt_oids = [ObjectId(str(u["visa_type_id"])) for u in users
+                if u.get("visa_type_id") and ObjectId.is_valid(str(u["visa_type_id"]))]
+    if _vt_oids:
+        async for vt in db["visa_types"].find({"_id": {"$in": _vt_oids}}, {"name": 1}):
             visa_type_name_map[str(vt["_id"])] = vt.get("name", "")
 
-    # ── Fetch visa hours — only for up to 2 users missing consumed_hours ─────
-    # Use paginated slice so we only call for users visible on this page
-    xn_shift_id_for_visa = shift_doc_for_xn.get("shift_id") if shift_doc_for_xn else None
+    # ── Visa hours — at most 2 users on this page missing consumed_hours ─────
     visa_info_map: dict = {}
-    if xn_shift_id_for_visa:
-        page_users = users[skip: skip + limit] if needs_post_filter else users
-        missing = [u for u in page_users if u.get("xn_user_id") and u.get("consumed_hours") is None][:2]
-        logger.info(f"[visa] page_users={len(page_users)} missing={len(missing)} shift_xn={xn_shift_id_for_visa}")
+    if xn_shift_id:
+        missing = [u for u in users
+                   if u.get("xn_user_id") and u.get("consumed_hours") is None][:2]
         if missing:
             try:
-                import httpx as _httpx_v, asyncio as _asyncio
-                _visa_url = f"{settings.USER_API_URL.rstrip('/')}/ai/recruitments/visa-hours"
-                _visa_headers = {"Api-Key": settings.USER_EXTERNAL_API_KEY, "Content-Type": "application/json"}
+                import httpx as _httpx_v
+                _visa_url     = f"{settings.USER_API_URL.rstrip('/')}/ai/recruitments/visa-hours"
+                _visa_headers = {"Api-Key": settings.USER_EXTERNAL_API_KEY,
+                                 "Content-Type": "application/json"}
 
                 async def _fetch_visa(client, u):
-                    xn_uid = u.get("xn_user_id")
+                    xn_uid  = u.get("xn_user_id")
                     uid_str = str(u["_id"])
                     try:
-                        _vr = await client.get(_visa_url, params={"shift_id": xn_shift_id_for_visa, "staff_id": xn_uid}, headers=_visa_headers)
-                        logger.info(f"[visa] {xn_uid} status={_vr.status_code} body={_vr.text[:200]}")
+                        _vr = await client.get(
+                            _visa_url,
+                            params={"shift_id": xn_shift_id, "staff_id": xn_uid},
+                            headers=_visa_headers,
+                        )
                         if _vr.status_code == 200:
-                            _vd = _vr.json().get("data") or {}
-                            _upd = {k: _vd[k] for k in ("work_permit_exemption", "consumed_hours") if k in _vd}
+                            _vd  = _vr.json().get("data") or {}
+                            _upd = {k: _vd[k] for k in ("work_permit_exemption", "consumed_hours")
+                                    if k in _vd}
                             if _upd:
-                                res = await db["users"].update_one({"_id": u["_id"]}, {"$set": _upd})
-                                logger.info(f"[visa] saved {xn_uid} matched={res.matched_count} modified={res.modified_count} upd={_upd}")
+                                await db["users"].update_one({"_id": u["_id"]}, {"$set": _upd})
                                 u.update(_upd)
                                 visa_info_map[uid_str] = {"status": "fetched", "data": _vd}
                             else:
                                 visa_info_map[uid_str] = {"status": "empty_response", "data": _vd}
                         else:
-                            visa_info_map[uid_str] = {"status": f"http_{_vr.status_code}", "error": _vr.text[:200]}
+                            visa_info_map[uid_str] = {"status": f"http_{_vr.status_code}",
+                                                      "error": _vr.text[:200]}
                     except Exception as _e:
                         logger.error(f"[visa] {xn_uid}: {_e}")
                         visa_info_map[uid_str] = {"status": "error", "error": str(_e)}
 
                 async with _httpx_v.AsyncClient(timeout=10.0) as _vc:
-                    await _asyncio.gather(*[_fetch_visa(_vc, u) for u in missing])
+                    await asyncio.gather(*[_fetch_visa(_vc, u) for u in missing])
             except Exception as _e2:
                 logger.error(f"[visa] outer: {_e2}")
-        last_contacted_map: dict = {}  # uid → (call_processed_at, channel)
-    if user_ids_page:
-        # shifts_users
-        async for su in db["shifts_users"].find(
-            {"user_id": {"$in": user_ids_page}, "call_processed_at": {"$ne": None}},
-            {"user_id": 1, "call_processed_at": 1, "channel": 1}
-        ).sort("call_processed_at", -1):
-            uid = str(su.get("user_id", ""))
-            if uid not in last_contacted_map:
-                last_contacted_map[uid] = (su.get("call_processed_at"), su.get("channel") or "")
 
-        # shifts_group_users — keep only if newer than existing entry
-        async for gu in db["shifts_group_users"].find(
-            {"user_id": {"$in": user_ids_page}, "call_processed_at": {"$ne": None}},
-            {"user_id": 1, "call_processed_at": 1, "channel": 1}
-        ).sort("call_processed_at", -1):
-            uid = str(gu.get("user_id", ""))
-            dt = gu.get("call_processed_at")
-            ch = gu.get("channel") or ""
-            existing = last_contacted_map.get(uid)
-            if existing is None or (dt and existing[0] and dt > existing[0]):
-                last_contacted_map[uid] = (dt, ch)
-
-    # Build batch lookup maps for county_id and user_type_id
-    # Collect users missing county_id or user_type_id for batch resolution
-    county_name_to_id: dict = {}
-    county_oid_to_name: dict = {}
-    designation_to_type_id: dict = {}
+    # ── County / user_type name maps ─────────────────────────────────────────
+    county_name_to_id:        dict = {}
+    county_oid_to_name:       dict = {}
+    designation_to_type_id:   dict = {}
     designation_to_type_name: dict = {}
-    users_needing_county   = [u for u in users if not u.get("county_id") and u.get("country_id")]
-    users_needing_type     = [u for u in users if not u.get("user_type_id") and u.get("designation")]
+    type_id_to_name:          dict = {}
 
-    # Batch resolve county: users.country_id == county._id
+    users_needing_county = [u for u in users if not u.get("county_id") and u.get("country_id")]
+    users_needing_type   = [u for u in users if not u.get("user_type_id") and u.get("designation")]
+
     if users_needing_county:
-        raw_cids = list({str(u["country_id"]) for u in users_needing_county if u.get("country_id")})
+        raw_cids   = list({str(u["country_id"]) for u in users_needing_county if u.get("country_id")})
         valid_oids = [ObjectId(c) for c in raw_cids if ObjectId.is_valid(c)]
         if valid_oids:
             async for co in db["county"].find({"_id": {"$in": valid_oids}}, {"_id": 1, "name": 1}):
-                county_name_to_id[str(co["_id"])]   = str(co["_id"])
-                county_oid_to_name[str(co["_id"])]  = co.get("name", "")
+                county_name_to_id[str(co["_id"])]  = str(co["_id"])
+                county_oid_to_name[str(co["_id"])] = co.get("name", "")
 
-    # Also batch resolve county names for users that already have county_id
     existing_county_oids = list({
         ObjectId(str(u["county_id"])) for u in users
         if u.get("county_id") and ObjectId.is_valid(str(u["county_id"]))
@@ -1013,141 +1211,77 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         async for co in db["county"].find({"_id": {"$in": existing_county_oids}}, {"_id": 1, "name": 1}):
             county_oid_to_name[str(co["_id"])] = co.get("name", "")
 
-    # Batch resolve user_type: users.designation == user_types.name
     if users_needing_type:
         designations = list({u["designation"] for u in users_needing_type if u.get("designation")})
-        async for ut in db["user_types"].find(
-            {"name": {"$in": designations}},
-            {"_id": 1, "name": 1}
-        ):
+        async for ut in db["user_types"].find({"name": {"$in": designations}}, {"_id": 1, "name": 1}):
             designation_to_type_id[ut["name"]]   = str(ut["_id"])
             designation_to_type_name[ut["name"]] = ut["name"]
 
-    # Also batch resolve user_type names for users that already have user_type_id
     existing_type_oids = list({
         ObjectId(str(u["user_type_id"])) for u in users
         if u.get("user_type_id") and ObjectId.is_valid(str(u["user_type_id"]))
     })
-    type_id_to_name: dict = {}
     if existing_type_oids:
         async for ut in db["user_types"].find({"_id": {"$in": existing_type_oids}}, {"_id": 1, "name": 1}):
-            type_id_to_name[str(ut["_id"])] = ut["name"]
+            type_id_to_name[str(ut["_id"])] = ut.get("name", "")
 
-    # Get shift client coords for distance calculation
-    client_data   = await _get_shift_client_coords(db, shift_oid)
-    client_coords = (client_data["latitude"], client_data["longitude"]) if client_data else None
-    shift_client_info = None
-    if client_data:
-        shift_client_info = {
-            "name":             client_data.get("name"),
-            "address":          client_data.get("address"),
-            "client_latitude":  client_data["latitude"],
-            "client_longitude": client_data["longitude"],
-        }
+    # ── Prior shifts at this client ──────────────────────────────────────────
+    shift_client_id          = target_shift.get("client_id")
+    prior_shifts_map:         dict = {}
+    last_shift_at_client_map: dict = {}
 
-    # Full client location object
-    client_location = None
-    if client_data:
-        client_location = {
-            "latitude":  client_data["latitude"],
-            "longitude": client_data["longitude"],
-        }
-
-    # ── Batch: pool membership ─────────────────────────────────────────────────
-    user_oids_page = [u["_id"] for u in users]
-    pool_records   = await db["shifts_pool"].find(
-        {"shift_id": shift_oid, "user_id": {"$in": user_oids_page}},
-        {"user_id": 1}
-    ).to_list(5000)
-    pool_user_set = {str(p["user_id"]) for p in pool_records}
-
-    # ── Batch: checked flag via shifts_group_pool.group_id ─────────────────────
-    # If group_id is provided, mark users present in that group pool as checked=1
-    checked_user_set: set = set()
-    if payload.group_id and ObjectId.is_valid(str(payload.group_id)):
-        group_oid = ObjectId(str(payload.group_id))
-        async for gp in db["shifts_group_pool"].find(
-            {"group_id": group_oid, "user_id": {"$in": user_oids_page}},
-            {"user_id": 1}
-        ):
-            checked_user_set.add(str(gp["user_id"]))
-
-    # ── Batch: prior shifts count at same client ──────────────────────────────
-    # Get client_id for this shift
-    shift_client_id = target_shift.get("client_id") if target_shift else None
-
-    prior_shifts_map: dict = {}       # uid → count of shifts at this client
-    last_shift_at_client_map: dict = {}  # uid → last shift date at this client
-
-    if shift_client_id:
-        # Find all shifts at this client where staff was assigned (staff_email set)
-        client_shift_ids = await db["shifts"].distinct(
-            "_id", {"client_id": shift_client_id, "staff_email": {"$exists": True, "$ne": None}}
-        )
-        if client_shift_ids:
-            # Find shifts_users for pool users at this client's shifts
-            async for psu in db["shifts_users"].find(
-                {"user_id": {"$in": user_oids_page}, "shift_id": {"$in": client_shift_ids}, "availability": 1},
-                {"user_id": 1, "assigned_at": 1}
-            ):
-                uid = str(psu.get("user_id", ""))
-                prior_shifts_map[uid] = prior_shifts_map.get(uid, 0) + 1
-                # Track most recent shift date at this client
-                assigned = psu.get("assigned_at")
-                if assigned and (uid not in last_shift_at_client_map or assigned > last_shift_at_client_map[uid]):
-                    last_shift_at_client_map[uid] = assigned
-    else:
-        # Fallback: count all prior shifts if no client_id
-        async for psu in db["shifts_users"].find(
-            {"user_id": {"$in": user_oids_page}, "availability": 1},
-            {"user_id": 1}
-        ):
-            uid = str(psu.get("user_id", ""))
-            prior_shifts_map[uid] = prior_shifts_map.get(uid, 0) + 1
-
-    results = []
-    # For post-filter mode, only run full exclusion on current page slice to save time
-    # When excluded filter active, run exclusion for all users to filter correctly
-    # But use cache to keep it fast
-    _excluded_filter_active = payload.excluded is not None
-    page_user_ids_set = {str(u["_id"]) for u in (users if _excluded_filter_active else (users[skip:skip+limit] if needs_post_filter else users))}
-    for u in users:
-        uid_str  = str(u["_id"])
-        ucoords  = _user_location_coords(u)
-
-        distance_km = None
-        if client_coords and ucoords:
-            distance_km = _haversine_km(
-                client_coords[0], client_coords[1],
-                ucoords[0],       ucoords[1],
+    if user_oids_page:
+        if shift_client_id:
+            client_shift_ids = await db["shifts"].distinct(
+                "_id", {"client_id": shift_client_id,
+                        "staff_email": {"$exists": True, "$ne": None}}
             )
-        # Override with upstream distance if available
-        xn_uid = u.get("xn_user_id", "")
-        if xn_uid and upstream_distance_map.get(xn_uid) is not None:
-            distance_km = upstream_distance_map[xn_uid]
+            if client_shift_ids:
+                async for psu in db["shifts_users"].find(
+                    {"user_id": {"$in": user_oids_page},
+                     "shift_id": {"$in": client_shift_ids},
+                     "availability": 1},
+                    {"user_id": 1, "assigned_at": 1}
+                ):
+                    uid = str(psu.get("user_id", ""))
+                    prior_shifts_map[uid] = prior_shifts_map.get(uid, 0) + 1
+                    assigned = psu.get("assigned_at")
+                    if assigned and (uid not in last_shift_at_client_map
+                                     or assigned > last_shift_at_client_map[uid]):
+                        last_shift_at_client_map[uid] = assigned
+        else:
+            async for ps in db["shifts_users"].aggregate([
+                {"$match": {"user_id": {"$in": user_oids_page}, "availability": 1}},
+                {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
+            ]):
+                prior_shifts_map[str(ps["_id"])] = ps["count"]
 
-        # staff_tags from user.tags array
-        raw_tags = u.get("tags") or []
-        staff_tags = []
-        for t in raw_tags:
-            if isinstance(t, dict):
-                staff_tags.append({"id": str(t.get("id", "")), "name": t.get("name", "")})
-            else:
-                staff_tags.append({"id": "", "name": str(t)})
+    # ── Build the response rows ──────────────────────────────────────────────
+    results = []
+    _backfill: list = []
 
-        # last_contacted from shifts_users / shifts_group_users (latest) + channel
-        lc_entry = last_contacted_map.get(uid_str)
+    for u in users:
+        uid_str = str(u["_id"])
+        ucoords = u.get("_coords")
+
+        # staff tags
+        staff_tags = [
+            {"id": str(t.get("id", "")), "name": t.get("name", "")} if isinstance(t, dict)
+            else {"id": "", "name": str(t)}
+            for t in (u.get("tags") or [])
+        ]
+
+        # last contacted
+        last_contacted = None
+        lc_entry = u.get("_lc")
         if lc_entry:
             lc_dt, lc_channel = lc_entry
             last_contacted = _format_time_ago(lc_dt)
             if last_contacted and lc_channel:
                 last_contacted = f"{last_contacted} · {lc_channel}"
-        else:
-            last_contacted = None
 
-        # Resolve county_id — use cached or join via country_id
-        county_id   = None
-        county_name = None
+        # county
+        county_id = county_name = None
         if u.get("county_id"):
             county_id   = str(u["county_id"])
             county_name = county_oid_to_name.get(county_id)
@@ -1156,149 +1290,131 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             if cid_str in county_name_to_id:
                 county_id   = county_name_to_id[cid_str]
                 county_name = county_oid_to_name.get(county_id)
-                await db["users"].update_one(
+                _backfill.append(UpdateOne(
                     {"_id": u["_id"]}, {"$set": {"county_id": ObjectId(county_id)}}
-                )
+                ))
 
-        # Resolve user_type_id — use cached or join via designation
-        user_type_id   = None
-        user_type_name = None
+        # user type
+        user_type_id = user_type_name = None
         if u.get("user_type_id"):
             user_type_id   = str(u["user_type_id"])
             user_type_name = type_id_to_name.get(user_type_id)
         elif u.get("designation") and u["designation"] in designation_to_type_id:
             user_type_id   = designation_to_type_id[u["designation"]]
             user_type_name = designation_to_type_name.get(u["designation"])
-            await db["users"].update_one(
+            _backfill.append(UpdateOne(
                 {"_id": u["_id"]}, {"$set": {"user_type_id": ObjectId(user_type_id)}}
-            )
+            ))
 
-        # Exclusion tags — check user's existing shifts against target shift
-        user_email = u.get("email")
-        # Use cached exclusion if available, else compute and save
-        if uid_str in page_user_ids_set:
-            cache = u.get("exclusion_cache")
-            if cache is not None:
-                exclusion_tags = cache
-            else:
-                exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or [], u.get("tags") or [], u.get("_id")) if (user_email and target_shift) else []
-                await db["users"].update_one(
-                    {"_id": u["_id"]},
-                    {"$set": {"exclusion_cache": exclusion_tags, "exclusion_cache_at": __import__("datetime").datetime.utcnow()}}
-                )
-        else:
-            exclusion_tags = []
-        excluded = 1 if exclusion_tags else 0
-
-        # in_pool — from batch
-        in_pool   = 1 if uid_str in pool_user_set else 0
-        requested = 1 if uid_str in requested_user_ids else 0
-        checked   = 1 if uid_str in checked_user_set else 0
-
-        # Visa hours remaining
+        # visa hours
         visa_used  = u.get("visa_hours_used")
         visa_total = u.get("visa_hours_total")
         consumed   = u.get("consumed_hours")
-        visa_hours_remaining = consumed if consumed is not None else (f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None)
+        visa_hours_remaining = consumed if consumed is not None else (
+            f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
+        )
 
-        # Prior shifts count — from batch
-        prior_shifts = prior_shifts_map.get(uid_str, 0)
-
-        # Time ago of last shift at this client
+        # work history
+        prior_shifts      = prior_shifts_map.get(uid_str, 0)
         last_at_client_dt = last_shift_at_client_map.get(uid_str) if shift_client_id else None
         last_at_client    = _format_time_ago(last_at_client_dt) if last_at_client_dt else None
-
-        # Work history — always show, even if 0 at this client
+        _plural           = "s" if prior_shifts != 1 else ""
         if prior_shifts > 0 and last_at_client:
-            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_at_client}"
+            work_history = f"{prior_shifts} Shift{_plural} · {last_at_client}"
         elif prior_shifts > 0:
-            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''}"
+            work_history = f"{prior_shifts} Shift{_plural}"
         elif last_at_client:
             work_history = f"0 Shifts · {last_at_client}"
         else:
             work_history = "0 Shifts"
 
+        sub_oids = u.get("user_sub_type_oids") or []
         results.append({
-            "id":                  uid_str,
-            "xn_user_id":          u.get("xn_user_id"),
-            "name":                " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
-            "email":               u.get("email"),
-            "phone":               u.get("phone"),
-            "designation":         u.get("designation"),
-            "rating":              u.get("rating"),
-            "channel":             "Phone",
-            "staff_tags":          staff_tags,
-            "last_contacted":      last_contacted,
-            "visa_hours_remaining": visa_hours_remaining,
+            "id":                    uid_str,
+            "xn_user_id":            u.get("xn_user_id"),
+            "name":                  " ".join(filter(None, [u.get("first_name", ""),
+                                                            u.get("last_name", "")])).strip() or "—",
+            "email":                 u.get("email"),
+            "phone":                 u.get("phone"),
+            "designation":           u.get("designation"),
+            "rating":                u.get("rating"),
+            "channel":               "Phone",
+            "staff_tags":            staff_tags,
+            "last_contacted":        last_contacted,
+            "visa_hours_remaining":  visa_hours_remaining,
             "work_permit_exemption": u.get("work_permit_exemption"),
-            "consumed_hours":       u.get("consumed_hours"),
-            "visa_info":            visa_info_map.get(uid_str, {"status": "cached"} if u.get("consumed_hours") is not None else {"status": "not_called"}),
-            "gender_id":           str(u["gender_id"]) if u.get("gender_id") else None,
-            "user_sub_type_ids":   u.get("user_sub_type_ids") or [],
-            "user_sub_type_oids":  [str(oid) for oid in (u.get("user_sub_type_oids") or [])],
-            "user_sub_types":      ([{"id": str(oid), "name": sub_type_name_map.get(str(oid))} for oid in (u.get("user_sub_type_oids") or []) if ObjectId.is_valid(str(oid))]) or ([{"id": None, "name": n} for n in (u.get("user_sub_type_ids") or []) if n]),
-            "user_type_id":        str(u["user_type_id"]) if u.get("user_type_id") else None,
-            "visa_type_id":        u.get("visa_type_id"),
-            "visa_type_name":      visa_type_name_map.get(str(u.get("visa_type_id", ""))) if u.get("visa_type_id") else None,
-            "prior_shifts":        prior_shifts,
-            "work_history":        work_history,
-            "status":              u.get("status"),
-            "county_id":           county_id,
-            "county":              county_name,
-            "user_type_id":        user_type_id,
-            "user_type":           user_type_name,
-            "user_latitude":       ucoords[0] if ucoords else None,
-            "user_longitude":      ucoords[1] if ucoords else None,
-            "distance_km":         distance_km,
-            "excluded":            excluded,
-            "exclusion_tags":      exclusion_tags,
-            "requested":           requested,
-            "in_pool":             in_pool,
-            "checked":             checked,
+            "consumed_hours":        u.get("consumed_hours"),
+            "visa_info":             visa_info_map.get(
+                                        uid_str,
+                                        {"status": "cached"} if u.get("consumed_hours") is not None
+                                        else {"status": "not_called"}),
+            "gender_id":             str(u["gender_id"]) if u.get("gender_id") else None,
+            "qqi_status_number":     u.get("qqi_status_number"),
+            "user_sub_type_ids":     u.get("user_sub_type_ids") or [],
+            "user_sub_type_oids":    [str(oid) for oid in sub_oids],
+            "user_sub_types":        ([{"id": str(oid), "name": sub_type_name_map.get(str(oid), "")}
+                                       for oid in sub_oids if ObjectId.is_valid(str(oid))]
+                                      or [{"id": None, "name": n}
+                                          for n in (u.get("user_sub_type_ids") or []) if n]),
+            "visa_type_id":          u.get("visa_type_id"),
+            "visa_type_name":        visa_type_name_map.get(str(u.get("visa_type_id", "")))
+                                     if u.get("visa_type_id") else None,
+            "prior_shifts":          prior_shifts,
+            "work_history":          work_history,
+            "status":                u.get("status"),
+            "county_id":             county_id,
+            "county":                county_name,
+            "user_type_id":          user_type_id,
+            "user_type":             user_type_name,
+            "user_latitude":         ucoords[0] if ucoords else None,
+            "user_longitude":        ucoords[1] if ucoords else None,
+            "distance_km":           u.get("_distance_km"),
+            "excluded":              u.get("_excluded", 0),
+            "exclusion_tags":        u.get("_excl_tags") or [],
+            "requested":             1 if uid_str in requested_user_ids else 0,
+            "in_pool":               u.get("_in_pool", 0),
+            "checked":               1 if uid_str in checked_user_set else 0,
         })
 
-    # Apply radius filter — only filter out users with known distance > radius
-    if payload.radius is not None and client_coords:
-        results = [r for r in results if r["distance_km"] is None or r["distance_km"] <= payload.radius]
-
-    # Apply excluded filter
-    if payload.excluded is not None:
-        results = [r for r in results if (r.get("excluded") or 0) == payload.excluded]
-
-    # Sort results
-    order_by = payload.order_by or "name"
-    reverse  = (payload.sort or "asc").lower() == "desc"
-    if order_by == "distance_km":
-        results.sort(key=lambda r: r["distance_km"] if r["distance_km"] is not None else float("inf"), reverse=reverse)
-    elif order_by == "rating":
-        results.sort(key=lambda r: r["rating"] if r["rating"] is not None else 0, reverse=reverse)
-    elif order_by == "name":
+    # Name sort within the page (DB already ordered by first_name; this makes
+    # the full display name authoritative). Other orderings were applied above.
+    if order_by == "name":
         results.sort(key=lambda r: r["name"].lower(), reverse=reverse)
-    elif order_by == "last_contacted":
-        results.sort(key=lambda r: r["last_contacted"] or "", reverse=reverse)
 
-    filtered_total = len(results)
+    # ── Flush writes ─────────────────────────────────────────────────────────
+    if _cache_writes:
+        try:
+            await db["users"].bulk_write(_cache_writes, ordered=False)
+        except Exception as e:
+            logger.warning(f"[list] exclusion cache write failed: {e}")
 
-    # Apply pagination after filtering (only when post-filter was active)
-    if needs_post_filter:
-        results = results[skip: skip + limit]
+    if _backfill:
+        try:
+            await db["users"].bulk_write(_backfill, ordered=False)
+        except Exception as e:
+            logger.warning(f"[list] county/user_type backfill failed: {e}")
 
     return {
-        "success":         True,
-        "total":           filtered_total,
-        "page":            payload.page,
-        "per_page":        payload.per_page,
-        "shift_id":        payload.shift_id,
-        "shift_client":    shift_client_info,
-        "client_location": client_location,
-        "radius":          payload.radius,
-        "order_by":        order_by,
-        "sort":            payload.sort or "asc",
-        "data":            results,
+        "success":             True,
+        "total":               filtered_total,
+        "db_total":            db_total,
+        "scanned":             scanned,
+        "scan_truncated":      scan_truncated,
+        "exclusions_computed": len(_cache_writes),
+        "page":                payload.page,
+        "per_page":            payload.per_page,
+        "shift_id":            payload.shift_id,
+        "shift_user_type":     target_shift.get("user_type"),
+        "shift_client":        shift_client_info,
+        "client_location":     client_location,
+        "radius":              payload.radius,
+        "order_by":            order_by,
+        "sort":                payload.sort or "asc",
+        "data":                results,
     }
 
 
-# ── POST /shift-users/list/export ────────────────────────────────────────────
+# ── POST /shift-users/list/export ─────────────────────────────────────────────
 
 @router.post(
     "/list/export",
@@ -1307,13 +1423,12 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 )
 @limiter.limit("10/minute")
 async def export_shift_users_list(request: Request, payload: ListShiftUsersRequest):
-    """Same payload as /list — exports all matching users as CSV."""
+    """Same payload as /list — exports matching users as CSV."""
     import csv, io
     from fastapi.responses import StreamingResponse
 
-    # Use large per_page to get all results
     payload.page     = 1
-    payload.per_page = 5000
+    payload.per_page = _MAX_SCAN
 
     result = await list_shift_users_paginated(request, payload)
     users  = result.get("data", [])
@@ -1322,7 +1437,7 @@ async def export_shift_users_list(request: Request, payload: ListShiftUsersReque
     writer = csv.writer(buf)
     writer.writerow(["#", "Name", "Email", "Phone", "Designation", "County",
                      "Distance (km)", "Rating", "Excluded", "Exclusion Tags",
-                     "Availability", "Prior Shifts", "In Pool"])
+                     "Prior Shifts", "In Pool", "Requested"])
 
     for i, u in enumerate(users, 1):
         writer.writerow([
@@ -1336,9 +1451,9 @@ async def export_shift_users_list(request: Request, payload: ListShiftUsersReque
             u.get("rating", ""),
             u.get("excluded", ""),
             ", ".join(u.get("exclusion_tags") or []),
-            u.get("availability_text", ""),
             u.get("prior_shifts", ""),
             u.get("in_pool", ""),
+            u.get("requested", ""),
         ])
 
     buf.seek(0)
@@ -1375,7 +1490,8 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
     # Fetch user
     user = await db["users"].find_one(
         {"_id": user_oid},
-        {"first_name": 1, "last_name": 1, "email": 1, "xn_user_id": 1, "designation": 1, "rating": 1}
+        {"first_name": 1, "last_name": 1, "email": 1, "xn_user_id": 1,
+         "designation": 1, "rating": 1, "banned_clients": 1, "tags": 1}
     )
     if not user:
         raise HTTPException(status_code=404, detail=f"User {payload.user_id} not found")
@@ -1402,7 +1518,7 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
         "Content-Type": "application/json",
         "Accept":       "application/json",
     }
-    print(f"[assign] upstream={upstream_url} shift_id={xn_shift_id} staff_id={xn_user_id}", flush=True)
+    logger.info(f"[assign] upstream={upstream_url} shift_id={xn_shift_id} staff_id={xn_user_id}")
 
     try:
         async with _httpx.AsyncClient(timeout=30.0) as client:
@@ -1415,7 +1531,7 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
             upstream_body = resp.json()
         except Exception:
             upstream_body = {}
-        print(f"[assign] upstream status={resp.status_code} body={upstream_body}", flush=True)
+        logger.info(f"[assign] upstream status={resp.status_code} body={upstream_body}")
 
         if resp.status_code != 200 or not upstream_body.get("success"):
             msg = upstream_body.get("message") or f"Upstream failed (status {resp.status_code})"
@@ -1437,12 +1553,17 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
     # Check exclusion conditions before assigning
     target_shift = await db["shifts"].find_one(
         {"_id": shift_oid},
-        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1, "client_id": 1}
+        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
+         "shift_type": 1, "slots": 1, "client_id": 1, "is_premium": 1}
     ) or {}
-    exclusion_tags = await _get_user_exclusion_tags(db, email, target_shift, user.get("banned_clients") or [], user.get("tags") or [], user_oid) if email and target_shift else []
+    exclusion_tags = await _get_user_exclusion_tags(
+        db, email, target_shift,
+        user.get("banned_clients") or [], user.get("tags") or [], user_oid
+    ) if email and target_shift else []
 
     if exclusion_tags:
         tag_messages = {
+            "Client Banned Staff":      "Staff has banned this client",
             "banned_client":            "Staff has banned this client",
             "level1_doc_expired":       "Level 1 certificate is expired",
             "level1_doc_pending":       "Level 1 certificate is pending approval",
@@ -1452,7 +1573,7 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
             "duplicate_night":          "User already has a night shift on this date",
             "consecutive_day_night":    "User has both day and night shifts on this date",
             "exceeds_16h":              "Assignment would exceed 16 consecutive hours",
-            "under_6h_gap":             "Less than 5 hours gap between shifts on same or adjacent day",
+            "under_6h_gap":             "Less than 2 hours gap between shifts",
         }
         reasons = [
             tag_messages.get(t, t.replace("tag:", "Staff tag: ") if t.startswith("tag:") else t)
@@ -1481,19 +1602,20 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
         }}
     )
 
-    # Clear cached visa hours so fresh data is fetched next time
+    # Clear cached visa hours and the exclusion cache — the user's schedule just
+    # changed, so every cached (user, shift) verdict is now stale.
     await db["users"].update_one(
         {"_id": user_oid},
-        {"$unset": {"work_permit_exemption": "", "consumed_hours": ""}}
+        {"$unset": {
+            "work_permit_exemption":    "",
+            "consumed_hours":           "",
+            "exclusion_cache_by_shift": "",
+            "exclusion_cache":          "",   # legacy key
+            "exclusion_cache_at":       "",   # legacy key
+        }}
     )
 
     logger.info(f"Assigned user={payload.user_id} ({email}) to shift={payload.shift_id}")
-
-    # Clear exclusion cache — user's schedule changed, cache is now stale
-    await db["users"].update_one(
-        {"_id": user_oid},
-        {"$unset": {"exclusion_cache": "", "exclusion_cache_at": ""}}
-    )
 
     return {
         "success":        True,
@@ -1511,8 +1633,8 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
 # ── POST /shift-users/list-multi ─────────────────────────────────────────────
 
 class ListMultiShiftUsersRequest(BaseModel):
-    shift_ids:          list            # multiple shifts._id strings
-    group_id:           Optional[str]   = None  # also check shifts_group_pool for this group
+    shift_ids:          list                    # shifts._id strings
+    group_id:           Optional[str]   = None  # also check shifts_group_pool
     page:               int = 1
     per_page:           int = 20
     radius:             Optional[float] = None
@@ -1522,15 +1644,14 @@ class ListMultiShiftUsersRequest(BaseModel):
     user_type_multiple: Optional[list]  = None
     excluded:           Optional[int]   = None
     in_pool:            Optional[int]   = None  # 1 = in pool for ANY shift or the group
-    gender_id:          Optional[str]   = None  # filter by users.gender_id
-    gender_multiple:    Optional[list]  = None   # ← ADD THIS
-
+    gender_id:          Optional[str]   = None
+    gender_multiple:    Optional[list]  = None
 
     qqi_status_number:      Optional[int]   = None
     user_sub_type_multiple: Optional[list]  = None
     visa_type_id:           Optional[str]   = None
-    search:                 Optional[str]   = None  # search by name, email, phone
-# ── POST /shift-users/list-multi/export ───────────────────────────────────────
+    search:                 Optional[str]   = None
+
 
 @router.post(
     "/list-multi/export",
@@ -1539,21 +1660,21 @@ class ListMultiShiftUsersRequest(BaseModel):
 )
 @limiter.limit("10/minute")
 async def export_shift_users_list_multi(request: Request, payload: ListMultiShiftUsersRequest):
-    """Same payload as /list-multi — exports all matching users as CSV."""
+    """Same payload as /list-multi — exports matching users as CSV."""
     import csv, io
     from fastapi.responses import StreamingResponse
 
     payload.page     = 1
-    payload.per_page = 5000
+    payload.per_page = _MAX_SCAN
 
     result = await list_shift_users_multi(request, payload)
     users  = result.get("data", [])
 
-    buf = io.StringIO()
+    buf    = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(["#", "Name", "Email", "Phone", "Designation", "County",
                      "Distance (km)", "Rating", "Excluded", "Exclusion Tags",
-                     "Availability", "Prior Shifts", "In Pool"])
+                     "Prior Shifts", "In Pool", "Requested"])
 
     for i, u in enumerate(users, 1):
         writer.writerow([
@@ -1567,9 +1688,9 @@ async def export_shift_users_list_multi(request: Request, payload: ListMultiShif
             u.get("rating", ""),
             u.get("excluded", ""),
             ", ".join(u.get("exclusion_tags") or []),
-            u.get("availability_text", ""),
             u.get("prior_shifts", ""),
             u.get("in_pool", ""),
+            u.get("requested", ""),
         ])
 
     buf.seek(0)
@@ -1577,11 +1698,10 @@ async def export_shift_users_list_multi(request: Request, payload: ListMultiShif
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=shift_users_{shift_label}.csv"}
+        headers={"Content-Disposition": f"attachment; filename=shift_users_{shift_label}.csv"},
     )
 
 
-# ── POST /shift-users/list-multi ──────────────────────────────────────────────
 @router.post(
     "/list-multi",
     summary="List users for multiple shifts with same enrichment as /list",
@@ -1591,12 +1711,17 @@ async def export_shift_users_list_multi(request: Request, payload: ListMultiShif
 async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersRequest):
     """
     Body: { "shift_ids": ["<id1>", "<id2>", ...], "page": 1, "per_page": 20, ... }
-    Returns Enabled users enriched with exclusion tags, pool status,
-    work history, visa hours — same structure as /shift-users/list.
-    Uses the first shift_id as primary for exclusion/distance checks.
+
+    Candidates are Enabled users whose designation matches any of the shifts'
+    user_type values (exact, case-insensitive), narrowed to the union of the
+    upstream available-staff-lists.
+
+    Exclusion is evaluated against the FIRST shift_id (the primary) and is
+    computed only for the users on the requested page. When
+    excluded / in_pool / radius is active the candidate set is walked in
+    chunks and the walk stops as soon as the page is full.
     """
-    db   = _get_db()
-    skip = (payload.page - 1) * payload.per_page
+    db = _get_db()
 
     if not payload.shift_ids:
         raise HTTPException(status_code=400, detail="shift_ids must not be empty")
@@ -1607,42 +1732,106 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             raise HTTPException(status_code=422, detail=f"Invalid shift_id: {sid}")
         shift_oids.append(ObjectId(str(sid)))
 
-    # ── User filters ────────────────────────────────────────────────────────
-    user_filter: dict = {"status": "Enabled"}
+    primary_oid = shift_oids[0]
+    skip        = max(0, (payload.page - 1) * payload.per_page)
+    limit       = payload.per_page
 
-    # Gender filter
+    order_by = payload.order_by or "name"
+    reverse  = (payload.sort or "asc").lower() == "desc"
+
+    # ── Shifts ───────────────────────────────────────────────────────────────
+    shift_docs = await db["shifts"].find(
+        {"_id": {"$in": shift_oids}},
+        {"user_type": 1, "requested_staff_list": 1, "shift_id": 1}
+    ).to_list(length=100)
+
+    if not shift_docs:
+        raise HTTPException(status_code=404, detail="No shifts found for the given shift_ids")
+
+    shift_user_types = list({s["user_type"] for s in shift_docs if s.get("user_type")})
+
+    # Primary shift — exclusion + distance are measured against this one
+    target_shift = await db["shifts"].find_one(
+        {"_id": primary_oid},
+        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
+         "shift_type": 1, "slots": 1, "client_id": 1, "is_premium": 1}
+    ) or {}
+
+    # ── Upstream available-staff-list, union across all shifts ───────────────
+    upstream_xn_ids:       set  = set()
+    upstream_distance_map: dict = {}
+    try:
+        import httpx as _httpx_m
+        _upstream_url     = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list"
+        _upstream_headers = {
+            "Api-Key":      settings.SHIFT_INTERNAL_API_KEY,
+            "Content-Type": "application/json",
+            "Accept":       "application/json",
+        }
+        _xn_ids = [s.get("shift_id") for s in shift_docs if s.get("shift_id")]
+
+        async with _httpx_m.AsyncClient(timeout=30.0) as _uc:
+
+            async def _one(_xn_id):
+                try:
+                    _resp = await _uc.post(
+                        _upstream_url,
+                        json={"shift_id": _xn_id},
+                        headers=_upstream_headers,
+                    )
+                    if _resp.status_code == 200:
+                        return _resp.json().get("data") or []
+                except Exception as _ie:
+                    logger.warning(f"[list-multi] upstream {_xn_id}: {_ie}")
+                return []
+
+            for _batch in await asyncio.gather(*[_one(x) for x in _xn_ids]):
+                for _s in _batch:
+                    _uid = str(_s.get("id", ""))
+                    if _uid:
+                        upstream_xn_ids.add(_uid)
+                        if _s.get("staff_shift_distance") is not None:
+                            upstream_distance_map[_uid] = _s.get("staff_shift_distance")
+    except Exception as _e:
+        logger.warning(f"[list-multi] upstream available-staff-list failed: {_e}")
+
+    # ── Build the Mongo filter as $and clauses ───────────────────────────────
+    clauses: list = [{"status": "Enabled"}]
+
+    # shifts.user_type == users.designation (exact, case-insensitive)
+    if not payload.user_type_multiple and shift_user_types:
+        clauses.append({"$or": [
+            {"designation": {"$regex": f"^{re.escape(str(t).strip())}$", "$options": "i"}}
+            for t in shift_user_types
+        ]})
+
+    if upstream_xn_ids:
+        clauses.append({"xn_user_id": {"$in": list(upstream_xn_ids)}})
+
+    # Gender
     if payload.gender_multiple:
         _gids = [str(g).strip() for g in payload.gender_multiple if g]
         if _gids:
-            user_filter["gender_id"] = {"$in": _gids}
+            clauses.append({"gender_id": {"$in": _gids}})
     elif payload.gender_id:
-        user_filter["gender_id"] = payload.gender_id.strip()
+        clauses.append({"gender_id": payload.gender_id.strip()})
 
-    # Visa type filter
+    # Visa type
     if payload.visa_type_id:
-        user_filter["visa_type_id"] = payload.visa_type_id.strip()
+        clauses.append({"visa_type_id": payload.visa_type_id.strip()})
 
-    # QQI status filter
+    # QQI status
     if payload.qqi_status_number is not None:
-        user_filter["qqi_status_number"] = payload.qqi_status_number
+        clauses.append({"qqi_status_number": payload.qqi_status_number})
 
-    # User sub type filter
+    # User sub type
     if payload.user_sub_type_multiple:
-        sub_oids_m = [ObjectId(i) for i in payload.user_sub_type_multiple if ObjectId.is_valid(str(i))]
+        sub_oids_m = [ObjectId(str(i)) for i in payload.user_sub_type_multiple
+                      if ObjectId.is_valid(str(i))]
         if sub_oids_m:
-            user_filter["user_sub_type_oids"] = {"$in": sub_oids_m}
+            clauses.append({"user_sub_type_oids": {"$in": sub_oids_m}})
 
-    # Always fetch user_types from all provided shifts (used for by_designation + auto-filter)
-    shift_docs = await db["shifts"].find(
-        {"_id": {"$in": shift_oids}},
-        {"user_type": 1, "requested_staff_list": 1}
-    ).to_list(length=100)
-    shift_user_types = list({s["user_type"] for s in shift_docs if s.get("user_type")})
-
-    # Auto-filter by shift user_types only if user_type_multiple not provided
-    if not payload.user_type_multiple and shift_user_types:
-        user_filter["designation"] = {"$in": shift_user_types}
-
+    # County — stored as string or ObjectId
     if payload.county_multiple:
         county_values = []
         for c in payload.county_multiple:
@@ -1651,127 +1840,45 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             if ObjectId.is_valid(c_str):
                 county_values.append(ObjectId(c_str))
         if county_values:
-            user_filter["county_id"] = {"$in": county_values}
+            clauses.append({"county_id": {"$in": county_values}})
 
+    # Explicit user types
     if payload.user_type_multiple:
-        valid_type_oids = [ObjectId(str(t)) for t in payload.user_type_multiple if ObjectId.is_valid(str(t))]
+        valid_type_oids = [ObjectId(str(t)) for t in payload.user_type_multiple
+                           if ObjectId.is_valid(str(t))]
         if valid_type_oids:
-            type_names_filter = []
+            type_names = []
             async for ut in db["user_types"].find({"_id": {"$in": valid_type_oids}}, {"name": 1}):
-                type_names_filter.append(ut["name"])
-            user_filter["$or"] = [
+                if ut.get("name"):
+                    type_names.append(ut["name"])
+            clauses.append({"$or": [
                 {"user_type_id": {"$in": valid_type_oids}},
-                {"designation":  {"$in": type_names_filter}},
-            ]
+                {"designation":  {"$in": type_names}},
+            ]})
 
-    # ── Fetch upstream available-staff-list for each shift ───────────────────
-    upstream_xn_ids:       set  = set()
-    upstream_distance_map: dict = {}
-    try:
-        import httpx as _httpx_m
-        _upstream_url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list"
-        _upstream_headers = {
-            "Api-Key":      settings.SHIFT_INTERNAL_API_KEY,
-            "Content-Type": "application/json",
-            "Accept":       "application/json",
-        }
-        async with _httpx_m.AsyncClient(timeout=30.0) as _uc:
-            for _shift_oid in shift_oids:
-                _shift_doc = await db["shifts"].find_one({"_id": _shift_oid}, {"shift_id": 1})
-                _xn_id = _shift_doc.get("shift_id") if _shift_doc else None
-                if not _xn_id:
-                    continue
-                try:
-                    _resp = await _uc.post(
-                        _upstream_url,
-                        json={"shift_id": _xn_id},
-                        headers=_upstream_headers
-                    )
-                    if _resp.status_code == 200:
-                        for _s in (_resp.json().get("data") or []):
-                            _uid = str(_s.get("id", ""))
-                            if _uid:
-                                upstream_xn_ids.add(_uid)
-                                upstream_distance_map[_uid] = _s.get("staff_shift_distance")
-                except Exception:
-                    pass
-    except Exception as _e:
-        logger.warning(f"[list-multi] upstream available-staff-list failed: {_e}")
-
-    if upstream_xn_ids:
-        user_filter["xn_user_id"] = {"$in": list(upstream_xn_ids)}
-
-    # Search filter — apply AFTER upstream so it combines correctly
-    if payload.search:
-        _s = payload.search.strip()
-        _search_or = [
-            {"first_name": {"$regex": _s, "$options": "i"}},
-            {"last_name":  {"$regex": _s, "$options": "i"}},
-            {"email":      {"$regex": _s, "$options": "i"}},
-            {"phone":      {"$regex": _s, "$options": "i"}},
+    # Search
+    if payload.search and payload.search.strip():
+        _s    = payload.search.strip()
+        _rx   = re.escape(_s)
+        parts = _s.split()
+        conds = [
+            {"first_name": {"$regex": _rx, "$options": "i"}},
+            {"last_name":  {"$regex": _rx, "$options": "i"}},
+            {"email":      {"$regex": _rx, "$options": "i"}},
+            {"phone":      {"$regex": _rx, "$options": "i"}},
         ]
-        _search_or.append({"$expr": {"$regexMatch": {"input": {"$concat": ["$first_name", " ", "$last_name"]}, "regex": _s, "options": "i"}}})
-        # Wrap existing filter with $and to combine with search
-        if user_filter:
-            user_filter = {"$and": [user_filter, {"$or": _search_or}]}
-        else:
-            user_filter["$or"] = _search_or
+        if len(parts) >= 2:
+            conds.append({"$and": [
+                {"first_name": {"$regex": re.escape(parts[0]),  "$options": "i"}},
+                {"last_name":  {"$regex": re.escape(parts[-1]), "$options": "i"}},
+            ]})
+        clauses.append({"$or": conds})
 
-    # Pre-fetch banned user IDs for first shift in group (excluded=1 or null)
-    if getattr(payload, "excluded", None) in (1, None) and shift_oids:
-        _first_shift = await db["shifts"].find_one({"_id": shift_oids[0]}, {"client_id": 1})
-        _shift_client_id = str(_first_shift.get("client_id", "")) if _first_shift else ""
-        if _shift_client_id:
-            _banned_oids = [u["_id"] async for u in db["users"].find(
-                {"banned_clients.id": _shift_client_id, "status": "Enabled"}, {"_id": 1}
-            )]
-            if _banned_oids:
-                _existing_xn = user_filter.pop("xn_user_id", None)
-                if _existing_xn:
-                    user_filter["$or"] = [
-                        {"xn_user_id": _existing_xn},
-                        {"_id": {"$in": _banned_oids}},
-                    ]
-    users = await db["users"].find(
-        user_filter,
-        {"first_name": 1, "last_name": 1, "email": 1, "phone": 1,
-         "xn_user_id": 1, "designation": 1, "rating": 1,
-         "location": 1, "latitude": 1, "longitude": 1, "status": 1,
-         "tags": 1, "county_id": 1, "user_type_id": 1, "country_id": 1,
-         "visa_hours_used": 1, "visa_hours_total": 1, "banned_clients": 1, "gender_id": 1,
-         "exclusion_cache": 1, "consumed_hours": 1, "work_permit_exemption": 1,
-         "user_sub_type_oids": 1, "user_sub_type_ids": 1, "qqi_status_number": 1}
-    ).sort("first_name", 1).skip(skip).limit(payload.per_page).to_list(length=payload.per_page)
+    user_filter = clauses[0] if len(clauses) == 1 else {"$and": clauses}
 
-    # Last contacted across all provided shifts
-    user_ids_page = [u["_id"] for u in users]
-    last_contacted_map: dict = {}  # uid → (call_processed_at, channel)
-    if user_ids_page:
-                # shifts_users (scoped to provided shifts)
-        async for su in db["shifts_users"].find(
-            {"user_id": {"$in": user_ids_page},
-             "shift_id": {"$in": shift_oids},
-             "call_processed_at": {"$ne": None}},
-            {"user_id": 1, "call_processed_at": 1, "channel": 1}
-        ).sort("call_processed_at", -1):
-            uid = str(su.get("user_id", ""))
-            if uid not in last_contacted_map:
-                last_contacted_map[uid] = (su.get("call_processed_at"), su.get("channel") or "")
+    db_total = await db["users"].count_documents(user_filter)
 
-        # shifts_group_users — keep only if newer than existing entry
-        async for gu in db["shifts_group_users"].find(
-            {"user_id": {"$in": user_ids_page}, "call_processed_at": {"$ne": None}},
-            {"user_id": 1, "call_processed_at": 1, "channel": 1}
-        ).sort("call_processed_at", -1):
-            uid = str(gu.get("user_id", ""))
-            dt = gu.get("call_processed_at")
-            ch = gu.get("channel") or ""
-            existing = last_contacted_map.get(uid)
-            if existing is None or (dt and existing[0] and dt > existing[0]):
-                last_contacted_map[uid] = (dt, ch)
-
-    # Client coords — use first shift
-    primary_oid   = shift_oids[0]
+    # ── Client coords — from the primary shift ───────────────────────────────
     client_data   = await _get_shift_client_coords(db, primary_oid)
     client_coords = (client_data["latitude"], client_data["longitude"]) if client_data else None
     client_location = {
@@ -1779,24 +1886,247 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         "longitude": client_coords[1],
     } if client_coords else None
 
-    # Primary shift for exclusion checks
-    target_shift = await db["shifts"].find_one(
-        {"_id": primary_oid},
-        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1, "shift_type": 1, "slots": 1, "is_premium": 1}
-    ) or {}
+    # ── Group ids — explicit, else derived from the shift_ids ────────────────
+    group_oids: list = []
+    if payload.group_id and ObjectId.is_valid(str(payload.group_id)):
+        group_oids.append(ObjectId(str(payload.group_id)))
+    else:
+        async for g in db["shifts_group"].find({"shift_ids": {"$in": shift_oids}}, {"_id": 1}):
+            group_oids.append(g["_id"])
 
-    # Batch county / user_type lookups
-    county_name_to_id: dict   = {}
-    county_oid_to_name: dict  = {}
-    designation_to_type_id: dict   = {}
+    # ── Exclusion: per-(user, primary shift) cache, bounded concurrency ──────
+    _sem          = asyncio.Semaphore(_EXCLUSION_CONCURRENCY)
+    _cache_writes: list = []
+    _shift_key    = str(primary_oid)
+    _now          = datetime.now(timezone.utc)
+
+    def _cached_tags(u: dict):
+        entry = (u.get("exclusion_cache_by_shift") or {}).get(_shift_key)
+        if not isinstance(entry, dict):
+            return None
+        at = entry.get("at")
+        if at is None:
+            return None
+        if getattr(at, "tzinfo", None) is None:
+            at = at.replace(tzinfo=timezone.utc)
+        if (_now - at).total_seconds() > _EXCLUSION_CACHE_TTL_SECONDS:
+            return None
+        tags = entry.get("tags")
+        return tags if isinstance(tags, list) else None
+
+    async def _exclusion_for(u: dict) -> list:
+        cached = _cached_tags(u)
+        if cached is not None:
+            return cached
+        if not (u.get("email") and target_shift):
+            return []
+        async with _sem:
+            tags = await _get_user_exclusion_tags(
+                db,
+                u.get("email"),
+                target_shift,
+                u.get("banned_clients") or [],
+                u.get("tags") or [],
+                u["_id"],
+            )
+        _cache_writes.append(UpdateOne(
+            {"_id": u["_id"]},
+            {"$set": {f"exclusion_cache_by_shift.{_shift_key}": {"tags": tags, "at": _now}}},
+        ))
+        return tags
+
+    async def _annotate(chunk: list) -> None:
+        """Exclusion, pool membership, distance and last-contacted for one chunk."""
+        if not chunk:
+            return
+        oids = [u["_id"] for u in chunk]
+
+        # pool — shifts_pool for any of the shifts, plus shifts_group_pool
+        pool_ids = {
+            str(p["user_id"])
+            async for p in db["shifts_pool"].find(
+                {"shift_id": {"$in": shift_oids}, "user_id": {"$in": oids}},
+                {"user_id": 1}
+            )
+        }
+        if group_oids:
+            async for gp in db["shifts_group_pool"].find(
+                {"group_id": {"$in": group_oids}, "user_id": {"$in": oids}},
+                {"user_id": 1}
+            ):
+                pool_ids.add(str(gp["user_id"]))
+
+        # last contacted — scoped to these shifts, then group users if newer
+        lc_map: dict = {}
+        async for su in db["shifts_users"].find(
+            {"user_id": {"$in": oids},
+             "shift_id": {"$in": shift_oids},
+             "call_processed_at": {"$ne": None}},
+            {"user_id": 1, "call_processed_at": 1, "channel": 1}
+        ).sort("call_processed_at", -1):
+            uid = str(su.get("user_id", ""))
+            if uid not in lc_map:
+                lc_map[uid] = (su.get("call_processed_at"), su.get("channel") or "")
+
+        _gu_filter = {"user_id": {"$in": oids}, "call_processed_at": {"$ne": None}}
+        if group_oids:
+            _gu_filter["group_id"] = {"$in": group_oids}
+        async for gu in db["shifts_group_users"].find(
+            _gu_filter, {"user_id": 1, "call_processed_at": 1, "channel": 1}
+        ).sort("call_processed_at", -1):
+            uid = str(gu.get("user_id", ""))
+            dt  = gu.get("call_processed_at")
+            cur = lc_map.get(uid)
+            if cur is None or (dt and cur[0] and dt > cur[0]):
+                lc_map[uid] = (dt, gu.get("channel") or "")
+
+        all_tags = await asyncio.gather(*[_exclusion_for(u) for u in chunk])
+
+        for u, tags in zip(chunk, all_tags):
+            uid_str = str(u["_id"])
+            u["_excl_tags"] = tags
+            u["_excluded"]  = 1 if tags else 0
+            u["_in_pool"]   = 1 if uid_str in pool_ids else 0
+            u["_lc"]        = lc_map.get(uid_str)
+
+            ucoords = _user_location_coords(u)
+            dist = None
+            if client_coords and ucoords:
+                dist = _haversine_km(client_coords[0], client_coords[1],
+                                     ucoords[0], ucoords[1])
+            xn = str(u.get("xn_user_id", ""))
+            if xn and upstream_distance_map.get(xn) is not None:
+                dist = upstream_distance_map[xn]
+            u["_coords"]      = ucoords
+            u["_distance_km"] = dist
+
+    def _keep(u: dict) -> bool:
+        if payload.excluded is not None and u.get("_excluded", 0) != payload.excluded:
+            return False
+        if payload.in_pool is not None and u.get("_in_pool", 0) != payload.in_pool:
+            return False
+        if payload.radius is not None and client_coords:
+            d = u.get("_distance_km")
+            if d is not None and d > payload.radius:
+                return False
+        return True
+
+    # ── Selection ────────────────────────────────────────────────────────────
+    _has_local_filter = (payload.excluded is not None
+                         or payload.in_pool is not None
+                         or payload.radius is not None)
+    _local_sort = order_by in ("distance_km", "rating", "last_contacted")
+
+    db_sort        = [("first_name", -1 if (order_by == "name" and reverse) else 1)]
+    scan_truncated = False
+
+    if not _has_local_filter and not _local_sort:
+        # DB pagination is exact — annotate exactly this page.
+        users = await db["users"].find(user_filter, _LIST_PROJECTION) \
+            .sort(db_sort).skip(skip).limit(limit).to_list(length=limit)
+        await _annotate(users)
+        filtered_total = db_total
+        scanned        = len(users)
+    else:
+        need       = skip + limit
+        chunk_size = max(min(limit, 200) * 5, 100)
+        scan_cap   = min(_MAX_SCAN, 3000 if _local_sort else max(need * 20, 500))
+
+        matched: list = []
+        scanned = offset = 0
+
+        while scanned < scan_cap:
+            chunk = await db["users"].find(user_filter, _LIST_PROJECTION) \
+                .sort(db_sort).skip(offset).limit(chunk_size) \
+                .to_list(length=chunk_size)
+            if not chunk:
+                break
+            offset  += len(chunk)
+            scanned += len(chunk)
+
+            await _annotate(chunk)
+            matched.extend([u for u in chunk if _keep(u)])
+
+            if not _local_sort and len(matched) >= need:
+                break
+
+        scan_truncated = scanned >= scan_cap and scanned < db_total
+
+        if order_by == "distance_km":
+            matched.sort(
+                key=lambda u: u.get("_distance_km") if u.get("_distance_km") is not None
+                else float("inf"),
+                reverse=reverse,
+            )
+        elif order_by == "rating":
+            matched.sort(key=lambda u: u.get("rating") or 0, reverse=reverse)
+        elif order_by == "last_contacted":
+            _epoch = datetime.min.replace(tzinfo=timezone.utc)
+
+            def _lc_key(u):
+                lc = u.get("_lc")
+                if not lc or not lc[0]:
+                    return _epoch
+                dt = lc[0]
+                if getattr(dt, "tzinfo", None) is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+
+            matched.sort(key=_lc_key, reverse=reverse)
+
+        filtered_total = len(matched)
+        users          = matched[skip: skip + limit]
+
+    logger.info(
+        f"[list-multi] shifts={len(shift_oids)} types={shift_user_types} "
+        f"db_total={db_total} scanned={scanned} matched={filtered_total} page={len(users)}"
+    )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  Everything below touches the current page only.
+    # ══════════════════════════════════════════════════════════════════════════
+    user_oids_page = [u["_id"] for u in users]
+
+    # ── Requested staff, union across all shifts ─────────────────────────────
+    requested_user_ids: set = {
+        str(rs.get("staff_id", ""))
+        for s in shift_docs
+        for rs in (s.get("requested_staff_list") or [])
+        if rs.get("staff_id")
+    }
+
+    # ── Sub type names ───────────────────────────────────────────────────────
+    all_sub_oids = [
+        ObjectId(str(oid))
+        for u in users
+        for oid in (u.get("user_sub_type_oids") or [])
+        if oid and ObjectId.is_valid(str(oid))
+    ]
+    sub_type_name_map: dict = {}
+    if all_sub_oids:
+        async for st in db["user_sub_types"].find({"_id": {"$in": all_sub_oids}}, {"name": 1}):
+            sub_type_name_map[str(st["_id"])] = st.get("name", "")
+
+    # ── Visa type names ──────────────────────────────────────────────────────
+    visa_type_name_map: dict = {}
+    _vt_oids = [ObjectId(str(u["visa_type_id"])) for u in users
+                if u.get("visa_type_id") and ObjectId.is_valid(str(u["visa_type_id"]))]
+    if _vt_oids:
+        async for vt in db["visa_types"].find({"_id": {"$in": _vt_oids}}, {"name": 1}):
+            visa_type_name_map[str(vt["_id"])] = vt.get("name", "")
+
+    # ── County / user_type name maps ─────────────────────────────────────────
+    county_name_to_id:        dict = {}
+    county_oid_to_name:       dict = {}
+    designation_to_type_id:   dict = {}
     designation_to_type_name: dict = {}
-    type_id_to_name: dict     = {}
+    type_id_to_name:          dict = {}
 
     users_needing_county = [u for u in users if not u.get("county_id") and u.get("country_id")]
     users_needing_type   = [u for u in users if not u.get("user_type_id") and u.get("designation")]
 
     if users_needing_county:
-        raw_cids = list({str(u["country_id"]) for u in users_needing_county})
+        raw_cids   = list({str(u["country_id"]) for u in users_needing_county})
         valid_oids = [ObjectId(c) for c in raw_cids if ObjectId.is_valid(c)]
         if valid_oids:
             async for co in db["county"].find({"_id": {"$in": valid_oids}}, {"_id": 1, "name": 1}):
@@ -1823,107 +2153,40 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     })
     if existing_type_oids:
         async for ut in db["user_types"].find({"_id": {"$in": existing_type_oids}}, {"_id": 1, "name": 1}):
-            type_id_to_name[str(ut["_id"])] = ut["name"]
+            type_id_to_name[str(ut["_id"])] = ut.get("name", "")
 
-    # Pool map — check shifts_pool (by shift_id) AND shifts_group_pool
-    pool_records = await db["shifts_pool"].find(
-        {"shift_id": {"$in": shift_oids}, "user_id": {"$in": user_ids_page}},
-        {"user_id": 1}
-    ).to_list(5000)
-    pool_user_ids = {str(p["user_id"]) for p in pool_records}
-
-    # Build requested_user_ids_multi from all shifts requested_staff_list
-    requested_user_ids_multi: set = set()
-    for _s in shift_docs:
-        for rs in (_s.get("requested_staff_list") or []):
-            sid = str(rs.get("staff_id", ""))
-            if sid:
-                requested_user_ids_multi.add(sid)
-
-    # Check shifts_group_pool — use explicit group_id if provided, else find by shift_ids
-    group_oids = []
-    if payload.group_id and ObjectId.is_valid(payload.group_id):
-        group_oids.append(ObjectId(payload.group_id))
-    else:
-        async for g in db["shifts_group"].find({"shift_ids": {"$in": shift_oids}}, {"_id": 1}):
-            group_oids.append(g["_id"])
-
-    if group_oids:
-        async for gp in db["shifts_group_pool"].find(
-            {"group_id": {"$in": group_oids}, "user_id": {"$in": user_ids_page}},
-            {"user_id": 1}
-        ):
-            pool_user_ids.add(str(gp["user_id"]))
-
-    from app.routers.staff import _haversine_km as _hav_m, _user_coords as _uc_m
-
-    results = []
-    # Build sub_type name map
-    all_sub_oids = []
-    for u in users:
-        for oid in (u.get("user_sub_type_oids") or []):
-            if ObjectId.is_valid(str(oid)):
-                all_sub_oids.append(ObjectId(str(oid)))
-    sub_type_name_map: dict = {}
-    if all_sub_oids:
-        async for st in db["user_sub_types"].find({"_id": {"$in": all_sub_oids}}, {"name": 1}):
-            sub_type_name_map[str(st["_id"])] = st.get("name", "")
-
-    # Batch prior shifts count for all page users
+    # ── Prior shifts — page users only ───────────────────────────────────────
     prior_shifts_map: dict = {}
-    async for ps in db["shifts_users"].aggregate([
-        {"$match": {"user_id": {"$in": user_ids_page}, "availability": 1}},
-        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
-    ]):
-        prior_shifts_map[str(ps["_id"])] = ps["count"]
+    if user_oids_page:
+        async for ps in db["shifts_users"].aggregate([
+            {"$match": {"user_id": {"$in": user_oids_page}, "availability": 1}},
+            {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
+        ]):
+            prior_shifts_map[str(ps["_id"])] = ps["count"]
 
-    _cache_updates = []  # collect (user_id, exclusion_tags) to bulk save after loop
+    # ── Build response rows ──────────────────────────────────────────────────
+    results = []
+    _backfill: list = []
 
     for u in users:
         uid_str = str(u["_id"])
-        ucoords = _uc_m(u)
+        ucoords = u.get("_coords")
 
-        distance_km = None
-        if client_coords and ucoords:
-            distance_km = _hav_m(client_coords[0], client_coords[1], ucoords[0], ucoords[1])
-
-        raw_tags   = u.get("tags") or []
         staff_tags = [
-            {"id": str(t.get("id","")), "name": t.get("name","")} if isinstance(t, dict)
-            else {"id": "", "name": str(t)} for t in raw_tags
+            {"id": str(t.get("id", "")), "name": t.get("name", "")} if isinstance(t, dict)
+            else {"id": "", "name": str(t)}
+            for t in (u.get("tags") or [])
         ]
 
-        lc_entry = last_contacted_map.get(uid_str)
         last_contacted = None
+        lc_entry = u.get("_lc")
         if lc_entry:
             lc_dt, lc_channel = lc_entry
-            if hasattr(lc_dt, "tzinfo") and lc_dt.tzinfo is None:
-                from datetime import timezone as _tz
-                lc_dt = lc_dt.replace(tzinfo=_tz.utc)
-            from datetime import timezone as _tz
-            diff = int((datetime.now(_tz.utc) - lc_dt).total_seconds())
-            if diff < 60:       last_contacted = "just now"
-            elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
-            elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
-            else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
+            last_contacted = _format_time_ago(lc_dt)
             if last_contacted and lc_channel:
                 last_contacted = f"{last_contacted} · {lc_channel}"
 
-        visa_used  = u.get("visa_hours_used")
-        visa_total = u.get("visa_hours_total")
-        consumed   = u.get("consumed_hours")
-        visa_hours_remaining = consumed if consumed is not None else (f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None)
-
-        prior_shifts = prior_shifts_map.get(uid_str, 0)
-        work_history = None
-        if prior_shifts > 0 and last_contacted:
-            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''} · {last_contacted}"
-        elif prior_shifts > 0:
-            work_history = f"{prior_shifts} Shift{'s' if prior_shifts != 1 else ''}"
-        elif last_contacted:
-            work_history = last_contacted
-
-        # County / user_type
+        # county
         county_id = county_name = None
         if u.get("county_id"):
             county_id   = str(u["county_id"])
@@ -1933,8 +2196,11 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
             if cid_str in county_name_to_id:
                 county_id   = county_name_to_id[cid_str]
                 county_name = county_oid_to_name.get(county_id)
-                await db["users"].update_one({"_id": u["_id"]}, {"$set": {"county_id": ObjectId(county_id)}})
+                _backfill.append(UpdateOne(
+                    {"_id": u["_id"]}, {"$set": {"county_id": ObjectId(county_id)}}
+                ))
 
+        # user type
         user_type_id = user_type_name = None
         if u.get("user_type_id"):
             user_type_id   = str(u["user_type_id"])
@@ -1942,120 +2208,135 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         elif u.get("designation") and u["designation"] in designation_to_type_id:
             user_type_id   = designation_to_type_id[u["designation"]]
             user_type_name = designation_to_type_name.get(u["designation"])
-            await db["users"].update_one({"_id": u["_id"]}, {"$set": {"user_type_id": ObjectId(user_type_id)}})
+            _backfill.append(UpdateOne(
+                {"_id": u["_id"]}, {"$set": {"user_type_id": ObjectId(user_type_id)}}
+            ))
 
-        # Exclusion check against primary shift
-        user_email     = u.get("email")
-        # Use cached exclusion if available, else compute (save batch after loop)
-        _cache_excl = u.get("exclusion_cache")
-        if _cache_excl is not None:
-            exclusion_tags = _cache_excl
-        elif user_email and target_shift:
-            exclusion_tags = await _get_user_exclusion_tags(db, user_email, target_shift, u.get("banned_clients") or [], u.get("tags") or [], u.get("_id"))
-            _cache_updates.append((u["_id"], exclusion_tags))
+        # visa hours
+        visa_used  = u.get("visa_hours_used")
+        visa_total = u.get("visa_hours_total")
+        consumed   = u.get("consumed_hours")
+        visa_hours_remaining = consumed if consumed is not None else (
+            f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
+        )
+
+        # work history
+        prior_shifts = prior_shifts_map.get(uid_str, 0)
+        _plural      = "s" if prior_shifts != 1 else ""
+        if prior_shifts > 0 and last_contacted:
+            work_history = f"{prior_shifts} Shift{_plural} · {last_contacted}"
+        elif prior_shifts > 0:
+            work_history = f"{prior_shifts} Shift{_plural}"
+        elif last_contacted:
+            work_history = last_contacted
         else:
-            exclusion_tags = []
-        excluded       = 1 if exclusion_tags else 0
-        in_pool_val    = 1 if uid_str in pool_user_ids else 0
+            work_history = None
 
-        # requested flag from all shifts requested_staff_list
-        requested = 1 if uid_str in requested_user_ids_multi else 0
-
+        sub_oids = u.get("user_sub_type_oids") or []
         results.append({
-            "id":                  uid_str,
-            "xn_user_id":          u.get("xn_user_id"),
-            "name":                " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
-            "email":               u.get("email"),
-            "phone":               u.get("phone"),
-            "designation":         u.get("designation"),
-            "rating":              u.get("rating"),
-            "channel":             "Phone",
-            "staff_tags":          staff_tags,
-            "last_contacted":      last_contacted,
-            "visa_hours_remaining": visa_hours_remaining,
+            "id":                    uid_str,
+            "xn_user_id":            u.get("xn_user_id"),
+            "name":                  " ".join(filter(None, [u.get("first_name", ""),
+                                                            u.get("last_name", "")])).strip() or "—",
+            "email":                 u.get("email"),
+            "phone":                 u.get("phone"),
+            "designation":           u.get("designation"),
+            "rating":                u.get("rating"),
+            "channel":               "Phone",
+            "staff_tags":            staff_tags,
+            "last_contacted":        last_contacted,
+            "visa_hours_remaining":  visa_hours_remaining,
             "work_permit_exemption": u.get("work_permit_exemption"),
-            "user_sub_types":       ([{"id": str(oid), "name": sub_type_name_map.get(str(oid), "")} for oid in (u.get("user_sub_type_oids") or []) if ObjectId.is_valid(str(oid))]) or ([{"id": None, "name": n} for n in (u.get("user_sub_type_ids") or []) if n]),
-            "qqi_status_number":    u.get("qqi_status_number"),
-            "consumed_hours":       u.get("consumed_hours"),
-            "gender_id":           str(u["gender_id"]) if u.get("gender_id") else None,
-            "prior_shifts":        prior_shifts,
-            "work_history":        work_history,
-            "status":              u.get("status"),
-            "county_id":           county_id,
-            "county":              county_name,
-            "user_type_id":        user_type_id,
-            "user_type":           user_type_name,
-            "user_latitude":       ucoords[0] if ucoords else None,
-            "user_longitude":      ucoords[1] if ucoords else None,
-            "distance_km":         distance_km or upstream_distance_map.get(str(u.get("xn_user_id", ""))) or None,
-            "excluded":            excluded,
-            "exclusion_tags":      exclusion_tags,
-            "requested":           requested,
-            "in_pool":             in_pool_val,
+            "consumed_hours":        u.get("consumed_hours"),
+            "qqi_status_number":     u.get("qqi_status_number"),
+            "gender_id":             str(u["gender_id"]) if u.get("gender_id") else None,
+            "user_sub_type_ids":     u.get("user_sub_type_ids") or [],
+            "user_sub_type_oids":    [str(oid) for oid in sub_oids],
+            "user_sub_types":        ([{"id": str(oid), "name": sub_type_name_map.get(str(oid), "")}
+                                       for oid in sub_oids if ObjectId.is_valid(str(oid))]
+                                      or [{"id": None, "name": n}
+                                          for n in (u.get("user_sub_type_ids") or []) if n]),
+            "visa_type_id":          u.get("visa_type_id"),
+            "visa_type_name":        visa_type_name_map.get(str(u.get("visa_type_id", "")))
+                                     if u.get("visa_type_id") else None,
+            "prior_shifts":          prior_shifts,
+            "work_history":          work_history,
+            "status":                u.get("status"),
+            "county_id":             county_id,
+            "county":                county_name,
+            "user_type_id":          user_type_id,
+            "user_type":             user_type_name,
+            "user_latitude":         ucoords[0] if ucoords else None,
+            "user_longitude":        ucoords[1] if ucoords else None,
+            "distance_km":           u.get("_distance_km"),
+            "excluded":              u.get("_excluded", 0),
+            "exclusion_tags":        u.get("_excl_tags") or [],
+            "requested":             1 if uid_str in requested_user_ids else 0,
+            "in_pool":               u.get("_in_pool", 0),
         })
 
-    # by_designation — always based on shift user_types only, ignores ALL other filters
-    desig_filter: dict = {"status": "Enabled"}
-    if shift_user_types:
-        desig_filter["designation"] = {"$in": shift_user_types}
-    if upstream_xn_ids:
-        desig_filter["xn_user_id"] = {"$in": list(upstream_xn_ids)}
-
-    desig_map: dict = {}
-    async for u in db["users"].find(desig_filter, {"designation": 1, "user_type_id": 1}):
-        d  = u.get("designation") or "Unknown"
-        ut = str(u["user_type_id"]) if u.get("user_type_id") else None
-        if d not in desig_map:
-            desig_map[d] = {"designation": d, "user_type_id": ut, "count": 0}
-        desig_map[d]["count"] += 1
-
-    designation_list = sorted(desig_map.values(), key=lambda x: -x["count"])
-
-    # Filters
-    if payload.radius is not None and client_coords:
-        results = [r for r in results if r["distance_km"] is not None and r["distance_km"] <= payload.radius]
-    if payload.excluded is not None:
-        results = [r for r in results if (r.get("excluded") or 0) == payload.excluded]
-    if payload.in_pool is not None:
-        results = [r for r in results if r["in_pool"] == payload.in_pool]
-
-    # Sort
-    order_by = payload.order_by or "name"
-    reverse  = (payload.sort or "asc").lower() == "desc"
-    if order_by == "distance_km":
-        results.sort(key=lambda r: r["distance_km"] if r["distance_km"] is not None else float("inf"), reverse=reverse)
-    elif order_by == "rating":
-        results.sort(key=lambda r: r["rating"] if r["rating"] is not None else 0, reverse=reverse)
-    elif order_by == "name":
+    if order_by == "name":
         results.sort(key=lambda r: r["name"].lower(), reverse=reverse)
 
-    # Bulk save exclusion cache for users computed this request
-    if _cache_updates:
-        from datetime import timezone as _tz_cache
-        _now_cache = datetime.now(_tz_cache.utc)
-        from pymongo import UpdateOne as _UO
-        _bulk = [
-            _UO({"_id": _uid}, {"$set": {"exclusion_cache": _etags, "exclusion_cache_at": _now_cache}})
-            for _uid, _etags in _cache_updates
-        ]
+    # ── by_designation — shift user_types + upstream only, ignores filters ───
+    desig_clauses: list = [{"status": "Enabled"}]
+    if shift_user_types:
+        desig_clauses.append({"designation": {"$in": shift_user_types}})
+    if upstream_xn_ids:
+        desig_clauses.append({"xn_user_id": {"$in": list(upstream_xn_ids)}})
+    desig_filter = desig_clauses[0] if len(desig_clauses) == 1 else {"$and": desig_clauses}
+
+    designation_list  = []
+    designation_total = 0
+    async for row in db["users"].aggregate([
+        {"$match": desig_filter},
+        {"$group": {
+            "_id":          {"$ifNull": ["$designation", "Unknown"]},
+            "user_type_id": {"$first": "$user_type_id"},
+            "count":        {"$sum": 1},
+        }},
+        {"$sort": {"count": -1}},
+    ]):
+        designation_list.append({
+            "designation":  row["_id"],
+            "user_type_id": str(row["user_type_id"]) if row.get("user_type_id") else None,
+            "count":        row["count"],
+        })
+        designation_total += row["count"]
+
+    # ── Flush writes ─────────────────────────────────────────────────────────
+    if _cache_writes:
         try:
-            await db["users"].bulk_write(_bulk, ordered=False)
-        except Exception:
-            pass
+            await db["users"].bulk_write(_cache_writes, ordered=False)
+        except Exception as e:
+            logger.warning(f"[list-multi] exclusion cache write failed: {e}")
+
+    if _backfill:
+        try:
+            await db["users"].bulk_write(_backfill, ordered=False)
+        except Exception as e:
+            logger.warning(f"[list-multi] county/user_type backfill failed: {e}")
 
     return {
-        "success":         True,
-        "total":           await db["users"].count_documents(desig_filter),
-        "filtered_total":  len(results),
-        "page":            payload.page,
-        "per_page":        payload.per_page,
-        "shift_ids":       [str(o) for o in shift_oids],
-        "client_location": client_location,
-        "radius":          payload.radius,
-        "order_by":        order_by,
-        "sort":            payload.sort or "asc",
-        "by_designation":  designation_list,
-        "data":            results,
+        "success":             True,
+        "total":               designation_total,
+        "db_total":            db_total,
+        "filtered_total":      filtered_total,
+        "scanned":             scanned,
+        "scan_truncated":      scan_truncated,
+        "exclusions_computed": len(_cache_writes),
+        "page":                payload.page,
+        "per_page":            payload.per_page,
+        "shift_ids":           [str(o) for o in shift_oids],
+        "primary_shift_id":    str(primary_oid),
+        "shift_user_types":    shift_user_types,
+        "group_ids":           [str(g) for g in group_oids],
+        "client_location":     client_location,
+        "radius":              payload.radius,
+        "order_by":            order_by,
+        "sort":                payload.sort or "asc",
+        "by_designation":      designation_list,
+        "data":                results,
     }
 
 
@@ -2140,6 +2421,13 @@ async def confirm_staff(request: Request, payload: ConfirmStaffRequest):
             "assigned_at":    now,
             "updated_at":     now,
         }}
+    )
+
+    # The user's schedule changed — drop every cached exclusion verdict
+    await db["users"].update_one(
+        {"_id": user_oid},
+        {"$unset": {"exclusion_cache_by_shift": "",
+                    "exclusion_cache": "", "exclusion_cache_at": ""}}
     )
 
     # Also update shifts_group_users if this shift belongs to a group
@@ -2251,6 +2539,9 @@ async def booking_confirmed_call(request: Request, payload: ConfirmStaffRequest)
         "staff_email":  email,
         "confirmed_at": now.isoformat(),
     }
+
+
+# ── Ignore ────────────────────────────────────────────────────────────────────
 
 IGNORE_REASONS = [
     {"id": "actually_declined",        "title": "Actually Declined",             "description": "They said no, even if it sounded ambiguous"},
@@ -2426,7 +2717,7 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
         "Content-Type": "application/json",
         "Accept":       "application/json",
     }
-    print(f"[ghost-booking] upstream={upstream_url} shift_id={xn_shift_id} staff_id={xn_user_id}", flush=True)
+    logger.info(f"[ghost-booking] upstream={upstream_url} shift_id={xn_shift_id} staff_id={xn_user_id}")
 
     try:
         async with _httpx.AsyncClient(timeout=30.0) as client:
@@ -2439,7 +2730,7 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
             upstream_body = resp.json()
         except Exception:
             upstream_body = {}
-        print(f"[ghost-booking] upstream status={resp.status_code} body={upstream_body}", flush=True)
+        logger.info(f"[ghost-booking] upstream status={resp.status_code} body={upstream_body}")
 
         if resp.status_code != 200 or not upstream_body.get("success"):
             msg = upstream_body.get("message") or f"Upstream failed (status {resp.status_code})"
@@ -2472,6 +2763,13 @@ async def ghost_booking(request: Request, payload: AssignStaffRequest):
             "assigned_at":    now,
             "updated_at":     now,
         }}
+    )
+
+    # The user's schedule changed — drop every cached exclusion verdict
+    await db["users"].update_one(
+        {"_id": user_oid},
+        {"$unset": {"exclusion_cache_by_shift": "",
+                    "exclusion_cache": "", "exclusion_cache_at": ""}}
     )
 
     return {
