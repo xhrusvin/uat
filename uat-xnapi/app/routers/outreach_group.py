@@ -288,18 +288,53 @@ async def create_group_outreach(request: Request, payload: GroupOutreachRequest)
         inserted_count += 1
         call_order     += 1
 
-    # Activity log
-    await db["activities"].insert_one({
-        "activity_type": "round_started",
-        "group_id":      group_oid,
-        "outreach_id":   oid,
-        "metadata": {
-            "round_number":     round_number,
-            "sequence_id":      str(seq_oid),
-            "call_enabled_set": inserted_count,
-        },
-        "created_at": now,
-    })
+     # Activity log — one entry per shift in the group (mirrors /outreach/create)
+    shift_oids = group.get("shift_ids") or []
+    for sh_oid in shift_oids:
+        available_count = await db["shifts_group_users"].count_documents({
+            "group_id":    group_oid,
+            "outreach_id": oid,
+            "availability": 1,
+        })
+        declined_count = await db["shifts_group_users"].count_documents({
+            "group_id":    group_oid,
+            "outreach_id": oid,
+            "availability": 0,
+        })
+        no_reply_count = await db["shifts_group_users"].count_documents({
+            "group_id":    group_oid,
+            "outreach_id": oid,
+            "availability": {"$in": [3, 4, 6, 7, 8]},
+        })
+        activity_doc = {
+            "activity_type": "round_started",
+            "shift_id":      sh_oid,
+            "group_id":      group_oid,
+            "outreach_id":   oid,
+            "metadata": {
+                "sequence_id":      str(seq_oid),
+                "shift_id":         str(sh_oid),
+                "group_id":         str(group_oid),
+                "outreach_id":      str(oid),
+                "round_number":     round_number,
+                "available":        available_count,
+                "declined":         declined_count,
+                "no_reply":         no_reply_count,
+                "call_enabled_set": inserted_count,
+                "summary": (
+                    f"Round {round_number} started (group) · "
+                    f"{available_count} available, {declined_count} declined, "
+                    f"{no_reply_count} no-reply"
+                ),
+            },
+            "created_at": now,
+        }
+        if seq_oid:
+            activity_doc["sequence_id"] = seq_oid
+        try:
+            await db["activities"].insert_one(activity_doc)
+        except Exception as e:
+            logger.error(f"[outreach-group/create] Activity log error shift={str(sh_oid)}: {e}")
 
     return {
         "success":      True,
