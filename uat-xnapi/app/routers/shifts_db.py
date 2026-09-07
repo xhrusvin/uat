@@ -858,14 +858,33 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             results.append(s)
 
     # Deduplicate results by shift id
+        # Deduplicate results by shift id and remove ghost shifts
+    # (shifts that appear in outreach/group maps but no longer exist in db)
+    valid_shift_oids = set()
+    candidate_ids = []
     seen_ids = set()
     deduped = []
+
     for r in results:
         rid = r.get("id") or r.get("shift_id") or r.get("shift_code")
-        if rid not in seen_ids:
+        if rid and rid not in seen_ids:
             seen_ids.add(rid)
             deduped.append(r)
-    results = deduped
+            if ObjectId.is_valid(str(rid)):
+                candidate_ids.append(ObjectId(str(rid)))
+
+    # Verify all candidate shift _ids actually exist in shifts collection
+    if candidate_ids:
+        async for existing in db["shifts"].find(
+            {"_id": {"$in": candidate_ids}},
+            {"_id": 1}
+        ):
+            valid_shift_oids.add(str(existing["_id"]))
+
+    results = [
+        r for r in deduped
+        if str(r.get("id") or "") in valid_shift_oids
+    ]
 
     # Aggregate outreach counts (across all shifts, not just filtered)
     outreach_active      = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
