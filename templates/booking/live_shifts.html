@@ -64,9 +64,20 @@
     background: #fff;
     border: 1px solid #dee2e6;
     border-radius: 12px;
-    padding: 1rem 1.25rem;
+    padding: 1.25rem 1.5rem;
     margin-bottom: 1.5rem;
     box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+/* Arrow separator between From/To is purely decorative */
+.filter-card .input-group-text {
+    border-color: #dee2e6;
+    font-size: 0.85rem;
+}
+/* Row divider between filter rows */
+.filter-card .row + .row {
+    border-top: 1px dashed #e9ecef;
+    padding-top: 0.75rem;
+    margin-top: 0.25rem;
 }
 </style>
 {% endblock %}
@@ -99,86 +110,91 @@
 
     {# ── Filter bar ──────────────────────────────────────────────── #}
     <div class="filter-card">
-        <form method="get" id="filter-form" class="row g-3 align-items-end">
+        <form method="get" id="filter-form">
 
-            {# Search #}
-            <div class="col-12 col-md-4">
-                <label class="form-label small fw-semibold text-muted mb-1">Search</label>
-                <div class="input-group">
-                    <span class="input-group-text bg-white border-end-0">
-                        <i class="bi bi-search text-muted"></i>
-                    </span>
-                    <input type="text" name="search" class="form-control border-start-0"
-                           placeholder="Name, location, shift ID…"
-                           value="{{ search }}">
+            {# ── Row 1: Search · Status · Buttons ──────────────────── #}
+            <div class="row g-3 align-items-end mb-3">
+
+                {# Search #}
+                <div class="col-12 col-md-5">
+                    <label class="form-label small fw-semibold text-muted mb-1">Search</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0">
+                            <i class="bi bi-search text-muted"></i>
+                        </span>
+                        <input type="text" name="search" class="form-control border-start-0"
+                               placeholder="Name, location, shift ID…"
+                               value="{{ search }}">
+                    </div>
+                </div>
+
+                {# Status #}
+                <div class="col-12 col-md-3">
+                    <label class="form-label small fw-semibold text-muted mb-1">Status</label>
+                    <select name="status_filter" class="form-select">
+                        <option value="">All statuses</option>
+                        {% for s in valid_statuses %}
+                        <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>
+                            {{ s }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {# Buttons — pinned right on row 1 #}
+                <div class="col-12 col-md-4 d-flex gap-2 justify-content-md-end">
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="bi bi-funnel me-1"></i>Filter
+                    </button>
+                    {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter %}
+                    <a href="{{ url_for('booking.live_shifts') }}"
+                       class="btn btn-outline-secondary" title="Clear all filters">
+                        <i class="bi bi-x-lg me-1"></i>Clear
+                    </a>
+                    {% endif %}
                 </div>
             </div>
 
-            {# Status #}
-            <div class="col-12 col-md-2">
-                <label class="form-label small fw-semibold text-muted mb-1">Status</label>
-                <select name="status_filter" class="form-select">
-                    <option value="">All statuses</option>
-                    {% for s in valid_statuses %}
-                    <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>
-                        {{ s }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
+            {# ── Row 2: Date range pairs ──────────────────────────── #}
+            <div class="row g-3 align-items-end">
 
-            {# Shift Date — From #}
-            <div class="col-6 col-md-1">
-                <label class="form-label small fw-semibold text-muted mb-1">
-                    <i class="bi bi-calendar3 me-1"></i>Shift Date From
-                </label>
-                <input type="text" name="shift_date_from" id="shift_date_from"
-                       class="form-control flatpickr-date"
-                       placeholder="From"
-                       value="{{ shift_date_from }}">
-            </div>
+                {# Shift Date group #}
+                <div class="col-12 col-md-5">
+                    <label class="form-label small fw-semibold text-muted mb-1">
+                        <i class="bi bi-calendar3 me-1"></i>Shift Date
+                    </label>
+                    <div class="input-group">
+                        <input type="text" name="shift_date_from" id="shift_date_from"
+                               class="form-control"
+                               placeholder="From"
+                               value="{{ shift_date_from }}">
+                        <span class="input-group-text bg-white text-muted px-2">→</span>
+                        <input type="text" name="shift_date_to" id="shift_date_to"
+                               class="form-control"
+                               placeholder="To"
+                               value="{{ shift_date_to }}">
+                    </div>
+                </div>
 
-            {# Shift Date — To #}
-            <div class="col-6 col-md-1">
-                <label class="form-label small fw-semibold text-muted mb-1">To</label>
-                <input type="text" name="shift_date_to" id="shift_date_to"
-                       class="form-control flatpickr-date"
-                       placeholder="To"
-                       value="{{ shift_date_to }}">
-            </div>
+                {# O. Date group #}
+                <div class="col-12 col-md-5">
+                    <label class="form-label small fw-semibold text-muted mb-1">
+                        <i class="bi bi-send me-1"></i>Outreach Date
+                    </label>
+                    <div class="input-group">
+                        <input type="text" name="outreach_date_from" id="outreach_date_from"
+                               class="form-control"
+                               placeholder="From"
+                               value="{{ outreach_date_from }}">
+                        <span class="input-group-text bg-white text-muted px-2">→</span>
+                        <input type="text" name="outreach_date_to" id="outreach_date_to"
+                               class="form-control"
+                               placeholder="To"
+                               value="{{ outreach_date_to }}">
+                    </div>
+                </div>
 
-            {# O. Date — From #}
-            <div class="col-6 col-md-1">
-                <label class="form-label small fw-semibold text-muted mb-1">
-                    <i class="bi bi-send me-1"></i>O. Date From
-                </label>
-                <input type="text" name="outreach_date_from" id="outreach_date_from"
-                       class="form-control flatpickr-date"
-                       placeholder="From"
-                       value="{{ outreach_date_from }}">
-            </div>
-
-            {# O. Date — To #}
-            <div class="col-6 col-md-1">
-                <label class="form-label small fw-semibold text-muted mb-1">To</label>
-                <input type="text" name="outreach_date_to" id="outreach_date_to"
-                       class="form-control flatpickr-date"
-                       placeholder="To"
-                       value="{{ outreach_date_to }}">
-            </div>
-
-            {# Buttons #}
-            <div class="col-12 col-md-2 d-flex gap-2">
-                <button type="submit" class="btn btn-primary flex-grow-1">
-                    <i class="bi bi-funnel me-1"></i>Filter
-                </button>
-                {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter %}
-                <a href="{{ url_for('booking.live_shifts') }}"
-                   class="btn btn-outline-secondary" title="Clear filters">
-                    <i class="bi bi-x-lg"></i>
-                </a>
-                {% endif %}
-            </div>
+            </div>{# /row 2 #}
 
         </form>
     </div>
