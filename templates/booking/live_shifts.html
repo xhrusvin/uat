@@ -6,10 +6,15 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <style>
 /* ── Status pill colours ─────────────────────────────────────── */
-.badge-to-be-assigned { background-color: #cfe2ff; color: #084298; }
+.badge-to-be-filled    { background-color: #e9d8fd; color: #5a1e96; }
+.badge-to-be-assigned  { background-color: #cfe2ff; color: #084298; }
 .badge-assigned        { background-color: #d1e7dd; color: #0a3622; }
 .badge-completed       { background-color: #e2e3e5; color: #41464b; }
 .badge-cancelled       { background-color: #f8d7da; color: #842029; }
+.badge-upcoming        { background-color: #e0cffc; color: #432874; }
+.badge-unfilled        { background-color: #f0f0f0; color: #555;    }
+.badge-ongoing         { background-color: #fff3cd; color: #664d03; }
+.badge-review          { background-color: #d0e4ff; color: #084298; }
 
 /* ── Slot sub-rows ───────────────────────────────────────────── */
 .shift-group-first {
@@ -133,9 +138,26 @@
                     <label class="form-label small fw-semibold text-muted mb-1">Status</label>
                     <select name="status_filter" class="form-select">
                         <option value="">All statuses</option>
-                        {% for s in valid_statuses %}
-                        <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>
-                            {{ s }}
+                        {%- set statuses = [
+                            ('To Be Filled',        '🟣'),
+                            ('To be assigned',      '🔵'),
+                            ('Upcoming',            '📅'),
+                            ('Un Filled',           '⚪'),
+                            ('Ongoing',             '🟡'),
+                            ('Under Review',        '🔍'),
+                            ('Cancelled By Client', '❌'),
+                            ('Failed',              '💔'),
+                            ('Duplicated',          '📋'),
+                            ('Rejected',            '🚫'),
+                            ('Send Back',           '↩️'),
+                            ('Cancelled By Staff',  '🙅'),
+                            ('Completed',           '✅'),
+                            ('Cancelled',           '🔴'),
+                        ] -%}
+                        {% for val, icon in statuses %}
+                        <option value="{{ val }}"
+                            {% if status_filter == val %}selected{% endif %}>
+                            {{ icon }} {{ val }}
                         </option>
                         {% endfor %}
                     </select>
@@ -201,12 +223,17 @@
 
     {# ── Status quick-filter pills ────────────────────────────────── #}
     <div class="d-flex flex-wrap gap-2 mb-4">
-        {%- set status_map = {
-            'To be assigned': ('badge-to-be-assigned', '🔵'),
-            'Assigned':        ('badge-assigned',        '🟢'),
-            'Cancelled':       ('badge-cancelled',        '🔴'),
-        } -%}
-        {% for label, (cls, icon) in status_map.items() %}
+        {%- set status_pills = [
+            ('To Be Filled',        'badge-to-be-filled',   '🟣'),
+            ('To be assigned',      'badge-to-be-assigned', '🔵'),
+            ('Upcoming',            'badge-upcoming',        '📅'),
+            ('Un Filled',           'badge-unfilled',        '⚪'),
+            ('Ongoing',             'badge-ongoing',         '🟡'),
+            ('Under Review',        'badge-review',          '🔍'),
+            ('Cancelled By Client', 'badge-cancelled',       '❌'),
+            ('Completed',           'badge-completed',       '✅'),
+        ] -%}
+        {% for label, cls, icon in status_pills %}
         <a href="{{ url_for('booking.live_shifts',
                             search=search,
                             shift_date_from=shift_date_from,
@@ -214,8 +241,8 @@
                             outreach_date_from=outreach_date_from,
                             outreach_date_to=outreach_date_to,
                             status_filter=label) }}"
-           class="badge {{ cls }} text-decoration-none px-3 py-2 fs-6"
-           style="{% if status_filter == label %}outline: 2px solid currentColor; outline-offset: 2px;{% endif %}">
+           class="badge {{ cls }} text-decoration-none px-3 py-2"
+           style="font-size:0.85rem;{% if status_filter == label %}outline: 2px solid currentColor; outline-offset: 2px;{% endif %}">
             {{ icon }} {{ label }}
         </a>
         {% endfor %}
@@ -226,7 +253,8 @@
                             shift_date_to=shift_date_to,
                             outreach_date_from=outreach_date_from,
                             outreach_date_to=outreach_date_to) }}"
-           class="badge bg-light text-dark text-decoration-none px-3 py-2 fs-6 border">
+           class="badge bg-light text-dark text-decoration-none px-3 py-2 border"
+           style="font-size:0.85rem;">
             Show all
         </a>
         {% endif %}
@@ -467,10 +495,24 @@ const fpConfig = {
     allowInput: true,
 };
 
-flatpickr("#shift_date_from",    { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "From"; } });
-flatpickr("#shift_date_to",      { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "To";   } });
-flatpickr("#outreach_date_from", { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "From"; } });
-flatpickr("#outreach_date_to",   { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "To";   } });
+flatpickr("#shift_date_from", {
+    ...fpConfig,
+    onReady(_, __, fp) { fp.altInput.placeholder = "From"; }
+});
+flatpickr("#shift_date_to", {
+    ...fpConfig,
+    onReady(_, __, fp) { fp.altInput.placeholder = "To"; }
+});
+flatpickr("#outreach_date_from", {
+    ...fpConfig,
+    // Default to today if the field has no value yet (first page load)
+    defaultDate: document.getElementById("outreach_date_from").value || "today",
+    onReady(_, __, fp) { fp.altInput.placeholder = "From (default: today)"; }
+});
+flatpickr("#outreach_date_to", {
+    ...fpConfig,
+    onReady(_, __, fp) { fp.altInput.placeholder = "To"; }
+});
 
 /* ── Auto-refresh every 60 s (AJAX) ───────────────────────────── */
 (function () {

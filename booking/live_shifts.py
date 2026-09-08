@@ -393,8 +393,26 @@ def _format_shifts(shifts_list: list) -> list:
 # Routes
 # ──────────────────────────────────────────────────────────────────────────────
 
-VALID_STATUSES = ["To be assigned", "Assigned", "Completed", "Cancelled"]
+VALID_STATUSES = [
+    "To Be Filled",
+    "To be assigned",
+    "Upcoming",
+    "Un Filled",
+    "Ongoing",
+    "Under Review",
+    "Cancelled By Client",
+    "Failed",
+    "Duplicated",
+    "Rejected",
+    "Send Back",
+    "Cancelled By Staff",
+    "Completed",
+    "Cancelled",
+]
 PER_PAGE = 10
+
+# Today's date string used as the default outreach_date_from
+_TODAY = datetime.utcnow().strftime("%Y-%m-%d")
 
 
 @bp.route("/live-shifts")
@@ -404,12 +422,15 @@ def live_shifts():
     search             = request.args.get("search", "").strip()
     shift_date_from    = request.args.get("shift_date_from", "").strip()
     shift_date_to      = request.args.get("shift_date_to", "").strip()
-    outreach_date_from = request.args.get("outreach_date_from", "").strip()
+    # Default outreach_date_from to today when not supplied
+    outreach_date_from = request.args.get("outreach_date_from",
+                                          datetime.utcnow().strftime("%Y-%m-%d")).strip()
     outreach_date_to   = request.args.get("outreach_date_to", "").strip()
-    status_filter      = request.args.get("status_filter", "").strip()
+    # Default status to "To Be Filled" when not supplied
+    status_filter      = request.args.get("status_filter", "To Be Filled").strip()
 
     if status_filter not in VALID_STATUSES:
-        status_filter = ""
+        status_filter = "To Be Filled"
 
     pipeline = _build_pipeline(
         search, shift_date_from, shift_date_to,
@@ -452,12 +473,13 @@ def live_shifts_data():
     search             = request.args.get("search", "").strip()
     shift_date_from    = request.args.get("shift_date_from", "").strip()
     shift_date_to      = request.args.get("shift_date_to", "").strip()
-    outreach_date_from = request.args.get("outreach_date_from", "").strip()
+    outreach_date_from = request.args.get("outreach_date_from",
+                                          datetime.utcnow().strftime("%Y-%m-%d")).strip()
     outreach_date_to   = request.args.get("outreach_date_to", "").strip()
-    status_filter      = request.args.get("status_filter", "").strip()
+    status_filter      = request.args.get("status_filter", "To Be Filled").strip()
 
     if status_filter not in VALID_STATUSES:
-        status_filter = ""
+        status_filter = "To Be Filled"
 
     pipeline = _build_pipeline(
         search, shift_date_from, shift_date_to,
