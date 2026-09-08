@@ -447,6 +447,19 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
     client_ids = list({d.get("client_id") for d in docs if d.get("client_id")})
     client_map = await _build_client_map(db, client_ids)
 
+    # Build group_shift_map so staff_counts can include shifts_group_users
+    doc_oids = [
+        doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
+        for doc in docs
+    ]
+    group_shift_map: dict = {}  # shift_id_str → group _id
+    async for grp in db["shifts_group"].find(
+        {"shift_ids": {"$in": doc_oids}},
+        {"_id": 1, "shift_ids": 1},
+    ):
+        for sid in (grp.get("shift_ids") or []):
+            group_shift_map[str(sid)] = grp["_id"]
+
     results = []
     for doc in docs:
         s   = _serialize(doc)
@@ -457,7 +470,8 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["client_phone"]      = cl.get("phone")             if cl else None
         s["client_preference"] = cl.get("client_preference") or []  if cl else []
         shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-        s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l)
+        _group_id_for_counts = group_shift_map.get(str(shift_oid_l))
+        s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l, group_id=_group_id_for_counts)
         outreach_info = await _get_outreach_status(db, shift_oid_l)
         s["outreach_status"]        = outreach_info["outreach_status"]
         s["outreach_status_text"]   = outreach_info["outreach_status_text"]
@@ -920,11 +934,7 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId, group_id=None) -> dic
 
     # ── shifts_group_users fallback ───────────────────────────────────────────
     if group_id is not None:
-        _gid = ObjectId(str(group_id)) if not isinstance(group_id, ObjectId) else group_id
-
-                # Pull ALL group users for this group — filter in Python to handle
-        # shift_id stored as string OR ObjectId in availability_details
-                # Query by shift_id inside availability_details (string or ObjectId)
+        # Query by shift_id inside availability_details (string or ObjectId)
         group_su_docs = await db["shifts_group_users"].find(
             {
                 "availability_details": {
