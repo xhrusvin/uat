@@ -922,16 +922,11 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId, group_id=None) -> dic
     if group_id is not None:
         _gid = ObjectId(str(group_id)) if not isinstance(group_id, ObjectId) else group_id
 
+                # Pull ALL group users for this group — filter in Python to handle
+        # shift_id stored as string OR ObjectId in availability_details
         group_su_docs = await db["shifts_group_users"].find(
-            {
-                "group_id": _gid,
-                "availability_details": {
-                    "$elemMatch": {
-                        "shift_id": {"$in": [shift_id_str, shift_oid]},
-                    }
-                },
-            },
-            {"user_id": 1, "availability_details": 1, "channel": 1},
+            {"group_id": _gid},
+            {"user_id": 1, "availability_details": 1, "availability": 1, "channel": 1},
         ).to_list(length=2000)
 
         # Collect existing shifts_users user_ids to avoid double-counting
@@ -943,14 +938,15 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId, group_id=None) -> dic
             if str(gsu.get("user_id", "")) in existing_su_user_ids:
                 continue
 
-            # Resolve per-shift availability from availability_details first
+            # Resolve per-shift availability from availability_details
+            # shift_id may be stored as string or ObjectId — compare via str()
             avail_val = None
             for ad in (gsu.get("availability_details") or []):
                 if str(ad.get("shift_id", "")) == shift_id_str:
                     avail_val = ad.get("availability")
                     break
 
-            # Fallback to top-level availability
+            # Fallback to top-level availability if no matching detail entry
             if avail_val is None:
                 avail_val = gsu.get("availability")
 
