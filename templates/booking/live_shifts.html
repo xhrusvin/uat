@@ -84,6 +84,15 @@
     padding-top: 0.75rem;
     margin-top: 0.25rem;
 }
+
+/* ── Staff assigned cell ─────────────────────────────────────── */
+.staff-assigned {
+    font-size: 0.8rem;
+    color: #343a40;
+    max-width: 180px;
+    white-space: normal;
+    line-height: 1.35;
+}
 </style>
 {% endblock %}
 
@@ -290,6 +299,7 @@
                             <th class="text-center">Premium</th>
                             <th class="text-center">Availability</th>
                             <th class="text-nowrap">O. Date &amp; Time</th>
+                            <th class="text-nowrap">Staff Assigned</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -343,7 +353,7 @@
                                         {% endif %}
                                     </td>
 
-                                    {# Location — only first row #}
+                                    {# Location — only first row; falls back to client_name #}
                                     <td>
                                         {% if is_first %}{{ s.location or '—' }}{% endif %}
                                     </td>
@@ -405,13 +415,26 @@
                                         {% endif %}
                                     </td>
 
+                                    {# Staff Assigned — only first row #}
+                                    <td>
+                                        {% if is_first %}
+                                            {% if s.assigned_staff_display %}
+                                                <span class="staff-assigned">
+                                                    <i class="bi bi-person-fill text-secondary me-1"></i>{{ s.assigned_staff_display }}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">—</span>
+                                            {% endif %}
+                                        {% endif %}
+                                    </td>
+
                                 </tr>
                             {% endfor %}{# slots #}
                         {% endfor %}{# shifts #}
 
                     {% else %}
                         <tr>
-                            <td colspan="10" class="text-center py-5">
+                            <td colspan="11" class="text-center py-5">
                                 <i class="bi bi-calendar-x display-1 text-muted opacity-25 d-block mb-3"></i>
                                 <h5 class="text-muted">No shifts found</h5>
                                 {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter %}

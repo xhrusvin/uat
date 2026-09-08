@@ -213,6 +213,8 @@ def _build_pipeline(
             "updated_at": 1,
             "has_availability": 1,
             "outreach_date": 1,
+            "client_name": 1,
+            "assigned_staff": 1,
         }
     })
 
@@ -258,6 +260,21 @@ def _format_shifts(shifts_list: list) -> list:
                 s["outreach_date_formatted"] = raw_od[:16]
         else:
             s["outreach_date_formatted"] = None
+
+        # ── Location fallback → client_name ───────────────────────────
+        if not s.get("location"):
+            s["location"] = s.get("client_name") or None
+
+        # ── Assigned staff normalisation ───────────────────────────────
+        raw_staff = s.get("assigned_staff")
+        if isinstance(raw_staff, list) and raw_staff:
+            s["assigned_staff_display"] = ", ".join(
+                str(x).strip() for x in raw_staff if x
+            ) or None
+        elif isinstance(raw_staff, str) and raw_staff.strip():
+            s["assigned_staff_display"] = raw_staff.strip()
+        else:
+            s["assigned_staff_display"] = None
 
         # ── Slots normalisation ────────────────────────────────────────
         slots_out = []
@@ -461,6 +478,7 @@ def live_shifts_export_csv():
         "Premium",
         "Availability",
         "Outreach Date",
+        "Staff Assigned",
     ])
 
     for s in shifts_list:
@@ -489,6 +507,7 @@ def live_shifts_export_csv():
                 "Yes" if s.get("is_premium") else "No",
                 "Yes" if s.get("has_availability") else "No",
                 s.get("outreach_date_formatted") or "",
+                s.get("assigned_staff_display") or "",
             ])
 
     # ── Build filename with filter context ────────────────────────────
