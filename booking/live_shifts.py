@@ -53,13 +53,15 @@ def _build_pipeline(
     """
     Aggregation pipeline:
       1.  Optional shift-date range pre-filter (shift_date_from / shift_date_to)
-      2.  $lookup → shifts_users          (availability primary)
-      3.  $lookup → shifts_group_users    (availability fallback via availability_details[])
-      4.  has_availability derived
-      5.  outreach_date sourced directly from shifts.last_outreach_date
-      6.  Optional outreach_date range post-filter (outreach_date_from / outreach_date_to)
-      7.  Optional text / status / availability post-filter
-      8.  $project
+      2.  $lookup → shifts_users          (availability primary + user_ids)
+      3.  $lookup → shifts_group_users    (availability fallback + user_ids)
+      4.  $setUnion of user_ids from both sources
+      5.  $lookup → users                 (resolve names for available staff)
+      6.  has_availability + available_staff_names derived
+      7.  outreach_date sourced directly from shifts.last_outreach_date
+      8.  Optional outreach_date range post-filter (outreach_date_from / outreach_date_to)
+      9.  Optional text / status / availability post-filter
+      10. $project
     """
     # ── Shift date range pre-filter ────────────────────────────────────
     base_match = {}
@@ -84,6 +86,7 @@ def _build_pipeline(
         # ════════════════════════════════════════════════════════════════
         # AVAILABILITY — PRIMARY
         # shifts_users.shift_id (ObjectId) == shifts._id, availability == 1
+        # Also collect user_ids for the name lookup.
         # ════════════════════════════════════════════════════════════════
         {
             "$lookup": {
@@ -96,8 +99,7 @@ def _build_pipeline(
                             "availability": 1
                         }
                     },
-                    {"$limit": 1},
-                    {"$project": {"_id": 1}}
+                    {"$project": {"_id": 0, "user_id": 1}}
                 ],
                 "as": "_avail_primary"
             }
@@ -107,6 +109,7 @@ def _build_pipeline(
         # AVAILABILITY — FALLBACK
         # shifts_group_users.availability_details[].shift_id (string) == str(shifts._id)
         # AND availability_details[].availability == 1
+        # Also collect user_ids for the name lookup.
         # ════════════════════════════════════════════════════════════════
         {
             "$lookup": {
@@ -136,27 +139,71 @@ def _build_pipeline(
                             }
                         }
                     },
-                    {"$limit": 1},
-                    {"$project": {"_id": 1}}
+                    {"$project": {"_id": 0, "user_id": 1}}
                 ],
                 "as": "_avail_fallback"
             }
         },
 
-        # Derive has_availability
+        # Merge primary + fallback user_ids (deduplicated via $setUnion)
+        {
+            "$addFields": {
+                "_avail_user_ids": {
+                    "$setUnion": [
+                        "$_avail_primary.user_id",
+                        "$_avail_fallback.user_id",
+                    ]
+                }
+            }
+        },
+
+        # ════════════════════════════════════════════════════════════════
+        # AVAILABLE STAFF NAMES
+        # Join users on _avail_user_ids to get first_name + last_name
+        # ════════════════════════════════════════════════════════════════
+        {
+            "$lookup": {
+                "from": "users",
+                "let":  {"uids": "$_avail_user_ids"},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {"$in": ["$_id", {"$ifNull": ["$$uids", []]}]}
+                        }
+                    },
+                    {
+                        "$project": {
+                            "_id": 0,
+                            "full_name": {
+                                "$trim": {
+                                    "input": {
+                                        "$concat": [
+                                            {"$ifNull": ["$first_name", ""]},
+                                            " ",
+                                            {"$ifNull": ["$last_name",  ""]}
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+                "as": "_avail_users"
+            }
+        },
+
+        # Derive has_availability and available_staff_names
         {
             "$addFields": {
                 "has_availability": {
-                    "$or": [
-                        {"$gt": [{"$size": "$_avail_primary"},  0]},
-                        {"$gt": [{"$size": "$_avail_fallback"}, 0]}
-                    ]
+                    "$gt": [{"$size": "$_avail_user_ids"}, 0]
                 },
+                "available_staff_names": "$_avail_users.full_name",
                 # Alias last_outreach_date → outreach_date for uniform downstream handling
                 "outreach_date": "$last_outreach_date",
             }
         },
-        {"$unset": ["_avail_primary", "_avail_fallback"]},
+        {"$unset": ["_avail_primary", "_avail_fallback", "_avail_user_ids", "_avail_users"]},
     ]
 
     # ── Outreach date range filter (applied after outreach_date is derived) ──
@@ -217,6 +264,7 @@ def _build_pipeline(
             "created_at": 1,
             "updated_at": 1,
             "has_availability": 1,
+            "available_staff_names": 1,
             "outreach_date": 1,
             "client_name": 1,
             "assigned_staff": 1,
@@ -265,6 +313,11 @@ def _format_shifts(shifts_list: list) -> list:
                 s["outreach_date_formatted"] = raw_od[:16]
         else:
             s["outreach_date_formatted"] = None
+
+        # ── Available staff names ──────────────────────────────────────
+        raw_names = s.get("available_staff_names") or []
+        # Filter blanks that can arise from missing first/last name
+        s["available_staff_list"] = [n for n in raw_names if n and n.strip()]
 
         # ── Location fallback → client_name ───────────────────────────
         if not s.get("location"):
@@ -495,6 +548,7 @@ def live_shifts_export_csv():
         "Status",
         "Premium",
         "Availability",
+        "Available Staff",
         "Outreach Date",
         "Staff Assigned",
     ])
@@ -524,6 +578,7 @@ def live_shifts_export_csv():
                 s.get("status")          or "",
                 "Yes" if s.get("is_premium") else "No",
                 "Yes" if s.get("has_availability") else "No",
+                ", ".join(s.get("available_staff_list") or []),
                 s.get("outreach_date_formatted") or "",
                 s.get("assigned_staff_display") or "",
             ])
