@@ -728,9 +728,10 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         s["client_phone"]      = cl.get("phone")             if cl else None
         s["client_preference"] = cl.get("client_preference") or []  if cl else []
 
-        # Staff counts
+                # Staff counts
         shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-        s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l)
+        _group_id_for_counts = group_shift_map.get(str(shift_oid_l))
+        s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l, group_id=_group_id_for_counts)
 
         # Outreach info from map
         o_doc = shift_outreach_map.get(str(shift_oid_l), {})
@@ -830,7 +831,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             s["shift_preferences"]= doc.get("shift_preferences") or []
 
             shift_oid_g = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-            s["staff_counts"]           = await _get_staff_counts_light(db, shift_oid_g)
+            s["staff_counts"]           = await _get_staff_counts_light(db, shift_oid_g, group_id=grp["_id"])
             s["outreach_id"]            = str(grp_outreach["_id"])
             s["group_outreach_id"]      = str(grp_outreach["_id"])
             s["group_id"]               = str(grp["_id"])
@@ -884,8 +885,14 @@ class ShiftDetailRequest(BaseModel):
 
 
 
-async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
-    """Lightweight counts for list endpoint."""
+async def _get_staff_counts_light(db, shift_oid: ObjectId, group_id=None) -> dict:
+    """
+    Lightweight counts for list endpoint.
+    Falls back to shifts_group_users.availability_details when the shift
+    belongs to a group outreach (pass group_id as ObjectId or str).
+    """
+    shift_id_str = str(shift_oid)
+
     available = await db["shifts_users"].count_documents({
         "shift_id":     shift_oid,
         "availability": 1,
@@ -910,16 +917,70 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId) -> dict:
     })
     shift_doc_req = await db["shifts"].find_one({"_id": shift_oid}, {"requested_staff_list": 1})
     requested = len(shift_doc_req.get("requested_staff_list") or []) if shift_doc_req else 0
+
+    # ── shifts_group_users fallback ───────────────────────────────────────────
+    if group_id is not None:
+        _gid = ObjectId(str(group_id)) if not isinstance(group_id, ObjectId) else group_id
+
+        group_su_docs = await db["shifts_group_users"].find(
+            {
+                "group_id": _gid,
+                "availability_details": {
+                    "$elemMatch": {
+                        "shift_id": {"$in": [shift_id_str, shift_oid]},
+                    }
+                },
+            },
+            {"user_id": 1, "availability_details": 1, "channel": 1},
+        ).to_list(length=2000)
+
+        # Collect existing shifts_users user_ids to avoid double-counting
+        existing_su_user_ids = set()
+        async for su in db["shifts_users"].find({"shift_id": shift_oid}, {"user_id": 1}):
+            existing_su_user_ids.add(str(su.get("user_id", "")))
+
+        for gsu in group_su_docs:
+            if str(gsu.get("user_id", "")) in existing_su_user_ids:
+                continue
+
+            # Resolve per-shift availability from availability_details first
+            avail_val = None
+            for ad in (gsu.get("availability_details") or []):
+                if str(ad.get("shift_id", "")) == shift_id_str:
+                    avail_val = ad.get("availability")
+                    break
+
+            # Fallback to top-level availability
+            if avail_val is None:
+                avail_val = gsu.get("availability")
+
+            if avail_val is None:
+                continue
+
+            channel = gsu.get("channel") or "Phone"
+
+            if avail_val == 1:
+                available += 1
+                with_outreach += 1
+            elif avail_val in (0, 3, 4):
+                if channel in ("Email", "WhatsApp", "SMS"):
+                    if avail_val == 0:
+                        declined += 1
+                else:
+                    declined += 1
+            elif avail_val == 6:
+                no_reply += 1
+
     return {
-        "available":     available,
-        "requested":     requested,
+        "available":      available,
+        "requested":      requested,
         "requested_flag": 1 if requested > 0 else 0,
-        "with_outreach": with_outreach,
-        "declined":      declined,
-        "no_reply":      no_reply,
-        "pending":       pending,
-        "display":       f"{available} Available · {declined} Declined · {no_reply} No reply",
-        "has_available": 1 if available > 0 else 0,
+        "with_outreach":  with_outreach,
+        "declined":       declined,
+        "no_reply":       no_reply,
+        "pending":        pending,
+        "display":        f"{available} Available · {declined} Declined · {no_reply} No reply",
+        "has_available":  1 if available > 0 else 0,
     }
 
 

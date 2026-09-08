@@ -596,124 +596,94 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
             status = level1_doc.get("status", "invalid")
             return [f"level1_doc_{status}"]
 
-    target_date   = target_shift.get("date")
-    target_start  = target_shift.get("start_time", "")
-    target_end    = target_shift.get("end_time", "")
-    target_type   = _shift_type(target_shift.get("shift_timing") or target_shift.get("shift_type") or "")
+        # ── Rule 6 only: same-day gap < 2 hours ──────────────────────────────────
+    target_date  = target_shift.get("date")
+    target_start = target_shift.get("start_time", "")
+    target_end   = target_shift.get("end_time", "")
 
-    # Build ±10 day date window around target shift date
-    date_filter: dict = {}
-    if target_date:
-        try:
-            from datetime import timedelta
-            if hasattr(target_date, "date"):
-                td = target_date
-            else:
-                from datetime import datetime as _dt
-                td = _dt.strptime(str(target_date)[:10], "%Y-%m-%d")
-            date_filter = {
-                "date": {
-                    "$gte": td - timedelta(days=10),
-                    "$lte": td + timedelta(days=10),
-                }
+    if not target_date or not target_start or not target_end:
+        return tags
+
+    # ±1 day window — catches overnight shifts whose date field is the
+    # previous calendar day, while excluding all unrelated days
+    try:
+        from datetime import timedelta
+        if hasattr(target_date, "date"):
+            td = target_date
+        else:
+            from datetime import datetime as _dt
+            td = _dt.strptime(str(target_date)[:10], "%Y-%m-%d")
+
+        date_filter = {
+            "date": {
+                "$gte": td - timedelta(days=1),
+                "$lte": td + timedelta(days=1),
             }
-        except Exception:
-            pass  # fallback: no date filter
+        }
+    except Exception:
+        return tags
 
-    # Find shifts where staff_email matches within ±10 days (date-indexed query)
     existing_shifts_raw = await db["shifts"].find(
         {"staff_email": user_email, **date_filter},
-        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
-         "shift_type": 1, "slots": 1, "upstream_status": 1, "is_premium": 1}
+        {"date": 1, "start_time": 1, "end_time": 1, "slots": 1, "upstream_status": 1}
     ).to_list(length=200)
 
-    # Only consider Upcoming shifts for exclusion checks
-    existing_shifts = [s for s in existing_shifts_raw if s.get("upstream_status") == "Upcoming"]
-
-    tags = []
+    # Only Upcoming shifts count
+    existing_shifts = [
+        s for s in existing_shifts_raw
+        if s.get("upstream_status") == "Upcoming"
+    ]
 
     for es in existing_shifts:
-        es_date   = es.get("date")
-        es_slots  = es.get("slots") or []
+        es_slots = es.get("slots") or []
 
-        # Use slots if present, else top-level fields
+        # Build time_ranges from slots or top-level fields
         time_ranges = []
         if es_slots:
             for sl in es_slots:
-                sl_date = sl.get("date")
                 time_ranges.append({
-                    "date":   sl_date,
-                    "start":  sl.get("start_time", ""),
-                    "end":    sl.get("end_time", ""),
-                    "type":   _shift_type(sl.get("shift_type") or ""),
+                    "date":  sl.get("date"),
+                    "start": sl.get("start_time", ""),
+                    "end":   sl.get("end_time", ""),
                 })
         else:
             time_ranges.append({
-                "date":  es_date,
+                "date":  es.get("date"),
                 "start": es.get("start_time", ""),
                 "end":   es.get("end_time", ""),
-                "type":  _shift_type(es.get("shift_timing") or es.get("shift_type") or ""),
             })
 
         for tr in time_ranges:
             tr_date  = tr["date"]
             tr_start = tr["start"]
             tr_end   = tr["end"]
-            tr_type  = tr["type"]
 
-            # Normalize dates for comparison
-            same_day = False
-            if tr_date and target_date:
-                try:
-                    td = tr_date.date() if hasattr(tr_date, "date") else None
-                    tgt = target_date.date() if hasattr(target_date, "date") else None
-                    same_day = td and tgt and td == tgt
-                except Exception:
-                    pass
+            # ── MUST be the same calendar day ────────────────────────────────
+            if not tr_date or not target_date:
+                continue
+            try:
+                tr_day  = tr_date.date() if hasattr(tr_date, "date") else None
+                tgt_day = target_date.date() if hasattr(target_date, "date") else None
+                if not tr_day or not tgt_day or tr_day != tgt_day:
+                    continue          # different day → skip entirely
+            except Exception:
+                continue
 
-            if same_day:
-                # Rule 1 & 2: Time overlap
-                if _times_overlap(target_start, target_end, tr_start, tr_end):
-                    if "overlap" not in tags:
-                        tags.append("overlap")
+            if not tr_start or not tr_end:
+                continue
 
-                # Rule 4: Duplicate shift type same day
-                if target_type and tr_type and target_type == tr_type:
-                    tag = f"duplicate_{target_type}"
-                    if tag not in tags:
-                        tags.append(tag)
+            # gap1: existing ends → target starts
+            #   e.g. existing 10:00-14:00, target 15:00-20:00 → gap = 60 min ✅
+            gap1 = _gap_minutes(tr_end, target_start)
 
-                # Rule 3: Consecutive day/night on same day
-                if target_type and tr_type and target_type != tr_type:
-                    if "consecutive_day_night" not in tags:
-                        tags.append("consecutive_day_night")
+            # gap2: target ends → existing starts
+            #   e.g. target 06:00-08:00, existing 09:30-14:00 → gap = 90 min ✅
+            gap2 = _gap_minutes(target_end, tr_start)
 
-                # Rule 5: Exceeds 16 consecutive hours
-                if tr_start and tr_end and target_start and target_end:
-                    t1s = _parse_time(target_start)
-                    t1e = _parse_time(target_end)
-                    t2s = _parse_time(tr_start)
-                    t2e = _parse_time(tr_end)
-                    if None not in (t1s, t1e, t2s, t2e):
-                        combined = abs(max(t1e, t2e) - min(t1s, t2s))
-                        if combined > 16 * 60:
-                            if "exceeds_16h" not in tags:
-                                tags.append("exceeds_16h")
-
-            # Rule 6: Minimum gap
-            if tr_end and target_start:
-                try:
-                    gap = _gap_minutes(tr_end, target_start)
-                    if 0 < gap < 120:
-                        if "under_6h_gap" not in tags:
-                            tags.append("under_6h_gap")
-                    if target_end and tr_start:
-                        gap = _gap_minutes(target_end, tr_start)
-                        if 0 < gap < 120:
-                            if "under_6h_gap" not in tags:
-                                tags.append("under_6h_gap")
-                except Exception:
-                    pass
+            if (0 < gap1 < 120) or (0 < gap2 < 120):
+                if "under_6h_gap" not in tags:
+                    tags.append("under_6h_gap")
+                return tags   # no need to check further
 
     return tags
 
