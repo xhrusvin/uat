@@ -8,8 +8,10 @@ Supports:
   • Status filter
   • Pagination (10 per page)
   • JSON endpoint for AJAX refresh (/booking/live-shifts/data)
-  • Availability column — green tick if any shifts_users row for the shift
-    has availability == 1
+  • Availability column — green tick if:
+      PRIMARY  : any shifts_users row for the shift has availability == 1, OR
+      FALLBACK : any shifts_group_users.availability_details[] element has
+                 shift_id == str(shift._id) AND availability == 1
 """
 
 from datetime import datetime
@@ -41,8 +43,11 @@ def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
     """
     Aggregation pipeline:
       1. Optional date pre-filter
-      2. $lookup → shifts_users to detect any availability == 1 entry
-      3. Optional text / status post-filter
+      2. $lookup → shifts_users   (primary)   availability == 1
+      3. $lookup → shifts_group_users (fallback) availability_details[].availability == 1
+                   where availability_details[].shift_id (string) == shifts._id (string)
+      4. has_availability = primary hit  OR  fallback hit
+      5. Optional text / status post-filter
     """
     base_match = {}
     if date_filter_str:
@@ -54,35 +59,80 @@ def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
     pipeline = [
         {"$match": base_match},
 
-        # ── Join shifts_users on shift_id == _id ──────────────────────
-        # shifts_users.shift_id is stored as ObjectId so we match directly.
+        # ── PRIMARY: shifts_users.shift_id (ObjectId) == shifts._id ───
+        # Stop at the first document that has availability == 1.
         {
             "$lookup": {
                 "from": "shifts_users",
-                "let": {"sid": "$_id"},
+                "let":  {"sid": "$_id"},
                 "pipeline": [
                     {
                         "$match": {
                             "$expr": {"$eq": ["$shift_id", "$$sid"]},
-                            "availability": 1          # only interested in available rows
+                            "availability": 1
                         }
                     },
-                    {"$limit": 1},                     # stop at first hit — we only need existence
+                    {"$limit": 1},
                     {"$project": {"_id": 1}}
                 ],
-                "as": "available_users"
+                "as": "_avail_primary"
             }
         },
 
-        # ── Derive boolean: true when at least one available user found ─
+        # ── FALLBACK: shifts_group_users.availability_details[] ────────
+        # availability_details is an array of subdocuments:
+        #   { shift_id: "<string>", availability: 1, responded_at: "…" }
+        # We match documents that have at least one element where:
+        #   element.shift_id  == string(_id)   AND   element.availability == 1
+        {
+            "$lookup": {
+                "from": "shifts_group_users",
+                "let":  {"sid_str": {"$toString": "$_id"}},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$gt": [
+                                    {
+                                        "$size": {
+                                            "$filter": {
+                                                "input": {
+                                                    "$ifNull": ["$availability_details", []]
+                                                },
+                                                "as": "d",
+                                                "cond": {
+                                                    "$and": [
+                                                        {"$eq": ["$$d.shift_id",    "$$sid_str"]},
+                                                        {"$eq": ["$$d.availability", 1]}
+                                                    ]
+                                                }
+                                            }
+                                        }
+                                    },
+                                    0
+                                ]
+                            }
+                        }
+                    },
+                    {"$limit": 1},
+                    {"$project": {"_id": 1}}
+                ],
+                "as": "_avail_fallback"
+            }
+        },
+
+        # ── Combine: true if either lookup returned a hit ──────────────
         {
             "$addFields": {
                 "has_availability": {
-                    "$gt": [{"$size": "$available_users"}, 0]
+                    "$or": [
+                        {"$gt": [{"$size": "$_avail_primary"},  0]},
+                        {"$gt": [{"$size": "$_avail_fallback"}, 0]}
+                    ]
                 }
             }
         },
-        {"$unset": "available_users"},
+        {"$unset": ["_avail_primary", "_avail_fallback"]},
     ]
 
     # ── Text search (no client lookup needed — client column removed) ──
