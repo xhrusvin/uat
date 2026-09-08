@@ -243,7 +243,7 @@ def _serialize_shift(shift, distance_km, client_cache, score=None, score_reasons
         total_pay_rate = round(duration * hourly_rate, 2)
 
     d = {
-        "id":                 str(shift.get("_id")),
+        "id":                 shift.get("shift_id") or str(shift.get("_id")),
         "client":             shift.get("client_name"),
         "check_in_distance":  _check_in_distance(shift, client_cache),
         "date":               _fmt_date(shift.get("date")),
