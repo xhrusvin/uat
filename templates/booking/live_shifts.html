@@ -12,10 +12,6 @@
 .badge-cancelled       { background-color: #f8d7da; color: #842029; }
 
 /* ── Slot sub-rows ───────────────────────────────────────────── */
-.slot-row {
-    background-color: #f8f9ff !important;
-    border-left: 3px solid #a0c4ff;
-}
 .shift-group-first {
     border-top: 2px solid #a0c4ff !important;
     background-color: #e8efff !important;
@@ -36,6 +32,18 @@
     background: #e9ecef;
     color: #495057;
     white-space: nowrap;
+}
+
+/* ── Availability tick ───────────────────────────────────────── */
+.avail-tick {
+    font-size: 1.25rem;
+    line-height: 1;
+    color: #198754;          /* Bootstrap success green */
+    filter: drop-shadow(0 0 3px rgba(25,135,84,.35));
+}
+.avail-none {
+    color: #ced4da;
+    font-size: 1rem;
 }
 
 /* ── Auto-refresh indicator ──────────────────────────────────── */
@@ -67,7 +75,7 @@
 {% block content %}
 <div class="container-fluid px-4 py-4">
 
-    {# ── Page header ────────────────────────────────────────────── #}
+    {# ── Page header ─────────────────────────────────────────────── #}
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <div>
             <h2 class="mb-0 fw-bold text-primary">
@@ -79,7 +87,8 @@
             </p>
         </div>
         <div class="d-flex align-items-center gap-3 flex-wrap">
-            <span class="badge bg-primary fs-6 px-3 py-2" id="total-badge">
+            <span class="badge bg-primary fs-6 px-3 py-2" id="total-badge"
+                  data-total="{{ total }}">
                 {{ total }} shift{{ 's' if total != 1 }}
             </span>
             <a href="{{ url_for('booking.live_shifts') }}" class="btn btn-outline-secondary btn-sm">
@@ -88,11 +97,10 @@
         </div>
     </div>
 
-    {# ── Filter bar ─────────────────────────────────────────────── #}
+    {# ── Filter bar ──────────────────────────────────────────────── #}
     <div class="filter-card">
         <form method="get" id="filter-form" class="row g-3 align-items-end">
 
-            {# Text search #}
             <div class="col-12 col-md-4">
                 <label class="form-label small fw-semibold text-muted mb-1">Search</label>
                 <div class="input-group">
@@ -100,12 +108,11 @@
                         <i class="bi bi-search text-muted"></i>
                     </span>
                     <input type="text" name="search" class="form-control border-start-0"
-                           placeholder="Name, client, location, shift ID…"
+                           placeholder="Name, location, shift ID…"
                            value="{{ search }}">
                 </div>
             </div>
 
-            {# Date filter #}
             <div class="col-12 col-md-3">
                 <label class="form-label small fw-semibold text-muted mb-1">Date</label>
                 <div class="input-group">
@@ -119,7 +126,6 @@
                 </div>
             </div>
 
-            {# Status filter #}
             <div class="col-12 col-md-3">
                 <label class="form-label small fw-semibold text-muted mb-1">Status</label>
                 <select name="status_filter" class="form-select">
@@ -132,7 +138,6 @@
                 </select>
             </div>
 
-            {# Buttons #}
             <div class="col-12 col-md-2 d-flex gap-2">
                 <button type="submit" class="btn btn-primary flex-grow-1">
                     <i class="bi bi-funnel me-1"></i>Filter
@@ -148,8 +153,8 @@
         </form>
     </div>
 
-    {# ── Status summary pills ────────────────────────────────────── #}
-    <div class="d-flex flex-wrap gap-2 mb-4" id="status-summary">
+    {# ── Status quick-filter pills ────────────────────────────────── #}
+    <div class="d-flex flex-wrap gap-2 mb-4">
         {%- set status_map = {
             'To be assigned': ('badge-to-be-assigned', '🔵'),
             'Assigned':        ('badge-assigned',        '🟢'),
@@ -157,59 +162,52 @@
         } -%}
         {% for label, (cls, icon) in status_map.items() %}
         <a href="{{ url_for('booking.live_shifts',
-                            search=search,
-                            date_filter=date_filter,
+                            search=search, date_filter=date_filter,
                             status_filter=label) }}"
-           class="badge {{ cls }} text-decoration-none px-3 py-2 fs-6
-                  {% if status_filter == label %}ring-2{% endif %}"
+           class="badge {{ cls }} text-decoration-none px-3 py-2 fs-6"
            style="{% if status_filter == label %}outline: 2px solid currentColor; outline-offset: 2px;{% endif %}">
             {{ icon }} {{ label }}
         </a>
         {% endfor %}
         {% if status_filter %}
-        <a href="{{ url_for('booking.live_shifts',
-                            search=search,
-                            date_filter=date_filter) }}"
+        <a href="{{ url_for('booking.live_shifts', search=search, date_filter=date_filter) }}"
            class="badge bg-light text-dark text-decoration-none px-3 py-2 fs-6 border">
             Show all
         </a>
         {% endif %}
     </div>
 
-    {# ── Table ──────────────────────────────────────────────────── #}
+    {# ── Table ───────────────────────────────────────────────────── #}
     <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
         <div class="card-body p-0">
-            <div class="table-responsive" id="shifts-table-wrapper">
+            <div class="table-responsive">
                 <table class="table table-hover mb-0 align-middle" id="live-shifts-table">
                     <thead class="text-white"
                            style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
                         <tr>
                             <th class="ps-4">Shift ID</th>
-                            <th>Unit Name</th>
-                            <th>Client</th>
                             <th>Date</th>
                             <th>Start</th>
                             <th>End</th>
                             <th>Type</th>
                             <th>Location</th>
                             <th>Status</th>
-                            <th class="text-center">Active</th>
                             <th class="text-center">Premium</th>
+                            <th class="text-center">Availability</th>
                         </tr>
                     </thead>
                     <tbody>
 
                     {% if shifts %}
-                        {% set ns = namespace(prev_id='') %}
                         {% for s in shifts %}
-                            {# Decide which rows to show: prefer slots array, else single row #}
+                            {# Use slots array if present, else synthesise one row from top-level fields #}
                             {% set slots_list = s.slots_normalised
                                if s.slots_normalised is defined and s.slots_normalised | length > 0
-                               else [{'shift_xn_id': s.shift_xn_id,
+                               else [{'shift_xn_id':  s.shift_xn_id,
                                       'date_display': s.date_formatted,
-                                      'start_time': s.start_time_formatted,
-                                      'end_time': s.end_time_formatted,
-                                      'shift_type': ''}] %}
+                                      'start_time':   s.start_time_formatted,
+                                      'end_time':     s.end_time_formatted,
+                                      'shift_type':   ''}] %}
 
                             {% for slot in slots_list %}
                                 {% set is_first = loop.first %}
@@ -218,18 +216,6 @@
                                     {# Shift ID #}
                                     <td class="ps-4 font-monospace small">
                                         {{ slot.shift_xn_id or '—' }}
-                                    </td>
-
-                                    {# Unit Name — only first row #}
-                                    <td class="fw-semibold">
-                                        {% if is_first %}{{ s.name or '—' }}{% endif %}
-                                    </td>
-
-                                    {# Client — only first row #}
-                                    <td>
-                                        {% if is_first %}
-                                            {{ s.client_name or '—' }}
-                                        {% endif %}
                                     </td>
 
                                     {# Date #}
@@ -263,9 +249,7 @@
 
                                     {# Location — only first row #}
                                     <td>
-                                        {% if is_first %}
-                                            {{ s.location or '—' }}
-                                        {% endif %}
+                                        {% if is_first %}{{ s.location or '—' }}{% endif %}
                                     </td>
 
                                     {# Status — only first row #}
@@ -285,38 +269,39 @@
                                         {% endif %}
                                     </td>
 
-                                    {# Active — only first row #}
-                                    <td class="text-center">
-                                        {% if is_first %}
-                                        {% if s.is_active %}
-                                            <span class="badge bg-success rounded-pill">Active</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary rounded-pill">Inactive</span>
-                                        {% endif %}
-                                        {% endif %}
-                                    </td>
-
                                     {# Premium — only first row #}
                                     <td class="text-center">
                                         {% if is_first %}
-                                        {% if s.is_premium %}
-                                            <span class="badge bg-warning text-dark rounded-pill">
-                                                ⭐ Premium
-                                            </span>
-                                        {% else %}
-                                            <span class="text-muted">—</span>
+                                            {% if s.is_premium %}
+                                                <span class="badge bg-warning text-dark rounded-pill">
+                                                    ⭐ Premium
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">—</span>
+                                            {% endif %}
                                         {% endif %}
+                                    </td>
+
+                                    {# Availability — only first row; green tick if any user available #}
+                                    <td class="text-center">
+                                        {% if is_first %}
+                                            {% if s.has_availability %}
+                                                <i class="bi bi-check-circle-fill avail-tick"
+                                                   title="At least one assigned staff member is available"></i>
+                                            {% else %}
+                                                <i class="bi bi-dash-circle avail-none"
+                                                   title="No staff confirmed available yet"></i>
+                                            {% endif %}
                                         {% endif %}
                                     </td>
 
                                 </tr>
-                            {% endfor %} {# slots #}
-                        {% endfor %} {# shifts #}
+                            {% endfor %}{# slots #}
+                        {% endfor %}{# shifts #}
 
                     {% else %}
-                        {# Empty state #}
                         <tr>
-                            <td colspan="11" class="text-center py-5">
+                            <td colspan="9" class="text-center py-5">
                                 <i class="bi bi-calendar-x display-1 text-muted opacity-25 d-block mb-3"></i>
                                 <h5 class="text-muted">No shifts found</h5>
                                 {% if search or date_filter or status_filter %}
@@ -340,7 +325,6 @@
     <nav class="mt-4" aria-label="Shifts pagination">
         <ul class="pagination justify-content-center pagination-lg">
 
-            {# Previous #}
             <li class="page-item {% if page <= 1 %}disabled{% endif %}">
                 <a class="page-link" href="{{ url_for('booking.live_shifts',
                     page=page-1, search=search,
@@ -349,7 +333,6 @@
                 </a>
             </li>
 
-            {# Page numbers #}
             {% set start_p = [page - 2, 1] | max %}
             {% set end_p   = [start_p + 4, pages] | min %}
 
@@ -368,9 +351,7 @@
             <li class="page-item {% if p == page %}active{% endif %}">
                 <a class="page-link" href="{{ url_for('booking.live_shifts',
                     page=p, search=search,
-                    date_filter=date_filter, status_filter=status_filter) }}">
-                    {{ p }}
-                </a>
+                    date_filter=date_filter, status_filter=status_filter) }}">{{ p }}</a>
             </li>
             {% endfor %}
 
@@ -381,13 +362,10 @@
             <li class="page-item">
                 <a class="page-link" href="{{ url_for('booking.live_shifts',
                     page=pages, search=search,
-                    date_filter=date_filter, status_filter=status_filter) }}">
-                    {{ pages }}
-                </a>
+                    date_filter=date_filter, status_filter=status_filter) }}">{{ pages }}</a>
             </li>
             {% endif %}
 
-            {# Next #}
             <li class="page-item {% if page >= pages %}disabled{% endif %}">
                 <a class="page-link" href="{{ url_for('booking.live_shifts',
                     page=page+1, search=search,
@@ -426,12 +404,8 @@ flatpickr("#date_filter_input", {
 (function () {
     const INTERVAL_MS = 60_000;
 
-    function currentParams() {
-        return new URLSearchParams(window.location.search);
-    }
-
     async function refresh() {
-        const params = currentParams();
+        const params = new URLSearchParams(window.location.search);
         const url    = "{{ url_for('booking.live_shifts_data') }}?" + params.toString();
 
         try {
@@ -439,30 +413,21 @@ flatpickr("#date_filter_input", {
             const data = await res.json();
             if (!data.success) return;
 
-            // Update total badge
             const badge = document.getElementById("total-badge");
-            if (badge) {
-                badge.textContent =
-                    data.total + (data.total === 1 ? " shift" : " shifts");
-            }
+            if (!badge) return;
 
-            // If data changed (different total), reload the whole page
-            // so Jinja re-renders the table cleanly — avoids duplicating
-            // complex slot/group rendering logic in JS.
-            const currentTotal = parseInt(badge?.dataset.total ?? "-1");
-            if (currentTotal !== -1 && currentTotal !== data.total) {
+            const prevTotal = parseInt(badge.dataset.total ?? "-1");
+            badge.textContent = data.total + (data.total === 1 ? " shift" : " shifts");
+            badge.dataset.total = data.total;
+
+            // Full reload only when the count changes (new/deleted shifts)
+            if (prevTotal !== -1 && prevTotal !== data.total) {
                 window.location.reload();
             }
-
-            badge?.setAttribute("data-total", data.total);
         } catch (err) {
             console.warn("[live_shifts] Auto-refresh failed:", err);
         }
     }
-
-    // Store current total for change detection
-    const badge = document.getElementById("total-badge");
-    if (badge) badge.dataset.total = "{{ total }}";
 
     setInterval(refresh, INTERVAL_MS);
 })();
