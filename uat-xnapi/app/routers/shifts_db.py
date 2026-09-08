@@ -924,8 +924,15 @@ async def _get_staff_counts_light(db, shift_oid: ObjectId, group_id=None) -> dic
 
                 # Pull ALL group users for this group — filter in Python to handle
         # shift_id stored as string OR ObjectId in availability_details
+                # Query by shift_id inside availability_details (string or ObjectId)
         group_su_docs = await db["shifts_group_users"].find(
-            {"group_id": _gid},
+            {
+                "availability_details": {
+                    "$elemMatch": {
+                        "shift_id": {"$in": [shift_id_str, shift_oid]},
+                    }
+                }
+            },
             {"user_id": 1, "availability_details": 1, "availability": 1, "channel": 1},
         ).to_list(length=2000)
 
