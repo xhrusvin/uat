@@ -101,6 +101,7 @@
     <div class="filter-card">
         <form method="get" id="filter-form" class="row g-3 align-items-end">
 
+            {# Search #}
             <div class="col-12 col-md-4">
                 <label class="form-label small fw-semibold text-muted mb-1">Search</label>
                 <div class="input-group">
@@ -113,20 +114,8 @@
                 </div>
             </div>
 
-            <div class="col-12 col-md-3">
-                <label class="form-label small fw-semibold text-muted mb-1">Date</label>
-                <div class="input-group">
-                    <span class="input-group-text bg-white border-end-0">
-                        <i class="bi bi-calendar3 text-muted"></i>
-                    </span>
-                    <input type="text" name="date_filter" id="date_filter_input"
-                           class="form-control border-start-0"
-                           placeholder="Filter by date"
-                           value="{{ date_filter }}">
-                </div>
-            </div>
-
-            <div class="col-12 col-md-3">
+            {# Status #}
+            <div class="col-12 col-md-2">
                 <label class="form-label small fw-semibold text-muted mb-1">Status</label>
                 <select name="status_filter" class="form-select">
                     <option value="">All statuses</option>
@@ -138,11 +127,52 @@
                 </select>
             </div>
 
+            {# Shift Date — From #}
+            <div class="col-6 col-md-1">
+                <label class="form-label small fw-semibold text-muted mb-1">
+                    <i class="bi bi-calendar3 me-1"></i>Shift Date From
+                </label>
+                <input type="text" name="shift_date_from" id="shift_date_from"
+                       class="form-control flatpickr-date"
+                       placeholder="From"
+                       value="{{ shift_date_from }}">
+            </div>
+
+            {# Shift Date — To #}
+            <div class="col-6 col-md-1">
+                <label class="form-label small fw-semibold text-muted mb-1">To</label>
+                <input type="text" name="shift_date_to" id="shift_date_to"
+                       class="form-control flatpickr-date"
+                       placeholder="To"
+                       value="{{ shift_date_to }}">
+            </div>
+
+            {# O. Date — From #}
+            <div class="col-6 col-md-1">
+                <label class="form-label small fw-semibold text-muted mb-1">
+                    <i class="bi bi-send me-1"></i>O. Date From
+                </label>
+                <input type="text" name="outreach_date_from" id="outreach_date_from"
+                       class="form-control flatpickr-date"
+                       placeholder="From"
+                       value="{{ outreach_date_from }}">
+            </div>
+
+            {# O. Date — To #}
+            <div class="col-6 col-md-1">
+                <label class="form-label small fw-semibold text-muted mb-1">To</label>
+                <input type="text" name="outreach_date_to" id="outreach_date_to"
+                       class="form-control flatpickr-date"
+                       placeholder="To"
+                       value="{{ outreach_date_to }}">
+            </div>
+
+            {# Buttons #}
             <div class="col-12 col-md-2 d-flex gap-2">
                 <button type="submit" class="btn btn-primary flex-grow-1">
                     <i class="bi bi-funnel me-1"></i>Filter
                 </button>
-                {% if search or date_filter or status_filter %}
+                {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter %}
                 <a href="{{ url_for('booking.live_shifts') }}"
                    class="btn btn-outline-secondary" title="Clear filters">
                     <i class="bi bi-x-lg"></i>
@@ -162,7 +192,11 @@
         } -%}
         {% for label, (cls, icon) in status_map.items() %}
         <a href="{{ url_for('booking.live_shifts',
-                            search=search, date_filter=date_filter,
+                            search=search,
+                            shift_date_from=shift_date_from,
+                            shift_date_to=shift_date_to,
+                            outreach_date_from=outreach_date_from,
+                            outreach_date_to=outreach_date_to,
                             status_filter=label) }}"
            class="badge {{ cls }} text-decoration-none px-3 py-2 fs-6"
            style="{% if status_filter == label %}outline: 2px solid currentColor; outline-offset: 2px;{% endif %}">
@@ -170,7 +204,12 @@
         </a>
         {% endfor %}
         {% if status_filter %}
-        <a href="{{ url_for('booking.live_shifts', search=search, date_filter=date_filter) }}"
+        <a href="{{ url_for('booking.live_shifts',
+                            search=search,
+                            shift_date_from=shift_date_from,
+                            shift_date_to=shift_date_to,
+                            outreach_date_from=outreach_date_from,
+                            outreach_date_to=outreach_date_to) }}"
            class="badge bg-light text-dark text-decoration-none px-3 py-2 fs-6 border">
             Show all
         </a>
@@ -186,7 +225,7 @@
                            style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
                         <tr>
                             <th class="ps-4">Shift ID</th>
-                            <th>Date</th>
+                            <th class="text-nowrap">Shift Date</th>
                             <th>Start</th>
                             <th>End</th>
                             <th>Type</th>
@@ -319,7 +358,7 @@
                             <td colspan="10" class="text-center py-5">
                                 <i class="bi bi-calendar-x display-1 text-muted opacity-25 d-block mb-3"></i>
                                 <h5 class="text-muted">No shifts found</h5>
-                                {% if search or date_filter or status_filter %}
+                                {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter %}
                                 <p class="text-muted small">
                                     Try adjusting your filters or
                                     <a href="{{ url_for('booking.live_shifts') }}">clear all</a>.
@@ -336,14 +375,22 @@
     </div>
 
     {# ── Pagination ──────────────────────────────────────────────── #}
+    {# Macro-like set to avoid repeating all params on every link #}
+    {% set pg_args = {
+        'search':             search,
+        'shift_date_from':    shift_date_from,
+        'shift_date_to':      shift_date_to,
+        'outreach_date_from': outreach_date_from,
+        'outreach_date_to':   outreach_date_to,
+        'status_filter':      status_filter,
+    } %}
+
     {% if pages > 1 %}
     <nav class="mt-4" aria-label="Shifts pagination">
         <ul class="pagination justify-content-center pagination-lg">
 
             <li class="page-item {% if page <= 1 %}disabled{% endif %}">
-                <a class="page-link" href="{{ url_for('booking.live_shifts',
-                    page=page-1, search=search,
-                    date_filter=date_filter, status_filter=status_filter) }}">
+                <a class="page-link" href="{{ url_for('booking.live_shifts', page=page-1, **pg_args) }}">
                     <i class="bi bi-chevron-left"></i>
                 </a>
             </li>
@@ -353,9 +400,7 @@
 
             {% if start_p > 1 %}
             <li class="page-item">
-                <a class="page-link" href="{{ url_for('booking.live_shifts',
-                    page=1, search=search,
-                    date_filter=date_filter, status_filter=status_filter) }}">1</a>
+                <a class="page-link" href="{{ url_for('booking.live_shifts', page=1, **pg_args) }}">1</a>
             </li>
             {% if start_p > 2 %}
             <li class="page-item disabled"><span class="page-link">…</span></li>
@@ -364,9 +409,7 @@
 
             {% for p in range(start_p, end_p + 1) %}
             <li class="page-item {% if p == page %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('booking.live_shifts',
-                    page=p, search=search,
-                    date_filter=date_filter, status_filter=status_filter) }}">{{ p }}</a>
+                <a class="page-link" href="{{ url_for('booking.live_shifts', page=p, **pg_args) }}">{{ p }}</a>
             </li>
             {% endfor %}
 
@@ -375,16 +418,12 @@
             <li class="page-item disabled"><span class="page-link">…</span></li>
             {% endif %}
             <li class="page-item">
-                <a class="page-link" href="{{ url_for('booking.live_shifts',
-                    page=pages, search=search,
-                    date_filter=date_filter, status_filter=status_filter) }}">{{ pages }}</a>
+                <a class="page-link" href="{{ url_for('booking.live_shifts', page=pages, **pg_args) }}">{{ pages }}</a>
             </li>
             {% endif %}
 
             <li class="page-item {% if page >= pages %}disabled{% endif %}">
-                <a class="page-link" href="{{ url_for('booking.live_shifts',
-                    page=page+1, search=search,
-                    date_filter=date_filter, status_filter=status_filter) }}">
+                <a class="page-link" href="{{ url_for('booking.live_shifts', page=page+1, **pg_args) }}">
                     <i class="bi bi-chevron-right"></i>
                 </a>
             </li>
@@ -404,16 +443,18 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script>
-/* ── Date picker ───────────────────────────────────────────────── */
-flatpickr("#date_filter_input", {
+/* ── Date pickers ──────────────────────────────────────────────── */
+const fpConfig = {
     dateFormat: "Y-m-d",
     altInput:   true,
     altFormat:  "d M Y",
     allowInput: true,
-    onReady(_, __, fp) {
-        fp.altInput.placeholder = "e.g. 25 Dec 2025";
-    }
-});
+};
+
+flatpickr("#shift_date_from",    { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "From"; } });
+flatpickr("#shift_date_to",      { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "To";   } });
+flatpickr("#outreach_date_from", { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "From"; } });
+flatpickr("#outreach_date_to",   { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "To";   } });
 
 /* ── Auto-refresh every 60 s (AJAX) ───────────────────────────── */
 (function () {

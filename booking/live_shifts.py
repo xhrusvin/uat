@@ -43,10 +43,17 @@ def _serialize(doc):
     return doc
 
 
-def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
+def _build_pipeline(
+    search: str,
+    shift_date_from: str,
+    shift_date_to: str,
+    outreach_date_from: str,
+    outreach_date_to: str,
+    status_filter: str,
+):
     """
     Aggregation pipeline:
-      1.  Optional date pre-filter
+      1.  Optional shift-date range pre-filter (shift_date_from / shift_date_to)
       2.  $lookup → shifts_users          (availability primary)
       3.  $lookup → shifts_group_users    (availability fallback via availability_details[])
       4.  has_availability derived
@@ -57,15 +64,27 @@ def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
       7.  $lookup → outreach_shift_group  (outreach_date fallback step B)
               outreach_shift_group.group_id == shifts_group._id → latest created_at
       8.  outreach_date = primary hit  OR  fallback hit  (prefer primary)
-      9.  Optional text / status post-filter
-      10. $project
+      9.  Optional outreach_date range post-filter (outreach_date_from / outreach_date_to)
+      10. Optional text / status post-filter
+      11. $project
     """
+    # ── Shift date range pre-filter ────────────────────────────────────
     base_match = {}
-    if date_filter_str:
+    date_range = {}
+    if shift_date_from:
         try:
-            base_match["date"] = datetime.strptime(date_filter_str, "%Y-%m-%d")
+            date_range["$gte"] = datetime.strptime(shift_date_from, "%Y-%m-%d")
         except ValueError:
             pass
+    if shift_date_to:
+        try:
+            # include the full to-day by going to end-of-day
+            dt_to = datetime.strptime(shift_date_to, "%Y-%m-%d")
+            date_range["$lte"] = dt_to.replace(hour=23, minute=59, second=59)
+        except ValueError:
+            pass
+    if date_range:
+        base_match["date"] = date_range
 
     pipeline = [
         {"$match": base_match},
@@ -232,6 +251,22 @@ def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
         {"$unset": ["_outreach_primary", "_outreach_fallback", "_shift_groups"]},
     ]
 
+    # ── Outreach date range filter (applied after outreach_date is derived) ──
+    od_range = {}
+    if outreach_date_from:
+        try:
+            od_range["$gte"] = datetime.strptime(outreach_date_from, "%Y-%m-%d")
+        except ValueError:
+            pass
+    if outreach_date_to:
+        try:
+            dt_to = datetime.strptime(outreach_date_to, "%Y-%m-%d")
+            od_range["$lte"] = dt_to.replace(hour=23, minute=59, second=59)
+        except ValueError:
+            pass
+    if od_range:
+        pipeline.append({"$match": {"outreach_date": od_range}})
+
     # ── Text search (no client lookup needed — client column removed) ──
     or_clauses = []
     if search:
@@ -365,15 +400,21 @@ PER_PAGE = 10
 @bp.route("/live-shifts")
 def live_shifts():
     """Renders the live shift listing page."""
-    page            = max(int(request.args.get("page", 1)), 1)
-    search          = request.args.get("search", "").strip()
-    date_filter_str = request.args.get("date_filter", "").strip()
-    status_filter   = request.args.get("status_filter", "").strip()
+    page               = max(int(request.args.get("page", 1)), 1)
+    search             = request.args.get("search", "").strip()
+    shift_date_from    = request.args.get("shift_date_from", "").strip()
+    shift_date_to      = request.args.get("shift_date_to", "").strip()
+    outreach_date_from = request.args.get("outreach_date_from", "").strip()
+    outreach_date_to   = request.args.get("outreach_date_to", "").strip()
+    status_filter      = request.args.get("status_filter", "").strip()
 
     if status_filter not in VALID_STATUSES:
         status_filter = ""
 
-    pipeline = _build_pipeline(search, date_filter_str, status_filter)
+    pipeline = _build_pipeline(
+        search, shift_date_from, shift_date_to,
+        outreach_date_from, outreach_date_to, status_filter,
+    )
 
     count_result = list(db.shifts.aggregate(pipeline + [{"$count": "total"}]))
     total        = count_result[0]["total"] if count_result else 0
@@ -389,30 +430,39 @@ def live_shifts():
 
     return render_template(
         "booking/live_shifts.html",
-        shifts        = shifts_list,
-        page          = page,
-        total         = total,
-        per_page      = PER_PAGE,
-        pages         = pages,
-        search        = search,
-        date_filter   = date_filter_str,
-        status_filter = status_filter,
-        valid_statuses= VALID_STATUSES,
+        shifts             = shifts_list,
+        page               = page,
+        total              = total,
+        per_page           = PER_PAGE,
+        pages              = pages,
+        search             = search,
+        shift_date_from    = shift_date_from,
+        shift_date_to      = shift_date_to,
+        outreach_date_from = outreach_date_from,
+        outreach_date_to   = outreach_date_to,
+        status_filter      = status_filter,
+        valid_statuses     = VALID_STATUSES,
     )
 
 
 @bp.route("/live-shifts/data")
 def live_shifts_data():
     """JSON endpoint for AJAX polling / auto-refresh."""
-    page            = max(int(request.args.get("page", 1)), 1)
-    search          = request.args.get("search", "").strip()
-    date_filter_str = request.args.get("date_filter", "").strip()
-    status_filter   = request.args.get("status_filter", "").strip()
+    page               = max(int(request.args.get("page", 1)), 1)
+    search             = request.args.get("search", "").strip()
+    shift_date_from    = request.args.get("shift_date_from", "").strip()
+    shift_date_to      = request.args.get("shift_date_to", "").strip()
+    outreach_date_from = request.args.get("outreach_date_from", "").strip()
+    outreach_date_to   = request.args.get("outreach_date_to", "").strip()
+    status_filter      = request.args.get("status_filter", "").strip()
 
     if status_filter not in VALID_STATUSES:
         status_filter = ""
 
-    pipeline     = _build_pipeline(search, date_filter_str, status_filter)
+    pipeline = _build_pipeline(
+        search, shift_date_from, shift_date_to,
+        outreach_date_from, outreach_date_to, status_filter,
+    )
     count_result = list(db.shifts.aggregate(pipeline + [{"$count": "total"}]))
     total        = count_result[0]["total"] if count_result else 0
 
