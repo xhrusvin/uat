@@ -49,14 +49,14 @@ def _parse_date(date_str: Optional[str]) -> Optional[datetime]:
 
 def _map_status(status_name: Optional[str]) -> str:
     mapping = {
-        "to be filled":        "To be assigned",
+        "to be filled":        "To Be Filled",
         "upcoming":            "Upcoming",
         "cancelled by client": "Cancelled",
         "cancelled by staff":  "Cancelled",
         "completed":           "Completed",
         "in progress":         "In Progress",
     }
-    return mapping.get((status_name or "").lower(), status_name or "To be assigned")
+    return mapping.get((status_name or "").lower(), status_name or "To Be Filled")
 
 
 def _build_doc(item: dict, now: datetime) -> dict:
