@@ -48,6 +48,7 @@ def _build_pipeline(
     outreach_date_from: str,
     outreach_date_to: str,
     status_filter: str,
+    availability_filter: str = "",
 ):
     """
     Aggregation pipeline:
@@ -57,7 +58,7 @@ def _build_pipeline(
       4.  has_availability derived
       5.  outreach_date sourced directly from shifts.last_outreach_date
       6.  Optional outreach_date range post-filter (outreach_date_from / outreach_date_to)
-      7.  Optional text / status post-filter
+      7.  Optional text / status / availability post-filter
       8.  $project
     """
     # ── Shift date range pre-filter ────────────────────────────────────
@@ -190,6 +191,10 @@ def _build_pipeline(
         combined["$or"] = or_clauses
     if status_filter:
         combined["status"] = status_filter
+    if availability_filter == "yes":
+        combined["has_availability"] = True
+    elif availability_filter == "no":
+        combined["has_availability"] = False
     if combined:
         pipeline.append({"$match": combined})
 
@@ -350,14 +355,18 @@ def live_shifts():
                                           datetime.utcnow().strftime("%Y-%m-%d")).strip()
     outreach_date_to   = request.args.get("outreach_date_to", "").strip()
     # Default status to "To Be Filled" when not supplied
-    status_filter      = request.args.get("status_filter", "To Be Filled").strip()
+    status_filter        = request.args.get("status_filter", "To Be Filled").strip()
+    availability_filter  = request.args.get("availability_filter", "").strip().lower()
 
     if status_filter not in VALID_STATUSES:
         status_filter = "To Be Filled"
+    if availability_filter not in ("yes", "no", ""):
+        availability_filter = ""
 
     pipeline = _build_pipeline(
         search, shift_date_from, shift_date_to,
         outreach_date_from, outreach_date_to, status_filter,
+        availability_filter,
     )
 
     count_result = list(db.shifts.aggregate(pipeline + [{"$count": "total"}]))
@@ -374,18 +383,19 @@ def live_shifts():
 
     return render_template(
         "booking/live_shifts.html",
-        shifts             = shifts_list,
-        page               = page,
-        total              = total,
-        per_page           = PER_PAGE,
-        pages              = pages,
-        search             = search,
-        shift_date_from    = shift_date_from,
-        shift_date_to      = shift_date_to,
-        outreach_date_from = outreach_date_from,
-        outreach_date_to   = outreach_date_to,
-        status_filter      = status_filter,
-        valid_statuses     = VALID_STATUSES,
+        shifts               = shifts_list,
+        page                 = page,
+        total                = total,
+        per_page             = PER_PAGE,
+        pages                = pages,
+        search               = search,
+        shift_date_from      = shift_date_from,
+        shift_date_to        = shift_date_to,
+        outreach_date_from   = outreach_date_from,
+        outreach_date_to     = outreach_date_to,
+        status_filter        = status_filter,
+        availability_filter  = availability_filter,
+        valid_statuses       = VALID_STATUSES,
     )
 
 
@@ -399,14 +409,18 @@ def live_shifts_data():
     outreach_date_from = request.args.get("outreach_date_from",
                                           datetime.utcnow().strftime("%Y-%m-%d")).strip()
     outreach_date_to   = request.args.get("outreach_date_to", "").strip()
-    status_filter      = request.args.get("status_filter", "To Be Filled").strip()
+    status_filter        = request.args.get("status_filter", "To Be Filled").strip()
+    availability_filter  = request.args.get("availability_filter", "").strip().lower()
 
     if status_filter not in VALID_STATUSES:
         status_filter = "To Be Filled"
+    if availability_filter not in ("yes", "no", ""):
+        availability_filter = ""
 
     pipeline = _build_pipeline(
         search, shift_date_from, shift_date_to,
         outreach_date_from, outreach_date_to, status_filter,
+        availability_filter,
     )
     count_result = list(db.shifts.aggregate(pipeline + [{"$count": "total"}]))
     total        = count_result[0]["total"] if count_result else 0
@@ -446,14 +460,18 @@ def live_shifts_export_csv():
     outreach_date_from = request.args.get("outreach_date_from",
                                           datetime.utcnow().strftime("%Y-%m-%d")).strip()
     outreach_date_to   = request.args.get("outreach_date_to", "").strip()
-    status_filter      = request.args.get("status_filter", "To Be Filled").strip()
+    status_filter        = request.args.get("status_filter", "To Be Filled").strip()
+    availability_filter  = request.args.get("availability_filter", "").strip().lower()
 
     if status_filter not in VALID_STATUSES:
         status_filter = "To Be Filled"
+    if availability_filter not in ("yes", "no", ""):
+        availability_filter = ""
 
     pipeline = _build_pipeline(
         search, shift_date_from, shift_date_to,
         outreach_date_from, outreach_date_to, status_filter,
+        availability_filter,
     )
 
     # No pagination — fetch all matching records sorted newest first

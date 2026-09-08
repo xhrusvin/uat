@@ -43,7 +43,7 @@
 .avail-tick {
     font-size: 1.25rem;
     line-height: 1;
-    color: #198754;          /* Bootstrap success green */
+    color: #198754;
     filter: drop-shadow(0 0 3px rgba(25,135,84,.35));
 }
 .avail-none {
@@ -73,16 +73,23 @@
     margin-bottom: 1.5rem;
     box-shadow: 0 1px 4px rgba(0,0,0,.06);
 }
-/* Arrow separator between From/To is purely decorative */
 .filter-card .input-group-text {
     border-color: #dee2e6;
     font-size: 0.85rem;
 }
-/* Row divider between filter rows */
 .filter-card .row + .row {
     border-top: 1px dashed #e9ecef;
     padding-top: 0.75rem;
     margin-top: 0.25rem;
+}
+
+/* ── Availability toggle buttons ─────────────────────────────── */
+.avail-toggle .btn {
+    font-size: 0.82rem;
+    padding: 0.3rem 0.85rem;
+}
+.avail-toggle .btn.active {
+    font-weight: 600;
 }
 
 /* ── Staff assigned cell ─────────────────────────────────────── */
@@ -116,7 +123,6 @@
                   data-total="{{ total }}">
                 {{ total }} shift{{ 's' if total != 1 }}
             </span>
-            {# Export button — carries all active filter params #}
             <a id="btn-export-csv"
                href="{{ url_for('booking.live_shifts_export_csv',
                                 search=search,
@@ -124,7 +130,8 @@
                                 shift_date_to=shift_date_to,
                                 outreach_date_from=outreach_date_from,
                                 outreach_date_to=outreach_date_to,
-                                status_filter=status_filter) }}"
+                                status_filter=status_filter,
+                                availability_filter=availability_filter) }}"
                class="btn btn-success btn-sm">
                 <i class="bi bi-download me-1"></i>Export CSV
             </a>
@@ -138,11 +145,11 @@
     <div class="filter-card">
         <form method="get" id="filter-form">
 
-            {# ── Row 1: Search · Status · Buttons ──────────────────── #}
+            {# ── Row 1: Search · Status · Availability · Buttons ───── #}
             <div class="row g-3 align-items-end mb-3">
 
                 {# Search #}
-                <div class="col-12 col-md-5">
+                <div class="col-12 col-md-4">
                     <label class="form-label small fw-semibold text-muted mb-1">Search</label>
                     <div class="input-group">
                         <span class="input-group-text bg-white border-end-0">
@@ -184,12 +191,35 @@
                     </select>
                 </div>
 
-                {# Buttons — pinned right on row 1 #}
-                <div class="col-12 col-md-4 d-flex gap-2 justify-content-md-end">
+                {# Availability toggle #}
+                <div class="col-12 col-md-2">
+                    <label class="form-label small fw-semibold text-muted mb-1">
+                        <i class="bi bi-check-circle me-1"></i>Availability
+                    </label>
+                    <div class="btn-group avail-toggle w-100" role="group">
+                        <input type="radio" class="btn-check" name="availability_filter"
+                               id="avail-all" value=""
+                               {% if availability_filter == '' %}checked{% endif %}>
+                        <label class="btn btn-outline-secondary" for="avail-all">All</label>
+
+                        <input type="radio" class="btn-check" name="availability_filter"
+                               id="avail-yes" value="yes"
+                               {% if availability_filter == 'yes' %}checked{% endif %}>
+                        <label class="btn btn-outline-success" for="avail-yes">✔ Yes</label>
+
+                        <input type="radio" class="btn-check" name="availability_filter"
+                               id="avail-no" value="no"
+                               {% if availability_filter == 'no' %}checked{% endif %}>
+                        <label class="btn btn-outline-danger" for="avail-no">✘ No</label>
+                    </div>
+                </div>
+
+                {# Buttons #}
+                <div class="col-12 col-md-3 d-flex gap-2 justify-content-md-end">
                     <button type="submit" class="btn btn-primary px-4">
                         <i class="bi bi-funnel me-1"></i>Filter
                     </button>
-                    {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter %}
+                    {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter or availability_filter %}
                     <a href="{{ url_for('booking.live_shifts') }}"
                        class="btn btn-outline-secondary" title="Clear all filters">
                         <i class="bi bi-x-lg me-1"></i>Clear
@@ -208,13 +238,11 @@
                     </label>
                     <div class="input-group">
                         <input type="text" name="shift_date_from" id="shift_date_from"
-                               class="form-control"
-                               placeholder="From"
+                               class="form-control" placeholder="From"
                                value="{{ shift_date_from }}">
                         <span class="input-group-text bg-white text-muted px-2">→</span>
                         <input type="text" name="shift_date_to" id="shift_date_to"
-                               class="form-control"
-                               placeholder="To"
+                               class="form-control" placeholder="To"
                                value="{{ shift_date_to }}">
                     </div>
                 </div>
@@ -226,13 +254,11 @@
                     </label>
                     <div class="input-group">
                         <input type="text" name="outreach_date_from" id="outreach_date_from"
-                               class="form-control"
-                               placeholder="From"
+                               class="form-control" placeholder="From"
                                value="{{ outreach_date_from }}">
                         <span class="input-group-text bg-white text-muted px-2">→</span>
                         <input type="text" name="outreach_date_to" id="outreach_date_to"
-                               class="form-control"
-                               placeholder="To"
+                               class="form-control" placeholder="To"
                                value="{{ outreach_date_to }}">
                     </div>
                 </div>
@@ -261,13 +287,45 @@
                             shift_date_to=shift_date_to,
                             outreach_date_from=outreach_date_from,
                             outreach_date_to=outreach_date_to,
-                            status_filter=label) }}"
+                            status_filter=label,
+                            availability_filter=availability_filter) }}"
            class="badge {{ cls }} text-decoration-none px-3 py-2"
            style="font-size:0.85rem;{% if status_filter == label %}outline: 2px solid currentColor; outline-offset: 2px;{% endif %}">
             {{ icon }} {{ label }}
         </a>
         {% endfor %}
-        {% if status_filter %}
+
+        {# Availability quick-pills #}
+        <a href="{{ url_for('booking.live_shifts',
+                            search=search,
+                            shift_date_from=shift_date_from,
+                            shift_date_to=shift_date_to,
+                            outreach_date_from=outreach_date_from,
+                            outreach_date_to=outreach_date_to,
+                            status_filter=status_filter,
+                            availability_filter='yes') }}"
+           class="badge text-decoration-none px-3 py-2"
+           style="font-size:0.85rem;
+                  background-color:#d1e7dd;color:#0a3622;
+                  {% if availability_filter == 'yes' %}outline:2px solid currentColor;outline-offset:2px;{% endif %}">
+            ✔ Available
+        </a>
+        <a href="{{ url_for('booking.live_shifts',
+                            search=search,
+                            shift_date_from=shift_date_from,
+                            shift_date_to=shift_date_to,
+                            outreach_date_from=outreach_date_from,
+                            outreach_date_to=outreach_date_to,
+                            status_filter=status_filter,
+                            availability_filter='no') }}"
+           class="badge text-decoration-none px-3 py-2"
+           style="font-size:0.85rem;
+                  background-color:#f8d7da;color:#842029;
+                  {% if availability_filter == 'no' %}outline:2px solid currentColor;outline-offset:2px;{% endif %}">
+            ✘ Not Available
+        </a>
+
+        {% if status_filter or availability_filter %}
         <a href="{{ url_for('booking.live_shifts',
                             search=search,
                             shift_date_from=shift_date_from,
@@ -306,7 +364,6 @@
 
                     {% if shifts %}
                         {% for s in shifts %}
-                            {# Use slots array if present, else synthesise one row from top-level fields #}
                             {% set slots_list = s.slots_normalised
                                if s.slots_normalised is defined and s.slots_normalised | length > 0
                                else [{'shift_xn_id':  s.shift_xn_id,
@@ -319,21 +376,15 @@
                                 {% set is_first = loop.first %}
                                 <tr class="{{ 'shift-group-first' if is_first else 'shift-group' }}">
 
-                                    {# Shift ID #}
                                     <td class="ps-4 font-monospace small">
                                         {{ slot.shift_xn_id or '—' }}
                                     </td>
-
-                                    {# Date #}
                                     <td class="text-nowrap">
                                         {{ slot.date_display or s.date_formatted or '—' }}
                                     </td>
-
-                                    {# Times #}
                                     <td>{{ slot.start_time or '—' }}</td>
                                     <td>{{ slot.end_time   or '—' }}</td>
 
-                                    {# Shift Type #}
                                     <td>
                                         {% if slot.shift_type %}
                                         {%- set icons = {
@@ -353,12 +404,10 @@
                                         {% endif %}
                                     </td>
 
-                                    {# Location — only first row; falls back to client_name #}
                                     <td>
                                         {% if is_first %}{{ s.location or '—' }}{% endif %}
                                     </td>
 
-                                    {# Status — only first row #}
                                     <td>
                                         {% if is_first %}
                                         {%- set status = s.status or 'To be assigned' -%}
@@ -375,7 +424,6 @@
                                         {% endif %}
                                     </td>
 
-                                    {# Premium — only first row #}
                                     <td class="text-center">
                                         {% if is_first %}
                                             {% if s.is_premium %}
@@ -388,7 +436,6 @@
                                         {% endif %}
                                     </td>
 
-                                    {# Availability — only first row; green tick if any user available #}
                                     <td class="text-center">
                                         {% if is_first %}
                                             {% if s.has_availability %}
@@ -401,7 +448,6 @@
                                         {% endif %}
                                     </td>
 
-                                    {# O. Date & Time — only first row #}
                                     <td class="text-nowrap small">
                                         {% if is_first %}
                                             {% if s.outreach_date_formatted %}
@@ -415,7 +461,6 @@
                                         {% endif %}
                                     </td>
 
-                                    {# Staff Assigned — only first row #}
                                     <td>
                                         {% if is_first %}
                                             {% if s.assigned_staff_display %}
@@ -437,7 +482,7 @@
                             <td colspan="11" class="text-center py-5">
                                 <i class="bi bi-calendar-x display-1 text-muted opacity-25 d-block mb-3"></i>
                                 <h5 class="text-muted">No shifts found</h5>
-                                {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter %}
+                                {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter or availability_filter %}
                                 <p class="text-muted small">
                                     Try adjusting your filters or
                                     <a href="{{ url_for('booking.live_shifts') }}">clear all</a>.
@@ -454,14 +499,14 @@
     </div>
 
     {# ── Pagination ──────────────────────────────────────────────── #}
-    {# Macro-like set to avoid repeating all params on every link #}
     {% set pg_args = {
-        'search':             search,
-        'shift_date_from':    shift_date_from,
-        'shift_date_to':      shift_date_to,
-        'outreach_date_from': outreach_date_from,
-        'outreach_date_to':   outreach_date_to,
-        'status_filter':      status_filter,
+        'search':               search,
+        'shift_date_from':      shift_date_from,
+        'shift_date_to':        shift_date_to,
+        'outreach_date_from':   outreach_date_from,
+        'outreach_date_to':     outreach_date_to,
+        'status_filter':        status_filter,
+        'availability_filter':  availability_filter,
     } %}
 
     {% if pages > 1 %}
@@ -529,27 +574,16 @@ const fpConfig = {
     altFormat:  "d M Y",
     allowInput: true,
 };
-
-flatpickr("#shift_date_from", {
-    ...fpConfig,
-    onReady(_, __, fp) { fp.altInput.placeholder = "From"; }
-});
-flatpickr("#shift_date_to", {
-    ...fpConfig,
-    onReady(_, __, fp) { fp.altInput.placeholder = "To"; }
-});
+flatpickr("#shift_date_from",    { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "From"; } });
+flatpickr("#shift_date_to",      { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "To";   } });
 flatpickr("#outreach_date_from", {
     ...fpConfig,
-    // Default to today if the field has no value yet (first page load)
     defaultDate: document.getElementById("outreach_date_from").value || "today",
     onReady(_, __, fp) { fp.altInput.placeholder = "From (default: today)"; }
 });
-flatpickr("#outreach_date_to", {
-    ...fpConfig,
-    onReady(_, __, fp) { fp.altInput.placeholder = "To"; }
-});
+flatpickr("#outreach_date_to",   { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "To";   } });
 
-/* ── Keep Export CSV link in sync with current URL filters ─────── */
+/* ── Keep Export CSV link in sync with current form state ──────── */
 (function () {
     const exportBtn  = document.getElementById("btn-export-csv");
     const filterForm = document.getElementById("filter-form");
@@ -561,7 +595,6 @@ flatpickr("#outreach_date_to", {
         const fd     = new FormData(filterForm);
         const params = new URLSearchParams();
         for (const [k, v] of fd.entries()) {
-            // Pull the hidden Y-m-d value from flatpickr's real input
             const realInput = filterForm.querySelector(`[name="${k}"]`);
             if (realInput && realInput.value) {
                 params.set(k, realInput.value);
@@ -572,20 +605,18 @@ flatpickr("#outreach_date_to", {
         exportBtn.href = EXPORT_BASE + "?" + params.toString();
     }
 
-    // Sync on any input change
     filterForm.addEventListener("change", syncExportLink);
     filterForm.addEventListener("input",  syncExportLink);
-
-    // Initial sync (reflects server-rendered filter values)
     syncExportLink();
 })();
+
+/* ── Auto-refresh (count-only, full reload on change) ──────────── */
 (function () {
     const INTERVAL_MS = 60_000;
 
     async function refresh() {
         const params = new URLSearchParams(window.location.search);
         const url    = "{{ url_for('booking.live_shifts_data') }}?" + params.toString();
-
         try {
             const res  = await fetch(url);
             const data = await res.json();
@@ -595,10 +626,9 @@ flatpickr("#outreach_date_to", {
             if (!badge) return;
 
             const prevTotal = parseInt(badge.dataset.total ?? "-1");
-            badge.textContent = data.total + (data.total === 1 ? " shift" : " shifts");
+            badge.textContent   = data.total + (data.total === 1 ? " shift" : " shifts");
             badge.dataset.total = data.total;
 
-            // Full reload only when the count changes (new/deleted shifts)
             if (prevTotal !== -1 && prevTotal !== data.total) {
                 window.location.reload();
             }
