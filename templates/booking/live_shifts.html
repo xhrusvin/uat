@@ -1,0 +1,470 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Live Shifts • Admin{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+/* ── Status pill colours ─────────────────────────────────────── */
+.badge-to-be-assigned { background-color: #cfe2ff; color: #084298; }
+.badge-assigned        { background-color: #d1e7dd; color: #0a3622; }
+.badge-completed       { background-color: #e2e3e5; color: #41464b; }
+.badge-cancelled       { background-color: #f8d7da; color: #842029; }
+
+/* ── Slot sub-rows ───────────────────────────────────────────── */
+.slot-row {
+    background-color: #f8f9ff !important;
+    border-left: 3px solid #a0c4ff;
+}
+.shift-group-first {
+    border-top: 2px solid #a0c4ff !important;
+    background-color: #e8efff !important;
+}
+.shift-group {
+    background-color: #f0f5ff !important;
+}
+.table-hover tbody tr.shift-group:hover,
+.table-hover tbody tr.shift-group-first:hover {
+    background-color: #dce8ff !important;
+}
+
+/* ── Shift-type icon badge ───────────────────────────────────── */
+.shift-type-badge {
+    font-size: 0.72rem;
+    padding: 0.2em 0.55em;
+    border-radius: 20px;
+    background: #e9ecef;
+    color: #495057;
+    white-space: nowrap;
+}
+
+/* ── Auto-refresh indicator ──────────────────────────────────── */
+#refresh-indicator {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    background: #198754;
+    animation: pulse 2s infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+}
+
+/* ── Filter bar ──────────────────────────────────────────────── */
+.filter-card {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+</style>
+{% endblock %}
+
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+    {# ── Page header ────────────────────────────────────────────── #}
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <div>
+            <h2 class="mb-0 fw-bold text-primary">
+                <i class="bi bi-broadcast me-2"></i>Live Shifts
+            </h2>
+            <p class="text-muted small mb-0 mt-1">
+                Real-time view of all shifts · auto-refreshes every 60 s
+                <span id="refresh-indicator" class="ms-2" title="Live"></span>
+            </p>
+        </div>
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span class="badge bg-primary fs-6 px-3 py-2" id="total-badge">
+                {{ total }} shift{{ 's' if total != 1 }}
+            </span>
+            <a href="{{ url_for('booking.live_shifts') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+            </a>
+        </div>
+    </div>
+
+    {# ── Filter bar ─────────────────────────────────────────────── #}
+    <div class="filter-card">
+        <form method="get" id="filter-form" class="row g-3 align-items-end">
+
+            {# Text search #}
+            <div class="col-12 col-md-4">
+                <label class="form-label small fw-semibold text-muted mb-1">Search</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white border-end-0">
+                        <i class="bi bi-search text-muted"></i>
+                    </span>
+                    <input type="text" name="search" class="form-control border-start-0"
+                           placeholder="Name, client, location, shift ID…"
+                           value="{{ search }}">
+                </div>
+            </div>
+
+            {# Date filter #}
+            <div class="col-12 col-md-3">
+                <label class="form-label small fw-semibold text-muted mb-1">Date</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white border-end-0">
+                        <i class="bi bi-calendar3 text-muted"></i>
+                    </span>
+                    <input type="text" name="date_filter" id="date_filter_input"
+                           class="form-control border-start-0"
+                           placeholder="Filter by date"
+                           value="{{ date_filter }}">
+                </div>
+            </div>
+
+            {# Status filter #}
+            <div class="col-12 col-md-3">
+                <label class="form-label small fw-semibold text-muted mb-1">Status</label>
+                <select name="status_filter" class="form-select">
+                    <option value="">All statuses</option>
+                    {% for s in valid_statuses %}
+                    <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>
+                        {{ s }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            {# Buttons #}
+            <div class="col-12 col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">
+                    <i class="bi bi-funnel me-1"></i>Filter
+                </button>
+                {% if search or date_filter or status_filter %}
+                <a href="{{ url_for('booking.live_shifts') }}"
+                   class="btn btn-outline-secondary" title="Clear filters">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+                {% endif %}
+            </div>
+
+        </form>
+    </div>
+
+    {# ── Status summary pills ────────────────────────────────────── #}
+    <div class="d-flex flex-wrap gap-2 mb-4" id="status-summary">
+        {%- set status_map = {
+            'To be assigned': ('badge-to-be-assigned', '🔵'),
+            'Assigned':        ('badge-assigned',        '🟢'),
+            'Cancelled':       ('badge-cancelled',        '🔴'),
+        } -%}
+        {% for label, (cls, icon) in status_map.items() %}
+        <a href="{{ url_for('booking.live_shifts',
+                            search=search,
+                            date_filter=date_filter,
+                            status_filter=label) }}"
+           class="badge {{ cls }} text-decoration-none px-3 py-2 fs-6
+                  {% if status_filter == label %}ring-2{% endif %}"
+           style="{% if status_filter == label %}outline: 2px solid currentColor; outline-offset: 2px;{% endif %}">
+            {{ icon }} {{ label }}
+        </a>
+        {% endfor %}
+        {% if status_filter %}
+        <a href="{{ url_for('booking.live_shifts',
+                            search=search,
+                            date_filter=date_filter) }}"
+           class="badge bg-light text-dark text-decoration-none px-3 py-2 fs-6 border">
+            Show all
+        </a>
+        {% endif %}
+    </div>
+
+    {# ── Table ──────────────────────────────────────────────────── #}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive" id="shifts-table-wrapper">
+                <table class="table table-hover mb-0 align-middle" id="live-shifts-table">
+                    <thead class="text-white"
+                           style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                        <tr>
+                            <th class="ps-4">Shift ID</th>
+                            <th>Unit Name</th>
+                            <th>Client</th>
+                            <th>Date</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th class="text-center">Active</th>
+                            <th class="text-center">Premium</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                    {% if shifts %}
+                        {% set ns = namespace(prev_id='') %}
+                        {% for s in shifts %}
+                            {# Decide which rows to show: prefer slots array, else single row #}
+                            {% set slots_list = s.slots_normalised
+                               if s.slots_normalised is defined and s.slots_normalised | length > 0
+                               else [{'shift_xn_id': s.shift_xn_id,
+                                      'date_display': s.date_formatted,
+                                      'start_time': s.start_time_formatted,
+                                      'end_time': s.end_time_formatted,
+                                      'shift_type': ''}] %}
+
+                            {% for slot in slots_list %}
+                                {% set is_first = loop.first %}
+                                <tr class="{{ 'shift-group-first' if is_first else 'shift-group' }}">
+
+                                    {# Shift ID #}
+                                    <td class="ps-4 font-monospace small">
+                                        {{ slot.shift_xn_id or '—' }}
+                                    </td>
+
+                                    {# Unit Name — only first row #}
+                                    <td class="fw-semibold">
+                                        {% if is_first %}{{ s.name or '—' }}{% endif %}
+                                    </td>
+
+                                    {# Client — only first row #}
+                                    <td>
+                                        {% if is_first %}
+                                            {{ s.client_name or '—' }}
+                                        {% endif %}
+                                    </td>
+
+                                    {# Date #}
+                                    <td class="text-nowrap">
+                                        {{ slot.date_display or s.date_formatted or '—' }}
+                                    </td>
+
+                                    {# Times #}
+                                    <td>{{ slot.start_time or '—' }}</td>
+                                    <td>{{ slot.end_time   or '—' }}</td>
+
+                                    {# Shift Type #}
+                                    <td>
+                                        {% if slot.shift_type %}
+                                        {%- set icons = {
+                                            'Morning':   '🌅',
+                                            'Day':       '☀️',
+                                            'Afternoon': '🌤️',
+                                            'Night':     '🌙',
+                                            'Sleepover': '🛏️',
+                                            'Escort':    '🚗',
+                                        } -%}
+                                        <span class="shift-type-badge">
+                                            {{ icons.get(slot.shift_type, '') }}
+                                            {{ slot.shift_type }}
+                                        </span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+
+                                    {# Location — only first row #}
+                                    <td>
+                                        {% if is_first %}
+                                            {{ s.location or '—' }}
+                                        {% endif %}
+                                    </td>
+
+                                    {# Status — only first row #}
+                                    <td>
+                                        {% if is_first %}
+                                        {%- set status = s.status or 'To be assigned' -%}
+                                        {%- set status_css = {
+                                            'To be assigned': 'badge-to-be-assigned',
+                                            'Assigned':        'badge-assigned',
+                                            'Completed':       'badge-completed',
+                                            'Cancelled':       'badge-cancelled',
+                                        } -%}
+                                        <span class="badge {{ status_css.get(status, 'bg-secondary') }}
+                                                     rounded-pill px-3 py-2">
+                                            {{ status }}
+                                        </span>
+                                        {% endif %}
+                                    </td>
+
+                                    {# Active — only first row #}
+                                    <td class="text-center">
+                                        {% if is_first %}
+                                        {% if s.is_active %}
+                                            <span class="badge bg-success rounded-pill">Active</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary rounded-pill">Inactive</span>
+                                        {% endif %}
+                                        {% endif %}
+                                    </td>
+
+                                    {# Premium — only first row #}
+                                    <td class="text-center">
+                                        {% if is_first %}
+                                        {% if s.is_premium %}
+                                            <span class="badge bg-warning text-dark rounded-pill">
+                                                ⭐ Premium
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                        {% endif %}
+                                    </td>
+
+                                </tr>
+                            {% endfor %} {# slots #}
+                        {% endfor %} {# shifts #}
+
+                    {% else %}
+                        {# Empty state #}
+                        <tr>
+                            <td colspan="11" class="text-center py-5">
+                                <i class="bi bi-calendar-x display-1 text-muted opacity-25 d-block mb-3"></i>
+                                <h5 class="text-muted">No shifts found</h5>
+                                {% if search or date_filter or status_filter %}
+                                <p class="text-muted small">
+                                    Try adjusting your filters or
+                                    <a href="{{ url_for('booking.live_shifts') }}">clear all</a>.
+                                </p>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endif %}
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ── Pagination ──────────────────────────────────────────────── #}
+    {% if pages > 1 %}
+    <nav class="mt-4" aria-label="Shifts pagination">
+        <ul class="pagination justify-content-center pagination-lg">
+
+            {# Previous #}
+            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                <a class="page-link" href="{{ url_for('booking.live_shifts',
+                    page=page-1, search=search,
+                    date_filter=date_filter, status_filter=status_filter) }}">
+                    <i class="bi bi-chevron-left"></i>
+                </a>
+            </li>
+
+            {# Page numbers #}
+            {% set start_p = [page - 2, 1] | max %}
+            {% set end_p   = [start_p + 4, pages] | min %}
+
+            {% if start_p > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('booking.live_shifts',
+                    page=1, search=search,
+                    date_filter=date_filter, status_filter=status_filter) }}">1</a>
+            </li>
+            {% if start_p > 2 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+            {% endif %}
+
+            {% for p in range(start_p, end_p + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('booking.live_shifts',
+                    page=p, search=search,
+                    date_filter=date_filter, status_filter=status_filter) }}">
+                    {{ p }}
+                </a>
+            </li>
+            {% endfor %}
+
+            {% if end_p < pages %}
+            {% if end_p < pages - 1 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('booking.live_shifts',
+                    page=pages, search=search,
+                    date_filter=date_filter, status_filter=status_filter) }}">
+                    {{ pages }}
+                </a>
+            </li>
+            {% endif %}
+
+            {# Next #}
+            <li class="page-item {% if page >= pages %}disabled{% endif %}">
+                <a class="page-link" href="{{ url_for('booking.live_shifts',
+                    page=page+1, search=search,
+                    date_filter=date_filter, status_filter=status_filter) }}">
+                    <i class="bi bi-chevron-right"></i>
+                </a>
+            </li>
+
+        </ul>
+        <p class="text-center text-muted small mt-1">
+            Showing page {{ page }} of {{ pages }}
+            ({{ total }} shift{{ 's' if total != 1 }})
+        </p>
+    </nav>
+    {% endif %}
+
+</div>{# /container-fluid #}
+{% endblock %}
+
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+/* ── Date picker ───────────────────────────────────────────────── */
+flatpickr("#date_filter_input", {
+    dateFormat: "Y-m-d",
+    altInput:   true,
+    altFormat:  "d M Y",
+    allowInput: true,
+    onReady(_, __, fp) {
+        fp.altInput.placeholder = "e.g. 25 Dec 2025";
+    }
+});
+
+/* ── Auto-refresh every 60 s (AJAX) ───────────────────────────── */
+(function () {
+    const INTERVAL_MS = 60_000;
+
+    function currentParams() {
+        return new URLSearchParams(window.location.search);
+    }
+
+    async function refresh() {
+        const params = currentParams();
+        const url    = "{{ url_for('booking.live_shifts_data') }}?" + params.toString();
+
+        try {
+            const res  = await fetch(url);
+            const data = await res.json();
+            if (!data.success) return;
+
+            // Update total badge
+            const badge = document.getElementById("total-badge");
+            if (badge) {
+                badge.textContent =
+                    data.total + (data.total === 1 ? " shift" : " shifts");
+            }
+
+            // If data changed (different total), reload the whole page
+            // so Jinja re-renders the table cleanly — avoids duplicating
+            // complex slot/group rendering logic in JS.
+            const currentTotal = parseInt(badge?.dataset.total ?? "-1");
+            if (currentTotal !== -1 && currentTotal !== data.total) {
+                window.location.reload();
+            }
+
+            badge?.setAttribute("data-total", data.total);
+        } catch (err) {
+            console.warn("[live_shifts] Auto-refresh failed:", err);
+        }
+    }
+
+    // Store current total for change detection
+    const badge = document.getElementById("total-badge");
+    if (badge) badge.dataset.total = "{{ total }}";
+
+    setInterval(refresh, INTERVAL_MS);
+})();
+</script>
+{% endblock %}

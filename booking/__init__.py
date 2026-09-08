@@ -20,4 +20,5 @@ from . import designation
 from . import jobs
 from . import zoho_mail_views
 from . import doc_status
+from . import live_shifts
 

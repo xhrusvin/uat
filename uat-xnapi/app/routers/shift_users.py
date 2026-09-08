@@ -2381,38 +2381,6 @@ async def confirm_staff(request: Request, payload: ConfirmStaffRequest):
         record_id = str(result.inserted_id)
         action    = "created"
 
-    # Also update shift with assigned staff
-    await db["shifts"].update_one(
-        {"_id": shift_oid},
-        {"$set": {
-            "staff_email":    email,
-            "assigned_staff": full_name,
-            "staff_id":       str(user_oid),
-            "assigned_at":    now,
-            "updated_at":     now,
-        }}
-    )
-
-    # The user's schedule changed — drop every cached exclusion verdict
-    await db["users"].update_one(
-        {"_id": user_oid},
-        {"$unset": {"exclusion_cache_by_shift": "",
-                    "exclusion_cache": "", "exclusion_cache_at": ""}}
-    )
-
-    # Also update shifts_group_users if this shift belongs to a group
-    group = await db["shifts_group"].find_one({"shift_ids": shift_oid}, {"_id": 1})
-    if group:
-        await db["shifts_group_users"].update_many(
-            {"group_id": group["_id"], "user_id": user_oid},
-            {"$set": {
-                "availability":   1,
-                "confirmed":      1,
-                "confirmed_at":   now,
-                "confirmed_name": full_name,
-                "updated_at":     now,
-            }}
-        )
 
     return {
         "success":      True,
