@@ -12,6 +12,10 @@ Supports:
       PRIMARY  : any shifts_users row for the shift has availability == 1, OR
       FALLBACK : any shifts_group_users.availability_details[] element has
                  shift_id == str(shift._id) AND availability == 1
+  • O.Date column — latest outreach date:
+      PRIMARY  : outreach.shift_id (ObjectId) == shifts._id → latest created_at
+      FALLBACK : shifts_group.shift_ids contains shifts._id
+                 → outreach_shift_group.group_id == shifts_group._id → latest created_at
 """
 
 from datetime import datetime
@@ -42,12 +46,19 @@ def _serialize(doc):
 def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
     """
     Aggregation pipeline:
-      1. Optional date pre-filter
-      2. $lookup → shifts_users   (primary)   availability == 1
-      3. $lookup → shifts_group_users (fallback) availability_details[].availability == 1
-                   where availability_details[].shift_id (string) == shifts._id (string)
-      4. has_availability = primary hit  OR  fallback hit
-      5. Optional text / status post-filter
+      1.  Optional date pre-filter
+      2.  $lookup → shifts_users          (availability primary)
+      3.  $lookup → shifts_group_users    (availability fallback via availability_details[])
+      4.  has_availability derived
+      5.  $lookup → outreach              (outreach_date primary)
+              outreach.shift_id (ObjectId) == shifts._id  → latest created_at
+      6.  $lookup → shifts_group          (outreach_date fallback step A)
+              shifts_group.shift_ids contains shifts._id
+      7.  $lookup → outreach_shift_group  (outreach_date fallback step B)
+              outreach_shift_group.group_id == shifts_group._id → latest created_at
+      8.  outreach_date = primary hit  OR  fallback hit  (prefer primary)
+      9.  Optional text / status post-filter
+      10. $project
     """
     base_match = {}
     if date_filter_str:
@@ -59,8 +70,10 @@ def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
     pipeline = [
         {"$match": base_match},
 
-        # ── PRIMARY: shifts_users.shift_id (ObjectId) == shifts._id ───
-        # Stop at the first document that has availability == 1.
+        # ════════════════════════════════════════════════════════════════
+        # AVAILABILITY — PRIMARY
+        # shifts_users.shift_id (ObjectId) == shifts._id, availability == 1
+        # ════════════════════════════════════════════════════════════════
         {
             "$lookup": {
                 "from": "shifts_users",
@@ -79,11 +92,11 @@ def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
             }
         },
 
-        # ── FALLBACK: shifts_group_users.availability_details[] ────────
-        # availability_details is an array of subdocuments:
-        #   { shift_id: "<string>", availability: 1, responded_at: "…" }
-        # We match documents that have at least one element where:
-        #   element.shift_id  == string(_id)   AND   element.availability == 1
+        # ════════════════════════════════════════════════════════════════
+        # AVAILABILITY — FALLBACK
+        # shifts_group_users.availability_details[].shift_id (string) == str(shifts._id)
+        # AND availability_details[].availability == 1
+        # ════════════════════════════════════════════════════════════════
         {
             "$lookup": {
                 "from": "shifts_group_users",
@@ -96,10 +109,8 @@ def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
                                     {
                                         "$size": {
                                             "$filter": {
-                                                "input": {
-                                                    "$ifNull": ["$availability_details", []]
-                                                },
-                                                "as": "d",
+                                                "input": {"$ifNull": ["$availability_details", []]},
+                                                "as":    "d",
                                                 "cond": {
                                                     "$and": [
                                                         {"$eq": ["$$d.shift_id",    "$$sid_str"]},
@@ -121,7 +132,7 @@ def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
             }
         },
 
-        # ── Combine: true if either lookup returned a hit ──────────────
+        # Derive has_availability
         {
             "$addFields": {
                 "has_availability": {
@@ -133,6 +144,92 @@ def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
             }
         },
         {"$unset": ["_avail_primary", "_avail_fallback"]},
+
+        # ════════════════════════════════════════════════════════════════
+        # OUTREACH DATE — PRIMARY
+        # outreach.shift_id (ObjectId) == shifts._id
+        # Pick the latest outreach.created_at
+        # ════════════════════════════════════════════════════════════════
+        {
+            "$lookup": {
+                "from": "outreach",
+                "let":  {"sid": "$_id"},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {"$eq": ["$shift_id", "$$sid"]}
+                        }
+                    },
+                    {"$sort":    {"created_at": -1}},
+                    {"$limit":   1},
+                    {"$project": {"created_at": 1, "_id": 0}}
+                ],
+                "as": "_outreach_primary"
+            }
+        },
+
+        # ════════════════════════════════════════════════════════════════
+        # OUTREACH DATE — FALLBACK  (two-hop join)
+        #   Step A: find shifts_group docs whose shift_ids[] contains shifts._id
+        #   Step B: for each such group, look up outreach_shift_group on group_id
+        #           and grab the latest created_at
+        # ════════════════════════════════════════════════════════════════
+
+        # Step A — shifts_group
+        {
+            "$lookup": {
+                "from": "shifts_group",
+                "let":  {"sid": "$_id"},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {"$in": ["$$sid", {"$ifNull": ["$shift_ids", []]}]}
+                        }
+                    },
+                    {"$project": {"_id": 1}}
+                ],
+                "as": "_shift_groups"
+            }
+        },
+
+        # Step B — outreach_shift_group matched on group_id IN _shift_groups._id
+        {
+            "$lookup": {
+                "from": "outreach_shift_group",
+                "let":  {"group_ids": "$_shift_groups._id"},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {"$in": ["$group_id", {"$ifNull": ["$$group_ids", []]}]}
+                        }
+                    },
+                    {"$sort":    {"created_at": -1}},
+                    {"$limit":   1},
+                    {"$project": {"created_at": 1, "_id": 0}}
+                ],
+                "as": "_outreach_fallback"
+            }
+        },
+
+        # Derive outreach_date: prefer primary; fall back to group outreach
+        {
+            "$addFields": {
+                "outreach_date": {
+                    "$cond": {
+                        "if":   {"$gt": [{"$size": "$_outreach_primary"}, 0]},
+                        "then": {"$arrayElemAt": ["$_outreach_primary.created_at", 0]},
+                        "else": {
+                            "$cond": {
+                                "if":   {"$gt": [{"$size": "$_outreach_fallback"}, 0]},
+                                "then": {"$arrayElemAt": ["$_outreach_fallback.created_at", 0]},
+                                "else": None
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {"$unset": ["_outreach_primary", "_outreach_fallback", "_shift_groups"]},
     ]
 
     # ── Text search (no client lookup needed — client column removed) ──
@@ -172,7 +269,8 @@ def _build_pipeline(search: str, date_filter_str: str, status_filter: str):
             "slots": 1,
             "created_at": 1,
             "updated_at": 1,
-            "has_availability": 1,     # ← new
+            "has_availability": 1,
+            "outreach_date": 1,
         }
     })
 
@@ -205,6 +303,20 @@ def _format_shifts(shifts_list: list) -> list:
             s["date_formatted"] = raw_date.split("T")[0]
         else:
             s["date_formatted"] = "—"
+
+        # ── Outreach date formatting ───────────────────────────────────
+        raw_od = s.get("outreach_date")
+        if isinstance(raw_od, datetime):
+            s["outreach_date_formatted"] = raw_od.strftime("%d %b %Y %H:%M")
+        elif isinstance(raw_od, str) and raw_od:
+            # ISO string from _serialize — reformat nicely
+            try:
+                dt = datetime.fromisoformat(raw_od.replace("Z", "+00:00"))
+                s["outreach_date_formatted"] = dt.strftime("%d %b %Y %H:%M")
+            except Exception:
+                s["outreach_date_formatted"] = raw_od[:16]
+        else:
+            s["outreach_date_formatted"] = None
 
         # ── Slots normalisation ────────────────────────────────────────
         slots_out = []

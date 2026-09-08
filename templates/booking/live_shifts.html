@@ -194,6 +194,7 @@
                             <th>Status</th>
                             <th class="text-center">Premium</th>
                             <th class="text-center">Availability</th>
+                            <th class="text-nowrap">O. Date &amp; Time</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -295,13 +296,27 @@
                                         {% endif %}
                                     </td>
 
+                                    {# O. Date & Time — only first row #}
+                                    <td class="text-nowrap small">
+                                        {% if is_first %}
+                                            {% if s.outreach_date_formatted %}
+                                                <span class="text-body">
+                                                    <i class="bi bi-send text-secondary me-1"
+                                                       title="Latest outreach date"></i>{{ s.outreach_date_formatted }}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">—</span>
+                                            {% endif %}
+                                        {% endif %}
+                                    </td>
+
                                 </tr>
                             {% endfor %}{# slots #}
                         {% endfor %}{# shifts #}
 
                     {% else %}
                         <tr>
-                            <td colspan="9" class="text-center py-5">
+                            <td colspan="10" class="text-center py-5">
                                 <i class="bi bi-calendar-x display-1 text-muted opacity-25 d-block mb-3"></i>
                                 <h5 class="text-muted">No shifts found</h5>
                                 {% if search or date_filter or status_filter %}
