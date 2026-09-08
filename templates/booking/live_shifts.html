@@ -107,6 +107,18 @@
                   data-total="{{ total }}">
                 {{ total }} shift{{ 's' if total != 1 }}
             </span>
+            {# Export button — carries all active filter params #}
+            <a id="btn-export-csv"
+               href="{{ url_for('booking.live_shifts_export_csv',
+                                search=search,
+                                shift_date_from=shift_date_from,
+                                shift_date_to=shift_date_to,
+                                outreach_date_from=outreach_date_from,
+                                outreach_date_to=outreach_date_to,
+                                status_filter=status_filter) }}"
+               class="btn btn-success btn-sm">
+                <i class="bi bi-download me-1"></i>Export CSV
+            </a>
             <a href="{{ url_for('booking.live_shifts') }}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-clockwise me-1"></i>Refresh
             </a>
@@ -514,7 +526,36 @@ flatpickr("#outreach_date_to", {
     onReady(_, __, fp) { fp.altInput.placeholder = "To"; }
 });
 
-/* ── Auto-refresh every 60 s (AJAX) ───────────────────────────── */
+/* ── Keep Export CSV link in sync with current URL filters ─────── */
+(function () {
+    const exportBtn  = document.getElementById("btn-export-csv");
+    const filterForm = document.getElementById("filter-form");
+    if (!exportBtn || !filterForm) return;
+
+    const EXPORT_BASE = "{{ url_for('booking.live_shifts_export_csv') }}";
+
+    function syncExportLink() {
+        const fd     = new FormData(filterForm);
+        const params = new URLSearchParams();
+        for (const [k, v] of fd.entries()) {
+            // Pull the hidden Y-m-d value from flatpickr's real input
+            const realInput = filterForm.querySelector(`[name="${k}"]`);
+            if (realInput && realInput.value) {
+                params.set(k, realInput.value);
+            } else if (v) {
+                params.set(k, v);
+            }
+        }
+        exportBtn.href = EXPORT_BASE + "?" + params.toString();
+    }
+
+    // Sync on any input change
+    filterForm.addEventListener("change", syncExportLink);
+    filterForm.addEventListener("input",  syncExportLink);
+
+    // Initial sync (reflects server-rendered filter values)
+    syncExportLink();
+})();
 (function () {
     const INTERVAL_MS = 60_000;
 

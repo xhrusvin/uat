@@ -8,6 +8,7 @@ Supports:
   • Status filter
   • Pagination (10 per page)
   • JSON endpoint for AJAX refresh (/booking/live-shifts/data)
+  • CSV export of all filtered results (/booking/live-shifts/export-csv)
   • Availability column — green tick if:
       PRIMARY  : any shifts_users row for the shift has availability == 1, OR
       FALLBACK : any shifts_group_users.availability_details[] element has
@@ -503,3 +504,100 @@ def live_shifts_data():
         "page":    page,
         "pages":   max((total + PER_PAGE - 1) // PER_PAGE, 1),
     })
+
+
+@bp.route("/live-shifts/export-csv")
+def live_shifts_export_csv():
+    """
+    Stream all matching shifts (no pagination) as a CSV download.
+    Accepts the same filter params as /live-shifts.
+    Columns: Shift ID, Shift Date, Start, End, Type, Location, Status,
+             Premium, Availability, Outreach Date
+    """
+    import csv
+    import io
+    from flask import Response
+
+    search             = request.args.get("search", "").strip()
+    shift_date_from    = request.args.get("shift_date_from", "").strip()
+    shift_date_to      = request.args.get("shift_date_to", "").strip()
+    outreach_date_from = request.args.get("outreach_date_from",
+                                          datetime.utcnow().strftime("%Y-%m-%d")).strip()
+    outreach_date_to   = request.args.get("outreach_date_to", "").strip()
+    status_filter      = request.args.get("status_filter", "To Be Filled").strip()
+
+    if status_filter not in VALID_STATUSES:
+        status_filter = "To Be Filled"
+
+    pipeline = _build_pipeline(
+        search, shift_date_from, shift_date_to,
+        outreach_date_from, outreach_date_to, status_filter,
+    )
+
+    # No pagination — fetch all matching records sorted newest first
+    full_pipeline = pipeline + [{"$sort": {"date": -1, "created_at": -1}}]
+    shifts_list   = _format_shifts(list(db.shifts.aggregate(full_pipeline)))
+
+    # ── Build CSV in memory ────────────────────────────────────────────
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    writer.writerow([
+        "Shift ID",
+        "Unit Name",
+        "Shift Date",
+        "Start Time",
+        "End Time",
+        "Shift Type",
+        "Location",
+        "Postal Code",
+        "Status",
+        "Premium",
+        "Availability",
+        "Outreach Date",
+    ])
+
+    for s in shifts_list:
+        slots = s.get("slots_normalised") or []
+
+        # If the shift has multiple slots write one row per slot;
+        # shared fields (name, status, availability, outreach) repeat on each row.
+        if not slots:
+            slots = [{
+                "shift_xn_id":  s.get("shift_xn_id") or "",
+                "date_display": s.get("date_formatted") or "",
+                "start_time":   s.get("start_time_formatted") or "",
+                "end_time":     s.get("end_time_formatted") or "",
+                "shift_type":   "",
+            }]
+
+        for slot in slots:
+            writer.writerow([
+                slot.get("shift_xn_id")  or "",
+                s.get("name")            or "",
+                slot.get("date_display") or s.get("date_formatted") or "",
+                slot.get("start_time")   or "",
+                slot.get("end_time")     or "",
+                slot.get("shift_type")   or "",
+                s.get("location")        or "",
+                s.get("postal_code")     or "",
+                s.get("status")          or "",
+                "Yes" if s.get("is_premium") else "No",
+                "Yes" if s.get("has_availability") else "No",
+                s.get("outreach_date_formatted") or "",
+            ])
+
+    # ── Build filename with filter context ────────────────────────────
+    ts       = datetime.utcnow().strftime("%Y%m%d_%H%M")
+    fname    = f"live_shifts_{ts}.csv"
+
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename={fname}",
+            "Content-Type": "text/csv; charset=utf-8",
+        },
+    )
