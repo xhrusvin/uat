@@ -439,6 +439,12 @@ select.parsley-success {
     <div class="menu-header mt-4">Booking</div>
     <!-- Transcriptions Menu (Parent + Collapsible Submenu) -->
 
+    <a class="nav-link {% if request.path == '/booking/live_shifts' or request.path == '/booking/live_shifts/' %}active{% endif %}"
+       href="{{ url_for('booking.live_shifts') }}">
+        <i class="bi bi-list"></i>
+        <span>Live Shifts</span>
+    </a>
+
     <a class="nav-link {% if request.path == '/booking/assignments' or request.path == '/booking/assignments/' %}active{% endif %}"
        href="{{ url_for('booking.all_assignments_list') }}">
         <i class="bi bi-list"></i>
