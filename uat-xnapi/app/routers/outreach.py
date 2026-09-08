@@ -441,6 +441,12 @@ async def create_outreach(request: Request, payload: OutreachDetailRequest):
     except Exception as e:
         logger.error(f"Activity log error: {e}")
 
+    # ── Update shifts.last_outreach_date ─────────────────────────────────────
+    await db["shifts"].update_one(
+        {"_id": shift_oid},
+        {"$set": {"last_outreach_date": now}},
+    )
+
     logger.info(
         f"Outreach created: id={outreach_oid} shift={payload.shift_id} "
         f"round={round_number} updated={updated.modified_count} skipped={skipped}"

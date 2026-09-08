@@ -336,6 +336,14 @@ async def create_group_outreach(request: Request, payload: GroupOutreachRequest)
         except Exception as e:
             logger.error(f"[outreach-group/create] Activity log error shift={str(sh_oid)}: {e}")
 
+        # ── Update last_outreach_date for all shifts in the group ─────────────────
+    shift_oids_for_update = group.get("shift_ids") or []
+    if shift_oids_for_update:
+        await db["shifts"].update_many(
+            {"_id": {"$in": shift_oids_for_update}},
+            {"$set": {"last_outreach_date": now}},
+        )
+
     return {
         "success":      True,
         "round_number": round_number,
