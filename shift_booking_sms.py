@@ -1,5 +1,5 @@
 # shift_booking_sms.py
-# Sends SMS messages via Telinex for shifts where channel == 'SMS'
+# Sends SMS via Telnyx (api.telnyx.com) for shifts where channel == 'SMS'
 # Mirrors shift_booking_whatsapp.py logic exactly
 # Processes up to 10 pending messages per trigger call
 
@@ -14,15 +14,21 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-ALLOWED_START_HOUR = 8   # SMS-friendly window (daytime only)
+ALLOWED_START_HOUR = 8    # SMS-friendly window — daytime only
 ALLOWED_END_HOUR   = 21
 BATCH_SIZE         = 10
 
-# ── Telinex credentials (set in environment) ───────────────────────────────────
-# TELINEX_API_URL      e.g. https://api.telinex.com
-# TELINEX_API_KEY      your API key / bearer token
-# TELINEX_SENDER_ID    your registered sender ID / number
-# TELINEX_WEBHOOK_SECRET  optional secret for webhook validation
+# ── Telnyx credentials (set in environment) ────────────────────────────────────
+# TELNYX_API_KEY       your API key from Telnyx Mission Control Portal
+# TELNYX_FROM_NUMBER   your Telnyx number in E.164 format e.g. +353894618556
+#
+# Webhook — configure in Telnyx Mission Control Portal:
+#   Messaging Profiles → your profile → Webhook URL:
+#       https://yourapp.com/telnyx/webhook
+#   (one URL handles both inbound messages AND delivery receipts)
+# ──────────────────────────────────────────────────────────────────────────────
+
+TELNYX_API_BASE = "https://api.telnyx.com/v2"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -70,11 +76,18 @@ def _format_date(date_str: str) -> str:
         return str(date_str)
 
 
-def _build_sms_body(first_name, shift_doc) -> str:
+def _clean_phone(phone: str) -> str:
+    """Return E.164 format with leading + (Telnyx requires +353...)."""
+    cleaned = phone.replace(" ", "").replace("-", "").strip()
+    if not cleaned.startswith("+"):
+        cleaned = "+" + cleaned
+    return cleaned
+
+
+def _build_sms_body(first_name: str, shift_doc: dict) -> str:
     """
-    Compose the SMS text body.
-    Keep it short — SMS bodies should ideally stay under 160 chars per segment.
-    Adjust wording to match whatever copy your team uses.
+    Compose the SMS text. Aim for under 160 chars (1 segment).
+    Adjust wording to match your team's copy.
     """
     facility = shift_doc.get("client_name") or shift_doc.get("location") or "the facility"
     county   = shift_doc.get("client_county") or "Ireland"
@@ -85,7 +98,7 @@ def _build_sms_body(first_name, shift_doc) -> str:
     _rate    = shift_doc.get("rate", "")
     rate     = "REG" if not _rate or str(_rate) in ("0", "0.0", "") else str(_rate)
 
-    body = (
+    return (
         f"Hi {first_name}, shift available – Co. {county}\n"
         f"Facility: {facility}\n"
         f"Unit: {unit}\n"
@@ -94,96 +107,91 @@ def _build_sms_body(first_name, shift_doc) -> str:
         f"Rate: {rate}\n"
         f"Reply YES or NO"
     )
-    return body
-
-
-def _clean_phone(phone: str) -> str:
-    """Normalise to E.164 digits only (no +, spaces or dashes)."""
-    return phone.replace("+", "").replace(" ", "").replace("-", "").strip()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Telinex SMS send
+# Telnyx outbound send
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _send_telinex_sms(app, record, shift_doc, phone, first_name, su_id, collection="shifts_users"):
-    """Send an SMS via the Telinex API and update the DB record."""
+def _send_telnyx_sms(app, record, shift_doc, phone, first_name, su_id, collection="shifts_users"):
+    """
+    POST https://api.telnyx.com/v2/messages
+    {
+        "from": "+353...",
+        "to":   "+353...",
+        "text": "..."
+    }
+    Telnyx returns:
+    {
+        "data": {
+            "id": "<message-uuid>",
+            "to": [{"phone_number": "...", "status": "queued"}],
+            ...
+        }
+    }
+    """
     db_col = getattr(app.db, collection)
     try:
-        telinex_url    = (os.getenv("TELINEX_API_URL") or "").rstrip("/")
-        telinex_key    = os.getenv("TELINEX_API_KEY", "")
-        sender_id      = os.getenv("TELINEX_SENDER_ID", "ExpressHealth")
+        api_key     = os.getenv("TELNYX_API_KEY", "")
+        from_number = os.getenv("TELNYX_FROM_NUMBER", "")
 
-        if not telinex_url or not telinex_key:
-            log.error("[SMS] TELINEX_API_URL or TELINEX_API_KEY not set")
+        if not api_key or not from_number:
+            log.error("[SMS] TELNYX_API_KEY or TELNYX_FROM_NUMBER not set")
+            db_col.update_one({"_id": su_id}, {"$set": {"sms_error": "Missing TELNYX_API_KEY or TELNYX_FROM_NUMBER"}})
             return
 
         phone_clean = _clean_phone(phone)
         body        = _build_sms_body(first_name, shift_doc)
 
-        # ── Telinex send-message payload ──────────────────────────────────────
-        # Adjust field names below if Telinex uses different keys.
-        # Common Telinex REST payload:
-        #   POST /api/sms/send
-        #   { "to": "353...", "from": "SenderID", "message": "..." }
         payload = {
-            "to":      phone_clean,
-            "from":    sender_id,
-            "message": body,
-            # Optional: include a reference ID so the webhook can match replies
-            "reference": str(su_id),
+            "from": from_number,
+            "to":   phone_clean,
+            "text": body,
         }
 
         headers = {
-            "Authorization": f"Bearer {telinex_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type":  "application/json",
             "Accept":        "application/json",
         }
 
-        send_url = f"{telinex_url}/api/sms/send"
-        log.info(f"[SMS] Sending to {phone_clean} via {send_url}")
+        log.info(f"[SMS] Sending to {phone_clean}")
+        resp = _req.post(
+            f"{TELNYX_API_BASE}/messages",
+            json=payload,
+            headers=headers,
+            timeout=20,
+        )
 
-        resp = _req.post(send_url, json=payload, headers=headers, timeout=20)
+        try:
+            resp_data = resp.json()
+        except ValueError:
+            resp_data = {"raw_response": resp.text}
 
         if resp.status_code in (200, 201):
-            log.info(f"[SMS] ✓ Sent to {phone_clean}")
-            try:
-                resp_data = resp.json()
-            except ValueError:
-                resp_data = {"raw_response": resp.text}
-
-            # Telinex typically returns a message ID — adjust key as needed
-            message_id = (
-                resp_data.get("messageId")
-                or resp_data.get("message_id")
-                or resp_data.get("id")
-                or ""
-            )
+            msg_data   = resp_data.get("data", {})
+            message_id = msg_data.get("id", "")
+            log.info(f"[SMS] ✓ Sent to {phone_clean} — message_id={message_id}")
 
             db_col.update_one(
                 {"_id": su_id},
                 {"$set": {
                     "sms_sent":       1,
                     "sms_sent_at":    datetime.utcnow(),
-                    "sms_message_id": str(message_id),
+                    "sms_message_id": message_id,
                     "sms_phone":      phone_clean,
-                    "availability":   8,           # 8 = "Sent, awaiting reply"
+                    "availability":   8,          # 8 = Sent, awaiting reply
                     "updated_at":     datetime.utcnow(),
                 }}
             )
         else:
-            log.error(f"[SMS] ✗ Failed {phone_clean}: {resp.status_code} {resp.text[:200]}")
-            db_col.update_one(
-                {"_id": su_id},
-                {"$set": {"sms_error": f"{resp.status_code}: {resp.text[:200]}"}}
-            )
+            err = f"{resp.status_code}: {resp.text[:300]}"
+            log.error(f"[SMS] ✗ Failed {phone_clean}: {err}")
+            db_col.update_one({"_id": su_id}, {"$set": {"sms_error": err}})
 
     except Exception as e:
         log.error(f"[SMS] ✗ Exception for {phone}: {e}")
-        db_col.update_one(
-            {"_id": su_id},
-            {"$set": {"sms_error": str(e)}}
-        )
+        db_col.update_one({"_id": su_id}, {"$set": {"sms_error": str(e)}})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -191,8 +199,8 @@ def _send_telinex_sms(app, record, shift_doc, phone, first_name, su_id, collecti
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_shift_doc(app, record):
-    shift_id = record.get("shift_id")
-    group_id = record.get("group_id")
+    shift_id  = record.get("shift_id")
+    group_id  = record.get("group_id")
     shift_doc = {}
 
     if shift_id:
@@ -277,7 +285,7 @@ def register_shift_booking_sms_routes(app):
             first_name = user.get("first_name", "")
             full_name  = f"{first_name} {user.get('last_name', '')}".strip()
 
-            # Mark processed before background send (availability=7 = "Not Sent yet")
+            # Mark processed before background send (availability=7 = "Processing")
             result = db_col.update_one(
                 {"_id": su_id},
                 {"$set": {
@@ -288,12 +296,12 @@ def register_shift_booking_sms_routes(app):
                 }}
             )
             if result.modified_count == 0:
-                continue   # already processed by another worker
+                continue   # already claimed by another worker
 
             shift_doc = _get_shift_doc(app, record)
 
             threading.Thread(
-                target=_send_telinex_sms,
+                target=_send_telnyx_sms,
                 args=(current_app._get_current_object(), record, shift_doc,
                       phone, first_name, su_id, collection_name),
                 daemon=True
@@ -324,7 +332,7 @@ def register_shift_booking_sms_routes(app):
             "data":         triggered,
         }), 200
 
-    # ── Regular shifts_users (single-shift outreach) ──────────────────────────
+    # ── Regular shifts_users ──────────────────────────────────────────────────
     @app.route('/shift_booking_sms', methods=['GET'])
     def shift_booking_sms():
         user_id_param = request.args.get('user_id')
@@ -345,69 +353,83 @@ def register_shift_booking_sms_routes(app):
             {"call_processed": 0, "call_enabled": 1, "channel": "SMS"}
         )
         return jsonify({
-            "debug":           "shift_booking_sms.py loaded",
+            "debug":           "shift_booking_sms.py loaded (Telnyx)",
             "server_time":     now.strftime("%Y-%m-%d %H:%M:%S UTC"),
             "batch_size":      BATCH_SIZE,
             "pending_regular": pending_su,
             "pending_group":   pending_sgu,
-            "telinex_url":     os.getenv("TELINEX_API_URL", "not set"),
-            "sender_id":       os.getenv("TELINEX_SENDER_ID", "not set"),
+            "telnyx_api":      TELNYX_API_BASE,
+            "from_number":     os.getenv("TELNYX_FROM_NUMBER", "not set"),
+            "api_key_set":     bool(os.getenv("TELNYX_API_KEY")),
         })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Telinex inbound SMS webhook
+# Telnyx webhook  (handles BOTH inbound messages AND delivery receipts)
+# Configure ONE URL in Telnyx Mission Control Portal:
+#   Messaging Profiles → your profile → Inbound webhook URL
+#       https://yourapp.com/telnyx/webhook
+#
+# Telnyx V2 webhook envelope:
+# {
+#   "data": {
+#     "event_type": "message.received" | "message.sent" | "message.finalized",
+#     "id":         "<event-uuid>",
+#     "occurred_at":"2024-01-01T12:00:00Z",
+#     "payload": {
+#       "id":        "<message-uuid>",
+#       "direction": "inbound" | "outbound",
+#       "from":      {"phone_number": "+353..."},
+#       "to":        [{"phone_number": "+353...", "status": "delivered"}],
+#       "text":      "YES",
+#       "type":      "SMS"
+#     }
+#   }
+# }
 # ─────────────────────────────────────────────────────────────────────────────
 
-def register_telinex_webhook_routes(app):
+def register_telnyx_webhook_routes(app):
 
-    @app.route('/telinex/webhook', methods=['POST'])
-    def telinex_webhook():
-        """
-        Telinex delivers inbound SMS (replies) to this endpoint.
-        Configure in Telinex dashboard → Settings → Inbound Webhook URL:
-            https://yourapp.com/telinex/webhook
-
-        Expected payload (Telinex standard MO format — adjust if different):
-        {
-            "messageId":  "abc123",
-            "from":       "353871234567",
-            "to":         "353894618556",
-            "message":    "YES",
-            "reference":  "<su_id from outbound>",
-            "receivedAt": "2025-01-01T12:00:00Z"
-        }
-        """
+    @app.route('/telnyx/webhook', methods=['POST'])
+    def telnyx_webhook():
         try:
-            data = request.get_json(silent=True) or {}
+            body = request.get_json(silent=True) or {}
         except Exception:
-            data = {}
+            body = {}
 
-        log.info(f"[TELINEX WEBHOOK] Received: {data}")
+        log.info(f"[TELNYX WEBHOOK] Raw: {body}")
 
-        # ── Extract core fields ───────────────────────────────────────────────
-        # Normalise key names — Telinex may use camelCase or snake_case
-        phone      = (data.get("from") or data.get("sender") or "").replace("+", "").strip()
-        message_id = data.get("messageId") or data.get("message_id") or ""
-        reference  = data.get("reference") or data.get("ref") or ""   # su_id we sent
-        body       = (data.get("message") or data.get("text") or data.get("body") or "").strip()
-        received_at = data.get("receivedAt") or data.get("received_at") or ""
+        # ── Unwrap Telnyx V2 envelope ─────────────────────────────────────────
+        data       = body.get("data", {})
+        event_type = data.get("event_type", "")
+        payload    = data.get("payload", {})
 
-        now = datetime.utcnow()
+        message_id = payload.get("id", "")
+        direction  = payload.get("direction", "")       # "inbound" | "outbound"
 
-        # ── Persist raw inbound to DB ─────────────────────────────────────────
+        # from is a dict: {"phone_number": "+353..."}
+        from_obj = payload.get("from") or {}
+        phone    = (from_obj.get("phone_number") or "").replace("+", "").strip()
+
+        # to is a list: [{"phone_number": "...", "status": "..."}]
+        to_list     = payload.get("to") or []
+        to_statuses = [t.get("status", "") for t in to_list]   # for DLR events
+
+        text = (payload.get("text") or "").strip()
+        now  = datetime.utcnow()
+
+        # ── Persist every event ───────────────────────────────────────────────
         msg_doc = {
-            "phone":       phone,
-            "message_id":  message_id,
-            "reference":   reference,
-            "body":        body,
-            "direction":   "inbound",
-            "channel":     "SMS",
-            "raw":         {k: str(v)[:500] for k, v in data.items()},
-            "timestamp":   now,
+            "event_type": event_type,
+            "message_id": message_id,
+            "direction":  direction,
+            "phone":      phone,
+            "text":       text,
+            "to_statuses":to_statuses,
+            "raw":        {k: str(v)[:500] for k, v in body.items()},
+            "timestamp":  now,
         }
 
-        # Try to link to a user
         user = None
         if phone:
             user = app.db.users.find_one(
@@ -417,23 +439,58 @@ def register_telinex_webhook_routes(app):
         if user:
             msg_doc["user_id"] = user["_id"]
 
-        app.db.telinex_messages.insert_one(msg_doc)
+        app.db.telnyx_messages.insert_one(msg_doc)
+
+        # ── Delivery receipt (message.finalized / message.sent) ───────────────
+        # Telnyx fires "message.finalized" with final delivery status on outbound
+        if event_type in ("message.finalized", "message.sent") and direction == "outbound":
+            final_status = to_statuses[0] if to_statuses else "unknown"
+            log.info(f"[TELNYX WEBHOOK] DLR — message_id={message_id} status={final_status}")
+
+            # Locate the record by sms_message_id
+            su         = None
+            collection = "shifts_users"
+
+            su = app.db.shifts_group_users.find_one({"sms_message_id": message_id})
+            if su:
+                collection = "shifts_group_users"
+            else:
+                su = app.db.shifts_users.find_one({"sms_message_id": message_id})
+
+            if su:
+                db_col = getattr(app.db, collection)
+                db_col.update_one(
+                    {"_id": su["_id"]},
+                    {"$set": {
+                        "sms_dlr_status": final_status,
+                        "sms_dlr_at":     now,
+                        "updated_at":     now,
+                    }}
+                )
+                log.info(f"[TELNYX WEBHOOK] ✓ DLR saved — su_id={su['_id']} status={final_status}")
+
+            return {"success": True, "event": event_type, "status": final_status}, 200
+
+        # ── Only process inbound messages from here ───────────────────────────
+        if event_type != "message.received" or direction != "inbound":
+            log.info(f"[TELNYX WEBHOOK] Skipping event: {event_type} direction={direction}")
+            return {"success": True, "message": f"Skipped: {event_type}"}, 200
 
         if not phone:
-            log.warning("[TELINEX WEBHOOK] No sender phone in payload")
+            log.warning("[TELNYX WEBHOOK] No sender phone")
             return {"success": True, "message": "No phone"}, 200
 
         # ── Parse YES / NO ────────────────────────────────────────────────────
-        reply_text = body.lower().strip()
+        reply_lower = text.lower()
         avail = None
-        if reply_text in ("yes", "y", "1") or "yes" in reply_text or "available" in reply_text:
+        if reply_lower in ("yes", "y", "1") or "yes" in reply_lower or "available" in reply_lower:
             avail = 1
-        elif reply_text in ("no", "n", "0") or "no" in reply_text or "not available" in reply_text:
+        elif reply_lower in ("no", "n", "0") or "no" in reply_lower or "not available" in reply_lower:
             avail = 0
 
         # ── Non-standard reply → store as customer_feedback ──────────────────
         if avail is None:
-            log.info(f"[TELINEX WEBHOOK] Non-standard reply — storing as customer_feedback. phone={phone} body={body!r}")
+            log.info(f"[TELNYX WEBHOOK] Non-standard reply — storing as customer_feedback. phone={phone} text={text!r}")
 
             _fb_su         = None
             _fb_collection = "shifts_users"
@@ -467,12 +524,12 @@ def register_telinex_webhook_routes(app):
                 _fb_col.update_one(
                     {"_id": _fb_su["_id"]},
                     {"$set": {
-                        "customer_feedback":    body,
+                        "customer_feedback":    text,
                         "customer_feedback_at": now,
                         "updated_at":           now,
                     }}
                 )
-                log.info(f"[TELINEX WEBHOOK] ✓ Saved customer_feedback on {_fb_collection} {_fb_su['_id']}")
+                log.info(f"[TELNYX WEBHOOK] ✓ Saved customer_feedback on {_fb_collection} {_fb_su['_id']}")
                 return {
                     "success":    True,
                     "message":    "Stored as customer_feedback",
@@ -480,43 +537,33 @@ def register_telinex_webhook_routes(app):
                     "su_id":      str(_fb_su["_id"]),
                 }, 200
 
-            log.warning(f"[TELINEX WEBHOOK] No record found to attach feedback for phone={phone}")
+            log.warning(f"[TELNYX WEBHOOK] No record found to attach feedback for phone={phone}")
             return {"success": True, "message": "No actionable response, no record found"}, 200
 
-        # ── Resolve the shifts_users / shifts_group_users record ──────────────
+        # ── Resolve shifts_users / shifts_group_users record ──────────────────
+        # Match priority:
+        # 1. sms_phone  (most reliable — set at send time)
+        # 2. user_id    (fallback)
         su         = None
         collection = "shifts_users"
 
-        # 1. Prefer match by reference (su_id we embedded in outbound reference field)
-        if reference and ObjectId.is_valid(reference):
-            ref_oid = ObjectId(reference)
-            su = app.db.shifts_group_users.find_one({"_id": ref_oid, "sms_sent": 1})
-            if su:
-                collection = "shifts_group_users"
-                log.info(f"[TELINEX WEBHOOK] Matched by reference → shifts_group_users {su['_id']}")
-            else:
-                su = app.db.shifts_users.find_one({"_id": ref_oid, "sms_sent": 1})
-                if su:
-                    log.info(f"[TELINEX WEBHOOK] Matched by reference → shifts_users {su['_id']}")
-
-        # 2. Fallback: match by sms_phone
-        if not su:
-            su = app.db.shifts_group_users.find_one(
-                {"sms_phone": phone, "sms_sent": 1},
+        # 1. Match by sms_phone
+        su = app.db.shifts_group_users.find_one(
+            {"sms_phone": f"+{phone}", "sms_sent": 1},
+            sort=[("sms_sent_at", -1)]
+        )
+        if su:
+            collection = "shifts_group_users"
+            log.info(f"[TELNYX WEBHOOK] Matched sms_phone → shifts_group_users {su['_id']}")
+        else:
+            su = app.db.shifts_users.find_one(
+                {"sms_phone": f"+{phone}", "sms_sent": 1},
                 sort=[("sms_sent_at", -1)]
             )
             if su:
-                collection = "shifts_group_users"
-                log.info(f"[TELINEX WEBHOOK] Fallback sms_phone → shifts_group_users {su['_id']}")
-            else:
-                su = app.db.shifts_users.find_one(
-                    {"sms_phone": phone, "sms_sent": 1},
-                    sort=[("sms_sent_at", -1)]
-                )
-                if su:
-                    log.info(f"[TELINEX WEBHOOK] Fallback sms_phone → shifts_users {su['_id']}")
+                log.info(f"[TELNYX WEBHOOK] Matched sms_phone → shifts_users {su['_id']}")
 
-        # 3. Fallback: match by user_id
+        # 2. Fallback by user_id
         if not su and user:
             su = app.db.shifts_group_users.find_one(
                 {"user_id": user["_id"], "sms_sent": 1},
@@ -524,21 +571,21 @@ def register_telinex_webhook_routes(app):
             )
             if su:
                 collection = "shifts_group_users"
-                log.info(f"[TELINEX WEBHOOK] Fallback user_id → shifts_group_users {su['_id']}")
+                log.info(f"[TELNYX WEBHOOK] Fallback user_id → shifts_group_users {su['_id']}")
             else:
                 su = app.db.shifts_users.find_one(
                     {"user_id": user["_id"], "sms_sent": 1},
                     sort=[("sms_sent_at", -1)]
                 )
                 if su:
-                    log.info(f"[TELINEX WEBHOOK] Fallback user_id → shifts_users {su['_id']}")
+                    log.info(f"[TELNYX WEBHOOK] Fallback user_id → shifts_users {su['_id']}")
 
         if not su:
-            log.warning(f"[TELINEX WEBHOOK] No record found for phone={phone}")
+            log.warning(f"[TELNYX WEBHOOK] No record found for phone={phone}")
             return {"success": True, "message": "No record found"}, 200
 
         # ── Update availability ───────────────────────────────────────────────
-        log.info(f"[TELINEX WEBHOOK] Updating su_id={su['_id']} in {collection} → availability={avail}")
+        log.info(f"[TELNYX WEBHOOK] Updating su_id={su['_id']} in {collection} → availability={avail}")
         db_col  = getattr(app.db, collection)
         now_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -548,89 +595,22 @@ def register_telinex_webhook_routes(app):
             "response_time": now_str,
             "responded_at":  now,
             "updated_at":    now,
-            "sms_response":  body,
+            "sms_response":  text,
         }
 
         result = db_col.update_one({"_id": su["_id"]}, {"$set": _set_fields})
-        log.info(f"[TELINEX WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
+        log.info(f"[TELNYX WEBHOOK] ✓ Updated {result.modified_count} record(s) → availability={avail}")
 
-        # Auto-end outreach after reply
-        _wh_shift_id    = str(su.get("shift_id", ""))
-        _wh_outreach_id = str(su.get("outreach_id", ""))
+        # Auto-end outreach
         threading.Thread(
             target=_check_and_end_outreach,
-            args=(app, _wh_shift_id, _wh_outreach_id, collection),
+            args=(app, str(su.get("shift_id", "")), str(su.get("outreach_id", "")), collection),
             daemon=True
         ).start()
 
         return {
-            "success":    True,
+            "success":      True,
             "availability": avail,
-            "collection": collection,
-            "su_id":      str(su["_id"]),
+            "collection":   collection,
+            "su_id":        str(su["_id"]),
         }, 200
-
-    # ── Delivery receipt (optional — Telinex DLR) ─────────────────────────────
-    @app.route('/telinex/dlr', methods=['POST'])
-    def telinex_dlr():
-        """
-        Telinex delivery receipt webhook.
-        Configure in Telinex dashboard → Settings → DLR Webhook URL:
-            https://yourapp.com/telinex/dlr
-
-        Typical payload:
-        {
-            "messageId": "abc123",
-            "status":    "DELIVERED",   // DELIVERED | FAILED | PENDING
-            "reference": "<su_id>",
-            "timestamp": "2025-01-01T12:01:00Z"
-        }
-        """
-        try:
-            data = request.get_json(silent=True) or {}
-        except Exception:
-            data = {}
-
-        log.info(f"[TELINEX DLR] {data}")
-
-        message_id = data.get("messageId") or data.get("message_id") or ""
-        status     = (data.get("status") or "").upper()
-        reference  = data.get("reference") or ""
-
-        if not reference and not message_id:
-            return {"success": True, "message": "No reference"}, 200
-
-        # Locate the record
-        su         = None
-        collection = "shifts_users"
-
-        if reference and ObjectId.is_valid(reference):
-            ref_oid = ObjectId(reference)
-            su = app.db.shifts_group_users.find_one({"_id": ref_oid})
-            if su:
-                collection = "shifts_group_users"
-            else:
-                su = app.db.shifts_users.find_one({"_id": ref_oid})
-
-        if not su and message_id:
-            su = app.db.shifts_group_users.find_one({"sms_message_id": message_id})
-            if su:
-                collection = "shifts_group_users"
-            else:
-                su = app.db.shifts_users.find_one({"sms_message_id": message_id})
-
-        if not su:
-            log.warning(f"[TELINEX DLR] No record for reference={reference} messageId={message_id}")
-            return {"success": True}, 200
-
-        db_col = getattr(app.db, collection)
-        db_col.update_one(
-            {"_id": su["_id"]},
-            {"$set": {
-                "sms_dlr_status": status,
-                "sms_dlr_at":     datetime.utcnow(),
-                "updated_at":     datetime.utcnow(),
-            }}
-        )
-        log.info(f"[TELINEX DLR] ✓ su_id={su['_id']} status={status}")
-        return {"success": True, "status": status}, 200
