@@ -407,12 +407,11 @@ def live_shifts():
     outreach_date_from = request.args.get("outreach_date_from",
                                           datetime.utcnow().strftime("%Y-%m-%d")).strip()
     outreach_date_to   = request.args.get("outreach_date_to", "").strip()
-    # Default status to "To Be Filled" when not supplied
-    status_filter        = request.args.get("status_filter", "To Be Filled").strip()
+    status_filter        = request.args.get("status_filter", "").strip()
     availability_filter  = request.args.get("availability_filter", "").strip().lower()
 
     if status_filter not in VALID_STATUSES:
-        status_filter = "To Be Filled"
+        status_filter = ""
     if availability_filter not in ("yes", "no", ""):
         availability_filter = ""
 
@@ -462,11 +461,11 @@ def live_shifts_data():
     outreach_date_from = request.args.get("outreach_date_from",
                                           datetime.utcnow().strftime("%Y-%m-%d")).strip()
     outreach_date_to   = request.args.get("outreach_date_to", "").strip()
-    status_filter        = request.args.get("status_filter", "To Be Filled").strip()
+    status_filter        = request.args.get("status_filter", "").strip()
     availability_filter  = request.args.get("availability_filter", "").strip().lower()
 
     if status_filter not in VALID_STATUSES:
-        status_filter = "To Be Filled"
+        status_filter = ""
     if availability_filter not in ("yes", "no", ""):
         availability_filter = ""
 
@@ -513,11 +512,11 @@ def live_shifts_export_csv():
     outreach_date_from = request.args.get("outreach_date_from",
                                           datetime.utcnow().strftime("%Y-%m-%d")).strip()
     outreach_date_to   = request.args.get("outreach_date_to", "").strip()
-    status_filter        = request.args.get("status_filter", "To Be Filled").strip()
+    status_filter        = request.args.get("status_filter", "").strip()
     availability_filter  = request.args.get("availability_filter", "").strip().lower()
 
     if status_filter not in VALID_STATUSES:
-        status_filter = "To Be Filled"
+        status_filter = ""
     if availability_filter not in ("yes", "no", ""):
         availability_filter = ""
 
