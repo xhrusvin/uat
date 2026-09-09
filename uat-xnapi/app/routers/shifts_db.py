@@ -28,7 +28,6 @@ def _normalize_shift_timing(s: dict) -> str:
     start  = s.get("start_time", "")
     end    = s.get("end_time", "")
 
-    # Fallback to first slot for start/end times
     if (not start or not end) and s.get("slots"):
         first_slot = s["slots"][0] if isinstance(s["slots"], list) and s["slots"] else {}
         start = start or first_slot.get("start_time", "")
@@ -44,12 +43,10 @@ def _normalize_shift_timing(s: dict) -> str:
 
 
 def _now_irl():
-    """Current datetime in Ireland timezone."""
     return datetime.now(_IRL_TZ)
 
 
 def _to_irl(dt):
-    """Convert a datetime to Ireland timezone."""
     if not dt:
         return None
     if hasattr(dt, "tzinfo") and dt.tzinfo is None:
@@ -58,7 +55,6 @@ def _to_irl(dt):
 
 
 def _iso_irl(dt) -> str | None:
-    """Return datetime as ISO string in Ireland timezone."""
     if not dt:
         return None
     converted = _to_irl(dt)
@@ -72,13 +68,7 @@ def _get_db():
     return _client[settings.MONGODB_DB]
 
 
-
 async def _resolve_names_from_collection(db, collection: str, ids: list) -> list:
-    """
-    Resolve a list of ObjectId strings to their 'name' field values.
-    Falls through non-ObjectId values as raw strings.
-    Works for both user_types and county collections.
-    """
     if not ids:
         return []
     oids = [ObjectId(i) for i in ids if ObjectId.is_valid(str(i))]
@@ -87,7 +77,6 @@ async def _resolve_names_from_collection(db, collection: str, ids: list) -> list
         async for doc in db[collection].find({"_id": {"$in": oids}}, {"name": 1}):
             if doc.get("name"):
                 names.append(doc["name"])
-    # Also accept raw name strings passed directly (not IDs)
     for i in ids:
         if not ObjectId.is_valid(str(i)) and i not in names:
             names.append(i)
@@ -128,23 +117,12 @@ def _serialize(doc: dict) -> dict:
 
 
 async def _build_client_map(db, client_ids: list) -> dict:
-    """
-    Look up clients by both:
-      - clients._id        (ObjectId)   — legacy local clients
-      - clients.xn_client_id (string)   — clients synced from User API
-
-    shifts.client_id stores the XN client ID string (e.g. "6921c52323d4e88656035a1d"),
-    which maps to clients.xn_client_id, NOT clients._id.
-
-    Returns a dict keyed by the xn_client_id / _id string.
-    """
     client_map: dict = {}
     if not client_ids:
         return client_map
 
     projection = {"name": 1, "title": 1, "email": 1, "phone": 1, "xn_client_id": 1, "client_preference": 1, "address": 1}
 
-    # 1. Match by xn_client_id (primary join key)
     async for cl in db["clients"].find(
         {"xn_client_id": {"$in": client_ids}},
         projection,
@@ -153,7 +131,6 @@ async def _build_client_map(db, client_ids: list) -> dict:
         if xn_id:
             client_map[str(xn_id)] = cl
 
-    # 2. Also try matching by _id for any unresolved IDs (legacy local clients)
     unresolved = [cid for cid in client_ids if cid not in client_map]
     if unresolved:
         valid_oids = [ObjectId(c) for c in unresolved if ObjectId.is_valid(c)]
@@ -173,37 +150,364 @@ def _client_name(cl: dict) -> str:
     return cl.get("name") or cl.get("title") or "—"
 
 
-
 # ── Request schema ────────────────────────────────────────────────────────────
 
 class ShiftsDbListRequest(BaseModel):
-    search:              str = ""
-    criteria:            Optional[str] = None
-    status:              Optional[str] = None
-    client_id:           Optional[str] = None
-    user_type:           Optional[str] = None
-    user_type_multiple:  Optional[list] = None  # list of user_type _id strings
-    county_multiple:           Optional[list] = None  # list of county _id strings → shifts.client_county
-    automation_status_multiple:  Optional[list] = None  # list of ints: 0,1,2,3,10
-    is_premium:                  Optional[int]  = None  # 1 = true, 0 = false
-    has_available:               Optional[int]  = None  # 1 = has available staff, 0 = none
-    automation_status:   Optional[str] = None
-    start_date:          Optional[str] = None   # YYYY-MM-DD
-    end_date:            Optional[str] = None   # YYYY-MM-DD
-    sort_by:             str = "date"
-    sort_order:          str = "desc"
-    page:                int = 1
-    per_page:            int = 20
+    search:                      str = ""
+    criteria:                    Optional[str] = None
+    status:                      Optional[str] = None
+    client_id:                   Optional[str] = None
+    user_type:                   Optional[str] = None
+    user_type_multiple:          Optional[list] = None
+    county_multiple:             Optional[list] = None
+    automation_status_multiple:  Optional[list] = None
+    is_premium:                  Optional[int]  = None
+    has_available:               Optional[int]  = None
+    automation_status:           Optional[str] = None
+    start_date:                  Optional[str] = None
+    end_date:                    Optional[str] = None
+    sort_by:                     str = "date"
+    sort_order:                  str = "desc"
+    page:                        int = 1
+    per_page:                    int = 20
+
+
+# ── OPTIMISED: Bulk staff counts via single aggregation ──────────────────────
+
+async def _get_staff_counts_bulk(db, shift_oids: list) -> dict:
+    """
+    Single aggregation replacing N×6 count_documents calls.
+    Returns {shift_id_str: counts_dict}.
+    """
+    if not shift_oids:
+        return {}
+
+    pipeline = [
+        {"$match": {"shift_id": {"$in": shift_oids}}},
+        {"$group": {
+            "_id": "$shift_id",
+            "available": {"$sum": {"$cond": [{"$eq": ["$availability", 1]}, 1, 0]}},
+            "with_outreach": {"$sum": {
+                "$cond": [{"$and": [
+                    {"$ne": ["$outreach_id", None]},
+                    {"$gt": ["$outreach_id", None]},
+                ]}, 1, 0]
+            }},
+            "no_reply": {"$sum": {"$cond": [{"$eq": ["$availability", 6]}, 1, 0]}},
+            "pending": {"$sum": {
+                "$cond": [{"$and": [
+                    {"$eq": ["$call_enabled", 1]},
+                    {"$eq": ["$call_processed", 0]},
+                ]}, 1, 0]
+            }},
+            "phone_declined": {"$sum": {
+                "$cond": [{"$and": [
+                    {"$in": ["$availability", [0, 3, 4]]},
+                    {"$or": [
+                        {"$eq": ["$channel", "Phone"]},
+                        {"$eq": ["$channel", None]},
+                        {"$not": {"$ifNull": ["$channel", False]}},
+                    ]},
+                ]}, 1, 0]
+            }},
+            "email_wa_declined": {"$sum": {
+                "$cond": [{"$and": [
+                    {"$eq": ["$availability", 0]},
+                    {"$in": ["$channel", ["Email", "WhatsApp", "SMS"]]},
+                ]}, 1, 0]
+            }},
+        }},
+    ]
+
+    result = {}
+    async for row in db["shifts_users"].aggregate(pipeline):
+        sid = str(row["_id"])
+        declined  = row["phone_declined"] + row["email_wa_declined"]
+        available = row["available"]
+        no_reply  = row["no_reply"]
+        result[sid] = {
+            "available":      available,
+            "with_outreach":  row["with_outreach"],
+            "declined":       declined,
+            "no_reply":       no_reply,
+            "pending":        row["pending"],
+            "requested":      0,   # filled by _merge_requested_counts
+            "requested_flag": 0,
+            "display":        f"{available} Available · {declined} Declined · {no_reply} No reply",
+            "has_available":  1 if available > 0 else 0,
+        }
+    return result
+
+
+async def _merge_group_counts_bulk(db, shift_oids: list, group_shift_map: dict, base_counts: dict) -> dict:
+    """
+    Merge shifts_group_users availability into base_counts for shifts that
+    belong to a group outreach. One aggregation replaces the per-shift loop.
+    """
+    if not group_shift_map:
+        return base_counts
+
+    shift_id_strs = [str(o) for o in shift_oids if str(o) in group_shift_map]
+    if not shift_id_strs:
+        return base_counts
+
+    # Collect existing shifts_users user_ids per shift to avoid double-counting
+    existing_map: dict = {}   # shift_id_str → set of user_id strs
+    async for su in db["shifts_users"].find(
+        {"shift_id": {"$in": shift_oids}},
+        {"shift_id": 1, "user_id": 1}
+    ):
+        sid = str(su["shift_id"])
+        existing_map.setdefault(sid, set()).add(str(su.get("user_id", "")))
+
+    # Query group users whose availability_details include any of these shifts
+    group_su_docs = await db["shifts_group_users"].find(
+        {
+            "availability_details.shift_id": {
+                "$in": shift_id_strs + shift_oids
+            }
+        },
+        {"user_id": 1, "channel": 1, "availability_details": 1},
+    ).to_list(length=10000)
+
+    for gsu in group_su_docs:
+        uid_str = str(gsu.get("user_id", ""))
+        channel = gsu.get("channel") or "Phone"
+        for ad in (gsu.get("availability_details") or []):
+            sid = str(ad.get("shift_id", ""))
+            if sid not in group_shift_map:
+                continue
+            # Skip if already counted in shifts_users
+            if uid_str in existing_map.get(sid, set()):
+                continue
+            avail_val = ad.get("availability")
+            if avail_val is None:
+                continue
+            counts = base_counts.setdefault(sid, {
+                "available": 0, "with_outreach": 0, "declined": 0,
+                "no_reply": 0, "pending": 0, "requested": 0, "requested_flag": 0,
+                "display": "", "has_available": 0,
+            })
+            if avail_val == 1:
+                counts["available"]     += 1
+                counts["with_outreach"] += 1
+            elif avail_val in (0, 3, 4):
+                if channel in ("Email", "WhatsApp", "SMS"):
+                    if avail_val == 0:
+                        counts["declined"] += 1
+                else:
+                    counts["declined"] += 1
+            elif avail_val == 6:
+                counts["no_reply"] += 1
+            # Rebuild display string
+            counts["display"] = (
+                f"{counts['available']} Available · "
+                f"{counts['declined']} Declined · "
+                f"{counts['no_reply']} No reply"
+            )
+            counts["has_available"] = 1 if counts["available"] > 0 else 0
+
+    return base_counts
+
+
+async def _merge_requested_counts(db, shift_oids: list, counts: dict) -> dict:
+    """Batch-fetch requested_staff_list lengths and merge into counts."""
+    async for doc in db["shifts"].find(
+        {"_id": {"$in": shift_oids}, "requested_staff_list": {"$exists": True}},
+        {"requested_staff_list": 1}
+    ):
+        sid = str(doc["_id"])
+        req = len(doc.get("requested_staff_list") or [])
+        if sid in counts:
+            counts[sid]["requested"]      = req
+            counts[sid]["requested_flag"] = 1 if req > 0 else 0
+    return counts
+
+
+async def _get_staff_counts_light(db, shift_oid: ObjectId, group_id=None) -> dict:
+    """
+    Lightweight counts for list endpoint — kept for single-shift detail use.
+    For bulk list use _get_staff_counts_bulk instead.
+    """
+    shift_id_str = str(shift_oid)
+
+    available = await db["shifts_users"].count_documents({
+        "shift_id":     shift_oid,
+        "availability": 1,
+    })
+    with_outreach = await db["shifts_users"].count_documents({
+        "shift_id":    shift_oid,
+        "outreach_id": {"$exists": True, "$ne": None},
+    })
+    phone_declined    = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": {"$in": [0, 3, 4]}, "channel": {"$in": ["Phone", None]}})
+    email_wa_declined = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 0, "channel": {"$in": ["Email", "WhatsApp", "SMS"]}})
+    declined = phone_declined + email_wa_declined
+    no_reply = await db["shifts_users"].count_documents({
+        "shift_id":     shift_oid,
+        "availability": 6,
+    })
+    pending = await db["shifts_users"].count_documents({
+        "shift_id":      shift_oid,
+        "call_enabled":  1,
+        "call_processed": 0,
+    })
+    shift_doc_req = await db["shifts"].find_one({"_id": shift_oid}, {"requested_staff_list": 1})
+    requested = len(shift_doc_req.get("requested_staff_list") or []) if shift_doc_req else 0
+
+    if group_id is not None:
+        group_su_docs = await db["shifts_group_users"].find(
+            {
+                "availability_details": {
+                    "$elemMatch": {
+                        "shift_id": {"$in": [shift_id_str, shift_oid]},
+                    }
+                }
+            },
+            {"user_id": 1, "availability_details": 1, "availability": 1, "channel": 1},
+        ).to_list(length=2000)
+
+        existing_su_user_ids = set()
+        async for su in db["shifts_users"].find({"shift_id": shift_oid}, {"user_id": 1}):
+            existing_su_user_ids.add(str(su.get("user_id", "")))
+
+        for gsu in group_su_docs:
+            if str(gsu.get("user_id", "")) in existing_su_user_ids:
+                continue
+            avail_val = None
+            for ad in (gsu.get("availability_details") or []):
+                if str(ad.get("shift_id", "")) == shift_id_str:
+                    avail_val = ad.get("availability")
+                    break
+            if avail_val is None:
+                avail_val = gsu.get("availability")
+            if avail_val is None:
+                continue
+            channel = gsu.get("channel") or "Phone"
+            if avail_val == 1:
+                available += 1
+                with_outreach += 1
+            elif avail_val in (0, 3, 4):
+                if channel in ("Email", "WhatsApp", "SMS"):
+                    if avail_val == 0:
+                        declined += 1
+                else:
+                    declined += 1
+            elif avail_val == 6:
+                no_reply += 1
+
+    return {
+        "available":      available,
+        "requested":      requested,
+        "requested_flag": 1 if requested > 0 else 0,
+        "with_outreach":  with_outreach,
+        "declined":       declined,
+        "no_reply":       no_reply,
+        "pending":        pending,
+        "display":        f"{available} Available · {declined} Declined · {no_reply} No reply",
+        "has_available":  1 if available > 0 else 0,
+    }
+
+
+async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
+    """Full staff counts for the detail endpoint."""
+    total = await db["shifts_users"].count_documents({"shift_id": shift_oid})
+
+    available          = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 1})
+    not_available      = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 0})
+    voicemail          = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 3})
+    call_not_attended  = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 4})
+    call_not_triggered = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 6})
+
+    phone_declined    = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": {"$in": [0, 3, 4]}, "channel": {"$in": ["Phone", None]}})
+    email_wa_declined = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 0, "channel": {"$in": ["Email", "WhatsApp", "SMS"]}})
+    declined  = phone_declined + email_wa_declined
+    no_reply  = call_not_triggered
+    phone     = await db["shifts_users"].count_documents({"shift_id": shift_oid, "call_enabled": {"$gt": 0}})
+    with_outreach = await db["shifts_users"].count_documents({"shift_id": shift_oid, "outreach_id": {"$exists": True, "$ne": None}})
+    shift_doc_req2 = await db["shifts"].find_one({"_id": shift_oid}, {"requested_staff_list": 1})
+    requested = len(shift_doc_req2.get("requested_staff_list") or []) if shift_doc_req2 else 0
+
+    return {
+        "number_of_staff":    total,
+        "available":          available,
+        "requested":          requested,
+        "requested_flag":     1 if requested > 0 else 0,
+        "declined":           declined,
+        "no_reply":           no_reply,
+        "phone":              phone,
+        "whatsapp":           0,
+        "email":              0,
+        "with_outreach":      with_outreach,
+        "without_outreach":   total - with_outreach,
+        "display":            f"{available} Available · {declined} Declined · {no_reply} No reply",
+        "availability_breakdown": {
+            "available":          available,
+            "not_available":      not_available,
+            "voicemail":          voicemail,
+            "call_not_attended":  call_not_attended,
+            "call_not_triggered": call_not_triggered,
+        },
+    }
+
+
+async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
+    STATUS_TEXT = {0: "Not Started", 1: "Live", 2: "Paused", 3: "Ended", 10: "Completed"}
+
+    latest = await db["outreach"].find_one(
+        {"shift_id": shift_oid},
+        sort=[("created_at", -1)]
+    )
+
+    group_latest = None
+    async for sg in db["shifts_group"].find({"shift_ids": shift_oid}, {"_id": 1}):
+        go = await db["outreach_shift_group"].find_one(
+            {"group_id": sg["_id"]},
+            sort=[("created_at", -1)]
+        )
+        if go:
+            if group_latest is None or go.get("created_at", 0) > group_latest.get("created_at", 0):
+                group_latest = go
+
+    if latest and group_latest:
+        use = latest if (latest.get("created_at") or 0) >= (group_latest.get("created_at") or 0) else group_latest
+        is_group = use is group_latest
+    elif latest:
+        use, is_group = latest, False
+    elif group_latest:
+        use, is_group = group_latest, True
+    else:
+        return {
+            "outreach_status":        0,
+            "outreach_status_text":   "Not Started",
+            "outreach_sequence_name": None,
+            "shift_preference":       [],
+            "shift_preferences":      [],
+            "client_preference":      [],
+            "ghost_booking":          0,
+        }
+
+    status = use.get("outreach_status", 0)
+    sequence_name = None
+    seq_oid = use.get("sequence_id")
+    if seq_oid:
+        seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
+        if seq:
+            sequence_name = seq.get("name")
+
+    return {
+        "outreach_status":        status,
+        "outreach_status_text":   STATUS_TEXT.get(status, "Not Started"),
+        "outreach_id":            str(use["_id"]),
+        "outreach_sequence_name": sequence_name,
+        "is_group_outreach":      is_group,
+        "shift_preference":       [],
+        "shift_preferences":      [],
+        "client_preference":      None,
+        "ghost_booking":          0,
+    }
 
 
 async def _get_shift_users(db, shift_oid: ObjectId) -> list:
-    """
-    Join shifts_users → users.
-    shifts_users.shift_id == shifts._id
-    shifts_users.user_id  == users._id
-    Returns list of user summaries: id, name, email, phone, rating.
-    """
-    # Fetch all shifts_users rows for this shift
     su_docs = await db["shifts_users"].find(
         {"shift_id": shift_oid},
         {"user_id": 1, "rating": 1, "status": 1, "outreach_id": 1, "call_enabled": 1}
@@ -212,9 +516,8 @@ async def _get_shift_users(db, shift_oid: ObjectId) -> list:
     if not su_docs:
         return []
 
-    # Collect valid user ObjectIds
     user_oids = []
-    su_map: dict = {}   # user_id str → shifts_users doc
+    su_map: dict = {}
     for su in su_docs:
         uid = su.get("user_id")
         if uid and ObjectId.is_valid(str(uid)):
@@ -225,7 +528,6 @@ async def _get_shift_users(db, shift_oid: ObjectId) -> list:
     if not user_oids:
         return []
 
-    # Fetch matching users
     users: list = []
     async for u in db["users"].find(
         {"_id": {"$in": user_oids}},
@@ -233,7 +535,7 @@ async def _get_shift_users(db, shift_oid: ObjectId) -> list:
          "xn_user_id": 1, "designation": 1, "rating": 1}
     ):
         uid_str = str(u["_id"])
-        su      = su_map.get(uid_str, {})
+        su = su_map.get(uid_str, {})
         full_name = " ".join(filter(None, [
             u.get("first_name", ""), u.get("last_name", "")
         ])).strip() or "—"
@@ -254,8 +556,6 @@ async def _get_shift_users(db, shift_oid: ObjectId) -> list:
     return users
 
 
-
-
 # ── LIST (POST — JSON body) ────────────────────────────────────────────────────
 
 @router.post(
@@ -265,23 +565,6 @@ async def _get_shift_users(db, shift_oid: ObjectId) -> list:
 )
 @limiter.limit("60/minute")
 async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
-    """
-    POST body:
-    {
-        "search": "",
-        "criteria": null,
-        "status": null,
-        "client_id": null,
-        "user_type": null,
-        "automation_status": null,
-        "start_date": "YYYY-MM-DD",
-        "end_date": "YYYY-MM-DD",
-        "sort_by": "date",
-        "sort_order": "desc",
-        "page": 1,
-        "per_page": 20
-    }
-    """
     db   = _get_db()
     skip = (payload.page - 1) * payload.per_page
     limit = payload.per_page
@@ -357,6 +640,7 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         county_names = await _resolve_county_names(db, county_multiple)
         if county_names:
             filters.append({"client_county": {"$in": county_names}})
+
     if automation_status:
         filters.append({"$or": [
             {"automation_status": {"$regex": automation_status, "$options": "i"}},
@@ -375,7 +659,6 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         else:
             filters.append({"_id": {"$nin": avail_shift_ids}})
 
-    # Exclude shifts that belong to an active shifts_group outreach (Live or Paused only)
     active_group_outreaches = await db["outreach_shift_group"].distinct(
         "group_id", {"outreach_status": {"$in": [1, 2]}}
     )
@@ -388,7 +671,6 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         if group_shift_ids:
             filters.append({"_id": {"$nin": group_shift_ids}})
 
-    # automation_status_multiple filter
     if payload.automation_status_multiple and len(payload.automation_status_multiple) > 0:
         asm = [int(s) for s in payload.automation_status_multiple if str(s).lstrip('-').isdigit()]
         if asm:
@@ -413,7 +695,6 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
                 filters.append({"_id": {"$in": o_sids}})
 
     if effective_date_from or effective_date_to:
-        from datetime import datetime, timezone
         date_cond: dict = {}
         if effective_date_from:
             try:
@@ -435,24 +716,25 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
                 {"date": {"$regex": regex_val.replace("-", "[-/]"), "$options": "i"}}
             ]})
 
-    # Only show "To Be Filled" shifts
     filters.append({"upstream_status": "To Be Filled"})
     mongo_filter = {"$and": filters} if filters else {}
 
-    total  = await db["shifts"].count_documents(mongo_filter)
+    total    = await db["shifts"].count_documents(mongo_filter)
     sort_dir = -1 if sort_order.lower() == "desc" else 1
+    # ✅ DB-level pagination — no in-memory slicing
     cursor = db["shifts"].find(mongo_filter).sort(sort_by, sort_dir).skip(skip).limit(limit)
     docs   = await cursor.to_list(length=limit)
 
     client_ids = list({d.get("client_id") for d in docs if d.get("client_id")})
     client_map = await _build_client_map(db, client_ids)
 
-    # Build group_shift_map so staff_counts can include shifts_group_users
     doc_oids = [
         doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
         for doc in docs
     ]
-    group_shift_map: dict = {}  # shift_id_str → group _id
+
+    # ✅ Batch group-shift lookup
+    group_shift_map: dict = {}
     async for grp in db["shifts_group"].find(
         {"shift_ids": {"$in": doc_oids}},
         {"_id": 1, "shift_ids": 1},
@@ -460,22 +742,57 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         for sid in (grp.get("shift_ids") or []):
             group_shift_map[str(sid)] = grp["_id"]
 
+    # ✅ Batch outreach status lookup — one query for all shifts
+    outreach_map: dict = {}   # shift_id_str → outreach doc
+    async for o in db["outreach"].find(
+        {"shift_id": {"$in": doc_oids}},
+        {"shift_id": 1, "outreach_status": 1, "sequence_id": 1, "created_at": 1}
+    ):
+        sid = str(o["shift_id"])
+        existing = outreach_map.get(sid)
+        if not existing or (o.get("created_at") or 0) > (existing.get("created_at") or 0):
+            outreach_map[sid] = o
+
+    # ✅ Batch sequence name lookup
+    seq_ids = list({
+        o.get("sequence_id") for o in outreach_map.values() if o.get("sequence_id")
+    })
+    seq_name_map: dict = {}
+    if seq_ids:
+        async for seq in db["sequences"].find({"_id": {"$in": seq_ids}}, {"name": 1}):
+            seq_name_map[str(seq["_id"])] = seq.get("name")
+
+    # ✅ Batch staff counts — single aggregation
+    staff_counts_map = await _get_staff_counts_bulk(db, doc_oids)
+    staff_counts_map = await _merge_group_counts_bulk(db, doc_oids, group_shift_map, staff_counts_map)
+    staff_counts_map = await _merge_requested_counts(db, doc_oids, staff_counts_map)
+
+    STATUS_TEXT = {0: "Not Started", 1: "Live", 2: "Paused", 3: "Ended", 10: "Completed"}
+
     results = []
     for doc in docs:
         s   = _serialize(doc)
         cid = s.get("client_id", "")
         cl  = client_map.get(cid)
-        s["client_name"]  = _client_name(cl)
+        s["client_name"]       = _client_name(cl)
         s["client_email"]      = cl.get("email")             if cl else None
         s["client_phone"]      = cl.get("phone")             if cl else None
-        s["client_preference"] = cl.get("client_preference") or []  if cl else []
-        shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-        _group_id_for_counts = group_shift_map.get(str(shift_oid_l))
-        s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l, group_id=_group_id_for_counts)
-        outreach_info = await _get_outreach_status(db, shift_oid_l)
-        s["outreach_status"]        = outreach_info["outreach_status"]
-        s["outreach_status_text"]   = outreach_info["outreach_status_text"]
-        s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
+        s["client_preference"] = cl.get("client_preference") or [] if cl else []
+
+        sid_str = str(doc["_id"])
+        s["staff_counts"] = staff_counts_map.get(sid_str, {
+            "available": 0, "with_outreach": 0, "declined": 0,
+            "no_reply": 0, "pending": 0, "requested": 0, "requested_flag": 0,
+            "display": "0 Available · 0 Declined · 0 No reply", "has_available": 0,
+        })
+
+        o_doc    = outreach_map.get(sid_str, {})
+        o_status = o_doc.get("outreach_status", 0)
+        seq_name = seq_name_map.get(str(o_doc.get("sequence_id", ""))) if o_doc.get("sequence_id") else None
+
+        s["outreach_status"]        = o_status
+        s["outreach_status_text"]   = STATUS_TEXT.get(o_status, "Not Started")
+        s["outreach_sequence_name"] = seq_name
         s["shift_preference"]       = doc.get("shift_preferences") or s.get("shift_preferences") or []
         s["shift_preferences"]      = doc.get("shift_preferences") or []
         s["ghost_booking"]          = 0
@@ -483,12 +800,11 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
         s["rate"] = s.get("pay_rate") if s.get("pay_rate") is not None else s.get("rate")
         results.append(s)
 
-    # Aggregate outreach counts (global — not filtered)
-    total_shifts        = await db["shifts"].count_documents({})
-    outreach_active     = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
-    outreach_completed  = await db["outreach"].count_documents({"outreach_status": 10})
-    automation_total    = outreach_active + outreach_completed
-    to_be_filled_count  = await db["shifts"].count_documents({"upstream_status": "To Be Filled"})
+    total_shifts       = await db["shifts"].count_documents({})
+    outreach_active    = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
+    outreach_completed = await db["outreach"].count_documents({"outreach_status": 10})
+    automation_total   = outreach_active + outreach_completed
+    to_be_filled_count = await db["shifts"].count_documents({"upstream_status": "To Be Filled"})
 
     return {
         "success":            True,
@@ -503,13 +819,11 @@ async def list_shifts_db_post(request: Request, payload: ShiftsDbListRequest):
     }
 
 
+# ── SHIFTS AUTOMATION ─────────────────────────────────────────────────────────
 
 class ShiftsAutomationRequest(ShiftsDbListRequest):
-    outreach_status: Optional[int] = None   # filter by specific outreach status
+    outreach_status: Optional[int] = None
 
-
-
-# ── SHIFTS AUTOMATION ─────────────────────────────────────────────────────────
 
 @router.post(
     "/automation",
@@ -518,18 +832,8 @@ class ShiftsAutomationRequest(ShiftsDbListRequest):
 )
 @limiter.limit("60/minute")
 async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequest):
-    """
-    Clone of POST /shifts-db/ but only returns shifts that have an outreach record
-    with outreach_status > 0 AND outreach_status != 10.
-
-    Optional additional filter:
-    {
-        ...,
-        "outreach_status": 1   // filter by specific status (1=Live, 2=Paused, 3=Ended)
-    }
-    """
-    db   = _get_db()
-    skip = (payload.page - 1) * payload.per_page
+    db    = _get_db()
+    skip  = (payload.page - 1) * payload.per_page
     limit = payload.per_page
 
     search            = payload.search.strip() or None if payload.search else None
@@ -542,34 +846,47 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     effective_date_to   = payload.end_date.strip() or None if payload.end_date else None
     sort_by           = payload.sort_by or "date"
     sort_order        = payload.sort_order or "desc"
-    filter_outreach_status = payload.outreach_status  # optional specific status filter
+    filter_outreach_status = payload.outreach_status
 
-    # ── Resolve outreach-active shift IDs from outreach collection ─────────────
+    STATUS_TEXT = {0: "Not Started", 1: "Live", 2: "Paused", 3: "Ended", 10: "Completed"}
+
+    # ── Resolve outreach query ────────────────────────────────────────────────
+    # outreach_status == 2 in payload means "Completed" (status 10)
     if filter_outreach_status == 2:
         outreach_query: dict = {"outreach_status": 10}
     else:
         outreach_query: dict = {"outreach_status": {"$gt": 0, "$ne": 10}}
 
-    # Get shift_ids from regular outreach
+    # ── Batch-fetch regular outreach docs ─────────────────────────────────────
     outreach_docs = await db["outreach"].find(
         outreach_query,
-        {"shift_id": 1, "outreach_status": 1, "sequence_id": 1, "created_at": 1, "started_at": 1, "ended_at": 1, "paused_at": 1, "round_number": 1, "end_reason": 1}
+        {"shift_id": 1, "outreach_status": 1, "sequence_id": 1,
+         "created_at": 1, "started_at": 1, "ended_at": 1,
+         "paused_at": 1, "round_number": 1, "end_reason": 1}
     ).to_list(length=10000)
 
-    # Also include shifts from group outreach (outreach_shift_group → shifts_group → shift_ids)
+    # ── Batch-fetch group outreach docs ───────────────────────────────────────
     group_outreach_docs = await db["outreach_shift_group"].find(
         outreach_query,
         {"group_id": 1, "outreach_status": 1, "sequence_id": 1, "created_at": 1}
     ).to_list(length=10000)
 
-    # Build group_id → shift_ids map and group outreach map
-    group_shift_map: dict = {}     # shift_id_str → group_id_str
-    group_outreach_map: dict = {}  # shift_id_str → outreach_shift_group doc
+    # ✅ Batch-resolve group_id → shift_ids (was N+1)
+    group_ids_needed = [go["group_id"] for go in group_outreach_docs if go.get("group_id")]
+    groups_map: dict = {}   # group_id_str → shifts_group doc
+    if group_ids_needed:
+        async for g in db["shifts_group"].find(
+            {"_id": {"$in": group_ids_needed}}, {"shift_ids": 1}
+        ):
+            groups_map[str(g["_id"])] = g
+
+    group_shift_map: dict    = {}   # shift_id_str → group_id str
+    group_outreach_map: dict = {}   # shift_id_str → outreach_shift_group doc
     for go in group_outreach_docs:
         goid = go.get("group_id")
         if not goid:
             continue
-        group = await db["shifts_group"].find_one({"_id": goid}, {"shift_ids": 1})
+        group = groups_map.get(str(goid))
         if group:
             for sid in (group.get("shift_ids") or []):
                 sid_str = str(sid)
@@ -577,16 +894,13 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
                 if sid_str not in group_outreach_map:
                     group_outreach_map[sid_str] = go
 
-    if not outreach_docs:
-        # Still return counts even when no data
-        outreach_active_all      = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
-        outreach_completed_all   = await db["outreach"].count_documents({"outreach_status": 10})
-        automation_count_all     = outreach_active_all + outreach_completed_all
-        total_shifts_all         = await db["shifts"].count_documents({})
+    if not outreach_docs and not group_outreach_map:
+        outreach_active_all    = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
+        outreach_completed_all = await db["outreach"].count_documents({"outreach_status": 10})
         return {
             "success":            True,
             "total":              0,
-            "automation_count":   automation_count_all,
+            "automation_count":   outreach_active_all + outreach_completed_all,
             "to_be_filled_count": await db["shifts"].count_documents({"upstream_status": "To Be Filled"}),
             "outreach_active":    outreach_active_all,
             "outreach_completed": outreach_completed_all,
@@ -595,19 +909,19 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             "data":               [],
         }
 
-    # Latest outreach per shift (keep most recent) — regular
+    # Build shift_outreach_map: latest outreach per shift (regular)
     shift_outreach_map: dict = {}
     for o in outreach_docs:
         sid = str(o["shift_id"])
         if sid not in shift_outreach_map:
             shift_outreach_map[sid] = o
 
-    # Merge group outreach shifts
+    # Merge group outreach shifts into shift_outreach_map
     for sid_str, go in group_outreach_map.items():
         if sid_str not in shift_outreach_map:
-            shift_outreach_map[sid_str] = go   # use group outreach doc as fallback
+            shift_outreach_map[sid_str] = go
 
-    active_shift_oids = [ObjectId(sid) for sid in shift_outreach_map]
+    active_shift_oids = [ObjectId(sid) for sid in shift_outreach_map if ObjectId.is_valid(sid)]
 
     # ── Build shift filters ────────────────────────────────────────────────────
     LABEL_TO_FIELD = {
@@ -640,14 +954,14 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             filters.append({criteria_field: {"$regex": search, "$options": "i"}})
         else:
             filters.append({"$or": [
-                {"name":           {"$regex": search, "$options": "i"}},
-                {"shift_xn_id":    {"$regex": search, "$options": "i"}},
-                {"shift_code":     {"$regex": search, "$options": "i"}},
-                {"shift_id":       {"$regex": search, "$options": "i"}},
-                {"location":       {"$regex": search, "$options": "i"}},
-                {"client_name":    {"$regex": search, "$options": "i"}},
-                {"client_county":  {"$regex": search, "$options": "i"}},
-                {"user_type":      {"$regex": search, "$options": "i"}},
+                {"name":              {"$regex": search, "$options": "i"}},
+                {"shift_xn_id":       {"$regex": search, "$options": "i"}},
+                {"shift_code":        {"$regex": search, "$options": "i"}},
+                {"shift_id":          {"$regex": search, "$options": "i"}},
+                {"location":          {"$regex": search, "$options": "i"}},
+                {"client_name":       {"$regex": search, "$options": "i"}},
+                {"client_county":     {"$regex": search, "$options": "i"}},
+                {"user_type":         {"$regex": search, "$options": "i"}},
                 {"slots.shift_xn_id": {"$regex": search, "$options": "i"}},
             ]})
 
@@ -669,6 +983,7 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         county_names = await _resolve_county_names(db, county_multiple)
         if county_names:
             filters.append({"client_county": {"$in": county_names}})
+
     if automation_status:
         filters.append({"$or": [
             {"automation_status": {"$regex": automation_status, "$options": "i"}},
@@ -679,15 +994,12 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         filters.append({"is_premium": payload.is_premium == 1})
 
     if payload.has_available is not None:
-        avail_shift_ids = await db["shifts_users"].distinct(
-            "shift_id", {"availability": 1}
-        )
+        avail_shift_ids = await db["shifts_users"].distinct("shift_id", {"availability": 1})
         if payload.has_available == 1:
             filters.append({"_id": {"$in": avail_shift_ids}})
         else:
             filters.append({"_id": {"$nin": avail_shift_ids}})
 
-    # automation_status_multiple: filter active_shift_oids by outreach status
     if payload.automation_status_multiple and len(payload.automation_status_multiple) > 0:
         asm = [int(s) for s in payload.automation_status_multiple if str(s).lstrip('-').isdigit()]
         active_sts = [s for s in asm if s != 0]
@@ -699,7 +1011,6 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             filters[0] = {"_id": {"$in": active_shift_oids}}
 
     if effective_date_from or effective_date_to:
-        from datetime import datetime, timezone
         date_cond: dict = {}
         if effective_date_from:
             try:
@@ -722,49 +1033,68 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             ]})
 
     mongo_filter = {"$and": filters}
-    total    = await db["shifts"].count_documents(mongo_filter)
+
+    # ✅ Count total matching (for pagination header)
+    total = await db["shifts"].count_documents(mongo_filter)
+
     sort_dir = -1 if sort_order.lower() == "desc" else 1
-    cursor   = db["shifts"].find(mongo_filter).sort(sort_by, sort_dir)
-    docs     = await cursor.to_list(length=10000)
+
+    # ✅ DB-level pagination — fetch only the current page
+    docs = await db["shifts"].find(mongo_filter) \
+                              .sort(sort_by, sort_dir) \
+                              .skip(skip) \
+                              .limit(limit) \
+                              .to_list(length=limit)
+
+    doc_oids = [
+        doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
+        for doc in docs
+    ]
 
     client_ids = list({d.get("client_id") for d in docs if d.get("client_id")})
     client_map = await _build_client_map(db, client_ids)
 
-    STATUS_TEXT = {0: "Not Started", 1: "Live", 2: "Paused", 3: "Ended", 10: "Completed"}
+    # ✅ Batch staff counts for current page only
+    staff_counts_map = await _get_staff_counts_bulk(db, doc_oids)
+    staff_counts_map = await _merge_group_counts_bulk(db, doc_oids, group_shift_map, staff_counts_map)
+    staff_counts_map = await _merge_requested_counts(db, doc_oids, staff_counts_map)
+
+    # ✅ Batch sequence name lookup for current page
+    page_seq_ids = list({
+        shift_outreach_map.get(str(oid), {}).get("sequence_id")
+        for oid in doc_oids
+        if shift_outreach_map.get(str(oid), {}).get("sequence_id")
+    })
+    seq_name_map: dict = {}
+    if page_seq_ids:
+        async for seq in db["sequences"].find({"_id": {"$in": page_seq_ids}}, {"name": 1}):
+            seq_name_map[str(seq["_id"])] = seq.get("name")
 
     results = []
     for doc in docs:
         s   = _serialize(doc)
         cid = s.get("client_id", "")
         cl  = client_map.get(cid)
-        s["client_name"]  = _client_name(cl)
+        s["client_name"]       = _client_name(cl)
         s["client_email"]      = cl.get("email")             if cl else None
         s["client_phone"]      = cl.get("phone")             if cl else None
-        s["client_preference"] = cl.get("client_preference") or []  if cl else []
+        s["client_preference"] = cl.get("client_preference") or [] if cl else []
 
-                # Staff counts
-        shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-        _group_id_for_counts = group_shift_map.get(str(shift_oid_l))
-        s["staff_counts"] = await _get_staff_counts_light(db, shift_oid_l, group_id=_group_id_for_counts)
+        sid_str = str(doc["_id"])
+        shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(sid_str)
 
-        # Outreach info from map
-        o_doc = shift_outreach_map.get(str(shift_oid_l), {})
+        s["staff_counts"] = staff_counts_map.get(sid_str, {
+            "available": 0, "with_outreach": 0, "declined": 0,
+            "no_reply": 0, "pending": 0, "requested": 0, "requested_flag": 0,
+            "display": "0 Available · 0 Declined · 0 No reply", "has_available": 0,
+        })
+
+        o_doc    = shift_outreach_map.get(sid_str, {})
         o_status = o_doc.get("outreach_status", 0)
+        seq_name = seq_name_map.get(str(o_doc.get("sequence_id", ""))) if o_doc.get("sequence_id") else None
 
-        # Sequence name
-        seq_name = None
-        seq_oid = o_doc.get("sequence_id")
-        if seq_oid:
-            seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
-            if seq:
-                seq_name = seq.get("name")
-
-        # start_time from latest outreach.created_at
         created_at = o_doc.get("created_at")
-        if created_at and hasattr(created_at, "isoformat"):
-            start_time = created_at.isoformat()
-        else:
-            start_time = str(created_at) if created_at else None
+        start_time = created_at.isoformat() if created_at and hasattr(created_at, "isoformat") else str(created_at) if created_at else None
 
         s["outreach_id"]            = str(o_doc["_id"]) if o_doc.get("_id") else None
         s["outreach_status"]        = o_status
@@ -775,19 +1105,43 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         s["shift_preferences"]      = doc.get("shift_preferences") or []
         s["client_preference"]      = cl.get("client_preference") or [] if cl else []
         s["ghost_booking"]          = 0
-        s["group_id"]               = group_shift_map.get(str(shift_oid_l))
+        s["group_id"]               = group_shift_map.get(sid_str)
         s["rate"] = s.get("pay_rate") if s.get("pay_rate") is not None else s.get("rate")
         results.append(s)
 
-    # ── Also include group outreach shifts ───────────────────────────────────
-    async for grp in db["shifts_group"].find(
-        {"shift_ids": {"$exists": True, "$ne": []}},
-        {"_id": 1, "name": 1, "shift_ids": 1}
-    ):
-        grp_outreach = await db["outreach_shift_group"].find_one(
-            {"group_id": grp["_id"]},
+    # ── Group outreach shifts: also include standalone group shifts ───────────
+    # Collect group shift IDs that haven't already been returned in main results
+    returned_ids = {r.get("id") for r in results}
+
+    # ✅ Batch-fetch all relevant groups at once (no per-group queries in loop)
+    all_group_oids = list({
+        ObjectId(gid) for gid in group_shift_map.values()
+        if ObjectId.is_valid(gid)
+    })
+
+    grp_docs_map: dict = {}   # group_id_str → shifts_group doc
+    if all_group_oids:
+        async for grp in db["shifts_group"].find(
+            {"_id": {"$in": all_group_oids}},
+            {"_id": 1, "name": 1, "shift_ids": 1}
+        ):
+            grp_docs_map[str(grp["_id"])] = grp
+
+    # ✅ Batch-fetch group outreach for all groups (no per-group find_one)
+    grp_outreach_map: dict = {}   # group_id_str → outreach_shift_group doc
+    if all_group_oids:
+        async for go in db["outreach_shift_group"].find(
+            {"group_id": {"$in": all_group_oids}},
             sort=[("created_at", -1)]
-        )
+        ):
+            gid_str = str(go["group_id"])
+            if gid_str not in grp_outreach_map:
+                grp_outreach_map[gid_str] = go
+
+    # Collect extra group-shift docs not already in results
+    extra_shift_oids: list = []
+    for gid_str, grp in grp_docs_map.items():
+        grp_outreach = grp_outreach_map.get(gid_str)
         if not grp_outreach:
             continue
         grp_status = grp_outreach.get("outreach_status", 0)
@@ -797,29 +1151,13 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         else:
             if grp_status not in (1, 2, 3):
                 continue
+        for sid in (grp.get("shift_ids") or []):
+            if str(sid) not in returned_ids:
+                extra_shift_oids.append(sid)
 
-        grp_shift_oids = grp.get("shift_ids") or []
-        if not grp_shift_oids:
-            continue
-
-        grp_seq_name = None
-        grp_seq_oid  = grp_outreach.get("sequence_id")
-        if grp_seq_oid:
-            seq = await db["sequences"].find_one({"_id": grp_seq_oid}, {"name": 1})
-            if seq:
-                grp_seq_name = seq.get("name")
-
-        grp_created = grp_outreach.get("created_at")
-        grp_start   = grp_created.isoformat() if grp_created and hasattr(grp_created, "isoformat") else None
-
-        grp_client_ids = []
-        async for sh in db["shifts"].find({"_id": {"$in": grp_shift_oids}}, {"client_id": 1}):
-            if sh.get("client_id"):
-                grp_client_ids.append(sh["client_id"])
-        grp_client_map = await _build_client_map(db, list(set(grp_client_ids)))
-
-        # Build search filter for group shifts
-        grp_shift_filter: dict = {"_id": {"$in": grp_shift_oids}}
+    if extra_shift_oids:
+        # Apply search filter to extra shifts
+        grp_shift_filter: dict = {"_id": {"$in": extra_shift_oids}}
         if search:
             grp_shift_filter["$or"] = [
                 {"name":              {"$regex": search, "$options": "i"}},
@@ -833,22 +1171,66 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
                 {"slots.shift_xn_id": {"$regex": search, "$options": "i"}},
             ]
 
-        async for doc in db["shifts"].find(grp_shift_filter):
+        extra_docs = await db["shifts"].find(grp_shift_filter).to_list(length=5000)
+
+        # Batch client lookup for extra docs
+        extra_client_ids = list({d.get("client_id") for d in extra_docs if d.get("client_id")})
+        extra_client_map = await _build_client_map(db, extra_client_ids)
+
+        extra_doc_oids = [
+            d["_id"] if isinstance(d["_id"], ObjectId) else ObjectId(str(d["_id"]))
+            for d in extra_docs
+        ]
+
+        # Batch staff counts for extra docs
+        extra_staff_counts = await _get_staff_counts_bulk(db, extra_doc_oids)
+        extra_staff_counts = await _merge_group_counts_bulk(db, extra_doc_oids, group_shift_map, extra_staff_counts)
+        extra_staff_counts = await _merge_requested_counts(db, extra_doc_oids, extra_staff_counts)
+
+        # Batch sequence names for extra docs
+        extra_seq_ids = []
+        for sid_str in [str(o) for o in extra_doc_oids]:
+            gid = group_shift_map.get(sid_str)
+            if gid:
+                go = grp_outreach_map.get(gid)
+                if go and go.get("sequence_id") and go["sequence_id"] not in extra_seq_ids:
+                    extra_seq_ids.append(go["sequence_id"])
+        extra_seq_name_map: dict = {}
+        if extra_seq_ids:
+            async for seq in db["sequences"].find({"_id": {"$in": extra_seq_ids}}, {"name": 1}):
+                extra_seq_name_map[str(seq["_id"])] = seq.get("name")
+
+        for doc in extra_docs:
+            sid_str = str(doc["_id"])
+            if sid_str in returned_ids:
+                continue
+            returned_ids.add(sid_str)
+
+            gid_str = group_shift_map.get(sid_str, "")
+            grp     = grp_docs_map.get(gid_str, {})
+            go      = grp_outreach_map.get(gid_str, {})
+            grp_status = go.get("outreach_status", 0)
+            grp_seq_name = extra_seq_name_map.get(str(go.get("sequence_id", ""))) if go.get("sequence_id") else None
+            grp_created  = go.get("created_at")
+            grp_start    = grp_created.isoformat() if grp_created and hasattr(grp_created, "isoformat") else None
+
             s   = _serialize(doc)
             cid = s.get("client_id", "")
-            cl  = grp_client_map.get(cid)
-            s["client_name"]      = _client_name(cl)
-            s["client_email"]     = cl.get("email")  if cl else None
-            s["client_phone"]     = cl.get("phone")  if cl else None
-            s["client_preference"]= cl.get("client_preference") or [] if cl else []
-            s["shift_preference"] = doc.get("shift_preferences") or []
-            s["shift_preferences"]= doc.get("shift_preferences") or []
-
-            shift_oid_g = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-            s["staff_counts"]           = await _get_staff_counts_light(db, shift_oid_g, group_id=grp["_id"])
-            s["outreach_id"]            = str(grp_outreach["_id"])
-            s["group_outreach_id"]      = str(grp_outreach["_id"])
-            s["group_id"]               = str(grp["_id"])
+            cl  = extra_client_map.get(cid)
+            s["client_name"]            = _client_name(cl)
+            s["client_email"]           = cl.get("email")             if cl else None
+            s["client_phone"]           = cl.get("phone")             if cl else None
+            s["client_preference"]      = cl.get("client_preference") or [] if cl else []
+            s["shift_preference"]       = doc.get("shift_preferences") or []
+            s["shift_preferences"]      = doc.get("shift_preferences") or []
+            s["staff_counts"]           = extra_staff_counts.get(sid_str, {
+                "available": 0, "with_outreach": 0, "declined": 0,
+                "no_reply": 0, "pending": 0, "requested": 0, "requested_flag": 0,
+                "display": "0 Available · 0 Declined · 0 No reply", "has_available": 0,
+            })
+            s["outreach_id"]            = str(go["_id"]) if go.get("_id") else None
+            s["group_outreach_id"]      = str(go["_id"]) if go.get("_id") else None
+            s["group_id"]               = gid_str
             s["group_name"]             = grp.get("name")
             s["outreach_status"]        = grp_status
             s["outreach_status_text"]   = STATUS_TEXT.get(grp_status, "Not Started")
@@ -856,28 +1238,17 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             s["start_time"]             = grp_start
             s["ghost_booking"]          = 0
             s["is_group_outreach"]      = True
+            s["rate"] = s.get("pay_rate") if s.get("pay_rate") is not None else s.get("rate")
             results.append(s)
 
-    # Deduplicate results by shift id
-    seen_ids = set()
-    deduped = []
-    for r in results:
-        rid = r.get("id") or r.get("shift_id") or r.get("shift_code")
-        if rid not in seen_ids:
-            seen_ids.add(rid)
-            deduped.append(r)
-    results = deduped
+    # Aggregate counts (global)
+    outreach_active    = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
+    outreach_completed = await db["outreach"].count_documents({"outreach_status": 10})
+    automation_count   = outreach_active + outreach_completed
+    to_be_filled_count = await db["shifts"].count_documents({"upstream_status": "To Be Filled"})
 
-    # Aggregate outreach counts (across all shifts, not just filtered)
-    outreach_active      = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
-    outreach_completed   = await db["outreach"].count_documents({"outreach_status": 10})
-    automation_count     = outreach_active + outreach_completed
-    total_shifts         = await db["shifts"].count_documents({})
-    to_be_filled_count   = await db["shifts"].count_documents({"upstream_status": "To Be Filled"})
-
-    # Apply pagination to combined results (regular + group outreach)
-    combined_total = len(results)
-    paginated_results = results[skip:skip + limit]
+    # Combined total = DB-matched regular + extra group shifts
+    combined_total = total + len([r for r in results if r.get("is_group_outreach")])
 
     return {
         "success":            True,
@@ -888,246 +1259,17 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         "outreach_completed": outreach_completed,
         "page":               payload.page,
         "per_page":           payload.per_page,
-        "data":               paginated_results,
+        "data":               results,
     }
 
+
+# ── SHIFT DETAIL ──────────────────────────────────────────────────────────────
+
 class ShiftDetailRequest(BaseModel):
-    id:            str   # shift _id, shift_xn_id, or shift_code
+    id:            str
     pool_page:     int = 1
     pool_per_page: int = 20
 
-
-
-
-async def _get_staff_counts_light(db, shift_oid: ObjectId, group_id=None) -> dict:
-    """
-    Lightweight counts for list endpoint.
-    Falls back to shifts_group_users.availability_details when the shift
-    belongs to a group outreach (pass group_id as ObjectId or str).
-    """
-    shift_id_str = str(shift_oid)
-
-    available = await db["shifts_users"].count_documents({
-        "shift_id":     shift_oid,
-        "availability": 1,
-    })
-    with_outreach = await db["shifts_users"].count_documents({
-        "shift_id":    shift_oid,
-        "outreach_id": {"$exists": True, "$ne": None},
-    })
-    # declined = channel-aware
-    phone_declined_l    = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": {"$in": [0, 3, 4]}, "channel": {"$in": ["Phone", None]}})
-    email_wa_declined_l = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 0, "channel": {"$in": ["Email", "WhatsApp", "SMS"]}})
-    declined = phone_declined_l + email_wa_declined_l
-    # no_reply = availability 6 (call not triggered)
-    no_reply = await db["shifts_users"].count_documents({
-        "shift_id":     shift_oid,
-        "availability": 6,
-    })
-    pending = await db["shifts_users"].count_documents({
-        "shift_id":      shift_oid,
-        "call_enabled":  1,
-        "call_processed": 0,
-    })
-    shift_doc_req = await db["shifts"].find_one({"_id": shift_oid}, {"requested_staff_list": 1})
-    requested = len(shift_doc_req.get("requested_staff_list") or []) if shift_doc_req else 0
-
-    # ── shifts_group_users fallback ───────────────────────────────────────────
-    if group_id is not None:
-        # Query by shift_id inside availability_details (string or ObjectId)
-        group_su_docs = await db["shifts_group_users"].find(
-            {
-                "availability_details": {
-                    "$elemMatch": {
-                        "shift_id": {"$in": [shift_id_str, shift_oid]},
-                    }
-                }
-            },
-            {"user_id": 1, "availability_details": 1, "availability": 1, "channel": 1},
-        ).to_list(length=2000)
-
-        # Collect existing shifts_users user_ids to avoid double-counting
-        existing_su_user_ids = set()
-        async for su in db["shifts_users"].find({"shift_id": shift_oid}, {"user_id": 1}):
-            existing_su_user_ids.add(str(su.get("user_id", "")))
-
-        for gsu in group_su_docs:
-            if str(gsu.get("user_id", "")) in existing_su_user_ids:
-                continue
-
-            # Resolve per-shift availability from availability_details
-            # shift_id may be stored as string or ObjectId — compare via str()
-            avail_val = None
-            for ad in (gsu.get("availability_details") or []):
-                if str(ad.get("shift_id", "")) == shift_id_str:
-                    avail_val = ad.get("availability")
-                    break
-
-            # Fallback to top-level availability if no matching detail entry
-            if avail_val is None:
-                avail_val = gsu.get("availability")
-
-            if avail_val is None:
-                continue
-
-            channel = gsu.get("channel") or "Phone"
-
-            if avail_val == 1:
-                available += 1
-                with_outreach += 1
-            elif avail_val in (0, 3, 4):
-                if channel in ("Email", "WhatsApp", "SMS"):
-                    if avail_val == 0:
-                        declined += 1
-                else:
-                    declined += 1
-            elif avail_val == 6:
-                no_reply += 1
-
-    return {
-        "available":      available,
-        "requested":      requested,
-        "requested_flag": 1 if requested > 0 else 0,
-        "with_outreach":  with_outreach,
-        "declined":       declined,
-        "no_reply":       no_reply,
-        "pending":        pending,
-        "display":        f"{available} Available · {declined} Declined · {no_reply} No reply",
-        "has_available":  1 if available > 0 else 0,
-    }
-
-
-async def _get_staff_counts(db, shift_oid: ObjectId) -> dict:
-    """
-    Full staff counts for detail endpoint.
-    availability values:
-      1 = Available, 0 = Not Available, 3 = Voicemail,
-      4 = Call Not Attended, 6 = Call Not Triggered
-    """
-    total = await db["shifts_users"].count_documents({"shift_id": shift_oid})
-
-    # Availability breakdown
-    available          = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 1})
-    not_available      = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 0})
-    voicemail          = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 3})
-    call_not_attended  = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 4})
-    call_not_triggered = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 6})
-
-    # declined = not_available (0) + voicemail (3) + call_not_attended (4) for Phone
-    # For Email/WhatsApp: only not_available (0)
-    phone_declined   = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": {"$in": [0, 3, 4]}, "channel": {"$in": ["Phone", None]}})
-    email_wa_declined = await db["shifts_users"].count_documents({"shift_id": shift_oid, "availability": 0, "channel": {"$in": ["Email", "WhatsApp", "SMS"]}})
-    declined = phone_declined + email_wa_declined
-    # no_reply = call_not_triggered
-    no_reply = call_not_triggered
-
-    phone = await db["shifts_users"].count_documents({
-        "shift_id":     shift_oid,
-        "call_enabled": {"$gt": 0},
-    })
-    with_outreach = await db["shifts_users"].count_documents({
-        "shift_id":    shift_oid,
-        "outreach_id": {"$exists": True, "$ne": None},
-    })
-    shift_doc_req2 = await db["shifts"].find_one({"_id": shift_oid}, {"requested_staff_list": 1})
-    requested = len(shift_doc_req2.get("requested_staff_list") or []) if shift_doc_req2 else 0
-    return {
-        "number_of_staff":    total,
-        "available":          available,
-        "requested":          requested,
-        "requested_flag":     1 if requested > 0 else 0,
-        "declined":           declined,
-        "no_reply":           no_reply,
-        "phone":              phone,
-        "whatsapp":           0,
-        "email":              0,
-        "with_outreach":      with_outreach,
-        "without_outreach":   total - with_outreach,
-        "display":            f"{available} Available · {declined} Declined · {no_reply} No reply",
-        "availability_breakdown": {
-            "available":          available,
-            "not_available":      not_available,
-            "voicemail":          voicemail,
-            "call_not_attended":  call_not_attended,
-            "call_not_triggered": call_not_triggered,
-        },
-    }
-
-
-
-async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
-    """
-    Returns latest outreach status + sequence name for a shift.
-    Checks both regular outreach and group outreach (outreach_shift_group).
-    """
-    STATUS_TEXT = {
-        0:  "Not Started",
-        1:  "Live",
-        2:  "Paused",
-        3:  "Ended",
-        10: "Completed",
-    }
-
-    # Check regular outreach
-    latest = await db["outreach"].find_one(
-        {"shift_id": shift_oid},
-        sort=[("created_at", -1)]
-    )
-
-    # Check group outreach — find shifts_group that contains this shift_id
-    group_latest = None
-    async for sg in db["shifts_group"].find({"shift_ids": shift_oid}, {"_id": 1}):
-        go = await db["outreach_shift_group"].find_one(
-            {"group_id": sg["_id"]},
-            sort=[("created_at", -1)]
-        )
-        if go:
-            if group_latest is None or go.get("created_at", 0) > group_latest.get("created_at", 0):
-                group_latest = go
-
-    # Pick the most recent between regular and group
-    if latest and group_latest:
-        use = latest if (latest.get("created_at") or 0) >= (group_latest.get("created_at") or 0) else group_latest
-        is_group = use is group_latest
-    elif latest:
-        use, is_group = latest, False
-    elif group_latest:
-        use, is_group = group_latest, True
-    else:
-        return {
-            "outreach_status":          0,
-            "outreach_status_text":     "Not Started",
-            "outreach_sequence_name":   None,
-            "shift_preference":         [],
-            "shift_preferences":        [],
-            "client_preference":        [],
-            "ghost_booking":            0,
-        }
-
-    status = use.get("outreach_status", 0)
-
-    # Resolve sequence name
-    sequence_name = None
-    seq_oid = use.get("sequence_id")
-    if seq_oid:
-        seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
-        if seq:
-            sequence_name = seq.get("name")
-
-    return {
-        "outreach_status":          status,
-        "outreach_status_text":     STATUS_TEXT.get(status, "Not Started"),
-        "outreach_id":              str(use["_id"]),
-        "outreach_sequence_name":   sequence_name,
-        "is_group_outreach":        is_group,
-        "shift_preference":         [],
-            "shift_preferences":        [],
-        "client_preference":        None,
-        "ghost_booking":            0,
-    }
-
-
-# ── GET single ────────────────────────────────────────────────────────────────
 
 @router.post(
     "/detail",
@@ -1136,9 +1278,6 @@ async def _get_outreach_status(db, shift_oid: ObjectId) -> dict:
 )
 @limiter.limit("60/minute")
 async def get_shift_db(request: Request, payload: ShiftDetailRequest):
-    """
-    Body: { "id": "<shift _id | shift_xn_id | shift_code>" }
-    """
     db = _get_db()
     shift_id = payload.id.strip()
 
@@ -1156,15 +1295,16 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
 
     s   = _serialize(doc)
     cid = s.get("client_id", "")
+    cl  = None
 
     if cid:
         client_map = await _build_client_map(db, [cid])
         cl = client_map.get(cid)
-        s["client_name"]    = _client_name(cl)
-        s["client_email"]   = cl.get("email")   if cl else None
-        s["client_phone"]       = cl.get("phone")             if cl else None
-        s["client_address"]     = cl.get("address")           if cl else None
-        s["client_preference"]  = cl.get("client_preference") or [] if cl else []
+        s["client_name"]       = _client_name(cl)
+        s["client_email"]      = cl.get("email")             if cl else None
+        s["client_phone"]      = cl.get("phone")             if cl else None
+        s["client_address"]    = cl.get("address")           if cl else None
+        s["client_preference"] = cl.get("client_preference") or [] if cl else []
         s["excluded_by_system"] = 0
         s["added_by_you"]       = 0
     else:
@@ -1178,59 +1318,50 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
     s["outreach_status"]        = outreach_info["outreach_status"]
     s["outreach_status_text"]   = outreach_info["outreach_status_text"]
     s["outreach_sequence_name"] = outreach_info["outreach_sequence_name"]
-    # If shift is no longer "To Be Filled"/"To be assigned", treat Ended (3) as Completed (10)
+
     _shift_status = (doc.get("upstream_status") or doc.get("status") or "").strip().lower()
     _open_statuses = {"to be filled", "to be assigned"}
     if _shift_status not in _open_statuses:
-        s["outreach_status"] = 10
+        s["outreach_status"]      = 10
         s["outreach_status_text"] = "Completed"
 
-        # ── Activity log: automation_completed ────────────────────────────
         try:
             _detail_now = datetime.now(timezone.utc)
-            # Find latest outreach for this shift that isn't already logged as completed
             _latest_outreach = await db["outreach"].find_one(
                 {"shift_id": shift_oid},
                 sort=[("created_at", -1)]
             )
             if _latest_outreach:
-                _lo_oid  = _latest_outreach["_id"]
-                _lo_seq  = _latest_outreach.get("sequence_id")
+                _lo_oid   = _latest_outreach["_id"]
+                _lo_seq   = _latest_outreach.get("sequence_id")
                 _lo_round = _latest_outreach.get("round_number", 1)
 
-                # Check if we already logged this — avoid duplicate logs on repeated detail calls
                 _existing_log = await db["activities"].find_one({
                     "activity_type": "automation_completed",
                     "shift_id":      shift_oid,
                     "outreach_id":   _lo_oid,
                 })
                 if not _existing_log:
-                    _ac_available = await db["shifts_users"].count_documents({
-                        "shift_id": shift_oid, "outreach_id": _lo_oid, "availability": 1,
-                    })
-                    _ac_declined = await db["shifts_users"].count_documents({
-                        "shift_id": shift_oid, "outreach_id": _lo_oid, "availability": 0,
-                    })
-                    _ac_no_reply = await db["shifts_users"].count_documents({
-                        "shift_id": shift_oid, "outreach_id": _lo_oid, "availability": {"$in": [3, 4, 6, 7, 8]},
-                    })
+                    _ac_available = await db["shifts_users"].count_documents({"shift_id": shift_oid, "outreach_id": _lo_oid, "availability": 1})
+                    _ac_declined  = await db["shifts_users"].count_documents({"shift_id": shift_oid, "outreach_id": _lo_oid, "availability": 0})
+                    _ac_no_reply  = await db["shifts_users"].count_documents({"shift_id": shift_oid, "outreach_id": _lo_oid, "availability": {"$in": [3, 4, 6, 7, 8]}})
 
                     _ac_activity = {
                         "activity_type": "automation_completed",
                         "shift_id":      shift_oid,
                         "outreach_id":   _lo_oid,
                         "metadata": {
-                            "sequence_id":   str(_lo_seq) if _lo_seq else None,
-                            "shift_id":      str(shift_oid),
-                            "outreach_id":   str(_lo_oid),
-                            "round_number":  _lo_round,
-                            "shift_code":    doc.get("shift_code") or doc.get("shift_xn_id"),
-                            "shift_status":  doc.get("upstream_status") or doc.get("status"),
-                            "reason":        "shift_status_not_open",
-                            "available":     _ac_available,
-                            "declined":      _ac_declined,
-                            "no_reply":      _ac_no_reply,
-                            "summary":       f"Automation completed · shift status '{doc.get('upstream_status') or doc.get('status')}' · {_ac_available} available, {_ac_declined} declined, {_ac_no_reply} no-reply",
+                            "sequence_id":  str(_lo_seq) if _lo_seq else None,
+                            "shift_id":     str(shift_oid),
+                            "outreach_id":  str(_lo_oid),
+                            "round_number": _lo_round,
+                            "shift_code":   doc.get("shift_code") or doc.get("shift_xn_id"),
+                            "shift_status": doc.get("upstream_status") or doc.get("status"),
+                            "reason":       "shift_status_not_open",
+                            "available":    _ac_available,
+                            "declined":     _ac_declined,
+                            "no_reply":     _ac_no_reply,
+                            "summary":      f"Automation completed · shift status '{doc.get('upstream_status') or doc.get('status')}' · {_ac_available} available, {_ac_declined} declined, {_ac_no_reply} no-reply",
                         },
                         "created_at": _detail_now,
                     }
@@ -1240,15 +1371,14 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         except Exception as _ac_err:
             logger.error(f"[shifts-db/detail] Activity log error: {_ac_err}")
 
-    s["shift_preference"]       = doc.get("shift_preferences") or s.get("shift_preferences") or []
-    s["ghost_booking"]          = 1 if doc.get("ghost_booking") else 0
-    s["radius"]                 = doc.get("radius")
+    s["shift_preference"]  = doc.get("shift_preferences") or s.get("shift_preferences") or []
+    s["ghost_booking"]     = 1 if doc.get("ghost_booking") else 0
+    s["radius"]            = doc.get("radius")
     if "outreach_id" in outreach_info:
         s["outreach_id"] = outreach_info["outreach_id"]
 
-    # ── Requested staff — from shifts.requested_staff_list ───────────────────
+    # ── Requested staff ───────────────────────────────────────────────────────
     raw_requested = doc.get("requested_staff_list") or []
-    # Collect internal user_ids (staff_id field = users._id)
     req_user_oids = []
     for rs in raw_requested:
         sid = rs.get("staff_id")
@@ -1266,7 +1396,6 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         ):
             req_user_map[str(u["_id"])] = u
 
-    # County name map for requested_staff
     _county_ids_req = list({str(u.get("county_id","")) for u in req_user_map.values() if u.get("county_id")})
     _county_name_map_req: dict = {}
     if _county_ids_req:
@@ -1275,6 +1404,7 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             {"name": 1}
         ):
             _county_name_map_req[str(c["_id"])] = c.get("name", "")
+
     req_confirm_map: dict = {}
     if req_user_oids:
         async for rc in db["requested_confirm"].find(
@@ -1286,30 +1416,26 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
 
     requested_staff = []
     for rs in raw_requested:
-        sid     = str(rs.get("staff_id", ""))
-        u       = req_user_map.get(sid, {})
-        raw_tags = u.get("tags") or []
+        sid = str(rs.get("staff_id", ""))
+        u   = req_user_map.get(sid, {})
+        raw_tags  = u.get("tags") or []
         staff_tags = [
             {"id": str(t.get("id","")), "name": t.get("name","")} if isinstance(t, dict)
             else {"id": "", "name": str(t)} for t in raw_tags
         ]
 
-        # Distance from client
         dist_km = None
         if cl and cl.get("latitude") and cl.get("longitude"):
             ucoords = _uc_r(u)
             if ucoords:
                 dist_km = _hav_r(float(cl["latitude"]), float(cl["longitude"]), ucoords[0], ucoords[1])
-        # Parse distance_km from rs.distance string if no coords e.g. "9.1 Km" → 9.1
         if dist_km is None and rs.get("distance"):
             try:
                 dist_km = round(float(str(rs["distance"]).lower().replace("km","").replace(",","").strip()), 2)
             except Exception:
                 pass
-        # Fallback to API distance string
         dist_display = rs.get("distance") or (f"{round(dist_km, 1)}km" if dist_km is not None else None)
 
-        # Last contacted
         last_contacted = None
         lc_su = await db["shifts_users"].find_one(
             {"user_id": ObjectId(sid) if sid and ObjectId.is_valid(sid) else None,
@@ -1317,22 +1443,19 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             sort=[("call_processed_at", -1)], projection={"call_processed_at": 1}
         ) if sid and ObjectId.is_valid(sid) else None
         if lc_su and lc_su.get("call_processed_at"):
-            from datetime import datetime as _dt_r, timezone as _tz_r
-            lc = lc_su["call_processed_at"]
-            lc = _to_irl(lc)
+            lc   = _to_irl(lc_su["call_processed_at"])
             diff = int((_now_irl() - lc).total_seconds())
             if diff < 60:       last_contacted = "just now"
             elif diff < 3600:   last_contacted = f"{diff//60} minute{'s' if diff//60!=1 else ''} ago"
             elif diff < 86400:  last_contacted = f"{diff//3600} hour{'s' if diff//3600!=1 else ''} ago"
             else:               last_contacted = f"{diff//86400} day{'s' if diff//86400!=1 else ''} ago"
 
-        # Prior shifts at this client — count shifts where this user was assigned (same as available_staff)
         prior_shifts = 0
         last_at_client_req = None
-        _req_client_id = doc.get("client_id") if doc else None
+        _req_client_id = doc.get("client_id")
         if u and _req_client_id:
-            user_email_req   = u.get("email")
-            user_name_req    = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip()
+            user_email_req = u.get("email")
+            user_name_req  = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip()
             _req_shift_filter = {"client_id": _req_client_id, "assigned_staff": {"$exists": True, "$ne": None}}
             if user_email_req:
                 _req_shift_filter["staff_email"] = user_email_req
@@ -1344,10 +1467,9 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                     _req_shift_filter, sort=[("assigned_at", -1)], projection={"assigned_at": 1}
                 )
                 if last_req_shift and last_req_shift.get("assigned_at"):
-                    from datetime import datetime as _dt_rq, timezone as _tz_rq
                     lc_rq = last_req_shift["assigned_at"]
                     if hasattr(lc_rq, "tzinfo") and lc_rq.tzinfo is None:
-                        lc_rq = lc_rq.replace(tzinfo=_tz_rq.utc)
+                        lc_rq = lc_rq.replace(tzinfo=timezone.utc)
                     diff_rq = int((_now_irl() - lc_rq).total_seconds())
                     if diff_rq < 60:       last_at_client_req = "just now"
                     elif diff_rq < 3600:   last_at_client_req = f"{diff_rq//60} minute{'s' if diff_rq//60!=1 else ''} ago"
@@ -1369,71 +1491,74 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
         _avail_map = {0: "Not Available", 1: "Available", 3: "Voicemail", 4: "Call Not Attended", 5: "In Call", 6: "Call Not Triggered"}
         _avail_val = rc.get("availability") if rc else None
         confirm_details = {
-            "confirmed":               1 if rc else 0,
-            "confirmed_at":            _iso(rc.get("confirmed_at"))  if rc else None,
-            "confirmed_by":            rc.get("confirmed_by")        if rc else None,
-            "call_sent":               rc.get("call_sent")           if rc else None,
-            "call_sent_at":            _iso(rc.get("call_sent_at"))  if rc else None,
-            "agent_id":                rc.get("agent_id")            if rc else None,
-            "availability":            _avail_val,
+            "confirmed":                1 if rc else 0,
+            "confirmed_at":             _iso(rc.get("confirmed_at"))  if rc else None,
+            "confirmed_by":             rc.get("confirmed_by")        if rc else None,
+            "call_sent":                rc.get("call_sent")           if rc else None,
+            "call_sent_at":             _iso(rc.get("call_sent_at"))  if rc else None,
+            "agent_id":                 rc.get("agent_id")            if rc else None,
+            "availability":             _avail_val,
             "availability_status_text": _avail_map.get(_avail_val, "Unknown") if _avail_val is not None else None,
-            "call_status":             rc.get("call_status")         if rc else None,
-            "call_summary_title":      rc.get("call_summary_title")  if rc else None,
-            "customer_feedback":       rc.get("customer_feedback")   if rc else None,
-            "response_text":           rc.get("response_text")       if rc else None,
-            "response_time":           rc.get("response_time")       if rc else None,
-            "started_at":              _iso(rc.get("started_at"))    if rc else None,
-            "ended_at":                _iso(rc.get("ended_at"))      if rc else None,
-            "conversation_id":         rc.get("elevenlabs_conversation_id") if rc else None,
+            "call_status":              rc.get("call_status")         if rc else None,
+            "call_summary_title":       rc.get("call_summary_title")  if rc else None,
+            "customer_feedback":        rc.get("customer_feedback")   if rc else None,
+            "response_text":            rc.get("response_text")       if rc else None,
+            "response_time":            rc.get("response_time")       if rc else None,
+            "started_at":               _iso(rc.get("started_at"))    if rc else None,
+            "ended_at":                 _iso(rc.get("ended_at"))      if rc else None,
+            "conversation_id":          rc.get("elevenlabs_conversation_id") if rc else None,
         }
 
         requested_staff.append({
-            "id":                sid,
-            "xn_staff_id":       rs.get("xn_staff_id"),
-            "xn_user_id":        u.get("xn_user_id"),
-            "name":              " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or rs.get("staff") or "—",
-            "email":             u.get("email") or rs.get("email"),
-            "phone":             u.get("phone") or rs.get("phone_number"),
-            "designation":       u.get("designation"),
-            "rating":            u.get("rating"),
-            "county":            u.get("county") or _county_name_map_req.get(str(u.get("county_id",""))) or rs.get("location") or None,
-            "county_id":         str(u["county_id"]) if u.get("county_id") else None,
-            "staff_tags":        staff_tags,
-            "work_history":      work_history,
-            "confirm_details":   confirm_details,
-            "prior_shifts":      prior_shifts,
-            "last_contacted":    last_contacted,
-            "distance_km":       dist_km,
-            "distance":          dist_display,
-            "status":            rs.get("status"),
-            "status_name":       rs.get("status_name"),
-            "requested_date":    rs.get("requested_date"),
-            "ignored":           rs.get("ignored", 0),
-            "ignore_reason":     rs.get("ignore_reason"),
-            "ignore_reason_text": rs.get("ignore_reason_text"),
-            "ignore_notes":      rs.get("ignore_notes"),
-            "ignored_at":        rs.get("ignored_at"),
-            "declined":           rs.get("declined", 0),
-            "decline_reason":     rs.get("decline_reason"),
+            "id":                  sid,
+            "xn_staff_id":         rs.get("xn_staff_id"),
+            "xn_user_id":          u.get("xn_user_id"),
+            "name":                " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or rs.get("staff") or "—",
+            "email":               u.get("email") or rs.get("email"),
+            "phone":               u.get("phone") or rs.get("phone_number"),
+            "designation":         u.get("designation"),
+            "rating":              u.get("rating"),
+            "county":              u.get("county") or _county_name_map_req.get(str(u.get("county_id",""))) or rs.get("location") or None,
+            "county_id":           str(u["county_id"]) if u.get("county_id") else None,
+            "staff_tags":          staff_tags,
+            "work_history":        work_history,
+            "confirm_details":     confirm_details,
+            "prior_shifts":        prior_shifts,
+            "last_contacted":      last_contacted,
+            "distance_km":         dist_km,
+            "distance":            dist_display,
+            "status":              rs.get("status"),
+            "status_name":         rs.get("status_name"),
+            "requested_date":      rs.get("requested_date"),
+            "ignored":             rs.get("ignored", 0),
+            "ignore_reason":       rs.get("ignore_reason"),
+            "ignore_reason_text":  rs.get("ignore_reason_text"),
+            "ignore_notes":        rs.get("ignore_notes"),
+            "ignored_at":          rs.get("ignored_at"),
+            "declined":            rs.get("declined", 0),
+            "decline_reason":      rs.get("decline_reason"),
             "decline_reason_text": rs.get("decline_reason_text"),
-            "decline_notes":      rs.get("decline_notes"),
-            "declined_at":        rs.get("declined_at"),
-            "flag":              rs.get("flag", 0),
-            "confirmed":         1 if str(sid) == str(doc.get("staff_id", "")) or str(rs.get("xn_staff_id", "")) == str(doc.get("staff_id", "")) else 0,
+            "decline_notes":       rs.get("decline_notes"),
+            "declined_at":         rs.get("declined_at"),
+            "flag":                rs.get("flag", 0),
+            "confirmed":           1 if str(sid) == str(doc.get("staff_id", "")) or str(rs.get("xn_staff_id", "")) == str(doc.get("staff_id", "")) else 0,
             "confirm": {
-                "staff_label":   f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip() or rs.get('staff') or '—'} · ★ {u.get('rating') or '—'}",
-                "rating":        u.get("rating"),
-                "confirmed_by":  None,
+                "staff_label":  f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip() or rs.get('staff') or '—'} · ★ {u.get('rating') or '—'}",
+                "rating":       u.get("rating"),
+                "confirmed_by": None,
             },
         })
 
     s["requested_staff"] = requested_staff
     s.pop("requested_staff_list", None)
 
-    # Fetch pool users from shifts_pool collection
-    pool_total = await db["shifts_pool"].count_documents({"shift_id": shift_oid})
-    _pool_skip = (payload.pool_page - 1) * payload.pool_per_page
-    pool_docs = await db["shifts_pool"].find({"shift_id": shift_oid}).skip(_pool_skip).limit(payload.pool_per_page).to_list(length=payload.pool_per_page)
+    # ── Pool users ────────────────────────────────────────────────────────────
+    pool_total  = await db["shifts_pool"].count_documents({"shift_id": shift_oid})
+    _pool_skip  = (payload.pool_page - 1) * payload.pool_per_page
+    pool_docs   = await db["shifts_pool"].find({"shift_id": shift_oid}) \
+                                          .skip(_pool_skip) \
+                                          .limit(payload.pool_per_page) \
+                                          .to_list(length=payload.pool_per_page)
     pool_user_oids = [p["user_id"] for p in pool_docs if p.get("user_id") and ObjectId.is_valid(str(p.get("user_id", "")))]
     pool_user_map: dict = {}
     if pool_user_oids:
@@ -1444,11 +1569,8 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             pool_user_map[str(u["_id"])] = u
 
     AVAILABILITY_TEXT = {
-        1: "Available",
-        0: "Not Available",
-        3: "Voicemail",
-        4: "Call Not Attended",
-        6: "Call Not Triggered",
+        1: "Available", 0: "Not Available", 3: "Voicemail",
+        4: "Call Not Attended", 6: "Call Not Triggered",
     }
 
     pool_users = []
@@ -1467,104 +1589,110 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "added_at":    _iso_irl(p.get("added_at")),
             "added_by":    p.get("added_by"),
         })
-    s["pool_users"]      = pool_users
-    s["pool_total"]      = pool_total
-    s["pool_page"]       = payload.pool_page
-    s["pool_per_page"]   = payload.pool_per_page
+    s["pool_users"]    = pool_users
+    s["pool_total"]    = pool_total
+    s["pool_page"]     = payload.pool_page
+    s["pool_per_page"] = payload.pool_per_page
 
-    # Resolve user_type_id — always look up from user_types by shifts.user_type name
+    # ── user_type_id / county_id resolution ──────────────────────────────────
     user_type_id = None
     if s.get("user_type"):
         ut = await db["user_types"].find_one(
-            {"name": {"$regex": f"^{s['user_type']}$", "$options": "i"}},
-            {"_id": 1}
+            {"name": {"$regex": f"^{s['user_type']}$", "$options": "i"}}, {"_id": 1}
         )
         if ut:
             user_type_id = str(ut["_id"])
-            # Cache the correct id back to shifts collection
-            await db["shifts"].update_one(
-                {"_id": doc["_id"]}, {"$set": {"user_type_id": ut["_id"]}}
-            )
+            await db["shifts"].update_one({"_id": doc["_id"]}, {"$set": {"user_type_id": ut["_id"]}})
     s["user_type_id"] = user_type_id
 
-    # Resolve county_id — use cached value or join and save
     county_id = None
     if doc.get("county_id"):
         county_id = str(doc["county_id"])
     elif s.get("client_county"):
         co = await db["county"].find_one(
-            {"name": {"$regex": f"^{s['client_county']}$", "$options": "i"}},
-            {"_id": 1}
+            {"name": {"$regex": f"^{s['client_county']}$", "$options": "i"}}, {"_id": 1}
         )
         if co:
             county_id = str(co["_id"])
-            await db["shifts"].update_one(
-                {"_id": doc["_id"]}, {"$set": {"county_id": co["_id"]}}
-            )
+            await db["shifts"].update_one({"_id": doc["_id"]}, {"$set": {"county_id": co["_id"]}})
     s["county_id"] = county_id
 
-    # Fetch all outreach records for this shift (latest first)
-    outreach_docs = await db["outreach"].find(
+    # ── Outreach list ─────────────────────────────────────────────────────────
+    outreach_docs_list = await db["outreach"].find(
         {"shift_id": shift_oid},
         sort=[("created_at", -1)]
     ).to_list(length=100)
 
-    # Also fetch group outreach records for this shift
     async for sg in db["shifts_group"].find({"shift_ids": shift_oid}, {"_id": 1}):
         async for go in db["outreach_shift_group"].find(
             {"group_id": sg["_id"]},
             sort=[("created_at", -1)]
         ):
-            # Tag as group outreach for display
             go["_is_group"] = True
             go["_group_id"] = str(sg["_id"])
-            outreach_docs.append(go)
+            outreach_docs_list.append(go)
 
-    # Sort combined list by created_at desc
-    outreach_docs.sort(key=lambda x: x.get("created_at") or 0, reverse=True)
+    outreach_docs_list.sort(key=lambda x: x.get("created_at") or 0, reverse=True)
 
     STATUS_TEXT = {0: "Not Started", 1: "Live", 2: "Paused", 3: "Ended", 10: "Completed"}
+
+    # ✅ Batch sequence names for outreach list
+    ol_seq_ids = list({o.get("sequence_id") for o in outreach_docs_list if o.get("sequence_id")})
+    ol_seq_name_map: dict = {}
+    if ol_seq_ids:
+        async for seq in db["sequences"].find({"_id": {"$in": ol_seq_ids}}, {"name": 1}):
+            ol_seq_name_map[str(seq["_id"])] = seq.get("name")
+
+    # ✅ Batch availability counts for outreach list
+    ol_outreach_oids = [o["_id"] for o in outreach_docs_list]
+    ol_avail_pipeline = [
+        {"$match": {"outreach_id": {"$in": ol_outreach_oids}}},
+        {"$group": {
+            "_id": "$outreach_id",
+            "avail_1": {"$sum": {"$cond": [{"$eq": ["$availability", 1]}, 1, 0]}},
+            "avail_0": {"$sum": {"$cond": [{"$eq": ["$availability", 0]}, 1, 0]}},
+            "avail_3": {"$sum": {"$cond": [{"$eq": ["$availability", 3]}, 1, 0]}},
+            "avail_4": {"$sum": {"$cond": [{"$eq": ["$availability", 4]}, 1, 0]}},
+            "avail_6": {"$sum": {"$cond": [{"$eq": ["$availability", 6]}, 1, 0]}},
+        }}
+    ]
+    ol_avail_map: dict = {}
+    async for row in db["shifts_users"].aggregate(ol_avail_pipeline):
+        ol_avail_map[str(row["_id"])] = row
+
     outreach_list = []
-    for o in outreach_docs:
+    for o in outreach_docs_list:
         o_status = o.get("outreach_status", 0)
-        seq_name = None
-        seq_oid  = o.get("sequence_id")
-        if seq_oid:
-            seq = await db["sequences"].find_one({"_id": seq_oid}, {"name": 1})
-            if seq:
-                seq_name = seq.get("name")
-        # start_time as time-ago from started_at
+        seq_name = ol_seq_name_map.get(str(o.get("sequence_id", ""))) if o.get("sequence_id") else None
+
         created_at_raw = o.get("started_at") or o.get("created_at")
         start_time_ago = None
         if created_at_raw:
             try:
-                from datetime import datetime as _dtt
-                now = _dtt.now(timezone.utc)
+                now = datetime.now(timezone.utc)
                 dt  = created_at_raw
                 if not hasattr(dt, "tzinfo") or dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
-                diff = int((now - dt).total_seconds())
-                if diff < 0:        diff = 0
+                diff = max(0, int((now - dt).total_seconds()))
                 if diff < 60:       start_time_ago = "just now"
                 elif diff < 3600:   start_time_ago = f"{diff//60} minute{'s' if diff//60 != 1 else ''} ago"
                 elif diff < 86400:  start_time_ago = f"{diff//3600} hour{'s' if diff//3600 != 1 else ''} ago"
                 else:               start_time_ago = f"{diff//86400} day{'s' if diff//86400 != 1 else ''} ago"
             except Exception as _e:
-                logger.error(f"[start_time_ago] {_e} dt={created_at_raw}")
+                logger.error(f"[start_time_ago] {_e}")
 
-        # Availability counts from shifts_users for this outreach
-        ou_oid = o["_id"]
-        avail_1 = await db["shifts_users"].count_documents({"outreach_id": ou_oid, "availability": 1})
-        avail_0 = await db["shifts_users"].count_documents({"outreach_id": ou_oid, "availability": 0})
-        avail_3 = await db["shifts_users"].count_documents({"outreach_id": ou_oid, "availability": 3})
-        avail_4 = await db["shifts_users"].count_documents({"outreach_id": ou_oid, "availability": 4})
-        avail_6 = await db["shifts_users"].count_documents({"outreach_id": ou_oid, "availability": 6})
+        avail_row      = ol_avail_map.get(str(o["_id"]), {})
+        avail_1        = avail_row.get("avail_1", 0)
+        avail_0        = avail_row.get("avail_0", 0)
+        avail_3        = avail_row.get("avail_3", 0)
+        avail_4        = avail_row.get("avail_4", 0)
+        avail_6        = avail_row.get("avail_6", 0)
         declined_count = avail_0 + avail_3 + avail_4
         no_reply_count = avail_6
 
         outreach_list.append({
             "id":                   str(o["_id"]),
-            "sequence_id":          str(seq_oid) if seq_oid else None,
+            "sequence_id":          str(o.get("sequence_id")) if o.get("sequence_id") else None,
             "sequence_name":        seq_name,
             "round_number":         o.get("round_number"),
             "round_label":          "Bulk Shift Round" if o.get("_is_group") else f"Round {o.get('round_number', 1)}",
@@ -1580,30 +1708,29 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             "is_group_outreach":    o.get("_is_group", False),
             "group_id":             o.get("_group_id"),
             "staff_counts": {
-                "available":     avail_1,
-                "declined":      declined_count,
-                "no_reply":      no_reply_count,
-                "display":       f"{avail_1} Available · {declined_count} Declined · {no_reply_count} No reply",
+                "available": avail_1,
+                "declined":  declined_count,
+                "no_reply":  no_reply_count,
+                "display":   f"{avail_1} Available · {declined_count} Declined · {no_reply_count} No reply",
                 "breakdown": {
-                    "available":         avail_1,
-                    "not_available":     avail_0,
-                    "voicemail":         avail_3,
-                    "call_not_attended": avail_4,
+                    "available":          avail_1,
+                    "not_available":      avail_0,
+                    "voicemail":          avail_3,
+                    "call_not_attended":  avail_4,
                     "call_not_triggered": avail_6,
                 },
             },
         })
     s["outreach_list"] = outreach_list
 
-    # Fetch available staff: shifts_users where availability == 1 only
+    # ── Available staff ───────────────────────────────────────────────────────
     available_su = await db["shifts_users"].find(
         {"shift_id": shift_oid, "availability": 1},
-        {"user_id": 1, "availability": 1, "call_processed_at": 1, "shift_id": 1, "outreach_id": 1, "conversation_id": 1, "response_text": 1, "response_time": 1, "ignored": 1, "flag": 1, "channel": 1, "wa_phone": 1}
+        {"user_id": 1, "availability": 1, "call_processed_at": 1, "shift_id": 1,
+         "outreach_id": 1, "conversation_id": 1, "response_text": 1, "response_time": 1,
+         "ignored": 1, "flag": 1, "channel": 1, "wa_phone": 1}
     ).to_list(length=500)
 
-        # Also include available staff from group outreach (shifts_group_users)
-    # Per-shift availability is in availability_details[] — top-level availability
-    # may be an aggregate status (e.g. 8) and is NOT the source of truth.
     _shift_id_str = str(shift_oid)
     group_available_su = await db["shifts_group_users"].find(
         {
@@ -1614,31 +1741,25 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 }
             }
         },
-        {
-            "user_id": 1, "availability": 1, "group_id": 1, "outreach_id": 1,
-            "channel": 1, "wa_phone": 1, "availability_details": 1,
-            "response_text": 1, "response_time": 1, "conversation_id": 1,
-            "ignored": 1, "flag": 1,
-        },
+        {"user_id": 1, "availability": 1, "group_id": 1, "outreach_id": 1,
+         "channel": 1, "wa_phone": 1, "availability_details": 1,
+         "response_text": 1, "response_time": 1, "conversation_id": 1,
+         "ignored": 1, "flag": 1},
     ).to_list(length=500)
 
-    # Filter group users to those whose group contains this shift (safety)
     if group_available_su:
         _group_ids = list({su["group_id"] for su in group_available_su if su.get("group_id")})
         _groups_with_shift = set()
         async for sg in db["shifts_group"].find(
-            {"_id": {"$in": _group_ids}, "shift_ids": shift_oid},
-            {"_id": 1}
+            {"_id": {"$in": _group_ids}, "shift_ids": shift_oid}, {"_id": 1}
         ):
             _groups_with_shift.add(str(sg["_id"]))
         group_available_su = [su for su in group_available_su if str(su.get("group_id","")) in _groups_with_shift]
 
-        # Merge into available_su — avoid duplicates by user_id
         existing_user_ids = {str(su.get("user_id","")) for su in available_su}
         for gsu in group_available_su:
             if str(gsu.get("user_id","")) not in existing_user_ids:
                 gsu["from_group_outreach"] = True
-                # Ensure availability is set from the matching detail entry
                 for ad in (gsu.get("availability_details") or []):
                     if str(ad.get("shift_id", "")) == _shift_id_str:
                         gsu["availability"] = ad.get("availability", 1)
@@ -1663,7 +1784,6 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             ):
                 avail_user_map[str(u["_id"])] = u
 
-        # Build county name map for available_staff
         _county_ids_avail = list({str(u.get("county_id","")) for u in avail_user_map.values() if u.get("county_id")})
         _county_name_map_avail: dict = {}
         if _county_ids_avail:
@@ -1672,26 +1792,22 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 {"name": 1}
             ):
                 _county_name_map_avail[str(c["_id"])] = c.get("name", "")
+
         user_type_map: dict = {}
         async for ut in db["user_types"].find({}, {"name": 1}):
             user_type_map[ut.get("name", "").lower()] = str(ut["_id"])
 
-        # Get shift client_id for prior shifts count
-        shift_client_id   = s.get("client_id")
-        shift_user_type   = s.get("user_type") or s.get("shift_timing") or ""
-        shift_date_raw    = doc.get("date")
-        shift_date_str    = shift_date_raw.strftime("%d/%m/%Y") if shift_date_raw and hasattr(shift_date_raw, "strftime") else str(s.get("date",""))
-        shift_start       = s.get("start_time", "")
-        shift_end         = s.get("end_time", "")
-        shift_label       = f"{shift_user_type} • {shift_date_str} • {shift_start} – {shift_end}"
+        shift_client_id = s.get("client_id")
+        shift_user_type = s.get("user_type") or s.get("shift_timing") or ""
+        shift_date_raw  = doc.get("date")
+        shift_date_str  = shift_date_raw.strftime("%d/%m/%Y") if shift_date_raw and hasattr(shift_date_raw, "strftime") else str(s.get("date",""))
+        shift_start     = s.get("start_time", "")
+        shift_end       = s.get("end_time", "")
+        shift_label     = f"{shift_user_type} • {shift_date_str} • {shift_start} – {shift_end}"
+        placed_at       = s.get("client_name") or "—"
 
-        # Client name for "Placed at"
-        placed_at = s.get("client_name") or "—"
-
-        # Client coords for distance
         from app.routers.staff import _haversine_km as _hav, _user_coords as _uc
-        client_lat = None
-        client_lng = None
+        client_lat = client_lng = None
         if shift_client_id:
             cl_doc = await db["clients"].find_one({"xn_client_id": shift_client_id}, {"latitude": 1, "longitude": 1})
             if cl_doc:
@@ -1699,67 +1815,54 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 client_lng = cl_doc.get("longitude")
 
         for su in available_su:
-            uid_str = str(su.get("user_id", ""))
-            u = avail_user_map.get(uid_str, {})
+            uid_str   = str(su.get("user_id", ""))
+            u         = avail_user_map.get(uid_str, {})
             avail_val = su.get("availability")
 
-            # For group outreach — resolve from availability_details by shift_id
             if su.get("availability_details"):
                 for ad in su["availability_details"]:
                     if str(ad.get("shift_id", "")) == str(shift_oid):
                         avail_val = ad.get("availability", avail_val)
                         break
-            raw_outreach_oid = su.get("outreach_id")
-            user_oid_val = su.get("user_id")
 
-            # Prior shifts at this client — count shifts where this user was assigned_staff
-            prior_shifts_here = 0
+            raw_outreach_oid = su.get("outreach_id")
+            user_oid_val     = su.get("user_id")
+
+            prior_shifts_here  = 0
             last_at_client_str = None
-            last_contacted = None
+            last_contacted     = None
             if user_oid_val and shift_client_id:
-                user_email = u.get("email")
+                user_email     = u.get("email")
                 user_full_name = " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip()
-                # Count shifts at this client where this user was assigned
-                _shift_filter = {
-                    "client_id": shift_client_id,
-                    "assigned_staff": {"$exists": True, "$ne": None}
-                }
+                _shift_filter  = {"client_id": shift_client_id, "assigned_staff": {"$exists": True, "$ne": None}}
                 if user_email:
                     _shift_filter["staff_email"] = user_email
                 elif user_full_name:
                     _shift_filter["assigned_staff"] = {"$regex": f"^{user_full_name}$", "$options": "i"}
-
                 prior_shifts_here = await db["shifts"].count_documents(_shift_filter)
-
                 if prior_shifts_here > 0:
                     last_shift = await db["shifts"].find_one(
-                        _shift_filter,
-                        sort=[("assigned_at", -1)],
-                        projection={"assigned_at": 1}
+                        _shift_filter, sort=[("assigned_at", -1)], projection={"assigned_at": 1}
                     )
                     if last_shift and last_shift.get("assigned_at"):
-                        from datetime import timezone as _tz2
                         lc2 = last_shift["assigned_at"]
                         if hasattr(lc2, "tzinfo") and lc2.tzinfo is None:
-                            lc2 = lc2.replace(tzinfo=_tz2.utc)
+                            lc2 = lc2.replace(tzinfo=timezone.utc)
                         diff2 = int((_now_irl() - lc2).total_seconds())
                         if diff2 < 60:       last_at_client_str = "just now"
                         elif diff2 < 3600:   last_at_client_str = f"{diff2//60} minute{'s' if diff2//60!=1 else ''} ago"
                         elif diff2 < 86400:  last_at_client_str = f"{diff2//3600} hour{'s' if diff2//3600!=1 else ''} ago"
                         else:                last_at_client_str = f"{diff2//86400} day{'s' if diff2//86400!=1 else ''} ago"
 
-            # Staff tags
-            raw_tags = u.get("tags") or []
+            raw_tags   = u.get("tags") or []
             staff_tags = [
                 {"id": str(t.get("id","")), "name": t.get("name","")}
                 if isinstance(t, dict) else {"id": "", "name": str(t)}
                 for t in raw_tags
             ]
 
-            # Visa hours — static 8/24
             visa_hours_remaining = u.get("consumed_hours") or None
 
-            # Distance km — calculate from coords or parse from rs.distance string
             distance_km = None
             if client_lat is not None and client_lng is not None:
                 ucoords = _uc(u)
@@ -1773,10 +1876,8 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                     except Exception:
                         pass
 
-            # Response text + time — directly from shifts_users
             response_text = su.get("response_text")
             response_time = su.get("response_time")
-            call_details  = None
 
             if prior_shifts_here > 0 and last_at_client_str:
                 work_history = f"{prior_shifts_here} Shift{'s' if prior_shifts_here != 1 else ''} · {last_at_client_str}"
@@ -1786,36 +1887,35 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
                 work_history = "0 Shifts"
 
             available_staff.append({
-                "id":                  uid_str,
-                "xn_user_id":          u.get("xn_user_id"),
-                "name":                " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
-                "email":               u.get("email"),
-                "phone":               u.get("phone"),
-                "designation":         u.get("designation"),
-                "user_type_id":        str(u["user_type_id"]) if u.get("user_type_id") and ObjectId.is_valid(str(u.get("user_type_id",""))) else user_type_map.get((u.get("designation") or "").lower()),
-                "rating":              u.get("rating"),
-                "county":              u.get("county") or _county_name_map_avail.get(str(u.get("county_id",""))) or None,
-                "county_id":           str(u["county_id"]) if u.get("county_id") else None,
-                "prior_shifts_here":   prior_shifts_here,
-                "last_contacted":      last_contacted,
-                "staff_tags":          staff_tags,
+                "id":                   uid_str,
+                "xn_user_id":           u.get("xn_user_id"),
+                "name":                 " ".join(filter(None, [u.get("first_name",""), u.get("last_name","")])).strip() or "—",
+                "email":                u.get("email"),
+                "phone":                u.get("phone"),
+                "designation":          u.get("designation"),
+                "user_type_id":         str(u["user_type_id"]) if u.get("user_type_id") and ObjectId.is_valid(str(u.get("user_type_id",""))) else user_type_map.get((u.get("designation") or "").lower()),
+                "rating":               u.get("rating"),
+                "county":               u.get("county") or _county_name_map_avail.get(str(u.get("county_id",""))) or None,
+                "county_id":            str(u["county_id"]) if u.get("county_id") else None,
+                "prior_shifts_here":    prior_shifts_here,
+                "last_contacted":       last_contacted,
+                "staff_tags":           staff_tags,
                 "visa_hours_remaining": visa_hours_remaining,
-                "channel":             su.get("channel") or "Phone",
-                "response_text":       response_text,
-                "response_time":       response_time,
-                "availability":        avail_val,
-                "availability_text":   AVAILABILITY_TEXT.get(avail_val, "Unknown"),
-                "shift_id":            str(su.get("shift_id", "")) if su.get("shift_id") else None,
-                "outreach_id":         str(raw_outreach_oid) if raw_outreach_oid else None,
-                "conversation_id":     su.get("conversation_id"),
-                "distance_km":         round(float(distance_km), 2) if distance_km is not None else None,
-                "call_details":        call_details,
-                "work_history":        work_history,
-                "flag":                su.get("flag", 0),
-                "ignored":             su.get("ignored", 0),
-                "wa_phone":            su.get("wa_phone", ""),
-                "confirmed":           1 if str(uid_str) == str(doc.get("staff_id", "")) or str(u.get("xn_user_id", "")) == str(doc.get("staff_id", "")) else 0,
-                # Confirm staff modal fields (Image 2)
+                "channel":              su.get("channel") or "Phone",
+                "response_text":        response_text,
+                "response_time":        response_time,
+                "availability":         avail_val,
+                "availability_text":    AVAILABILITY_TEXT.get(avail_val, "Unknown"),
+                "shift_id":             str(su.get("shift_id", "")) if su.get("shift_id") else None,
+                "outreach_id":          str(raw_outreach_oid) if raw_outreach_oid else None,
+                "conversation_id":      su.get("conversation_id"),
+                "distance_km":          round(float(distance_km), 2) if distance_km is not None else None,
+                "call_details":         None,
+                "work_history":         work_history,
+                "flag":                 su.get("flag", 0),
+                "ignored":              su.get("ignored", 0),
+                "wa_phone":             su.get("wa_phone", ""),
+                "confirmed":            1 if str(uid_str) == str(doc.get("staff_id", "")) or str(u.get("xn_user_id", "")) == str(doc.get("staff_id", "")) else 0,
                 "confirm": {
                     "staff_label":       f"{' '.join(filter(None, [u.get('first_name',''), u.get('last_name','')])).strip()} · ★ {u.get('rating') or '—'} · {prior_shifts_here} prior shifts here",
                     "prior_shifts_here": prior_shifts_here,
@@ -1827,11 +1927,10 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
             })
 
     s["available_staff"] = available_staff
-
     return {"success": True, "data": s}
 
 
-# ── DETAIL — shift + client + staff pool stub ─────────────────────────────────
+# ── GET /{shift_id}/detail ────────────────────────────────────────────────────
 
 @router.get(
     "/{shift_id}/detail",
@@ -1840,13 +1939,6 @@ async def get_shift_db(request: Request, payload: ShiftDetailRequest):
 )
 @limiter.limit("60/minute")
 async def get_shift_detail(request: Request, shift_id: str):
-    """
-    Returns a shift document enriched with:
-    - Full client info (from clients collection via xn_client_id)
-    - Slot breakdown
-    - All stored upstream fields
-    Lookups by MongoDB _id, shift_xn_id, or shift_code.
-    """
     db = _get_db()
 
     doc = None
@@ -1863,7 +1955,6 @@ async def get_shift_detail(request: Request, shift_id: str):
 
     s = _serialize(doc)
 
-    # Enrich with full client data
     cid = s.get("client_id", "")
     client_detail: dict = {}
     if cid:
@@ -1882,8 +1973,7 @@ async def get_shift_detail(request: Request, shift_id: str):
         else:
             client_detail = {"client_name": "—"}
 
-    # Build summary stats from slots
-    slots = s.get("slots") or []
+    slots      = s.get("slots") or []
     slot_count = len(slots)
 
     return {
@@ -1891,30 +1981,25 @@ async def get_shift_detail(request: Request, shift_id: str):
         "data": {
             **s,
             **client_detail,
-            "slot_count":   slot_count,
-            "shift_users":  await _get_shift_users(db, doc["_id"]),
-            # Pool metadata — placeholders (real data from Shift API pool endpoint)
+            "slot_count":  slot_count,
+            "shift_users": await _get_shift_users(db, doc["_id"]),
             "pool": {
-                "total_staff":       0,
-                "from_bulk_pool":    0,
-                "added_by_user":     0,
-                "excluded_by_system":0,
-                "channels": {
-                    "phone":    0,
-                    "whatsapp": 0,
-                    "email":    0,
-                },
+                "total_staff":        0,
+                "from_bulk_pool":     0,
+                "added_by_user":      0,
+                "excluded_by_system": 0,
+                "channels": {"phone": 0, "whatsapp": 0, "email": 0},
             },
         },
     }
 
 
-# ── POST /shifts-db/cursor-list ───────────────────────────────────────────────
+# ── Cursor-based list ─────────────────────────────────────────────────────────
 
 class ShiftCursorListRequest(BaseModel):
-    after_id:   Optional[str] = None   # last _id from previous page
+    after_id:   Optional[str] = None
     per_page:   int = 100
-    sort_order: str = "asc"            # asc by _id for stable cursor
+    sort_order: str = "asc"
 
 
 @router.post(
@@ -1924,11 +2009,6 @@ class ShiftCursorListRequest(BaseModel):
 )
 @limiter.limit("120/minute")
 async def cursor_list_shifts(request: Request, payload: ShiftCursorListRequest):
-    """
-    Body: { "after_id": "<last_id_from_prev_page>", "per_page": 100 }
-    Uses _id-based cursor pagination — avoids MongoDB skip on high pages.
-    First call: omit after_id. Next call: pass last id from data array.
-    """
     db = _get_db()
 
     query: dict = {}
@@ -1949,20 +2029,20 @@ async def cursor_list_shifts(request: Request, payload: ShiftCursorListRequest):
         s   = _serialize(doc)
         cid = s.get("client_id", "")
         results.append({
-            "id":           str(doc["_id"]),
-            "shift_id":     s.get("shift_id") or s.get("shift_xn_id") or "",
-            "shift_code":   s.get("shift_code") or s.get("shift_xn_id") or "",
-            "name":         s.get("name") or s.get("shift_code") or "",
-            "date":         s.get("date"),
-            "start_time":   s.get("start_time"),
-            "end_time":     s.get("end_time"),
-            "shift_timing": _normalize_shift_timing(s),
-            "user_type":    s.get("user_type") or "",
-            "client_id":    cid,
-            "client_name":  s.get("client_name"),
-            "client_county": s.get("client_county"),
-            "is_premium":   s.get("is_premium"),
-            "status":       s.get("status"),
+            "id":              str(doc["_id"]),
+            "shift_id":        s.get("shift_id") or s.get("shift_xn_id") or "",
+            "shift_code":      s.get("shift_code") or s.get("shift_xn_id") or "",
+            "name":            s.get("name") or s.get("shift_code") or "",
+            "date":            s.get("date"),
+            "start_time":      s.get("start_time"),
+            "end_time":        s.get("end_time"),
+            "shift_timing":    _normalize_shift_timing(s),
+            "user_type":       s.get("user_type") or "",
+            "client_id":       cid,
+            "client_name":     s.get("client_name"),
+            "client_county":   s.get("client_county"),
+            "is_premium":      s.get("is_premium"),
+            "status":          s.get("status"),
             "upstream_status": s.get("upstream_status"),
         })
 
@@ -1979,7 +2059,7 @@ async def cursor_list_shifts(request: Request, payload: ShiftCursorListRequest):
     }
 
 
-# ── GET /shifts-db/cron-sync ──────────────────────────────────────────────────
+# ── Cron sync ─────────────────────────────────────────────────────────────────
 
 @router.get(
     "/cron-sync",
@@ -1987,17 +2067,8 @@ async def cursor_list_shifts(request: Request, payload: ShiftCursorListRequest):
     dependencies=[Depends(verify_api_key)],
 )
 async def cron_sync_shifts(request: Request):
-    """
-    GET /shifts-db/cron-sync
-    - Calls /shifts/list (page=1, per_page=10, sort_by=id, sort_order=desc)
-    - For each shift, calls /shifts/sync-detail
-    - No auth headers needed in the cron — all handled here
-    Returns summary of synced shifts.
-    """
     import httpx as _httpx
-    from datetime import datetime, timezone as _tz
 
-    # Use the same API base as the current server
     base    = "https://uat.expresshealth.ie/xnapi"
     api_key = settings.API_KEY
     headers = {
@@ -2005,11 +2076,10 @@ async def cron_sync_shifts(request: Request):
         "Authorization": f"Bearer {api_key}",
     }
 
-    synced  = []
-    failed  = []
+    synced: list = []
+    failed: list = []
 
     async with _httpx.AsyncClient(timeout=60.0) as client:
-        # Step 1: fetch latest shifts
         list_resp = await client.post(
             f"{base}/shifts/list",
             json={"page": 1, "per_page": 10, "sort_by": "id", "sort_order": "desc"},
@@ -2020,7 +2090,6 @@ async def cron_sync_shifts(request: Request):
 
         shifts = list_resp.json().get("data") or []
 
-        # Step 2: sync-detail for each shift
         for s in shifts:
             xn_id = s.get("shift_id") or s.get("id") or s.get("shift_code")
             if not xn_id:
