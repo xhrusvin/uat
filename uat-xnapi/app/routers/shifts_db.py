@@ -1034,89 +1034,31 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
 
     mongo_filter = {"$and": filters}
 
-    # ✅ Count total matching (for pagination header)
-    total = await db["shifts"].count_documents(mongo_filter)
-
     sort_dir = -1 if sort_order.lower() == "desc" else 1
 
-    # ✅ DB-level pagination — fetch only the current page
-    docs = await db["shifts"].find(mongo_filter) \
-                              .sort(sort_by, sort_dir) \
-                              .skip(skip) \
-                              .limit(limit) \
-                              .to_list(length=limit)
+    # ── STEP 1: Collect ALL matched regular shift IDs (lightweight, _id only) ─
+    # We need all IDs to merge with group shift IDs before paginating.
+    all_regular_docs = await db["shifts"].find(
+        mongo_filter,
+        {"_id": 1, "date": 1}   # only fetch _id + sort field
+    ).sort(sort_by, sort_dir).to_list(length=20000)
 
-    doc_oids = [
-        doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-        for doc in docs
-    ]
+    # Build ordered list of (shift_id_str, is_group, group_meta) tuples
+    # for the unified set, deduped, preserving sort order.
+    seen_ids: set = set()
+    ordered_entries: list = []   # list of {"id_str": str, "is_group": bool, "gid_str": str|None}
 
-    client_ids = list({d.get("client_id") for d in docs if d.get("client_id")})
-    client_map = await _build_client_map(db, client_ids)
-
-    # ✅ Batch staff counts for current page only
-    staff_counts_map = await _get_staff_counts_bulk(db, doc_oids)
-    staff_counts_map = await _merge_group_counts_bulk(db, doc_oids, group_shift_map, staff_counts_map)
-    staff_counts_map = await _merge_requested_counts(db, doc_oids, staff_counts_map)
-
-    # ✅ Batch sequence name lookup for current page
-    page_seq_ids = list({
-        shift_outreach_map.get(str(oid), {}).get("sequence_id")
-        for oid in doc_oids
-        if shift_outreach_map.get(str(oid), {}).get("sequence_id")
-    })
-    seq_name_map: dict = {}
-    if page_seq_ids:
-        async for seq in db["sequences"].find({"_id": {"$in": page_seq_ids}}, {"name": 1}):
-            seq_name_map[str(seq["_id"])] = seq.get("name")
-
-    results = []
-    for doc in docs:
-        s   = _serialize(doc)
-        cid = s.get("client_id", "")
-        cl  = client_map.get(cid)
-        s["client_name"]       = _client_name(cl)
-        s["client_email"]      = cl.get("email")             if cl else None
-        s["client_phone"]      = cl.get("phone")             if cl else None
-        s["client_preference"] = cl.get("client_preference") or [] if cl else []
-
+    for doc in all_regular_docs:
         sid_str = str(doc["_id"])
-        shift_oid_l = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(sid_str)
+        if sid_str not in seen_ids:
+            seen_ids.add(sid_str)
+            ordered_entries.append({"id_str": sid_str, "is_group": False, "gid_str": None})
 
-        s["staff_counts"] = staff_counts_map.get(sid_str, {
-            "available": 0, "with_outreach": 0, "declined": 0,
-            "no_reply": 0, "pending": 0, "requested": 0, "requested_flag": 0,
-            "display": "0 Available · 0 Declined · 0 No reply", "has_available": 0,
-        })
-
-        o_doc    = shift_outreach_map.get(sid_str, {})
-        o_status = o_doc.get("outreach_status", 0)
-        seq_name = seq_name_map.get(str(o_doc.get("sequence_id", ""))) if o_doc.get("sequence_id") else None
-
-        created_at = o_doc.get("created_at")
-        start_time = created_at.isoformat() if created_at and hasattr(created_at, "isoformat") else str(created_at) if created_at else None
-
-        s["outreach_id"]            = str(o_doc["_id"]) if o_doc.get("_id") else None
-        s["outreach_status"]        = o_status
-        s["outreach_status_text"]   = STATUS_TEXT.get(o_status, "Not Started")
-        s["outreach_sequence_name"] = seq_name
-        s["start_time"]             = start_time
-        s["shift_preference"]       = doc.get("shift_preferences") or s.get("shift_preferences") or []
-        s["shift_preferences"]      = doc.get("shift_preferences") or []
-        s["client_preference"]      = cl.get("client_preference") or [] if cl else []
-        s["ghost_booking"]          = 0
-        s["group_id"]               = group_shift_map.get(sid_str)
-        s["rate"] = s.get("pay_rate") if s.get("pay_rate") is not None else s.get("rate")
-        results.append(s)
-
-    # ── Group outreach shifts: also include standalone group shifts ───────────
-    # Collect group shift IDs that haven't already been returned in main results
-    returned_ids = {r.get("id") for r in results}
-
-    # ✅ Batch-fetch all relevant groups at once (no per-group queries in loop)
+    # ── STEP 2: Collect ALL group-outreach shift IDs not already in regular ───
+    # Batch-fetch all relevant groups at once
     all_group_oids = list({
         ObjectId(gid) for gid in group_shift_map.values()
-        if ObjectId.is_valid(gid)
+        if ObjectId.is_valid(str(gid))
     })
 
     grp_docs_map: dict = {}   # group_id_str → shifts_group doc
@@ -1127,107 +1069,169 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
         ):
             grp_docs_map[str(grp["_id"])] = grp
 
-    # ✅ Batch-fetch group outreach for all groups (no per-group find_one)
+    # Batch-fetch latest group outreach per group
     grp_outreach_map: dict = {}   # group_id_str → outreach_shift_group doc
     if all_group_oids:
         async for go in db["outreach_shift_group"].find(
             {"group_id": {"$in": all_group_oids}},
-            sort=[("created_at", -1)]
-        ):
+        ).sort("created_at", -1):
             gid_str = str(go["group_id"])
             if gid_str not in grp_outreach_map:
                 grp_outreach_map[gid_str] = go
 
-    # Collect extra group-shift docs not already in results
-    extra_shift_oids: list = []
+    # Collect group shift IDs that pass the status filter and aren't already included
+    all_group_shift_filter: dict = {}
+    if search:
+        all_group_shift_filter["$or"] = [
+            {"name":              {"$regex": search, "$options": "i"}},
+            {"shift_xn_id":       {"$regex": search, "$options": "i"}},
+            {"shift_code":        {"$regex": search, "$options": "i"}},
+            {"shift_id":          {"$regex": search, "$options": "i"}},
+            {"location":          {"$regex": search, "$options": "i"}},
+            {"client_name":       {"$regex": search, "$options": "i"}},
+            {"client_county":     {"$regex": search, "$options": "i"}},
+            {"user_type":         {"$regex": search, "$options": "i"}},
+            {"slots.shift_xn_id": {"$regex": search, "$options": "i"}},
+        ]
+
     for gid_str, grp in grp_docs_map.items():
-        grp_outreach = grp_outreach_map.get(gid_str)
-        if not grp_outreach:
+        go = grp_outreach_map.get(gid_str)
+        if not go:
             continue
-        grp_status = grp_outreach.get("outreach_status", 0)
+        grp_status = go.get("outreach_status", 0)
         if filter_outreach_status == 2:
             if grp_status != 10:
                 continue
         else:
             if grp_status not in (1, 2, 3):
                 continue
-        for sid in (grp.get("shift_ids") or []):
-            if str(sid) not in returned_ids:
-                extra_shift_oids.append(sid)
 
-    if extra_shift_oids:
-        # Apply search filter to extra shifts
-        grp_shift_filter: dict = {"_id": {"$in": extra_shift_oids}}
-        if search:
-            grp_shift_filter["$or"] = [
-                {"name":              {"$regex": search, "$options": "i"}},
-                {"shift_xn_id":       {"$regex": search, "$options": "i"}},
-                {"shift_code":        {"$regex": search, "$options": "i"}},
-                {"shift_id":          {"$regex": search, "$options": "i"}},
-                {"location":          {"$regex": search, "$options": "i"}},
-                {"client_name":       {"$regex": search, "$options": "i"}},
-                {"client_county":     {"$regex": search, "$options": "i"}},
-                {"user_type":         {"$regex": search, "$options": "i"}},
-                {"slots.shift_xn_id": {"$regex": search, "$options": "i"}},
-            ]
+        grp_shift_oids_raw = grp.get("shift_ids") or []
+        if not grp_shift_oids_raw:
+            continue
 
-        extra_docs = await db["shifts"].find(grp_shift_filter).to_list(length=5000)
+        # Apply search filter to group shifts if needed
+        if all_group_shift_filter:
+            matched_grp_ids = set()
+            async for d in db["shifts"].find(
+                {"_id": {"$in": grp_shift_oids_raw}, **all_group_shift_filter},
+                {"_id": 1}
+            ):
+                matched_grp_ids.add(str(d["_id"]))
+        else:
+            matched_grp_ids = {str(s) for s in grp_shift_oids_raw}
 
-        # Batch client lookup for extra docs
-        extra_client_ids = list({d.get("client_id") for d in extra_docs if d.get("client_id")})
-        extra_client_map = await _build_client_map(db, extra_client_ids)
+        for sid in grp_shift_oids_raw:
+            sid_str = str(sid)
+            if sid_str not in seen_ids and sid_str in matched_grp_ids:
+                seen_ids.add(sid_str)
+                ordered_entries.append({"id_str": sid_str, "is_group": True, "gid_str": gid_str})
 
-        extra_doc_oids = [
-            d["_id"] if isinstance(d["_id"], ObjectId) else ObjectId(str(d["_id"]))
-            for d in extra_docs
-        ]
+    # ── STEP 3: True total + paginate the unified ordered list ────────────────
+    combined_total = len(ordered_entries)
+    page_entries   = ordered_entries[skip: skip + limit]   # ✅ single correct slice
 
-        # Batch staff counts for extra docs
-        extra_staff_counts = await _get_staff_counts_bulk(db, extra_doc_oids)
-        extra_staff_counts = await _merge_group_counts_bulk(db, extra_doc_oids, group_shift_map, extra_staff_counts)
-        extra_staff_counts = await _merge_requested_counts(db, extra_doc_oids, extra_staff_counts)
+    if not page_entries:
+        outreach_active    = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
+        outreach_completed = await db["outreach"].count_documents({"outreach_status": 10})
+        return {
+            "success":            True,
+            "total":              combined_total,
+            "automation_count":   outreach_active + outreach_completed,
+            "to_be_filled_count": await db["shifts"].count_documents({"upstream_status": "To Be Filled"}),
+            "outreach_active":    outreach_active,
+            "outreach_completed": outreach_completed,
+            "page":               payload.page,
+            "per_page":           payload.per_page,
+            "data":               [],
+        }
 
-        # Batch sequence names for extra docs
-        extra_seq_ids = []
-        for sid_str in [str(o) for o in extra_doc_oids]:
-            gid = group_shift_map.get(sid_str)
-            if gid:
-                go = grp_outreach_map.get(gid)
-                if go and go.get("sequence_id") and go["sequence_id"] not in extra_seq_ids:
-                    extra_seq_ids.append(go["sequence_id"])
-        extra_seq_name_map: dict = {}
-        if extra_seq_ids:
-            async for seq in db["sequences"].find({"_id": {"$in": extra_seq_ids}}, {"name": 1}):
-                extra_seq_name_map[str(seq["_id"])] = seq.get("name")
+    # ── STEP 4: Fetch only this page's shift documents ────────────────────────
+    page_oid_strs = [e["id_str"] for e in page_entries]
+    page_oids     = [ObjectId(s) for s in page_oid_strs if ObjectId.is_valid(s)]
 
-        for doc in extra_docs:
-            sid_str = str(doc["_id"])
-            if sid_str in returned_ids:
-                continue
-            returned_ids.add(sid_str)
+    page_docs_raw = await db["shifts"].find(
+        {"_id": {"$in": page_oids}}
+    ).to_list(length=limit)
 
-            gid_str = group_shift_map.get(sid_str, "")
-            grp     = grp_docs_map.get(gid_str, {})
-            go      = grp_outreach_map.get(gid_str, {})
+    # Restore sort order (MongoDB $in doesn't preserve it)
+    page_docs_index = {str(d["_id"]): d for d in page_docs_raw}
+    page_docs = [page_docs_index[e["id_str"]] for e in page_entries if e["id_str"] in page_docs_index]
+
+    # ── STEP 5: Batch enrichment for page only ────────────────────────────────
+    doc_oids = [
+        doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
+        for doc in page_docs
+    ]
+
+    client_ids = list({d.get("client_id") for d in page_docs if d.get("client_id")})
+    client_map = await _build_client_map(db, client_ids)
+
+    # Build page-level group_shift_map (shift_id_str → gid_str) from page_entries
+    page_group_shift_map: dict = {
+        e["id_str"]: e["gid_str"]
+        for e in page_entries if e["is_group"] and e["gid_str"]
+    }
+
+    staff_counts_map = await _get_staff_counts_bulk(db, doc_oids)
+    staff_counts_map = await _merge_group_counts_bulk(db, doc_oids, page_group_shift_map, staff_counts_map)
+    staff_counts_map = await _merge_requested_counts(db, doc_oids, staff_counts_map)
+
+    # Batch sequence name lookup for this page
+    page_seq_ids = list({
+        shift_outreach_map.get(str(oid), {}).get("sequence_id")
+        for oid in doc_oids
+        if shift_outreach_map.get(str(oid), {}).get("sequence_id")
+    })
+    # Also include group outreach sequence IDs
+    for e in page_entries:
+        if e["is_group"] and e["gid_str"]:
+            go = grp_outreach_map.get(e["gid_str"])
+            if go and go.get("sequence_id") and go["sequence_id"] not in page_seq_ids:
+                page_seq_ids.append(go["sequence_id"])
+
+    seq_name_map: dict = {}
+    if page_seq_ids:
+        async for seq in db["sequences"].find({"_id": {"$in": page_seq_ids}}, {"name": 1}):
+            seq_name_map[str(seq["_id"])] = seq.get("name")
+
+    # ── STEP 6: Build response results ────────────────────────────────────────
+    # Build entry lookup by id_str for is_group flag
+    entry_map = {e["id_str"]: e for e in page_entries}
+
+    results = []
+    for doc in page_docs:
+        sid_str = str(doc["_id"])
+        entry   = entry_map.get(sid_str, {})
+        is_grp  = entry.get("is_group", False)
+        gid_str = entry.get("gid_str")
+
+        s   = _serialize(doc)
+        cid = s.get("client_id", "")
+        cl  = client_map.get(cid)
+        s["client_name"]       = _client_name(cl)
+        s["client_email"]      = cl.get("email")             if cl else None
+        s["client_phone"]      = cl.get("phone")             if cl else None
+        s["client_preference"] = cl.get("client_preference") or [] if cl else []
+        s["shift_preference"]  = doc.get("shift_preferences") or []
+        s["shift_preferences"] = doc.get("shift_preferences") or []
+        s["ghost_booking"]     = 0
+        s["rate"] = s.get("pay_rate") if s.get("pay_rate") is not None else s.get("rate")
+
+        s["staff_counts"] = staff_counts_map.get(sid_str, {
+            "available": 0, "with_outreach": 0, "declined": 0,
+            "no_reply": 0, "pending": 0, "requested": 0, "requested_flag": 0,
+            "display": "0 Available · 0 Declined · 0 No reply", "has_available": 0,
+        })
+
+        if is_grp and gid_str:
+            go         = grp_outreach_map.get(gid_str, {})
+            grp        = grp_docs_map.get(gid_str, {})
             grp_status = go.get("outreach_status", 0)
-            grp_seq_name = extra_seq_name_map.get(str(go.get("sequence_id", ""))) if go.get("sequence_id") else None
-            grp_created  = go.get("created_at")
-            grp_start    = grp_created.isoformat() if grp_created and hasattr(grp_created, "isoformat") else None
+            grp_created = go.get("created_at")
+            grp_start   = grp_created.isoformat() if grp_created and hasattr(grp_created, "isoformat") else None
+            grp_seq_name = seq_name_map.get(str(go.get("sequence_id", ""))) if go.get("sequence_id") else None
 
-            s   = _serialize(doc)
-            cid = s.get("client_id", "")
-            cl  = extra_client_map.get(cid)
-            s["client_name"]            = _client_name(cl)
-            s["client_email"]           = cl.get("email")             if cl else None
-            s["client_phone"]           = cl.get("phone")             if cl else None
-            s["client_preference"]      = cl.get("client_preference") or [] if cl else []
-            s["shift_preference"]       = doc.get("shift_preferences") or []
-            s["shift_preferences"]      = doc.get("shift_preferences") or []
-            s["staff_counts"]           = extra_staff_counts.get(sid_str, {
-                "available": 0, "with_outreach": 0, "declined": 0,
-                "no_reply": 0, "pending": 0, "requested": 0, "requested_flag": 0,
-                "display": "0 Available · 0 Declined · 0 No reply", "has_available": 0,
-            })
             s["outreach_id"]            = str(go["_id"]) if go.get("_id") else None
             s["group_outreach_id"]      = str(go["_id"]) if go.get("_id") else None
             s["group_id"]               = gid_str
@@ -1236,30 +1240,40 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
             s["outreach_status_text"]   = STATUS_TEXT.get(grp_status, "Not Started")
             s["outreach_sequence_name"] = grp_seq_name
             s["start_time"]             = grp_start
-            s["ghost_booking"]          = 0
             s["is_group_outreach"]      = True
-            s["rate"] = s.get("pay_rate") if s.get("pay_rate") is not None else s.get("rate")
-            results.append(s)
+        else:
+            o_doc    = shift_outreach_map.get(sid_str, {})
+            o_status = o_doc.get("outreach_status", 0)
+            seq_name = seq_name_map.get(str(o_doc.get("sequence_id", ""))) if o_doc.get("sequence_id") else None
+            created_at = o_doc.get("created_at")
+            start_time = created_at.isoformat() if created_at and hasattr(created_at, "isoformat") else str(created_at) if created_at else None
 
-    # Aggregate counts (global)
+            s["outreach_id"]            = str(o_doc["_id"]) if o_doc.get("_id") else None
+            s["group_id"]               = group_shift_map.get(sid_str)
+            s["outreach_status"]        = o_status
+            s["outreach_status_text"]   = STATUS_TEXT.get(o_status, "Not Started")
+            s["outreach_sequence_name"] = seq_name
+            s["start_time"]             = start_time
+            s["is_group_outreach"]      = False
+
+        results.append(s)
+
+    # Aggregate global counts
     outreach_active    = await db["outreach"].count_documents({"outreach_status": {"$in": [1, 2, 3]}})
     outreach_completed = await db["outreach"].count_documents({"outreach_status": 10})
     automation_count   = outreach_active + outreach_completed
     to_be_filled_count = await db["shifts"].count_documents({"upstream_status": "To Be Filled"})
 
-    # Combined total = DB-matched regular + extra group shifts
-    combined_total = total + len([r for r in results if r.get("is_group_outreach")])
-
     return {
         "success":            True,
-        "total":              combined_total,
+        "total":              combined_total,   # ✅ true unified total
         "automation_count":   automation_count,
         "to_be_filled_count": to_be_filled_count,
         "outreach_active":    outreach_active,
         "outreach_completed": outreach_completed,
         "page":               payload.page,
         "per_page":           payload.per_page,
-        "data":               results,
+        "data":               results,          # ✅ always exactly per_page items (or fewer on last page)
     }
 
 
