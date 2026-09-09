@@ -92,12 +92,12 @@ async def outreach_detail(request: Request, payload: OutreachDetailRequest):
     phone_count    = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "selected": {"$ne": 0}, "channel": {"$in": ["Phone", None, ""]}})
     whatsapp_count = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "selected": {"$ne": 0}, "channel": "WhatsApp"})
     email_count    = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "selected": {"$ne": 0}, "channel": "Email"})
+    sms_count      = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "selected": {"$ne": 0}, "channel": "SMS"})
     no_channel     = await db["shifts_pool"].count_documents({"shift_id": shift_oid, "selected": {"$ne": 0}, "channel": {"$exists": False}})
     phone_count   += no_channel
-    # whatsapp and email are placeholders until those fields are added
     pool_summary = (
-        f"{total_staff} staff · phone {phone_count}, "
-        f"WhatsApp {whatsapp_count}, email {email_count}"
+      f"{total_staff} staff · phone {phone_count}, "
+      f"WhatsApp {whatsapp_count}, email {email_count}, SMS {sms_count}"
     )
 
     # ── Pause on ─────────────────────────────────────────────────────────────
@@ -128,6 +128,7 @@ async def outreach_detail(request: Request, payload: OutreachDetailRequest):
                 "total_staff":   total_staff,
                 "phone":         phone_count,
                 "whatsapp":      whatsapp_count,
+                "sms":           sms_count,
                 "email":         email_count,
                 "summary":       pool_summary,
             },
