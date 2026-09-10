@@ -1025,12 +1025,24 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
                 date_cond["$lte"] = dt
             except ValueError:
                 pass
-        if date_cond:
-            regex_val = effective_date_from or effective_date_to or ""
+            if date_cond:
+              regex_val = effective_date_from or effective_date_to or ""
             filters.append({"$or": [
                 {"date": date_cond},
                 {"date": {"$regex": regex_val.replace("-", "[-/]"), "$options": "i"}}
             ]})
+
+    # Skip shifts where upstream_status != "To Be Filled" for Live (1) and Completed (2) outreach
+    if filter_outreach_status in (1):
+        filters.append({"upstream_status": "To Be Filled"})
+
+    mongo_filter = {"$and": filters}
+
+    sort_dir = -1 if sort_order.lower() == "desc" else 1
+
+    # Skip shifts where upstream_status != "To Be Filled" for outreach_status 1 (Live)
+    if filter_outreach_status in (1):
+        filters.append({"upstream_status": "To Be Filled"})
 
     mongo_filter = {"$and": filters}
 
