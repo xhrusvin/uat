@@ -1041,8 +1041,12 @@ async def list_shifts_automation(request: Request, payload: ShiftsAutomationRequ
     sort_dir = -1 if sort_order.lower() == "desc" else 1
 
     # Skip shifts where upstream_status != "To Be Filled" for outreach_status 1 (Live)
+        # Live (1): only "To Be Filled" shifts
+    # Completed (2): only shifts that are NOT "To Be Filled" (the ones skipped in status 1)
     if filter_outreach_status == 1:
         filters.append({"upstream_status": "To Be Filled"})
+    elif filter_outreach_status == 2:
+        filters.append({"upstream_status": {"$ne": "To Be Filled"}})
 
     mongo_filter = {"$and": filters}
 
