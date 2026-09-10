@@ -5,7 +5,7 @@ Mirrors the structure of whatsapp_bulk_routes.py.
 
 Env vars used:
     TELNYX_API_KEY          – Bearer token for Telnyx REST API
-    TELNYX_SMS_FROM         – The Telnyx messaging number (E.164, e.g. +353...)
+    TELNYX_FROM_NUMBER         – The Telnyx messaging number (E.164, e.g. +353...)
                               NOTE: distinct from TELNYX_CALLER_ID used for voice
 """
 
@@ -24,7 +24,7 @@ from admin.views import admin_required
 
 # ── Telnyx config ────────────────────────────────────────────────────────────
 TELNYX_API_KEY  = os.environ.get("TELNYX_API_KEY", "")
-TELNYX_SMS_FROM = os.environ.get("TELNYX_SMS_FROM", "")   # separate from CALLER_ID
+TELNYX_FROM_NUMBER = os.environ.get("TELNYX_FROM_NUMBER", "")   # separate from CALLER_ID
 TELNYX_MESSAGES_URL = "https://api.telnyx.com/v2/messages"
 
 
@@ -64,7 +64,7 @@ def _send_sms(to: str, body: str) -> dict:
     Returns {"success": bool, "message_id": str|None, "error": str|None}.
     """
     payload = {
-        "from": TELNYX_SMS_FROM,
+        "from": TELNYX_FROM_NUMBER,
         "to":   to,
         "text": body,
         "type": "SMS",
