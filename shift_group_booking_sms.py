@@ -77,7 +77,7 @@ def _build_sms_body(first_name: str, shift_doc: dict, shift_index: int = 0) -> s
         f"Date: {date_str}\n"
         f"Time: {start} – {end}\n"
         f"Rate: {rate}\n"
-        f"Reply YES or NO"
+        f"If you are available, please request via the app"
     )
 
 
