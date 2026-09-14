@@ -106,7 +106,7 @@ SMTP_PASS       = os.environ.get("SHIFT_SMTP_PASSWORD", "")
 FROM_EMAIL      = os.environ.get("SHIFT_FROM_EMAIL", "")
 FROM_NAME       = os.environ.get("SHIFT_SMTP_FROM_NAME", "XpressHealth")
 
-CONTACT_METHODS = {1: "Call", 2: "WhatsApp", 3: "Email"}
+CONTACT_METHODS = {1: "Email", 2: "Call", 3: "WhatsApp", 4: "SMS"}
 
 # ── Test mode ─────────────────────────────────────────────────────────────────
 
@@ -192,11 +192,12 @@ def reset_prompt_state(user_id):
 # ── Preference parsing ────────────────────────────────────────────────────────
 
 _KEYWORDS = {
-    "1": 1, "one": 1, "call": 1, "phone": 1, "phone call": 1, "voice": 1,
-    "telephone": 1, "ring": 1,
-    "2": 2, "two": 2, "whatsapp": 2, "whats app": 2, "wa": 2, "wtsp": 2,
-    "message": 2, "text": 2, "chat": 2,
-    "3": 3, "three": 3, "email": 3, "e mail": 3, "mail": 3, "gmail": 3,
+    "1": 1, "one": 1, "email": 1, "e mail": 1, "mail": 1, "gmail": 1,
+    "2": 2, "two": 2, "call": 2, "phone": 2, "phone call": 2, "voice": 2,
+    "telephone": 2, "ring": 2,
+    "3": 3, "three": 3, "whatsapp": 3, "whats app": 3, "wa": 3, "wtsp": 3,
+    "chat": 3,
+    "4": 4, "four": 4, "sms": 4, "text": 4, "text message": 4,
 }
 
 
@@ -361,10 +362,10 @@ def _build_email_html(first_name: str, token: str) -> tuple[str, str]:
     base        = BASE_URL.rstrip("/")
     respond_url = f"{base}/admin/email/preferred_contact/respond/{token}"
 
-    call_url      = f"{respond_url}?answer=1"
-    whatsapp_url  = f"{respond_url}?answer=2"
-    email_url     = f"{respond_url}?answer=3"
-    all_url       = f"{respond_url}?answer=1,2,3"
+    email_url     = f"{respond_url}?answer=1"
+    call_url      = f"{respond_url}?answer=2"
+    whatsapp_url  = f"{respond_url}?answer=3"
+    sms_url       = f"{respond_url}?answer=4"
 
     logo_url = f"{base}/static/image/logo.png"
     subject  = "How would you like us to contact you?"
@@ -393,14 +394,28 @@ def _build_email_html(first_name: str, token: str) -> tuple[str, str]:
     <p style="font-size:15px;color:#111827;margin:0 0 12px;">
       Hi <strong>{first_name}</strong>,
     </p>
-    <p style="font-size:14px;color:#374151;margin:0 0 24px;line-height:1.6;">
-      Hope you're well! We'd like to know how you prefer us to get in touch
-      about shifts and compliance updates. Please tap the option that suits
-      you best — you can choose more than one.
+    <p style="font-size:14px;color:#374151;margin:0 0 8px;line-height:1.6;">
+      We'd like to know how you prefer to receive shift availability requests
+      from Xpress Health.
+    </p>
+    <p style="font-size:14px;color:#374151;margin:0 0 20px;line-height:1.6;">
+      Please select your preferred option below:
     </p>
 
     <!-- Option buttons -->
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+      <tr>
+        <td align="center" style="padding:6px;">
+          <a href="{email_url}"
+             style="display:inline-block;width:100%;max-width:360px;
+                    background:#f59e0b;color:#ffffff;
+                    padding:14px 0;border-radius:8px;
+                    text-decoration:none;font-size:15px;font-weight:700;
+                    text-align:center;">
+            📧&nbsp;&nbsp;Email
+          </a>
+        </td>
+      </tr>
       <tr>
         <td align="center" style="padding:6px;">
           <a href="{call_url}"
@@ -409,7 +424,7 @@ def _build_email_html(first_name: str, token: str) -> tuple[str, str]:
                     padding:14px 0;border-radius:8px;
                     text-decoration:none;font-size:15px;font-weight:700;
                     text-align:center;">
-            📞&nbsp;&nbsp;Call
+            📞&nbsp;&nbsp;Phone Call
           </a>
         </td>
       </tr>
@@ -427,32 +442,27 @@ def _build_email_html(first_name: str, token: str) -> tuple[str, str]:
       </tr>
       <tr>
         <td align="center" style="padding:6px;">
-          <a href="{email_url}"
-             style="display:inline-block;width:100%;max-width:360px;
-                    background:#f59e0b;color:#ffffff;
-                    padding:14px 0;border-radius:8px;
-                    text-decoration:none;font-size:15px;font-weight:700;
-                    text-align:center;">
-            ✉️&nbsp;&nbsp;Email
-          </a>
-        </td>
-      </tr>
-      <tr>
-        <td align="center" style="padding:6px;">
-          <a href="{all_url}"
+          <a href="{sms_url}"
              style="display:inline-block;width:100%;max-width:360px;
                     background:#6b7280;color:#ffffff;
                     padding:14px 0;border-radius:8px;
                     text-decoration:none;font-size:15px;font-weight:700;
                     text-align:center;">
-            ✅&nbsp;&nbsp;All of the above
+            📱&nbsp;&nbsp;SMS
           </a>
         </td>
       </tr>
     </table>
 
-    <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
-      You can reply to this email any time to update your preference.
+    <p style="font-size:14px;color:#374151;text-align:center;margin:0 0 16px;">
+      This will help us contact you about available shifts in the way that
+      suits you best.
+    </p>
+    <p style="font-size:14px;color:#374151;text-align:center;margin:0 0 4px;">
+      Thank you! 😊
+    </p>
+    <p style="font-size:13px;color:#6b7280;text-align:center;margin:0;">
+      Xpress Health Team
     </p>
   </div>
 
@@ -667,15 +677,25 @@ def pending_count() -> int:
 
 # ── Answer recording ──────────────────────────────────────────────────────────
 
-def _record_answer(user, codes: list[int], raw_text: str):
+def _record_answer(user, codes: list[int], raw_text: str, channel: str = "email"):
+    """
+    Write the user's preference. `channel` records *how* they responded:
+        "email"     — clicked a button in the preferred-contact email
+        "whatsapp"  — replied via WhatsApp (set by whatsapp_preferred_contact.py)
+        "call"      — confirmed verbally / set by an agent
+        "sms"       — replied by SMS
+        "manual"    — set directly by admin (simulate_reply / back-office)
+    """
     _users_col().update_one(
         {"_id": user["_id"]},
         {"$set": {
-            "preferred_contact":                               codes,
-            "preferred_contact_email_prompt.status":          "answered",
-            "preferred_contact_email_prompt.answered_at":     _now(),
-            "preferred_contact_email_prompt.raw_reply":       raw_text,
-            "updated_at":                                     _now(),
+            "preferred_contact":                                    codes,
+            "preferred_contact_channel":                            channel,
+            "preferred_contact_email_prompt.status":               "answered",
+            "preferred_contact_email_prompt.answered_at":          _now(),
+            "preferred_contact_email_prompt.raw_reply":            raw_text,
+            "preferred_contact_email_prompt.answered_via_channel": channel,
+            "updated_at":                                          _now(),
         }},
     )
 
@@ -771,12 +791,14 @@ def resolve_targets(body) -> tuple[list, list]:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@admin_bp.route("/email/preferred_contact/send_batch", methods=["POST"])
-@admin_required
+@admin_bp.route("/email/preferred_contact/send_batch", methods=["GET", "POST"])
 def email_pc_send_batch():
     """
+    GET  /admin/email/preferred_contact/send_batch?limit=25&dry_run=0
     POST /admin/email/preferred_contact/send_batch
-    Body (all optional): { "limit": 25, "dry_run": false }
+         Body (all optional): { "limit": 25, "dry_run": false }
+
+    Public — no login required (designed to be hit by a cron job or scheduler).
     """
     body    = request.get_json(silent=True) or {}
     limit   = body.get("limit") or request.args.get("limit") or BATCH_SIZE
@@ -926,7 +948,6 @@ def email_pc_respond(token):
 
 
 @admin_bp.route("/email/preferred_contact/test", methods=["GET"])
-@admin_required
 def email_pc_test():
     """
     GET /admin/email/preferred_contact/test?email=<user@example.com>
@@ -1015,7 +1036,7 @@ def email_pc_simulate_reply():
 
     codes = parse_preference(reply)
     if commit and codes:
-        _record_answer(user, codes, reply)
+        _record_answer(user, codes, reply, channel="manual")
 
     return jsonify({
         "success":   True,
