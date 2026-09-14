@@ -925,72 +925,70 @@ def email_pc_respond(token):
     return html, 200
 
 
-@admin_bp.route("/email/preferred_contact/test", methods=["POST"])
+@admin_bp.route("/email/preferred_contact/test", methods=["GET"])
 @admin_required
 def email_pc_test():
     """
-    POST /admin/email/preferred_contact/test
-    Body: { "email": "user@example.com", "email_override": "you@test.com", "reset": true }
+    GET /admin/email/preferred_contact/test?email=<user@example.com>
+
+    Optional params:
+        email_override=you@test.com   — redirect the send to a different inbox
+        reset=1                       — wipe previous answer + history first
+        inspect=1                     — only show stored state, don't send
+
+    Without inspect=1 this always triggers a send (force=True).
+    With inspect=1 it just returns whatever is currently stored for that user.
+
+    Examples:
+        /admin/email/preferred_contact/test?email=user@example.com
+        /admin/email/preferred_contact/test?email=user@example.com&reset=1
+        /admin/email/preferred_contact/test?email=user@example.com&email_override=you@test.com
+        /admin/email/preferred_contact/test?email=user@example.com&inspect=1
     """
-    body     = request.get_json(silent=True) or {}
-    email    = (body.get("email") or request.args.get("email") or "").strip()
-    override = (body.get("email_override") or TEST_REDIRECT or "").strip()
-    do_reset = bool(body.get("reset"))
+    email    = request.args.get("email", "").strip()
+    override = (request.args.get("email_override") or TEST_REDIRECT or "").strip()
+    do_reset = request.args.get("reset", "").lower() in ("1", "true", "yes")
+    inspect  = request.args.get("inspect", "").lower() in ("1", "true", "yes")
 
     if not email:
-        return jsonify({"success": False, "error": "email is required"}), 400
+        return jsonify({"success": False, "error": "email param is required"}), 400
 
     user = find_user_by_email(email)
     if not user:
         return jsonify({"success": False,
                         "error": f"no user with email {email}"}), 404
 
+    # ── inspect-only mode ──────────────────────────────────────────────────────
+    if inspect:
+        prompt = dict(user.get("preferred_contact_email_prompt") or {})
+        for key in ("claimed_at", "last_sent_at", "answered_at"):
+            if key in prompt:
+                prompt[key] = _iso(prompt[key])
+        codes = user.get("preferred_contact") or []
+        return jsonify({
+            "success":                  True,
+            "inspect":                  True,
+            "email":                    user.get("email"),
+            "user_id":                  str(user["_id"]),
+            "preferred_contact":        codes,
+            "preferred_contact_labels": [CONTACT_METHODS.get(c, c) for c in codes],
+            "prompt":                   prompt,
+            "test_mode":                TEST_MODE,
+        })
+
+    # ── send mode (default) ────────────────────────────────────────────────────
     result = dispatch_prompt(user, override_email=override or None,
                              reset=do_reset, force=True, mark_test=True)
 
     return jsonify({
-        "success": result["ok"],
-        "test":    True,
+        "success":  result["ok"],
+        "test":     True,
         **result,
         "next_step": (
             f"Open your inbox ({override or email}) and click a preference button. "
-            f"Then GET /admin/email/preferred_contact/test?email={user.get('email')} "
-            "to confirm the write-back landed."
+            f"Then hit this endpoint with &inspect=1 to confirm the write-back landed."
         ),
     }), (200 if result["ok"] else 502)
-
-
-@admin_bp.route("/email/preferred_contact/test", methods=["GET"])
-@admin_required
-def email_pc_test_inspect():
-    """
-    GET /admin/email/preferred_contact/test?email=…
-    Shows stored preferred_contact and prompt bookkeeping for one user.
-    """
-    email = request.args.get("email", "").strip()
-    if not email:
-        return jsonify({"success": False, "error": "email is required"}), 400
-
-    user = find_user_by_email(email)
-    if not user:
-        return jsonify({"success": False,
-                        "error": f"no user with email {email}"}), 404
-
-    prompt = dict(user.get("preferred_contact_email_prompt") or {})
-    for key in ("claimed_at", "last_sent_at", "answered_at"):
-        if key in prompt:
-            prompt[key] = _iso(prompt[key])
-
-    codes = user.get("preferred_contact") or []
-    return jsonify({
-        "success":                   True,
-        "email":                     user.get("email"),
-        "user_id":                   str(user["_id"]),
-        "preferred_contact":         codes,
-        "preferred_contact_labels":  [CONTACT_METHODS.get(c, c) for c in codes],
-        "prompt":                    prompt,
-        "test_mode":                 TEST_MODE,
-    })
 
 
 @admin_bp.route("/email/preferred_contact/simulate_reply", methods=["POST"])
