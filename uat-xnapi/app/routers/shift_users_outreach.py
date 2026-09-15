@@ -144,14 +144,27 @@ async def _resolve_shift_county(shift_doc: dict, db) -> str:
     return ""
 
 
-async def _resolve_ops_county_ids(county_name: str, db) -> tuple[Optional[str], list, list]:
+async def _resolve_ops_county_ids(county_name: str, db) -> tuple[Optional[str], list, list, list]:
     """
-    Given a county name, returns (ops_group_name, ops_county_names, ops_county_ids).
-    All three are empty/None when the county is not in any Ops group.
+    Given a plain county name (e.g. "Meath"), returns:
+      (ops_group_name, ops_county_names, ops_county_ids, unmatched_names)
+
+    Flow:
+      1. Find which Ops group the county belongs to (case-insensitive match).
+      2. For every county name in that group, look up its _id in the county
+         collection using a case-insensitive exact match.
+      3. Return the list of ObjectId strings — these go straight into
+         county_multiple so the downstream /list and /list-multi endpoints
+         filter users by county _id.
+
+    Returns four empty/None values when county_name is not in any Ops group.
+    unmatched_names holds any Ops group county names that were NOT found in
+    the county collection (useful for debugging missing reference data).
     """
     ops_group: Optional[str] = None
     county_names: list = []
 
+    # Step 1 — find Ops group
     for group_name, counties in OPS_GROUPS.items():
         for cn in counties:
             if cn.lower() == county_name.lower():
@@ -161,13 +174,27 @@ async def _resolve_ops_county_ids(county_name: str, db) -> tuple[Optional[str], 
         if ops_group:
             break
 
-    county_ids: list = []
-    if county_names:
-        patterns = [{"name": {"$regex": f"^{cn}$", "$options": "i"}} for cn in county_names]
-        async for co in db["county"].find({"$or": patterns}, {"_id": 1}):
-            county_ids.append(str(co["_id"]))
+    if not county_names:
+        return None, [], [], []
 
-    return ops_group, county_names, county_ids
+    # Step 2 — resolve each county name → _id from the county collection
+    # Use a single $or query with case-insensitive exact anchored regex per name.
+    patterns = [{"name": {"$regex": f"^{cn}$", "$options": "i"}} for cn in county_names]
+    county_docs = await db["county"].find({"$or": patterns}, {"_id": 1, "name": 1}).to_list(None)
+
+    # Build resolved map: lowercase name → ObjectId string
+    resolved: dict = {doc["name"].lower(): str(doc["_id"]) for doc in county_docs}
+
+    county_ids:      list = list(resolved.values())
+    unmatched_names: list = [cn for cn in county_names if cn.lower() not in resolved]
+
+    if unmatched_names:
+        logger.warning(
+            f"[ops-county-resolve] county collection missing entries for: {unmatched_names} "
+            f"(ops_group={ops_group})"
+        )
+
+    return ops_group, county_names, county_ids, unmatched_names
 
 
 async def _resolve_sequence(db, sequence_id: Optional[str], steps: list) -> tuple[str, str]:
@@ -260,14 +287,14 @@ async def run_outreach_orchestrator(
 
     # ── Resolve Ops county info ──────────────────────────────────────────────
     shift_county_name = await _resolve_shift_county(shift, db)
-    shift_ops_group, ops_county_names, ops_county_ids = await _resolve_ops_county_ids(
+    shift_ops_group, ops_county_names, ops_county_ids, ops_unmatched = await _resolve_ops_county_ids(
         shift_county_name, db
     )
 
     logger.info(
         f"[run-outreach] shift_id={shift_id} client_county='{shift.get('client_county')}' "
         f"resolved_county='{shift_county_name}' ops_group={shift_ops_group} "
-        f"county_ids_count={len(ops_county_ids)}"
+        f"county_ids_count={len(ops_county_ids)} unmatched={ops_unmatched}"
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -293,15 +320,17 @@ async def run_outreach_orchestrator(
     user_ids        = [u["id"] for u in candidate_users if u.get("id")]
 
     steps.append({
-        "step":             "1_list",
-        "endpoint":         "POST /shift-users/list",
-        "shift_county":     shift_county_name or None,
-        "ops_group":        shift_ops_group,
-        "ops_counties":     ops_county_names,
-        "ops_county_ids":   ops_county_ids,
-        "candidates_found": len(candidate_users),
-        "total_in_db":      list_result.get("total", 0),
-        "shift_user_type":  list_result.get("shift_user_type"),
+        "step":                    "1_list",
+        "endpoint":                "POST /shift-users/list",
+        "shift_county":            shift_county_name or None,
+        "ops_group":               shift_ops_group,
+        "ops_counties":            ops_county_names,
+        "ops_county_ids":          ops_county_ids,
+        "ops_county_ids_count":    len(ops_county_ids),
+        "ops_counties_unmatched":  ops_unmatched,
+        "candidates_found":        len(candidate_users),
+        "total_in_db":             list_result.get("total", 0),
+        "shift_user_type":         list_result.get("shift_user_type"),
     })
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -525,14 +554,14 @@ async def run_group_outreach_orchestrator(
     # ── Ops region county filter (based on first shift's county) ─────────────
     first_shift = found_shifts[0]
     shift_county_name = await _resolve_shift_county(first_shift, db)
-    shift_ops_group, ops_county_names, ops_county_ids = await _resolve_ops_county_ids(
+    shift_ops_group, ops_county_names, ops_county_ids, ops_unmatched = await _resolve_ops_county_ids(
         shift_county_name, db
     )
 
     logger.info(
         f"[run-group-outreach] shifts={raw_ids} client_county='{first_shift.get('client_county')}' "
         f"resolved_county='{shift_county_name}' ops_group={shift_ops_group} "
-        f"county_ids_count={len(ops_county_ids)}"
+        f"county_ids_count={len(ops_county_ids)} unmatched={ops_unmatched}"
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -594,14 +623,17 @@ async def run_group_outreach_orchestrator(
     user_ids        = [u["id"] for u in candidate_users if u.get("id")]
 
     steps.append({
-        "step":             "2_list_multi",
-        "endpoint":         "POST /shift-users/list-multi",
-        "shift_county":     shift_county_name or None,
-        "ops_group":        shift_ops_group,
-        "ops_counties":     ops_county_names,
-        "candidates_found": len(candidate_users),
-        "total_in_db":      list_result.get("total", 0),
-        "shift_user_types": list_result.get("shift_user_types"),
+        "step":                   "2_list_multi",
+        "endpoint":               "POST /shift-users/list-multi",
+        "shift_county":           shift_county_name or None,
+        "ops_group":              shift_ops_group,
+        "ops_counties":           ops_county_names,
+        "ops_county_ids":         ops_county_ids,
+        "ops_county_ids_count":   len(ops_county_ids),
+        "ops_counties_unmatched": ops_unmatched,
+        "candidates_found":       len(candidate_users),
+        "total_in_db":            list_result.get("total", 0),
+        "shift_user_types":       list_result.get("shift_user_types"),
     })
 
     # ─────────────────────────────────────────────────────────────────────────
