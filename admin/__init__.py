@@ -55,3 +55,5 @@ from . import user_screening_record
 from . import document_console
 from . import validate_document_noai
 from . import sms_bulk_routes
+from . import preferred_contact_whatsapp
+from . import preferred_contact_email
