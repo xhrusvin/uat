@@ -2979,12 +2979,39 @@ async def run_outreach_orchestrator(
         "Ops 4": ["Carlow", "Wicklow", "Wexford", "Kilkenny"],
     }
 
-    # Resolve shift county name from the shift doc (already fetched above with county fields)
-    shift_county_name: str = (
-        shift.get("client_county")
-        or shift.get("location")
-        or ""
-    ).strip()
+    # ── Resolve shift county name (3-tier fallback) ──────────────────────────
+    # Tier 1: client_county  — plain county name stored at sync time e.g. "Dublin"
+    # Tier 2: county_id      — look up county collection for the name
+    # Tier 3: location       — may be a full address; take only the last
+    #                          comma-separated token that matches a known county
+
+    # All known Ops county names (flat list for fast lookup)
+    _ALL_OPS_COUNTIES = [cn for grp in OPS_GROUPS.values() for cn in grp]
+
+    shift_county_name: str = ""
+
+    # Tier 1
+    _t1 = (shift.get("client_county") or "").strip()
+    if _t1:
+        shift_county_name = _t1
+
+    # Tier 2 — resolve via county_id if tier 1 empty
+    if not shift_county_name and shift.get("county_id"):
+        _cid = shift["county_id"]
+        if ObjectId.is_valid(str(_cid)):
+            _co_doc = await db["county"].find_one({"_id": ObjectId(str(_cid))}, {"name": 1})
+            if _co_doc and _co_doc.get("name"):
+                shift_county_name = _co_doc["name"].strip()
+
+    # Tier 3 — parse location string for a token matching a known county
+    if not shift_county_name:
+        _loc = (shift.get("location") or "").strip()
+        if _loc:
+            # Try each comma-separated token from right to left (county usually last)
+            for _token in reversed([t.strip() for t in _loc.split(",")]):
+                if any(_token.lower() == _cn.lower() for _cn in _ALL_OPS_COUNTIES):
+                    shift_county_name = _token
+                    break
 
     # Find which Ops group the shift county belongs to
     shift_ops_group:   Optional[str]  = None
@@ -3004,10 +3031,15 @@ async def run_outreach_orchestrator(
     ops_county_ids: list = []   # list of ObjectId strings to pass as county_multiple
 
     if ops_county_names:
-        # Build a case-insensitive $in query for county names in the group
         name_patterns = [{"name": {"$regex": f"^{cn}$", "$options": "i"}} for cn in ops_county_names]
         async for co in db["county"].find({"$or": name_patterns}, {"_id": 1, "name": 1}):
             ops_county_ids.append(str(co["_id"]))
+
+    logger.info(
+        f"[run-outreach] shift_id={shift_id} client_county='{shift.get('client_county')}' "
+        f"resolved_county='{shift_county_name}' ops_group={shift_ops_group} "
+        f"county_ids_count={len(ops_county_ids)}"
+    )
 
     # Build the list payload — inject county_multiple when we resolved Ops group IDs
     list_payload = ListShiftUsersRequest(
@@ -3242,7 +3274,7 @@ async def run_group_outreach_orchestrator(
     # Verify all shifts exist
     found_shifts = await db["shifts"].find(
         {"_id": {"$in": shift_oids}},
-        {"_id": 1, "name": 1, "shift_code": 1, "client_county": 1, "location": 1, "user_type": 1}
+        {"_id": 1, "name": 1, "shift_code": 1, "client_county": 1, "location": 1, "county_id": 1, "user_type": 1}
     ).to_list(len(shift_oids))
 
     found_ids = {str(s["_id"]) for s in found_shifts}
@@ -3284,10 +3316,34 @@ async def run_group_outreach_orchestrator(
         "Ops 4": ["Carlow", "Wicklow", "Wexford", "Kilkenny"],
     }
 
-    first_shift      = found_shifts[0]
-    shift_county_name: str = (
-        first_shift.get("client_county") or first_shift.get("location") or ""
-    ).strip()
+    first_shift = found_shifts[0]
+
+    # ── Resolve shift county name (3-tier fallback) ──────────────────────────
+    _ALL_OPS_COUNTIES_G = [cn for grp in OPS_GROUPS.values() for cn in grp]
+
+    shift_county_name: str = ""
+
+    # Tier 1: client_county
+    _g_t1 = (first_shift.get("client_county") or "").strip()
+    if _g_t1:
+        shift_county_name = _g_t1
+
+    # Tier 2: county_id → county collection
+    if not shift_county_name and first_shift.get("county_id"):
+        _g_cid = first_shift["county_id"]
+        if ObjectId.is_valid(str(_g_cid)):
+            _g_co_doc = await db["county"].find_one({"_id": ObjectId(str(_g_cid))}, {"name": 1})
+            if _g_co_doc and _g_co_doc.get("name"):
+                shift_county_name = _g_co_doc["name"].strip()
+
+    # Tier 3: parse location string for a matching county token
+    if not shift_county_name:
+        _g_loc = (first_shift.get("location") or "").strip()
+        if _g_loc:
+            for _g_token in reversed([t.strip() for t in _g_loc.split(",")]):
+                if any(_g_token.lower() == _cn.lower() for _cn in _ALL_OPS_COUNTIES_G):
+                    shift_county_name = _g_token
+                    break
 
     shift_ops_group:  Optional[str] = None
     ops_county_names: list          = []
@@ -3307,6 +3363,12 @@ async def run_group_outreach_orchestrator(
         name_patterns = [{"name": {"$regex": f"^{cn}$", "$options": "i"}} for cn in ops_county_names]
         async for co in db["county"].find({"$or": name_patterns}, {"_id": 1}):
             ops_county_ids.append(str(co["_id"]))
+
+    logger.info(
+        f"[run-group-outreach] shifts={raw_ids} client_county='{first_shift.get('client_county')}' "
+        f"resolved_county='{shift_county_name}' ops_group={shift_ops_group} "
+        f"county_ids_count={len(ops_county_ids)}"
+    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 1 — shifts-group/add-shifts
