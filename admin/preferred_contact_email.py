@@ -672,19 +672,52 @@ def run_batch(limit: int, dry_run: bool = False, source: str = "batch") -> dict:
 
 
 def pending_count() -> int:
-    """Users who still need an email prompt (no preference, and not already answered elsewhere)."""
+    """
+    Users who still need to be emailed — no preference set AND not yet
+    successfully contacted by this campaign (status not 'sent' or 'answered').
+
+    Buckets counted as pending:
+        - Never prompted at all (no preferred_contact_email_prompt field)
+        - Prompt failed and attempts exhausted
+        - Prompt status exists but is unknown/unexpected
+
+    NOT counted as pending:
+        - status = 'sent'     → email delivered, awaiting their click
+        - status = 'answered' → they responded
+        - answered via another channel (whatsapp / call / sms / manual)
+    """
+    no_preference = [
+        {"preferred_contact": {"$exists": False}},
+        {"preferred_contact": None},
+        {"preferred_contact": []},
+    ]
+    exclude_already_handled = [
+        # Sent and waiting for reply
+        {"preferred_contact_email_prompt.status": "sent"},
+        # Already answered via this or another channel
+        {"preferred_contact_email_prompt.status": "answered"},
+        {
+            "preferred_contact_channel": {"$in": ["whatsapp", "call", "sms", "manual"]},
+            "preferred_contact":         {"$exists": True, "$nin": [[], None]},
+        },
+    ]
     return _users_col().count_documents({
         "is_active": True,
         "email":     {"$nin": [None, ""]},
+        "$or":       no_preference,
+        "$nor":      exclude_already_handled,
+    })
+
+
+def awaiting_reply_count() -> int:
+    """Users who were sent the email but haven't clicked yet."""
+    return _users_col().count_documents({
+        "preferred_contact_email_prompt.status": "sent",
         "$or": [
             {"preferred_contact": {"$exists": False}},
             {"preferred_contact": None},
             {"preferred_contact": []},
         ],
-        "$nor": [{
-            "preferred_contact_channel": {"$in": ["whatsapp", "call", "sms", "manual"]},
-            "preferred_contact":         {"$exists": True, "$nin": [[], None]},
-        }],
     })
 
 
@@ -1067,35 +1100,91 @@ def email_pc_simulate_reply():
 
 
 @admin_bp.route("/email/preferred_contact/status", methods=["GET"])
-@admin_required
 def email_pc_status():
-    """GET /admin/email/preferred_contact/status — campaign counters."""
-    col      = _users_col()
-    answered = col.count_documents({"preferred_contact": {"$exists": True,
-                                                          "$nin": [[], None]}})
-    breakdown = {
-        CONTACT_METHODS[code]: col.count_documents({"preferred_contact": code})
-        for code in CONTACT_METHODS
+    """
+    GET /admin/email/preferred_contact/status
+
+    Public — no login required. Returns a full picture of campaign responses:
+
+    {
+      "total_responses":   45,          # everyone who has set a preference (any channel)
+      "by_preference": {
+        "Email":     12,
+        "Call":       8,
+        "WhatsApp":  20,
+        "SMS":        5
+      },
+      "by_channel": {                   # how they told us their preference
+        "email":     30,                # clicked a button in the email campaign
+        "whatsapp":  10,                # replied via WhatsApp campaign
+        "call":       3,                # confirmed verbally / set by agent
+        "sms":        1,
+        "manual":     1                 # set directly by admin
+      },
+      "email_campaign": {
+        "emails_sent":       80,        # total outbound prompts sent (all time)
+        "awaiting_reply":    35,        # sent but not yet answered
+        "failed_to_send":     2,
+        "pending_to_send":   15         # not yet contacted
+      }
     }
-    automation = get_automation_settings()
-    used_hour  = sent_last_hour()
+
+    Note: by_preference counts are per-code, so a user who chose both Email + Call
+    is counted once in each. Total may exceed total_responses for multi-choice users.
+    """
+    col = _users_col()
+
+    # ── total responses (any channel) ─────────────────────────────────────────
+    total_responses = col.count_documents({
+        "preferred_contact": {"$exists": True, "$nin": [[], None]},
+    })
+
+    # ── breakdown by what they chose ──────────────────────────────────────────
+    by_preference = {
+        label: col.count_documents({"preferred_contact": code})
+        for code, label in CONTACT_METHODS.items()
+    }
+
+    # ── breakdown by how they told us (channel) ───────────────────────────────
+    channels = ["email", "whatsapp", "call", "sms", "manual"]
+    by_channel = {
+        ch: col.count_documents({
+            "preferred_contact_channel": ch,
+            "preferred_contact": {"$exists": True, "$nin": [[], None]},
+        })
+        for ch in channels
+    }
+    # Users with a preference but no channel field (legacy / imported records)
+    by_channel["unknown"] = col.count_documents({
+        "preferred_contact":         {"$exists": True, "$nin": [[], None]},
+        "preferred_contact_channel": {"$exists": False},
+    })
+    if not by_channel["unknown"]:
+        del by_channel["unknown"]
+
+    # ── email campaign funnel ─────────────────────────────────────────────────
+    emails_sent_total = _sends_col().count_documents({})
+
+    total_users  = col.count_documents({"is_active": True})
+    total_with_email = col.count_documents({
+        "is_active": True,
+        "email":     {"$nin": [None, ""]},
+    })
+
     return jsonify({
-        "success":               True,
-        "automation_enabled":    automation["enabled"],
-        "hourly_cap":            automation["hourly_cap"],
-        "sent_last_hour":        used_hour,
-        "remaining_this_hour":   max(0, automation["hourly_cap"] - used_hour),
-        "batch_size_default":    BATCH_SIZE,
-        "test_mode":             TEST_MODE,
-        "test_emails":           TEST_EMAILS if TEST_MODE else [],
-        "test_redirect":         TEST_REDIRECT if TEST_MODE else "",
-        "pending":               pending_count(),
-        "prompt_sent_awaiting":  col.count_documents(
-            {"preferred_contact_email_prompt.status": "sent"}),
-        "failed":                col.count_documents(
-            {"preferred_contact_email_prompt.status": "failed"}),
-        "answered":              answered,
-        "breakdown":             breakdown,
+        "success":           True,
+        "total_users":       total_users,
+        "total_with_email":  total_with_email,
+        "total_responses":   total_responses,
+        "by_preference":     by_preference,
+        "by_channel":        by_channel,
+        "email_campaign": {
+            "emails_sent":    emails_sent_total,
+            "awaiting_reply": awaiting_reply_count(),
+            "failed_to_send": col.count_documents(
+                {"preferred_contact_email_prompt.status": "failed"}),
+            "pending_to_send": pending_count(),
+        },
     })
 
 
