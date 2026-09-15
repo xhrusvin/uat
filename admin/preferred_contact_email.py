@@ -672,19 +672,52 @@ def run_batch(limit: int, dry_run: bool = False, source: str = "batch") -> dict:
 
 
 def pending_count() -> int:
-    """Users who still need an email prompt (no preference, and not already answered elsewhere)."""
+    """
+    Users who still need to be emailed — no preference set AND not yet
+    successfully contacted by this campaign (status not 'sent' or 'answered').
+
+    Buckets counted as pending:
+        - Never prompted at all (no preferred_contact_email_prompt field)
+        - Prompt failed and attempts exhausted
+        - Prompt status exists but is unknown/unexpected
+
+    NOT counted as pending:
+        - status = 'sent'     → email delivered, awaiting their click
+        - status = 'answered' → they responded
+        - answered via another channel (whatsapp / call / sms / manual)
+    """
+    no_preference = [
+        {"preferred_contact": {"$exists": False}},
+        {"preferred_contact": None},
+        {"preferred_contact": []},
+    ]
+    exclude_already_handled = [
+        # Sent and waiting for reply
+        {"preferred_contact_email_prompt.status": "sent"},
+        # Already answered via this or another channel
+        {"preferred_contact_email_prompt.status": "answered"},
+        {
+            "preferred_contact_channel": {"$in": ["whatsapp", "call", "sms", "manual"]},
+            "preferred_contact":         {"$exists": True, "$nin": [[], None]},
+        },
+    ]
     return _users_col().count_documents({
         "is_active": True,
         "email":     {"$nin": [None, ""]},
+        "$or":       no_preference,
+        "$nor":      exclude_already_handled,
+    })
+
+
+def awaiting_reply_count() -> int:
+    """Users who were sent the email but haven't clicked yet."""
+    return _users_col().count_documents({
+        "preferred_contact_email_prompt.status": "sent",
         "$or": [
             {"preferred_contact": {"$exists": False}},
             {"preferred_contact": None},
             {"preferred_contact": []},
         ],
-        "$nor": [{
-            "preferred_contact_channel": {"$in": ["whatsapp", "call", "sms", "manual"]},
-            "preferred_contact":         {"$exists": True, "$nin": [[], None]},
-        }],
     })
 
 
@@ -1132,15 +1165,22 @@ def email_pc_status():
     # ── email campaign funnel ─────────────────────────────────────────────────
     emails_sent_total = _sends_col().count_documents({})
 
+    total_users  = col.count_documents({"is_active": True})
+    total_with_email = col.count_documents({
+        "is_active": True,
+        "email":     {"$nin": [None, ""]},
+    })
+
     return jsonify({
-        "success":          True,
-        "total_responses":  total_responses,
-        "by_preference":    by_preference,
-        "by_channel":       by_channel,
+        "success":           True,
+        "total_users":       total_users,
+        "total_with_email":  total_with_email,
+        "total_responses":   total_responses,
+        "by_preference":     by_preference,
+        "by_channel":        by_channel,
         "email_campaign": {
             "emails_sent":    emails_sent_total,
-            "awaiting_reply": col.count_documents(
-                {"preferred_contact_email_prompt.status": "sent"}),
+            "awaiting_reply": awaiting_reply_count(),
             "failed_to_send": col.count_documents(
                 {"preferred_contact_email_prompt.status": "failed"}),
             "pending_to_send": pending_count(),
