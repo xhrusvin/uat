@@ -649,23 +649,49 @@ def resolve_targets(body) -> tuple[list, list]:
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
-# ── GET: test endpoint (inspect one user) ─────────────────────────────────────
+# ── GET: test endpoint (inspect + optional send) ──────────────────────────────
 
 @admin_bp.route("/whatsapp/preferred_contact/test", methods=["GET"])
 @admin_required
 def preferred_contact_test_inspect():
     """
-    GET /admin/whatsapp/preferred_contact/test?email=…&history=1
+    GET /admin/whatsapp/preferred_contact/test
 
-    Inspect everything stored for one user:
-      • preferred_contact codes + labels
-      • Full prompt bookkeeping (including wati_send_response)
-      • Whether they would be skipped (non-WA preference, already answered, etc.)
-      • Optionally the last 10 WATI messages (?history=1)
+    Query params:
+      email=…        required — user to look up
+      send=1         actually send the bulk_msg template to this user
+      reset=1        wipe preferred_contact + prompt history before sending
+                     (implies send=1)
+      phone=…        redirect the send to a different number (with send=1)
+      history=1      include last 10 WATI messages in the response
 
-    This is the "did it work?" check after a test send.
+    Without send=1 / reset=1 the endpoint is read-only — inspect only.
+
+    Examples:
+      # Just inspect:
+      GET …/test?email=akhil.ka@xpresshealth.ie
+
+      # Send without resetting:
+      GET …/test?email=akhil.ka@xpresshealth.ie&send=1
+
+      # Reset state, then send:
+      GET …/test?email=akhil.ka@xpresshealth.ie&reset=1
+
+      # Reset + redirect to a different handset:
+      GET …/test?email=akhil.ka@xpresshealth.ie&reset=1&phone=+919876543210
+
+      # Inspect with WATI message history:
+      GET …/test?email=akhil.ka@xpresshealth.ie&history=1
     """
-    email = request.args.get("email", "").strip()
+    email      = request.args.get("email", "").strip()
+    do_send    = request.args.get("send",  "0").strip() in ("1", "true", "yes")
+    do_reset   = request.args.get("reset", "0").strip() in ("1", "true", "yes")
+    override   = request.args.get("phone", "").strip()
+
+    # reset implies send
+    if do_reset:
+        do_send = True
+
     if not email:
         return jsonify({"success": False, "error": "email query param is required"}), 400
 
@@ -674,6 +700,20 @@ def preferred_contact_test_inspect():
         return jsonify({"success": False,
                         "error": f"no user with email {email}"}), 404
 
+    # ── Optional: trigger the send ────────────────────────────────────────────
+    send_result = None
+    if do_send:
+        send_result = dispatch_prompt(
+            user,
+            override_phone=override or None,
+            reset=do_reset,
+            force=True,
+            mark_test=True,
+        )
+        # Re-fetch so the inspect section reflects the just-written state.
+        user = find_user_by_email(email)
+
+    # ── Inspect ───────────────────────────────────────────────────────────────
     prompt = dict(user.get("preferred_contact_prompt") or {})
     for key in ("claimed_at", "last_sent_at", "answered_at"):
         if key in prompt:
@@ -681,12 +721,11 @@ def preferred_contact_test_inspect():
 
     codes = user.get("preferred_contact") or []
 
-    # Determine what would happen if we tried to send now
     if _already_has_non_wa_preference(user):
         would_skip = "non_wa_preference"
     elif codes:
         would_skip = "already_answered"
-    elif (prompt.get("status") in ("sent", "sending", "answered")):
+    elif prompt.get("status") in ("sent", "sending", "answered"):
         would_skip = "already_prompted"
     else:
         would_skip = None
@@ -703,6 +742,16 @@ def preferred_contact_test_inspect():
         "template_used": TEMPLATE_NAME,
         "test_mode": TEST_MODE,
     }
+
+    if send_result is not None:
+        out["send_result"] = send_result
+        out["sent"] = send_result.get("ok", False)
+        if not send_result.get("ok"):
+            out["send_error"] = send_result.get("error") or send_result.get("skipped")
+        out["next_step"] = (
+            "Reply on WhatsApp, then GET "
+            f"/admin/whatsapp/preferred_contact/test?email={user.get('email')}&history=1"
+        )
 
     if request.args.get("history"):
         from .whatsapp_wati import _get_messages
