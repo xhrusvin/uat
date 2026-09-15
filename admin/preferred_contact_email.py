@@ -532,10 +532,18 @@ def _claim_next_user(cutoff, stale_cutoff):
         ]
     }
 
+    # Exclude users who already set their preference through another channel
+    # (WhatsApp, call, SMS, manual back-office). Only target genuinely unanswered users.
+    already_answered_elsewhere = {
+        "preferred_contact_channel": {"$in": ["whatsapp", "call", "sms", "manual"]},
+        "preferred_contact":         {"$exists": True, "$nin": [[], None]},
+    }
+
     query = {
         "is_active": True,
         "email":     {"$nin": [None, ""]},
         "$and":      [no_preference, needs_prompt],
+        "$nor":      [already_answered_elsewhere],
     }
 
     if TEST_MODE:
@@ -664,6 +672,7 @@ def run_batch(limit: int, dry_run: bool = False, source: str = "batch") -> dict:
 
 
 def pending_count() -> int:
+    """Users who still need an email prompt (no preference, and not already answered elsewhere)."""
     return _users_col().count_documents({
         "is_active": True,
         "email":     {"$nin": [None, ""]},
@@ -672,6 +681,10 @@ def pending_count() -> int:
             {"preferred_contact": None},
             {"preferred_contact": []},
         ],
+        "$nor": [{
+            "preferred_contact_channel": {"$in": ["whatsapp", "call", "sms", "manual"]},
+            "preferred_contact":         {"$exists": True, "$nin": [[], None]},
+        }],
     })
 
 
@@ -928,11 +941,13 @@ def email_pc_respond(token):
     <h2 style="color:#1e7a38;font-size:18px;margin:0 0 10px;">
       Preference saved, {first_name}!
     </h2>
-    <p style="font-size:14px;color:#374151;margin:0 0 20px;">
-      We'll contact you by <strong>{labels}</strong> from now on.
+    <p style="font-size:14px;color:#374151;margin:0 0 16px;">
+      We'll send your shift availability requests via <strong>{labels}</strong>.
     </p>
-    <p style="font-size:12px;color:#9ca3af;">
-      Reply to any of our emails any time if you'd like to change this.
+    <p style="font-size:13px;color:#6b7280;margin:0;">
+      You can change your preference at any time by emailing us at
+      <a href="mailto:app@xpresshealth.ie"
+         style="color:#016ab2;text-decoration:none;">app@xpresshealth.ie</a>.
     </p>
   </div>
   <div style="height:5px;background:linear-gradient(90deg,#016ab2 0%,#009540 100%);"></div>
