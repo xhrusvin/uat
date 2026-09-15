@@ -29,6 +29,13 @@ export default defineConfig(({ mode }) => {
         '/activities':           { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
         '/outreach-end-reasons': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
         '/county':      { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/session-users': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/visa-types':    { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/genders':       { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/user-sub-types': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/qqi-statuses':  { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/prompts':       { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
+        '/wati':          { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
       }
     },
     build: { outDir: 'dist' }

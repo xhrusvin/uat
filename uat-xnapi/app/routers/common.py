@@ -237,69 +237,108 @@ async def client_detail(request: Request, payload: ClientDetailRequest):
 )
 @limiter.limit("60/minute")
 async def administration_user_list(request: Request):
-    """
-    Calls {USER_API_URL}/ai/common/administration-user-list (out-stream / GET),
-    upserts each user into the `session_users` collection and returns a sync summary.
-    """
+    # Streams from USER_API_URL/ai/common/administration-user-list (NDJSON out-stream).
+    # Handles both NDJSON (one JSON object per line) and a regular JSON response.
+    # Upserts every record into the session_users collection.
+    import json as _json
+
     url = f"{settings.USER_API_URL.rstrip('/')}/ai/common/administration-user-list"
     headers = {
         "Api-Key":       settings.USER_INTERNAL_API_KEY,
         "X-App-Country": settings.APP_COUNTRY,
-        "Accept":        "application/json",
+        "Accept":        "application/x-ndjson, application/json, */*",
     }
 
+    items            = []
+    inserted = updated = skipped = 0
+    upstream_status  = 200
+    upstream_message = "Administration user list"
+
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, headers=headers)
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            async with client.stream("GET", url, headers=headers) as response:
+                upstream_status = response.status_code
 
-        try:
-            upstream = response.json()
-        except Exception:
-            upstream = {"raw": response.text[:500]}
+                if upstream_status != 200:
+                    error_body = await response.aread()
+                    try:
+                        err = _json.loads(error_body)
+                        upstream_message = (
+                            err.get("message") or err.get("detail") or str(err)
+                        )
+                    except Exception:
+                        upstream_message = error_body.decode(errors="replace")[:400]
+                    return {
+                        "success":      False,
+                        "status_code":  upstream_status,
+                        "upstream_url": url,
+                        "message":      upstream_message,
+                        "data":         None,
+                        "sync":         None,
+                    }
 
-        if response.status_code != 200:
-            msg = upstream.get("message") if isinstance(upstream, dict) else str(upstream)
-            return {
-                "success":      False,
-                "status_code":  response.status_code,
-                "upstream_url": url,
-                "message":      msg,
-                "data":         upstream,
-                "sync":         None,
-            }
+                # Collect all non-empty lines from the stream
+                raw_lines = []
+                async for raw_line in response.aiter_lines():
+                    line = raw_line.strip()
+                    if line:
+                        raw_lines.append(line)
 
-        raw   = upstream if isinstance(upstream, dict) else {}
-        items = raw.get("data") or raw.get("list") or raw.get("users") or []
-        if not isinstance(items, list):
-            items = [items] if items else []
+        # ── Parse: try NDJSON first (one JSON object per line) ────────────────
+        ndjson_items = []
+        for line in raw_lines:
+            try:
+                obj = _json.loads(line)
+                if isinstance(obj, dict):
+                    ndjson_items.append(obj)
+                elif isinstance(obj, list):
+                    ndjson_items.extend(obj)
+            except _json.JSONDecodeError:
+                pass
+
+        if ndjson_items:
+            items = ndjson_items
+        elif raw_lines:
+            # Fallback: join lines and parse as a single JSON document
+            try:
+                parsed = _json.loads("\n".join(raw_lines))
+                if isinstance(parsed, list):
+                    items = parsed
+                elif isinstance(parsed, dict):
+                    upstream_message = parsed.get("message") or upstream_message
+                    candidate = (
+                        parsed.get("data")
+                        or parsed.get("list")
+                        or parsed.get("users")
+                        or []
+                    )
+                    items = candidate if isinstance(candidate, list) else (
+                        [candidate] if candidate else []
+                    )
+            except _json.JSONDecodeError:
+                pass
 
         # ── Upsert into session_users collection ──────────────────────────────
         db  = _get_db()
         now = datetime.now(timezone.utc)
-        inserted = updated = skipped = 0
 
         for item in items:
             if not isinstance(item, dict):
                 skipped += 1
                 continue
 
-            # Use 'id' or '_id' or 'email' as the dedup key
-            uid = (str(item.get("id") or item.get("_id") or "")).strip()
-            email = (item.get("email") or "").strip()
+            uid   = (str(item.get("id") or item.get("_id") or "")).strip()
+            email = (item.get("email") or "").strip().lower()
+
             if not uid and not email:
                 skipped += 1
                 continue
 
-            doc = {
-                **item,
-                "synced_at": now,
-            }
-
-            # Build query — prefer xn_id, fall back to email
-            query = {"xn_user_id": uid} if uid else {"email": email}
+            doc = {**item, "synced_at": now}
             if uid:
                 doc["xn_user_id"] = uid
 
+            query    = {"xn_user_id": uid} if uid else {"email": email}
             existing = await db["session_users"].find_one(query)
             if existing:
                 await db["session_users"].update_one(
@@ -316,7 +355,7 @@ async def administration_user_list(request: Request):
             "success":      True,
             "status_code":  200,
             "upstream_url": url,
-            "message":      raw.get("message") or "Administration user list",
+            "message":      upstream_message,
             "total":        len(items),
             "data":         items,
             "sync": {

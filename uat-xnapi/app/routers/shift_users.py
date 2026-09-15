@@ -1437,8 +1437,10 @@ async def export_shift_users_list(request: Request, payload: ListShiftUsersReque
 # ── POST /shift-users/assign ──────────────────────────────────────────────────
 
 class AssignStaffRequest(BaseModel):
-    shift_id: str
-    user_id:  str
+    shift_id:          str
+    user_id:           str
+    session_user_id:   Optional[str] = None   # session_users._id (ObjectId string)
+    session_user_name: Optional[str] = None   # fallback: match session_users.full_name
 
 
 @router.post(
@@ -1474,12 +1476,62 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
     xn_shift_id = shift.get("shift_id")
     xn_user_id  = user.get("xn_user_id")
 
+    # ── Resolve session_user_id from session_users collection ─────────────────
+    # Priority 1: match session_users._id directly with payload.session_user_id
+    # Priority 2: fallback — match session_users.full_name with payload.session_user_name
+    resolved_session_user_id: Optional[str] = None
+
+    raw_sid  = (payload.session_user_id   or "").strip()
+    raw_sname = (payload.session_user_name or "").strip()
+
+    if raw_sid:
+        # Try exact _id match first
+        if ObjectId.is_valid(raw_sid):
+            su_doc = await db["session_users"].find_one(
+                {"_id": ObjectId(raw_sid)},
+                {"_id": 1, "full_name": 1}
+            )
+            if su_doc:
+                resolved_session_user_id = str(su_doc["_id"])
+                logger.info(f"[assign] session_user resolved by _id={raw_sid}")
+            else:
+                logger.warning(f"[assign] session_user _id={raw_sid} not found, trying name fallback")
+
+        # If _id lookup failed (not found or invalid), try name fallback
+        if not resolved_session_user_id and raw_sname:
+            su_doc = await db["session_users"].find_one(
+                {"full_name": {"$regex": f"^{raw_sname}$", "$options": "i"}},
+                {"_id": 1, "full_name": 1}
+            )
+            if su_doc:
+                resolved_session_user_id = str(su_doc["_id"])
+                logger.info(f"[assign] session_user resolved by name='{raw_sname}' -> _id={resolved_session_user_id}")
+            else:
+                logger.warning(f"[assign] session_user name='{raw_sname}' not found in session_users")
+
+    elif raw_sname:
+        # No session_user_id provided at all — go straight to name lookup
+        su_doc = await db["session_users"].find_one(
+            {"full_name": {"$regex": f"^{raw_sname}$", "$options": "i"}},
+            {"_id": 1, "full_name": 1}
+        )
+        if su_doc:
+            resolved_session_user_id = str(su_doc["_id"])
+            logger.info(f"[assign] session_user resolved by name='{raw_sname}' -> _id={resolved_session_user_id}")
+        else:
+            logger.warning(f"[assign] session_user name='{raw_sname}' not found in session_users")
+
     # ── Call upstream assign-staff-with-checks ────────────────────────────────
     if not xn_shift_id or not xn_user_id:
         raise HTTPException(
             status_code=422,
             detail=f"Missing upstream IDs — shift_id={xn_shift_id} staff_id={xn_user_id}"
         )
+
+    # Build upstream payload — include session_user_id only when resolved
+    upstream_json: dict = {"shift_id": xn_shift_id, "staff_id": xn_user_id}
+    if resolved_session_user_id:
+        upstream_json["session_user_id"] = resolved_session_user_id
 
     import httpx as _httpx
     upstream_url = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/assign-staff-with-checks"
@@ -1488,13 +1540,16 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
         "Content-Type": "application/json",
         "Accept":       "application/json",
     }
-    logger.info(f"[assign] upstream={upstream_url} shift_id={xn_shift_id} staff_id={xn_user_id}")
+    logger.info(
+        f"[assign] upstream={upstream_url} shift_id={xn_shift_id} staff_id={xn_user_id}"
+        f" session_user_id={resolved_session_user_id}"
+    )
 
     try:
         async with _httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 upstream_url,
-                json={"shift_id": xn_shift_id, "staff_id": xn_user_id},
+                json=upstream_json,
                 headers=upstream_headers
             )
         try:
@@ -1588,15 +1643,16 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
     logger.info(f"Assigned user={payload.user_id} ({email}) to shift={payload.shift_id}")
 
     return {
-        "success":        True,
-        "message":        f"{full_name} assigned to shift",
-        "shift_id":       payload.shift_id,
-        "user_id":        payload.user_id,
-        "assigned_staff": full_name,
-        "staff_email":    email,
-        "designation":    user.get("designation"),
-        "rating":         user.get("rating"),
-        "assigned_at":    now.isoformat(),
+        "success":           True,
+        "message":           f"{full_name} assigned to shift",
+        "shift_id":          payload.shift_id,
+        "user_id":           payload.user_id,
+        "assigned_staff":    full_name,
+        "staff_email":       email,
+        "designation":       user.get("designation"),
+        "rating":            user.get("rating"),
+        "assigned_at":       now.isoformat(),
+        "session_user_id":   resolved_session_user_id,
     }
 
 
