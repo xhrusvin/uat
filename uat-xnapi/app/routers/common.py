@@ -228,6 +228,135 @@ async def client_detail(request: Request, payload: ClientDetailRequest):
                 "message": str(e), "data": None}
 
 
+# ── GET /common/administration-user-list ─────────────────────────────────────
+
+@router.get(
+    "/administration-user-list",
+    summary="Fetch administration users from User API and sync to session_users collection",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("60/minute")
+async def administration_user_list(request: Request):
+    """
+    Calls {USER_API_URL}/ai/common/administration-user-list (out-stream / GET),
+    upserts each user into the `session_users` collection and returns a sync summary.
+    """
+    url = f"{settings.USER_API_URL.rstrip('/')}/ai/common/administration-user-list"
+    headers = {
+        "Api-Key":       settings.USER_INTERNAL_API_KEY,
+        "X-App-Country": settings.APP_COUNTRY,
+        "Accept":        "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+
+        try:
+            upstream = response.json()
+        except Exception:
+            upstream = {"raw": response.text[:500]}
+
+        if response.status_code != 200:
+            msg = upstream.get("message") if isinstance(upstream, dict) else str(upstream)
+            return {
+                "success":      False,
+                "status_code":  response.status_code,
+                "upstream_url": url,
+                "message":      msg,
+                "data":         upstream,
+                "sync":         None,
+            }
+
+        raw   = upstream if isinstance(upstream, dict) else {}
+        items = raw.get("data") or raw.get("list") or raw.get("users") or []
+        if not isinstance(items, list):
+            items = [items] if items else []
+
+        # ── Upsert into session_users collection ──────────────────────────────
+        db  = _get_db()
+        now = datetime.now(timezone.utc)
+        inserted = updated = skipped = 0
+
+        for item in items:
+            if not isinstance(item, dict):
+                skipped += 1
+                continue
+
+            # Use 'id' or '_id' or 'email' as the dedup key
+            uid = (str(item.get("id") or item.get("_id") or "")).strip()
+            email = (item.get("email") or "").strip()
+            if not uid and not email:
+                skipped += 1
+                continue
+
+            doc = {
+                **item,
+                "synced_at": now,
+            }
+
+            # Build query — prefer xn_id, fall back to email
+            query = {"xn_user_id": uid} if uid else {"email": email}
+            if uid:
+                doc["xn_user_id"] = uid
+
+            existing = await db["session_users"].find_one(query)
+            if existing:
+                await db["session_users"].update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": {**doc, "updated_at": now}},
+                )
+                updated += 1
+            else:
+                doc["created_at"] = now
+                await db["session_users"].insert_one(doc)
+                inserted += 1
+
+        return {
+            "success":      True,
+            "status_code":  200,
+            "upstream_url": url,
+            "message":      raw.get("message") or "Administration user list",
+            "total":        len(items),
+            "data":         items,
+            "sync": {
+                "fetched":  len(items),
+                "inserted": inserted,
+                "updated":  updated,
+                "skipped":  skipped,
+            },
+        }
+
+    except httpx.TimeoutException:
+        return {
+            "success":      False,
+            "status_code":  504,
+            "upstream_url": url,
+            "message":      "Request timed out",
+            "data":         None,
+            "sync":         None,
+        }
+    except httpx.RequestError as e:
+        return {
+            "success":      False,
+            "status_code":  502,
+            "upstream_url": url,
+            "message":      str(e),
+            "data":         None,
+            "sync":         None,
+        }
+    except Exception as e:
+        logger.error(f"administration-user-list error: {e}", exc_info=True)
+        return {
+            "success":      False,
+            "status_code":  500,
+            "upstream_url": url,
+            "message":      str(e),
+            "data":         None,
+            "sync":         None,
+        }
+
+
 # ── GET /common/qqi-status-list ───────────────────────────────────────────────
 
 @router.get(

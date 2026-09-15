@@ -32,6 +32,7 @@ import EndReasonsPage from './pages/EndReasonsPage'
 import UserDetailsPage from './pages/UserDetailsPage'
 import ClientDetailsPage from './pages/ClientDetailsPage'
 import ClientsPage from './pages/ClientsPage'
+import AdminUserListCallPage from './pages/AdminUserListCallPage'
 
 const basename = import.meta.env.PROD ? '/xnadmin' : '/'
 
@@ -72,6 +73,7 @@ export default function App() {
           <Route path="xn-api/client-list"         element={<ClientListCallPage />} />
           <Route path="xn-api/user-details"         element={<UserDetailsPage />} />
           <Route path="xn-api/client-details"       element={<ClientDetailsPage />} />
+          <Route path="xn-api/admin-user-list"      element={<AdminUserListCallPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
