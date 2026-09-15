@@ -161,4 +161,11 @@ export const gendersApi = {
   delete: (id)        => usersClient.delete(`/genders/${id}`),
 }
 
+export const sessionUsersApi = {
+  list:   (params) => usersClient.get('/session-users/', { params }),
+  create: (data)   => usersClient.post('/session-users/create', data),
+  update: (id, d)  => usersClient.patch(`/session-users/${id}`, d),
+  delete: (id)     => usersClient.delete(`/session-users/${id}`),
+}
+
 export default authClient
