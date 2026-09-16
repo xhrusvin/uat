@@ -86,11 +86,11 @@ def care_learning_users():
     search = request.args.get("search", "").strip()
 
     query = _build_query(search)
-    total = db.users.count_documents(query)
+    total = db.care_learning_users.count_documents(query)
     pages = max((total + PER_PAGE - 1) // PER_PAGE, 1)
 
     raw = (
-        db.users
+        db.care_learning_users
         .find(query, {
             "first_name":  1,
             "last_name":   1,
@@ -124,10 +124,10 @@ def care_learning_users_data():
     search = request.args.get("search", "").strip()
 
     query = _build_query(search)
-    total = db.users.count_documents(query)
+    total = db.care_learning_users.count_documents(query)
 
     raw = (
-        db.users
+        db.care_learning_users
         .find(query, {
             "first_name": 1,
             "last_name":  1,
@@ -159,7 +159,7 @@ def care_learning_users_export_csv():
     query  = _build_query(search)
 
     raw = (
-        db.users
+        db.care_learning_users
         .find(query, {
             "first_name": 1,
             "last_name":  1,
