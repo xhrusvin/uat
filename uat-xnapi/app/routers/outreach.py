@@ -1202,6 +1202,8 @@ class OutreachStaffListRequest(BaseModel):
     shift_id:    Optional[str] = None
     page:        int = 1
     per_page:    int = 20
+    order_by:    Optional[str] = None   # e.g. "customer_feedback", "rating", "distance_km", "last_contacted"
+    order:       Optional[str] = "asc"  # "asc" | "desc"
 
 
 @router.post(
@@ -1530,6 +1532,24 @@ async def outreach_staff_list(request: Request, payload: OutreachStaffListReques
     pending   = sum(1 for s in shifts_users_list if s["call_enabled"] == 1 and s["call_processed"] == 0)
     processed = sum(1 for s in shifts_users_list if s["call_processed"] == 1)
 
+
+    # Apply ordering
+    if payload.order_by:
+        _field   = payload.order_by.strip()
+        _reverse = (payload.order or "asc").strip().lower() == "desc"
+        _NONE_LAST = float("inf") if not _reverse else float("-inf")
+
+        def _sort_key(s: dict):
+            v = s.get(_field)
+            # Normalise None / missing so they always sort last
+            if v is None:
+                return _NONE_LAST
+            # Strings: lower-case for case-insensitive ordering
+            if isinstance(v, str):
+                return v.lower()
+            return v
+
+        shifts_users_list.sort(key=_sort_key, reverse=_reverse)
 
     # Apply pagination
     _skip = (payload.page - 1) * payload.per_page
