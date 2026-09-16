@@ -297,7 +297,20 @@ async def administration_user_list(request: Request):
                 pass
 
         if ndjson_items:
-            items = ndjson_items
+            # If NDJSON produced exactly one dict that is a response envelope
+            # (i.e. has a "data" key containing a list), unwrap it.
+            # This happens when the upstream returns a single JSON object
+            # {"success": true, "data": [...]} rather than true NDJSON.
+            if (
+                len(ndjson_items) == 1
+                and isinstance(ndjson_items[0], dict)
+                and isinstance(ndjson_items[0].get("data"), list)
+            ):
+                envelope = ndjson_items[0]
+                upstream_message = envelope.get("message") or upstream_message
+                items = envelope["data"]
+            else:
+                items = ndjson_items
         elif raw_lines:
             # Fallback: join lines and parse as a single JSON document
             try:

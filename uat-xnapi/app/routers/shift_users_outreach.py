@@ -273,7 +273,7 @@ async def run_outreach_orchestrator(
         {"_id": shift_oid},
         {"_id": 1, "name": 1, "shift_code": 1, "shift_id": 1,
          "date": 1, "user_type": 1, "status": 1,
-         "client_county": 1, "location": 1, "county_id": 1},
+         "client_county": 1, "location": 1, "county_id": 1, "radius": 1},
     )
     if not shift:
         raise HTTPException(status_code=404, detail=f"Shift {shift_id} not found")
@@ -291,10 +291,20 @@ async def run_outreach_orchestrator(
         shift_county_name, db
     )
 
+    # ── Extract radius from shift doc (None = no distance filter) ─────────────────────
+    _raw_radius = shift.get("radius")
+    shift_radius: Optional[float] = None
+    if _raw_radius is not None:
+        try:
+            shift_radius = float(_raw_radius)
+        except (TypeError, ValueError):
+            logger.warning(f"[run-outreach] shift.radius={_raw_radius!r} is not numeric — ignoring")
+
     logger.info(
         f"[run-outreach] shift_id={shift_id} client_county='{shift.get('client_county')}' "
         f"resolved_county='{shift_county_name}' ops_group={shift_ops_group} "
-        f"county_ids_count={len(ops_county_ids)} unmatched={ops_unmatched}"
+        f"county_ids_count={len(ops_county_ids)} unmatched={ops_unmatched} "
+        f"radius={shift_radius}"
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -307,6 +317,7 @@ async def run_outreach_orchestrator(
         page=1,
         per_page=min(per_page, _MAX_SCAN),
         county_multiple=ops_county_ids if ops_county_ids else None,
+        radius=shift_radius,
     )
 
     try:
@@ -328,6 +339,7 @@ async def run_outreach_orchestrator(
         "ops_county_ids":          ops_county_ids,
         "ops_county_ids_count":    len(ops_county_ids),
         "ops_counties_unmatched":  ops_unmatched,
+        "radius_km":               shift_radius,
         "candidates_found":        len(candidate_users),
         "total_in_db":             list_result.get("total", 0),
         "shift_user_type":         list_result.get("shift_user_type"),
@@ -537,7 +549,7 @@ async def run_group_outreach_orchestrator(
     found_shifts = await db["shifts"].find(
         {"_id": {"$in": shift_oids}},
         {"_id": 1, "name": 1, "shift_code": 1, "client_county": 1,
-         "location": 1, "county_id": 1, "user_type": 1},
+         "location": 1, "county_id": 1, "user_type": 1, "radius": 1},
     ).to_list(len(shift_oids))
 
     found_ids = {str(s["_id"]) for s in found_shifts}
@@ -558,10 +570,20 @@ async def run_group_outreach_orchestrator(
         shift_county_name, db
     )
 
+    # ── Extract radius from first shift doc (None = no distance filter) ────────────────
+    _raw_radius = first_shift.get("radius")
+    shift_radius: Optional[float] = None
+    if _raw_radius is not None:
+        try:
+            shift_radius = float(_raw_radius)
+        except (TypeError, ValueError):
+            logger.warning(f"[run-group-outreach] first shift radius={_raw_radius!r} is not numeric — ignoring")
+
     logger.info(
         f"[run-group-outreach] shifts={raw_ids} client_county='{first_shift.get('client_county')}' "
         f"resolved_county='{shift_county_name}' ops_group={shift_ops_group} "
-        f"county_ids_count={len(ops_county_ids)} unmatched={ops_unmatched}"
+        f"county_ids_count={len(ops_county_ids)} unmatched={ops_unmatched} "
+        f"radius={shift_radius}"
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -610,6 +632,7 @@ async def run_group_outreach_orchestrator(
         page=1,
         per_page=min(per_page, _MAX_SCAN),
         county_multiple=ops_county_ids if ops_county_ids else None,
+        radius=shift_radius,
     )
 
     try:
@@ -631,6 +654,7 @@ async def run_group_outreach_orchestrator(
         "ops_county_ids":         ops_county_ids,
         "ops_county_ids_count":   len(ops_county_ids),
         "ops_counties_unmatched": ops_unmatched,
+        "radius_km":              shift_radius,
         "candidates_found":       len(candidate_users),
         "total_in_db":            list_result.get("total", 0),
         "shift_user_types":       list_result.get("shift_user_types"),
