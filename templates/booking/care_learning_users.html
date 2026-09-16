@@ -1,0 +1,366 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Care Learning Users • Admin{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Status badges ───────────────────────────────────────────── */
+.badge-active   { background-color: #d1e7dd; color: #0a3622; }
+.badge-inactive { background-color: #f8d7da; color: #842029; }
+
+/* ── Filter card ─────────────────────────────────────────────── */
+.filter-card {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.filter-card .input-group-text {
+    border-color: #dee2e6;
+    font-size: 0.85rem;
+}
+
+/* ── Auto-refresh indicator ──────────────────────────────────── */
+#refresh-indicator {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    background: #198754;
+    animation: pulse 2s infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+}
+
+/* ── Avatar initials ─────────────────────────────────────────── */
+.user-avatar {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: .02em;
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.empty-state {
+    padding: 3.5rem 1rem;
+    text-align: center;
+    color: #6c757d;
+}
+.empty-state .bi {
+    font-size: 3rem;
+    opacity: .25;
+    display: block;
+    margin-bottom: .75rem;
+}
+
+/* ── Row hover ───────────────────────────────────────────────── */
+.table-hover tbody tr:hover {
+    background-color: #f8f9ff !important;
+}
+</style>
+{% endblock %}
+
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+    {# ── Page header ─────────────────────────────────────────────── #}
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <div>
+            <h2 class="mb-0 fw-bold text-primary">
+                <i class="bi bi-people me-2"></i>Care Learning Users
+            </h2>
+            <p class="text-muted small mb-0 mt-1">
+                All registered users · auto-refreshes every 60 s
+                <span id="refresh-indicator" class="ms-2" title="Live"></span>
+            </p>
+        </div>
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span class="badge bg-primary fs-6 px-3 py-2" id="total-badge"
+                  data-total="{{ total }}">
+                {{ total }} user{{ 's' if total != 1 }}
+            </span>
+            <a id="btn-export-csv"
+               href="{{ url_for('booking.care_learning_users_export_csv', search=search) }}"
+               class="btn btn-success btn-sm">
+                <i class="bi bi-download me-1"></i>Export CSV
+            </a>
+            <a href="{{ url_for('booking.care_learning_users') }}"
+               class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+            </a>
+        </div>
+    </div>
+
+    {# ── Filter bar ──────────────────────────────────────────────── #}
+    <div class="filter-card">
+        <form method="get" id="filter-form">
+            <div class="row g-3 align-items-end">
+
+                {# Search #}
+                <div class="col-12 col-md-7">
+                    <label class="form-label small fw-semibold text-muted mb-1">Search</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0">
+                            <i class="bi bi-search text-muted"></i>
+                        </span>
+                        <input type="text" name="search"
+                               class="form-control border-start-0"
+                               placeholder="Name, email, XN User ID…"
+                               value="{{ search }}">
+                    </div>
+                </div>
+
+                {# Buttons #}
+                <div class="col-12 col-md-5 d-flex gap-2 justify-content-md-end">
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="bi bi-funnel me-1"></i>Filter
+                    </button>
+                    {% if search %}
+                    <a href="{{ url_for('booking.care_learning_users') }}"
+                       class="btn btn-outline-secondary" title="Clear filter">
+                        <i class="bi bi-x-lg me-1"></i>Clear
+                    </a>
+                    {% endif %}
+                </div>
+
+            </div>
+        </form>
+    </div>
+
+    {# ── Table ───────────────────────────────────────────────────── #}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle" id="users-table">
+                    <thead class="text-white"
+                           style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                        <tr>
+                            <th class="ps-4">#</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th class="text-nowrap">XN User ID</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-nowrap">Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                    {% if users %}
+                        {% for u in users %}
+                        <tr>
+                            {# Row number #}
+                            <td class="ps-4 text-muted small">
+                                {{ loop.index + (page - 1) * per_page }}
+                            </td>
+
+                            {# Avatar + name #}
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="user-avatar">
+                                        {{- (u.first_name[0] if u.first_name != '—' else '?') | upper -}}
+                                        {{- (u.last_name[0]  if u.last_name  != '—' else '')  | upper -}}
+                                    </span>
+                                    <div>
+                                        <div class="fw-semibold lh-sm">{{ u.full_name }}</div>
+                                        <div class="text-muted small">
+                                            {{ u.first_name }} {{ u.last_name }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+
+                            {# Email #}
+                            <td class="small">
+                                {% if u.email != '—' %}
+                                <a href="mailto:{{ u.email }}"
+                                   class="text-decoration-none text-body">
+                                    <i class="bi bi-envelope text-muted me-1"></i>{{ u.email }}
+                                </a>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+
+                            {# XN User ID #}
+                            <td class="font-monospace small text-muted">
+                                {{ u.xn_user_id }}
+                            </td>
+
+                            {# Active status #}
+                            <td class="text-center">
+                                {% if u.is_active %}
+                                <span class="badge badge-active rounded-pill px-3">
+                                    <i class="bi bi-check-circle me-1"></i>Active
+                                </span>
+                                {% else %}
+                                <span class="badge badge-inactive rounded-pill px-3">
+                                    <i class="bi bi-x-circle me-1"></i>Inactive
+                                </span>
+                                {% endif %}
+                            </td>
+
+                            {# Created date #}
+                            <td class="small text-nowrap text-muted">
+                                <i class="bi bi-calendar3 me-1"></i>{{ u.created_fmt }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                    {% else %}
+                        <tr>
+                            <td colspan="6">
+                                <div class="empty-state">
+                                    <i class="bi bi-people"></i>
+                                    <h5>No users found</h5>
+                                    {% if search %}
+                                    <p class="small">
+                                        No results for "<strong>{{ search }}</strong>".
+                                        <a href="{{ url_for('booking.care_learning_users') }}">
+                                            Clear filter
+                                        </a>
+                                    </p>
+                                    {% else %}
+                                    <p class="small">No users in the database yet.</p>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ── Pagination ──────────────────────────────────────────────── #}
+    {% if pages > 1 %}
+    <nav class="mt-4" aria-label="Users pagination">
+        <ul class="pagination justify-content-center">
+
+            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                <a class="page-link"
+                   href="{{ url_for('booking.care_learning_users', page=page-1, search=search) }}">
+                    <i class="bi bi-chevron-left"></i>
+                </a>
+            </li>
+
+            {% set start_p = [page - 2, 1] | max %}
+            {% set end_p   = [start_p + 4, pages] | min %}
+
+            {% if start_p > 1 %}
+            <li class="page-item">
+                <a class="page-link"
+                   href="{{ url_for('booking.care_learning_users', page=1, search=search) }}">1</a>
+            </li>
+            {% if start_p > 2 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+            {% endif %}
+
+            {% for p in range(start_p, end_p + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link"
+                   href="{{ url_for('booking.care_learning_users', page=p, search=search) }}">
+                    {{ p }}
+                </a>
+            </li>
+            {% endfor %}
+
+            {% if end_p < pages %}
+            {% if end_p < pages - 1 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+            <li class="page-item">
+                <a class="page-link"
+                   href="{{ url_for('booking.care_learning_users', page=pages, search=search) }}">
+                    {{ pages }}
+                </a>
+            </li>
+            {% endif %}
+
+            <li class="page-item {% if page >= pages %}disabled{% endif %}">
+                <a class="page-link"
+                   href="{{ url_for('booking.care_learning_users', page=page+1, search=search) }}">
+                    <i class="bi bi-chevron-right"></i>
+                </a>
+            </li>
+
+        </ul>
+        <p class="text-center text-muted small mt-1">
+            Page {{ page }} of {{ pages }}
+            ({{ total }} user{{ 's' if total != 1 }})
+        </p>
+    </nav>
+    {% endif %}
+
+</div>{# /container-fluid #}
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+/* ── Keep Export CSV link in sync with the search field ────────── */
+(function () {
+    const exportBtn  = document.getElementById("btn-export-csv");
+    const filterForm = document.getElementById("filter-form");
+    if (!exportBtn || !filterForm) return;
+
+    const EXPORT_BASE = "{{ url_for('booking.care_learning_users_export_csv') }}";
+
+    function syncExportLink() {
+        const fd     = new FormData(filterForm);
+        const params = new URLSearchParams();
+        for (const [k, v] of fd.entries()) {
+            if (v) params.set(k, v);
+        }
+        exportBtn.href = EXPORT_BASE + "?" + params.toString();
+    }
+
+    filterForm.addEventListener("change", syncExportLink);
+    filterForm.addEventListener("input",  syncExportLink);
+    syncExportLink();
+})();
+
+/* ── Auto-refresh (count-only, full reload on change) ──────────── */
+(function () {
+    const INTERVAL_MS = 60_000;
+
+    async function refresh() {
+        const params = new URLSearchParams(window.location.search);
+        const url    = "{{ url_for('booking.care_learning_users_data') }}?" + params.toString();
+        try {
+            const res  = await fetch(url);
+            const data = await res.json();
+            if (!data.success) return;
+
+            const badge = document.getElementById("total-badge");
+            if (!badge) return;
+
+            const prevTotal = parseInt(badge.dataset.total ?? "-1");
+            badge.textContent   = data.total + (data.total === 1 ? " user" : " users");
+            badge.dataset.total = data.total;
+
+            if (prevTotal !== -1 && prevTotal !== data.total) {
+                window.location.reload();
+            }
+        } catch (err) {
+            console.warn("[care_learning_users] Auto-refresh failed:", err);
+        }
+    }
+
+    setInterval(refresh, INTERVAL_MS);
+})();
+</script>
+{% endblock %}

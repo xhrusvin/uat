@@ -450,6 +450,11 @@ select.parsley-success {
         <span>Auto Outreach Clients</span>
     </a>
 
+    <a class="nav-link {% if request.path == '/booking/care-learning-users' or request.path == '/booking/care-learning-users/' %}active{% endif %}" href="/booking/care-learning-users">
+        <i class="bi bi-list"></i>
+        <span>Care Learning Users</span>
+    </a>
+
     <a class="nav-link {% if request.path == '/booking/assignments' or request.path == '/booking/assignments/' %}active{% endif %}"
        href="{{ url_for('booking.all_assignments_list') }}">
         <i class="bi bi-list"></i>

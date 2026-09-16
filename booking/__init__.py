@@ -22,4 +22,5 @@ from . import zoho_mail_views
 from . import doc_status
 from . import live_shifts
 from . import auto_outreach_cli
+from . import care_learning_users
 
