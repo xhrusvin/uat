@@ -66,7 +66,38 @@ XN_APP_COUNTRY     = os.getenv("XN_APP_COUNTRY", "ie")
 
 OUTREACH_URL = f"{XN_PORTAL_BASE_URL}/ai/recruitments/user-document-list"
 
-PER_PAGE = 20
+# ── Allowlist: only these document types are returned to the caller ────────────
+ALLOWED_DOCUMENT_TYPES = {
+    "Infection Prevention Control Certificate",
+    "Ppe",
+    "Hand Hygiene",
+    "Children First",
+    "Safeguarding Adults At Risk",
+    "Cpr/Bls",
+    "Manual And People Handling Documents",
+    "The Open Disclosure",
+    "Cpi/ Mapa/Pmav",
+    "Cyber Security",
+    "Gdpr",
+    "Dignity At Work",
+    "Fire Safety",
+    "QQI Level 5 or equivalent in Health Service Skills or Healthcare Support",
+    "Managing Feeding, Eating, Drinking And Swallowing In People With An Intellectual Disability",
+    "Enhanced Declaration Of Risk Assessment",
+    "Applying A Human Rights-Based Approach In Health And Social Care",
+    "Supporting Decision Making In Health & Social Care",
+    "Hse National Consent Policy V1.2",
+    "Sepsis Management",
+    "Hse National Consent Policy V1.1",
+    "Occupational Health",
+    "Hse Effective Complaints Handling",
+    "Medication Administration",
+    "Neurogenic Bowel Dysfunction Training (Practical)",
+    "Management Of Blood & Body Substance Spills",
+    "Haccp/Food Safety",
+}
+
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -169,7 +200,11 @@ def _process_user(user: dict) -> dict:
         api_data = _fetch_document_list(email)
         result["api_status"] = 200
         result["success"]    = api_data.get("success", False)
-        result["documents"]  = api_data.get("data", {}).get("documents", [])
+        all_docs = api_data.get("data", {}).get("documents", [])
+        result["documents"] = [
+            d for d in all_docs
+            if d.get("document_type_name") in ALLOWED_DOCUMENT_TYPES
+        ]
 
         # Stamp care_check = 1 — both on success AND on api_returned_failure.
         # Either way the API has responded; there is nothing to retry.
@@ -208,10 +243,10 @@ def _process_user(user: dict) -> dict:
 # Core runner (shared by all routes)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _run(xn_user_id: str = "", page: int = 1) -> dict:
+def _run(xn_user_id: str = "") -> dict:
     """
     Single-user mode : xn_user_id provided → process that one user.
-    Batch mode       : no xn_user_id → page through un-flagged users.
+    Batch mode       : no xn_user_id → pick the next un-flagged user (one per call).
     """
     fields = {"email": 1, "xn_user_id": 1,
                "first_name": 1, "last_name": 1, "care_check": 1}
@@ -231,28 +266,26 @@ def _run(xn_user_id: str = "", page: int = 1) -> dict:
             "results": [_process_user(user)],
         }
 
-    # Batch
-    query = _user_query_batch()
-    total = db.users.count_documents(query)
-    pages = max((total + PER_PAGE - 1) // PER_PAGE, 1)
+    # Batch — pick exactly ONE oldest un-flagged user per call
+    query     = _user_query_batch()
+    remaining = db.users.count_documents(query)
 
-    raw_users = list(
-        db.users
-        .find(query, fields)
-        .sort("_id", 1)
-        .skip((page - 1) * PER_PAGE)
-        .limit(PER_PAGE)
-    )
+    user = db.users.find_one(query, fields, sort=[("_id", 1)])
 
-    results = [_process_user(u) for u in raw_users]
+    if not user:
+        return {
+            "mode":      "batch",
+            "remaining": 0,
+            "found":     0,
+            "results":   [],
+            "message":   "All users already processed.",
+        }
 
     return {
-        "mode":    "batch",
-        "total":   total,
-        "page":    page,
-        "pages":   pages,
-        "found":   len(raw_users),
-        "results": results,
+        "mode":      "batch",
+        "remaining": remaining,
+        "found":     1,
+        "results":   [_process_user(user)],
     }
 
 
@@ -266,17 +299,14 @@ def care_learning_document_status():
     Query params
     ------------
     xn_user_id  (optional) — single-user mode
-    page        (optional) — batch pagination, default 1
     """
     xn_user_id = request.args.get("xn_user_id", "").strip()
-    page       = max(int(request.args.get("page", 1)), 1)
-
-    payload = _run(xn_user_id=xn_user_id, page=page)
+    payload    = _run(xn_user_id=xn_user_id)
     return jsonify({"success": True, **payload})
 
 
 @bp.route("/care-learning/document-status/user/<xn_user_id>")
 def care_learning_document_status_user(xn_user_id: str):
     """Clean-URL alias: /booking/care-learning/document-status/user/<xn_user_id>"""
-    payload = _run(xn_user_id=xn_user_id.strip(), page=1)
+    payload = _run(xn_user_id=xn_user_id.strip())
     return jsonify({"success": True, **payload})
