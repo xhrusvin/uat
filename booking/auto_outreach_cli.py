@@ -171,14 +171,14 @@ def auto_outreach_clients_add():
     # Check the client actually exists
     client = _client_by_xn_id(xn_client_id)
     if not client:
-        flash(f"Client with ID "{xn_client_id}" not found.", "danger")
+        flash(f"Client with ID '{xn_client_id}' not found.", "danger")
         return redirect(url_for("booking.auto_outreach_clients"))
 
     # Prevent duplicates
     existing = db.auto_outreach_cli.find_one({"xn_client_id": xn_client_id})
     if existing:
         flash(
-            f""{client.get('name', xn_client_id)}" is already in the auto-outreach list.",
+            f"'{client.get('name', xn_client_id)}' is already in the auto-outreach list.",
             "warning",
         )
         return redirect(url_for("booking.auto_outreach_clients"))
@@ -191,7 +191,7 @@ def auto_outreach_clients_add():
         }
     )
     flash(
-        f""{client.get('name', xn_client_id)}" added to auto-outreach list.",
+        f"'{client.get('name', xn_client_id)}' added to auto-outreach list.",
         "success",
     )
     return redirect(url_for("booking.auto_outreach_clients"))
@@ -220,7 +220,7 @@ def auto_outreach_clients_delete(entry_id: str):
     # Resolve name for the flash message
     client = _client_by_xn_id(entry.get("xn_client_id", ""))
     name   = client.get("name") if client else entry.get("xn_client_id", "entry")
-    flash(f""{name}" removed from auto-outreach list.", "success")
+    flash(f"'{name}' removed from auto-outreach list.", "success")
 
     # Honour the referring page so pagination is preserved
     return redirect(
