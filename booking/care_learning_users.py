@@ -154,39 +154,79 @@ def care_learning_users_data():
 
 @bp.route("/care-learning-users/export-csv")
 def care_learning_users_export_csv():
-    """Stream all matching users (no pagination) as a CSV download."""
+    """
+    Export CSV — one row per document per user.
+
+    Columns:
+      Name | Email | Document Type | Care Learning Found
+    """
     search = request.args.get("search", "").strip()
     query  = _build_query(search)
 
-    raw = (
+    # ── Fetch all matching users ──────────────────────────────────────
+    raw_users = list(
         db.care_learning_users
         .find(query, {
             "first_name": 1,
             "last_name":  1,
+            "name":       1,   # some docs may use a single name field
             "email":      1,
             "xn_user_id": 1,
-            "is_active":  1,
-            "created_at": 1,
         })
         .sort([("first_name", 1), ("last_name", 1)])
     )
 
+    # ── Collect user_ids and build a lookup map ───────────────────────
+    user_id_strs = [str(u["_id"]) for u in raw_users]
+
+    doc_cursor = db.care_learning_document.find(
+        {"user_id": {"$in": user_id_strs}},
+        {
+            "user_id":             1,
+            "document_type_name":  1,
+            "care_learning_found": 1,
+        },
+    )
+
+    # Group documents by user_id
+    from collections import defaultdict
+    docs_by_user = defaultdict(list)
+    for d in doc_cursor:
+        docs_by_user[d["user_id"]].append(d)
+
+    # ── Write CSV ─────────────────────────────────────────────────────
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "First Name", "Last Name", "Email", "XN User ID", "Active", "Created At"
+        "Name",
+        "Email",
+        "Document Type",
+        "Care Learning Found",
     ])
 
-    for u in raw:
-        f = _format_user(u)
-        writer.writerow([
-            f["first_name"],
-            f["last_name"],
-            f["email"],
-            f["xn_user_id"],
-            "Yes" if f["is_active"] else "No",
-            f["created_fmt"],
-        ])
+    for u in raw_users:
+        uid = str(u["_id"])
+
+        # Resolve display name — prefer first+last, fall back to name field
+        first = (u.get("first_name") or "").strip()
+        last  = (u.get("last_name")  or "").strip()
+        name  = f"{first} {last}".strip() or u.get("name") or "—"
+        email = u.get("email") or "—"
+
+        user_docs = docs_by_user.get(uid, [])
+
+        if user_docs:
+            # First doc row gets name + email; subsequent rows leave them blank
+            for i, d in enumerate(user_docs):
+                writer.writerow([
+                    name  if i == 0 else "",
+                    email if i == 0 else "",
+                    d.get("document_type_name") or "—",
+                    d.get("care_learning_found") or "—",
+                ])
+        else:
+            # User has no documents yet — still include them
+            writer.writerow([name, email, "—", "—"])
 
     ts    = datetime.utcnow().strftime("%Y%m%d_%H%M")
     fname = f"care_learning_users_{ts}.csv"
