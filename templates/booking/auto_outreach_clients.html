@@ -1,0 +1,514 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Auto-Outreach Clients • Admin{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Status pill colours (shared with live-shifts) ───────────── */
+.badge-active   { background-color: #d1e7dd; color: #0a3622; }
+.badge-inactive { background-color: #f8d7da; color: #842029; }
+
+/* ── Filter card ─────────────────────────────────────────────── */
+.filter-card {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.filter-card .input-group-text {
+    border-color: #dee2e6;
+    font-size: 0.85rem;
+}
+
+/* ── Add-client modal ────────────────────────────────────────── */
+#client-search-results {
+    max-height: 300px;
+    overflow-y: auto;
+}
+.client-result-item {
+    cursor: pointer;
+    transition: background .12s;
+}
+.client-result-item:hover {
+    background: #f0f5ff;
+}
+.client-result-item.selected {
+    background: #e8f0fe;
+    border-left: 3px solid #667eea;
+}
+
+/* ── Table row highlight on hover ───────────────────────────── */
+.table-hover tbody tr:hover {
+    background-color: #f8f9ff !important;
+}
+
+/* ── Client type badge ───────────────────────────────────────── */
+.type-badge {
+    font-size: 0.72rem;
+    padding: 0.2em 0.55em;
+    border-radius: 20px;
+    background: #e9ecef;
+    color: #495057;
+    white-space: nowrap;
+}
+
+/* ── Empty-state ─────────────────────────────────────────────── */
+.empty-state {
+    padding: 3.5rem 1rem;
+    text-align: center;
+    color: #6c757d;
+}
+.empty-state .bi {
+    font-size: 3rem;
+    opacity: .25;
+    display: block;
+    margin-bottom: .75rem;
+}
+
+/* ── Spinner overlay inside search input ─────────────────────── */
+#search-spinner {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: none;
+    z-index: 5;
+}
+</style>
+{% endblock %}
+
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+    {# ── Page header ─────────────────────────────────────────────── #}
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <div>
+            <h2 class="mb-0 fw-bold text-primary">
+                <i class="bi bi-send-check me-2"></i>Auto-Outreach Clients
+            </h2>
+            <p class="text-muted small mb-0 mt-1">
+                Clients enrolled in the automatic outreach pipeline
+            </p>
+        </div>
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span class="badge bg-primary fs-6 px-3 py-2">
+                {{ total }} client{{ 's' if total != 1 }}
+            </span>
+            <button class="btn btn-primary btn-sm"
+                    data-bs-toggle="modal" data-bs-target="#addClientModal">
+                <i class="bi bi-plus-lg me-1"></i>Add Client
+            </button>
+        </div>
+    </div>
+
+    {# ── Flash messages ──────────────────────────────────────────── #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for cat, msg in messages %}
+            <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+                {{ msg }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {# ── Filter bar ──────────────────────────────────────────────── #}
+    <div class="filter-card">
+        <form method="get" id="filter-form">
+            <div class="row g-3 align-items-end">
+
+                {# Search #}
+                <div class="col-12 col-md-6">
+                    <label class="form-label small fw-semibold text-muted mb-1">Search</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0">
+                            <i class="bi bi-search text-muted"></i>
+                        </span>
+                        <input type="text" name="search" class="form-control border-start-0"
+                               placeholder="Client name, email, county, type…"
+                               value="{{ search }}">
+                    </div>
+                </div>
+
+                {# Buttons #}
+                <div class="col-12 col-md-6 d-flex gap-2 justify-content-md-end">
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="bi bi-funnel me-1"></i>Filter
+                    </button>
+                    {% if search %}
+                    <a href="{{ url_for('booking.auto_outreach_clients') }}"
+                       class="btn btn-outline-secondary" title="Clear filter">
+                        <i class="bi bi-x-lg me-1"></i>Clear
+                    </a>
+                    {% endif %}
+                </div>
+
+            </div>
+        </form>
+    </div>
+
+    {# ── Table ───────────────────────────────────────────────────── #}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="text-white"
+                           style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                        <tr>
+                            <th class="ps-4">#</th>
+                            <th>Client Name</th>
+                            <th>Type</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>County</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-nowrap">XN Client ID</th>
+                            <th class="text-nowrap">Added At</th>
+                            <th class="text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                    {% if entries %}
+                        {% for e in entries %}
+                        <tr>
+                            <td class="ps-4 text-muted small">
+                                {{ loop.index + (page - 1) * per_page }}
+                            </td>
+
+                            <td class="fw-semibold">
+                                {{ e.client_name }}
+                            </td>
+
+                            <td>
+                                {% if e.client_type and e.client_type != '—' %}
+                                <span class="type-badge">{{ e.client_type }}</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="small text-muted">{{ e.client_email }}</td>
+                            <td class="small text-nowrap">{{ e.client_phone }}</td>
+                            <td class="small">{{ e.client_county }}</td>
+
+                            <td class="text-center">
+                                {% if e.client_active %}
+                                <span class="badge badge-active rounded-pill px-3">
+                                    <i class="bi bi-check-circle me-1"></i>Active
+                                </span>
+                                {% else %}
+                                <span class="badge badge-inactive rounded-pill px-3">
+                                    <i class="bi bi-x-circle me-1"></i>Inactive
+                                </span>
+                                {% endif %}
+                            </td>
+
+                            <td class="font-monospace small text-muted">
+                                {{ e.xn_client_id }}
+                            </td>
+
+                            <td class="small text-nowrap text-muted">
+                                {{ e.created_at_fmt }}
+                            </td>
+
+                            <td class="text-center">
+                                <form method="post"
+                                      action="{{ url_for('booking.auto_outreach_clients_delete', entry_id=e._id_str) }}"
+                                      onsubmit="return confirm('Remove {{ e.client_name | replace("'", "\\'") }} from auto-outreach?')">
+                                    <button type="submit"
+                                            class="btn btn-sm btn-outline-danger"
+                                            title="Remove">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                    {% else %}
+                        <tr>
+                            <td colspan="10">
+                                <div class="empty-state">
+                                    <i class="bi bi-send-x"></i>
+                                    <h5>No clients enrolled</h5>
+                                    {% if search %}
+                                    <p class="small">
+                                        No results for "<strong>{{ search }}</strong>".
+                                        <a href="{{ url_for('booking.auto_outreach_clients') }}">Clear filter</a>
+                                    </p>
+                                    {% else %}
+                                    <p class="small">
+                                        Click <strong>Add Client</strong> to enrol the first client.
+                                    </p>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ── Pagination ──────────────────────────────────────────────── #}
+    {% if pages > 1 %}
+    <nav class="mt-4" aria-label="Auto-outreach clients pagination">
+        <ul class="pagination justify-content-center">
+
+            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                <a class="page-link"
+                   href="{{ url_for('booking.auto_outreach_clients', page=page-1, search=search) }}">
+                    <i class="bi bi-chevron-left"></i>
+                </a>
+            </li>
+
+            {% set start_p = [page - 2, 1] | max %}
+            {% set end_p   = [start_p + 4, pages] | min %}
+
+            {% if start_p > 1 %}
+            <li class="page-item">
+                <a class="page-link"
+                   href="{{ url_for('booking.auto_outreach_clients', page=1, search=search) }}">1</a>
+            </li>
+            {% if start_p > 2 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+            {% endif %}
+
+            {% for p in range(start_p, end_p + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link"
+                   href="{{ url_for('booking.auto_outreach_clients', page=p, search=search) }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if end_p < pages %}
+            {% if end_p < pages - 1 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+            <li class="page-item">
+                <a class="page-link"
+                   href="{{ url_for('booking.auto_outreach_clients', page=pages, search=search) }}">{{ pages }}</a>
+            </li>
+            {% endif %}
+
+            <li class="page-item {% if page >= pages %}disabled{% endif %}">
+                <a class="page-link"
+                   href="{{ url_for('booking.auto_outreach_clients', page=page+1, search=search) }}">
+                    <i class="bi bi-chevron-right"></i>
+                </a>
+            </li>
+
+        </ul>
+        <p class="text-center text-muted small mt-1">
+            Page {{ page }} of {{ pages }} ({{ total }} client{{ 's' if total != 1 }})
+        </p>
+    </nav>
+    {% endif %}
+
+</div>{# /container-fluid #}
+
+{# ══════════════════════════════════════════════════════════════════════════
+   Add Client Modal
+══════════════════════════════════════════════════════════════════════════ #}
+<div class="modal fade" id="addClientModal" tabindex="-1"
+     aria-labelledby="addClientModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+
+            <div class="modal-header border-0 pb-0"
+                 style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                <h5 class="modal-title text-white" id="addClientModalLabel">
+                    <i class="bi bi-person-plus me-2"></i>Add Client to Auto-Outreach
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body px-4 py-3">
+
+                {# ── Live search box ────────────────────────────────── #}
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Search clients</label>
+                    <div class="position-relative">
+                        <input type="text" id="client-search-input"
+                               class="form-control"
+                               placeholder="Type name, email or county…"
+                               autocomplete="off">
+                        <div id="search-spinner">
+                            <div class="spinner-border spinner-border-sm text-secondary"></div>
+                        </div>
+                    </div>
+                    <div class="form-text">
+                        Only active clients not already enrolled are shown.
+                    </div>
+                </div>
+
+                {# ── Results list ───────────────────────────────────── #}
+                <div id="client-search-results"
+                     class="border rounded-3 overflow-hidden d-none">
+                </div>
+
+                {# ── Selected client preview ────────────────────────── #}
+                <div id="selected-preview" class="d-none mt-3">
+                    <div class="alert alert-success d-flex align-items-start gap-3 mb-0">
+                        <i class="bi bi-check-circle-fill fs-5 mt-1"></i>
+                        <div>
+                            <div class="fw-semibold" id="preview-name"></div>
+                            <div class="small text-muted" id="preview-meta"></div>
+                            <div class="small font-monospace text-muted mt-1"
+                                 id="preview-id"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>{# /modal-body #}
+
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-outline-secondary"
+                        data-bs-dismiss="modal">Cancel</button>
+
+                <form method="post"
+                      action="{{ url_for('booking.auto_outreach_clients_add') }}"
+                      id="add-client-form">
+                    <input type="hidden" name="xn_client_id" id="selected-xn-id">
+                    <button type="submit" class="btn btn-primary px-4"
+                            id="btn-confirm-add" disabled>
+                        <i class="bi bi-plus-lg me-1"></i>Add to Auto-Outreach
+                    </button>
+                </form>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+/* ── Client live-search in modal ───────────────────────────────────────── */
+(function () {
+    const input    = document.getElementById("client-search-input");
+    const results  = document.getElementById("client-search-results");
+    const spinner  = document.getElementById("search-spinner");
+    const preview  = document.getElementById("selected-preview");
+    const prevName = document.getElementById("preview-name");
+    const prevMeta = document.getElementById("preview-meta");
+    const prevId   = document.getElementById("preview-id");
+    const hiddenId = document.getElementById("selected-xn-id");
+    const addBtn   = document.getElementById("btn-confirm-add");
+
+    const SEARCH_URL = "{{ url_for('booking.auto_outreach_clients_search') }}";
+    let debounceTimer;
+
+    function clearSelection() {
+        hiddenId.value   = "";
+        addBtn.disabled  = true;
+        preview.classList.add("d-none");
+        document.querySelectorAll(".client-result-item").forEach(el =>
+            el.classList.remove("selected")
+        );
+    }
+
+    function selectClient(data) {
+        hiddenId.value = data.xn_client_id;
+        addBtn.disabled = false;
+
+        prevName.textContent = data.name || data.xn_client_id;
+        prevMeta.textContent = [data.client_type, data.county, data.email]
+            .filter(Boolean).join(" · ");
+        prevId.textContent   = "xn_client_id: " + data.xn_client_id;
+        preview.classList.remove("d-none");
+
+        document.querySelectorAll(".client-result-item").forEach(el =>
+            el.classList.toggle("selected", el.dataset.xnId === data.xn_client_id)
+        );
+    }
+
+    function renderResults(clients) {
+        if (!clients.length) {
+            results.innerHTML = `
+                <div class="p-3 text-center text-muted small">
+                    <i class="bi bi-search me-1"></i>No matching clients found
+                </div>`;
+            results.classList.remove("d-none");
+            return;
+        }
+
+        results.innerHTML = clients.map(c => `
+            <div class="client-result-item p-3 border-bottom d-flex justify-content-between align-items-start"
+                 data-xn-id="${c.xn_client_id}">
+                <div>
+                    <div class="fw-semibold">${escHtml(c.name)}</div>
+                    <div class="small text-muted">
+                        ${[c.client_type, c.county].filter(Boolean).map(escHtml).join(' · ')}
+                    </div>
+                    <div class="small text-muted">${escHtml(c.email)}</div>
+                </div>
+                <span class="badge rounded-pill text-bg-secondary ms-2 align-self-start"
+                      style="font-size:.7rem;">Select</span>
+            </div>
+        `).join("");
+        results.classList.remove("d-none");
+
+        results.querySelectorAll(".client-result-item").forEach(row => {
+            row.addEventListener("click", () => {
+                const xnId = row.dataset.xnId;
+                const match = clients.find(c => c.xn_client_id === xnId);
+                if (match) selectClient(match);
+            });
+        });
+    }
+
+    function escHtml(str) {
+        return String(str || "")
+            .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+            .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    async function doSearch(q) {
+        if (q.length < 2) {
+            results.classList.add("d-none");
+            spinner.style.display = "none";
+            return;
+        }
+        spinner.style.display = "block";
+        try {
+            const resp   = await fetch(`${SEARCH_URL}?q=${encodeURIComponent(q)}`);
+            const data   = await resp.json();
+            renderResults(data);
+        } catch (err) {
+            console.warn("[auto_outreach] search error:", err);
+        } finally {
+            spinner.style.display = "none";
+        }
+    }
+
+    input.addEventListener("input", () => {
+        clearSelection();
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => doSearch(input.value.trim()), 280);
+    });
+
+    // Reset modal state when it closes
+    const modal = document.getElementById("addClientModal");
+    modal.addEventListener("hidden.bs.modal", () => {
+        input.value = "";
+        results.innerHTML = "";
+        results.classList.add("d-none");
+        clearSelection();
+    });
+
+    // Focus search input when modal opens
+    modal.addEventListener("shown.bs.modal", () => input.focus());
+})();
+</script>
+{% endblock %}

@@ -91,12 +91,12 @@ async def _upsert_user(xn_user_id: str, update_doc: dict, now: datetime) -> dict
             "xn_user_id":       xn_user_id,
             "is_admin":         False,
             "is_active":        True,
-            "call_sent":                       1,
-            "garda_email_sent":                1,
-            "follow_up_sent":                  1,
-            "onboarded":                       0,
-            "professional_reference_call_sent": 1,
-            "compliance_documents_status":      1,
+            # "call_sent":                       1,
+            # "garda_email_sent":                1,
+            # "follow_up_sent":                  1,
+            # "onboarded":                       0,
+            # "professional_reference_call_sent": 1,
+            # "compliance_documents_status":      1,
             "created_at":       now,
         }
         result = await db["users"].insert_one(new_doc)

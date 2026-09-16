@@ -445,6 +445,11 @@ select.parsley-success {
         <span>Live Shifts</span>
     </a>
 
+    <a class="nav-link {% if request.path == '/booking/auto-outreach-clients' or request.path == '/booking/auto-outreach-clients/' %}active{% endif %}" href="/booking/auto-outreach-clients">
+        <i class="bi bi-list"></i>
+        <span>Auto Outreach Clients</span>
+    </a>
+
     <a class="nav-link {% if request.path == '/booking/assignments' or request.path == '/booking/assignments/' %}active{% endif %}"
        href="{{ url_for('booking.all_assignments_list') }}">
         <i class="bi bi-list"></i>
