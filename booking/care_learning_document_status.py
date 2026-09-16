@@ -66,7 +66,7 @@ GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY", "")
 OUTREACH_URL   = f"{XN_PORTAL_BASE_URL}/ai/recruitments/user-document-list"
 GEMINI_URL     = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-1.5-flash:generateContent"
+    "gemini-2.5-flash:generateContent"
 )
 
 # Process this many URL-bearing documents per user call through Gemini
