@@ -23,4 +23,5 @@ from . import doc_status
 from . import live_shifts
 from . import auto_outreach_cli
 from . import care_learning_users
+from . import care_learning_document_status
 
