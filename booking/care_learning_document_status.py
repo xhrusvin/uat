@@ -477,11 +477,33 @@ def _process_user(user: dict) -> dict:
 
         result["documents_skipped"] = len(docs_skipped)
 
-        # Stamp done — whether API returned success or failure
-        api_status = "ok" if result["success"] else "api_returned_failure"
-        api_error  = None if result["success"] else api_data.get("message")
-        _mark_done(user_oid, status=api_status, error=api_error)
-        result["care_check"] = 1
+        # ── Verify ALL allowed docs from API are now in DB ─────────────
+        # Re-query after saves to get an accurate count
+        saved_after = db.care_learning_document.count_documents({"user_id": user_id})
+        total_allowed_from_api = len(allowed_docs)
+
+        if saved_after >= total_allowed_from_api:
+            # All allowed docs are accounted for — stamp done
+            api_status = "ok" if result["success"] else "api_returned_failure"
+            api_error  = None if result["success"] else api_data.get("message")
+            _mark_done(user_oid, status=api_status, error=api_error)
+            result["care_check"] = 1
+            logger.info(
+                "User %s fully done — %d/%d allowed docs saved",
+                email, saved_after, total_allowed_from_api,
+            )
+        else:
+            # Some docs still missing — leave care_check unset so user
+            # is re-queued on next poller run
+            db.care_learning_users.update_one(
+                {"_id": user_oid},
+                {"$unset": {"care_check": "", "care_check_status": ""}},
+            )
+            result["care_check"] = 0
+            logger.warning(
+                "User %s incomplete — %d/%d allowed docs saved, re-queuing",
+                email, saved_after, total_allowed_from_api,
+            )
 
     except requests.HTTPError as exc:
         status_code          = exc.response.status_code if exc.response else None
@@ -595,14 +617,14 @@ def care_learning_document_status_rescan():
             if name:
                 saved_keys.add(name)
 
-        saved_count = len(saved_keys)
+        saved_count   = len(saved_keys)
         checked_count += 1
 
-        # How many allowed docs does the API say this user has
-        # (use saved count as proxy — if < expected, reset)
-        # We reset if any allowed type is not yet in saved_keys
-        # — we can't call the API for every user here so we check
-        # if saved_count < len(ALLOWED_DOCUMENT_TYPES)
+        # Reset if the user has fewer saved docs than the full allowlist size.
+        # This is conservative — it re-queues users who may have all their docs
+        # but have fewer allowed types than the full list (normal for many users).
+        # The _process_user function will re-check the API, skip already-saved
+        # docs, and only stamp care_check=1 once verified complete.
         if saved_count < len(ALLOWED_DOCUMENT_TYPES):
             db.care_learning_users.update_one(
                 {"_id": user["_id"]},
