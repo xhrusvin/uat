@@ -8,8 +8,7 @@ Routes
   GET /booking/care-learning/document-status
       ?email=<email>     → single user (force re-check, skips already-saved docs)
       ?xn_user_id=<id>   → single user by xn_user_id
-      ?batch=<1|2|3>     → batch mode: picks next un-flagged user in that batch
-      (no param)         → batch mode: picks next un-flagged user across all batches
+      (no param)         → batch: picks next un-flagged user
       All modes return 202 immediately; Gemini runs in a background thread.
 
   GET /booking/care-learning/document-status/rescan
@@ -260,26 +259,19 @@ def _user_query_single(xn_user_id: str) -> dict:
     return {"xn_user_id": xn_user_id}
 
 
-def _user_query_batch(batch: int = None) -> dict:
-    """
-    Return the MongoDB filter for the next un-flagged user.
-    If batch is given (1, 2, or 3), restrict to that batch only.
-    """
-    conditions = [
-        {
-            "$or": [
-                {"care_check": {"$exists": False}},
-                {"care_check": {"$ne": 1}},
-            ]
-        },
-        # Exclude users currently being processed by another worker
-        {"care_check_status": {"$ne": "processing"}},
-    ]
-
-    if batch is not None:
-        conditions.append({"batch": batch})
-
-    return {"$and": conditions}
+def _user_query_batch() -> dict:
+    return {
+        "$and": [
+            {
+                "$or": [
+                    {"care_check": {"$exists": False}},
+                    {"care_check": {"$ne": 1}},
+                ]
+            },
+            # Exclude users currently being processed by another worker
+            {"care_check_status": {"$ne": "processing"}},
+        ]
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -298,6 +290,8 @@ def _process_user(user: dict) -> None:
     6. Stamp care_check = 1 only when this call processed zero new docs
        (everything the API returned is already saved or just saved).
     """
+    from collections import defaultdict
+
     email      = (user.get("email") or "").strip()
     xn_user_id = user.get("xn_user_id") or ""
     user_oid   = user["_id"]
@@ -405,29 +399,16 @@ def care_learning_document_status():
     """
     ?email=<email>     → force re-process this user (bypasses care_check)
     ?xn_user_id=<id>   → same by xn_user_id
-    ?batch=<1|2|3>     → batch mode scoped to that batch number
-    (no param)         → batch mode across all users
+    (no param)         → batch: next un-flagged user
 
     Returns 202 immediately — Gemini processing runs in a background thread.
     """
     email      = request.args.get("email", "").strip().lower()
     xn_user_id = request.args.get("xn_user_id", "").strip()
-    batch_raw  = request.args.get("batch", "").strip()
-
-    # Parse optional batch number
-    batch = None
-    if batch_raw:
-        try:
-            batch = int(batch_raw)
-        except ValueError:
-            return jsonify({
-                "success": False,
-                "error":   f"Invalid batch value '{batch_raw}' — must be an integer.",
-            }), 400
 
     fields = {
         "email": 1, "xn_user_id": 1,
-        "first_name": 1, "last_name": 1, "care_check": 1, "batch": 1,
+        "first_name": 1, "last_name": 1, "care_check": 1,
     }
 
     if email or xn_user_id:
@@ -472,19 +453,17 @@ def care_learning_document_status():
 
     else:
         # ── Batch mode ─────────────────────────────────────────────────
-        query     = _user_query_batch(batch)
+        query     = _user_query_batch()
         remaining = db.care_learning_users.count_documents(query)
         user      = db.care_learning_users.find_one(query, fields, sort=[("_id", 1)])
 
         if not user:
-            batch_label = f"batch {batch}" if batch else "all batches"
             return jsonify({
                 "success":   True,
                 "mode":      "batch",
-                "batch":     batch,
                 "remaining": 0,
                 "found":     0,
-                "message":   f"All users in {batch_label} already processed.",
+                "message":   "All users already processed.",
             })
 
         # Lock immediately
@@ -501,7 +480,6 @@ def care_learning_document_status():
         return jsonify({
             "success":    True,
             "mode":       "batch",
-            "batch":      batch,
             "remaining":  remaining,
             "found":      1,
             "accepted":   True,
