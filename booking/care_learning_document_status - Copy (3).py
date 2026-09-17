@@ -107,9 +107,6 @@ ALLOWED_DOCUMENT_TYPES = {
     "Haccp/Food Safety",
 }
 
-# Normalised version for case/whitespace-insensitive matching
-ALLOWED_DOCUMENT_TYPES_LOWER = {v.strip().lower() for v in ALLOWED_DOCUMENT_TYPES}
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Outreach API helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -386,11 +383,9 @@ def _process_user(user: dict) -> dict:
         all_docs = api_data.get("data", {}).get("documents", [])
 
         # Filter to allowed types only
-        # Normalise both sides (strip + lower) to avoid whitespace/case mismatches
         allowed_docs = [
             d for d in all_docs
-            if (d.get("document_type_name") or "").strip().lower()
-            in ALLOWED_DOCUMENT_TYPES_LOWER
+            if d.get("document_type_name") in ALLOWED_DOCUMENT_TYPES
         ]
 
         # ── Split docs into url-bearing and url-less ───────────────────
