@@ -102,6 +102,7 @@ ALLOWED_DOCUMENT_TYPES = {
     "Occupational Health",
     "Hse Effective Complaints Handling",
     "Medication Administration",
+    "Neurogenic Bowel Dysfunction",
     "Neurogenic Bowel Dysfunction Training (Practical)",
     "Management Of Blood & Body Substance Spills",
     "Haccp/Food Safety",
@@ -393,32 +394,49 @@ def _process_user(user: dict) -> dict:
             in ALLOWED_DOCUMENT_TYPES_LOWER
         ]
 
-        # ── Fetch already-checked document_ids for this user ─────────
+        # ── Fetch already-saved document keys for this user ──────────
+        # Key = document_id (when present) OR document_type_name (fallback)
         already_checked = set()
         for rec in db.care_learning_document.find(
             {"user_id": user_id},
             {"document_id": 1, "document_type_name": 1},
         ):
-            # Key by document_id when present, else by document_type_name
-            key = rec.get("document_id") or rec.get("document_type_name")
-            if key:
-                already_checked.add(key)
+            doc_id   = rec.get("document_id")
+            doc_name = (rec.get("document_type_name") or "").strip().lower()
+            if doc_id:
+                already_checked.add(str(doc_id).strip())
+            if doc_name:
+                already_checked.add(doc_name)
 
         def _is_checked(doc):
             """Return True if this doc already has a record in care_learning_document."""
-            key = doc.get("document_id") or doc.get("document_type_name")
-            return key in already_checked
+            doc_id   = doc.get("document_id")
+            doc_name = (doc.get("document_type_name") or "").strip().lower()
+            # Match on either document_id OR normalised document_type_name
+            if doc_id and str(doc_id).strip() in already_checked:
+                return True
+            if doc_name and doc_name in already_checked:
+                return True
+            return False
 
-        # ── Split docs into url-bearing and url-less, skip already done ─
-        docs_with_url    = [d for d in allowed_docs if d.get("url")      and not _is_checked(d)]
-        docs_without_url = [d for d in allowed_docs if not d.get("url")  and not _is_checked(d)]
+        # ── Split: skip already saved, process the rest ────────────────
+        docs_with_url    = [d for d in allowed_docs if d.get("url")     and not _is_checked(d)]
+        docs_without_url = [d for d in allowed_docs if not d.get("url") and not _is_checked(d)]
         docs_skipped     = [d for d in allowed_docs if _is_checked(d)]
+        docs_missing     = docs_with_url + docs_without_url
 
         logger.info(
-            "User %s — allowed:%d  with_url:%d  no_url:%d  skipped(already done):%d",
-            email, len(allowed_docs), len(docs_with_url),
-            len(docs_without_url), len(docs_skipped),
+            "User %s — allowed:%d  to_process:%d  skipped(already saved):%d",
+            email, len(allowed_docs), len(docs_missing), len(docs_skipped),
         )
+
+        # ── If there are new/missed docs, reset care_check so user stays
+        #    in the queue until ALL allowed docs are saved ───────────────
+        if docs_missing and result.get("care_check") == 1:
+            db.care_learning_users.update_one(
+                {"_id": user_oid},
+                {"$unset": {"care_check": "", "care_check_status": ""}},
+            )
 
         # ── Docs without URL — save immediately, no Gemini call ────────
         for doc in docs_without_url:
@@ -537,6 +555,128 @@ def _run(xn_user_id: str = "") -> dict:
         "found":     1,
         "results":   [_process_user(user)],
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Debug helper
+# ──────────────────────────────────────────────────────────────────────────────
+
+@bp.route("/care-learning/document-status/rescan")
+def care_learning_document_status_rescan():
+    """
+    Finds all users where care_check = 1 but have allowed documents
+    not yet saved in care_learning_document, then resets their
+    care_check so the poller picks them up again.
+
+    GET /booking/care-learning/document-status/rescan
+    """
+    flagged_users = list(
+        db.care_learning_users.find(
+            {"care_check": 1},
+            {"email": 1, "xn_user_id": 1, "first_name": 1, "last_name": 1},
+        )
+    )
+
+    reset_count  = 0
+    checked_count = 0
+
+    for user in flagged_users:
+        user_id = str(user["_id"])
+
+        # What's already saved for this user
+        saved_keys = set()
+        for rec in db.care_learning_document.find(
+            {"user_id": user_id},
+            {"document_id": 1, "document_type_name": 1},
+        ):
+            if rec.get("document_id"):
+                saved_keys.add(str(rec["document_id"]).strip())
+            name = (rec.get("document_type_name") or "").strip().lower()
+            if name:
+                saved_keys.add(name)
+
+        saved_count = len(saved_keys)
+        checked_count += 1
+
+        # How many allowed docs does the API say this user has
+        # (use saved count as proxy — if < expected, reset)
+        # We reset if any allowed type is not yet in saved_keys
+        # — we can't call the API for every user here so we check
+        # if saved_count < len(ALLOWED_DOCUMENT_TYPES)
+        if saved_count < len(ALLOWED_DOCUMENT_TYPES):
+            db.care_learning_users.update_one(
+                {"_id": user["_id"]},
+                {"$unset": {"care_check": "", "care_check_status": "",
+                            "care_check_error": ""}},
+            )
+            reset_count += 1
+
+    return jsonify({
+        "success":       True,
+        "users_checked": checked_count,
+        "users_reset":   reset_count,
+        "message":       f"{reset_count} users reset and re-queued for processing.",
+    })
+
+
+@bp.route("/care-learning/document-status/debug")
+def care_learning_document_status_debug():
+    """
+    Debug endpoint — shows raw API document_type_names for a user and
+    whether each one matches the allowlist.
+
+    GET /booking/care-learning/document-status/debug?xn_user_id=<id>
+    """
+    xn_user_id = request.args.get("xn_user_id", "").strip()
+    if not xn_user_id:
+        return jsonify({"error": "xn_user_id param required"}), 400
+
+    fields = {"email": 1, "xn_user_id": 1}
+    user   = db.care_learning_users.find_one({"xn_user_id": xn_user_id}, fields)
+    if not user:
+        return jsonify({"error": f"User not found: {xn_user_id}"}), 404
+
+    try:
+        api_data  = _fetch_document_list(user.get("email", ""))
+        all_docs  = api_data.get("data", {}).get("documents", [])
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    rows = []
+    for d in all_docs:
+        raw_name      = d.get("document_type_name") or ""
+        normalised    = raw_name.strip().lower()
+        in_allowlist  = normalised in ALLOWED_DOCUMENT_TYPES_LOWER
+        has_url       = bool(d.get("url"))
+        already_saved = bool(db.care_learning_document.find_one({
+            "user_id": str(user["_id"]),
+            **(
+                {"document_id": d.get("document_id")}
+                if d.get("document_id")
+                else {"document_type_name": raw_name}
+            ),
+        }))
+        rows.append({
+            "document_type_name": raw_name,
+            "normalised":         normalised,
+            "in_allowlist":       in_allowlist,
+            "has_url":            has_url,
+            "already_saved":      already_saved,
+            "will_process":       in_allowlist and not already_saved,
+        })
+
+    matched   = [r for r in rows if r["in_allowlist"]]
+    unmatched = [r for r in rows if not r["in_allowlist"]]
+
+    return jsonify({
+        "success":         True,
+        "email":           user.get("email"),
+        "total_from_api":  len(all_docs),
+        "matched":         len(matched),
+        "unmatched_count": len(unmatched),
+        "rows":            rows,
+        "unmatched_names": [r["document_type_name"] for r in unmatched],
+    })
 
 
 # ──────────────────────────────────────────────────────────────────────────────
