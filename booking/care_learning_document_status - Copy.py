@@ -45,7 +45,6 @@ import base64
 import logging
 from datetime import datetime
 
-import threading
 import requests
 from bson import ObjectId
 from flask import jsonify, request
@@ -301,20 +300,11 @@ def _user_query_single(xn_user_id: str) -> dict:
 
 
 def _user_query_batch() -> dict:
-    """
-    Users where care_check is absent OR not equal to 1, AND not
-    currently being processed by another thread/terminal.
-    """
+    """Users where care_check is absent OR not equal to 1."""
     return {
-        "$and": [
-            {
-                "$or": [
-                    {"care_check": {"$exists": False}},
-                    {"care_check": {"$ne": 1}},
-                ]
-            },
-            # Exclude users being processed right now by another worker
-            {"care_check_status": {"$ne": "processing"}},
+        "$or": [
+            {"care_check": {"$exists": False}},
+            {"care_check": {"$ne": 1}},
         ]
     }
 
@@ -497,111 +487,23 @@ def _run(xn_user_id: str = "") -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Background worker
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _background_process(user: dict):
-    """
-    Runs _process_user in a daemon thread so the HTTP request returns
-    immediately — avoiding gateway timeouts on slow Gemini calls.
-    """
-    try:
-        _process_user(user)
-    except Exception as exc:
-        logger.exception("Background processing failed for user %s: %s",
-                         user.get("xn_user_id"), exc)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 # Routes
 # ──────────────────────────────────────────────────────────────────────────────
 
 @bp.route("/care-learning/document-status")
 def care_learning_document_status():
     """
-    Batch mode  (no xn_user_id):
-        1. Picks the next un-flagged user instantly.
-        2. Marks them as care_check_status = "processing" to prevent
-           other workers from picking the same user.
-        3. Returns 202 immediately with remaining count.
-        4. Processes the user (Gemini calls) in a background thread.
-
-    Single mode (?xn_user_id=<id>):
-        Same async behaviour for one specific user.
+    Query params
+    ------------
+    xn_user_id  (optional) — single-user mode
     """
     xn_user_id = request.args.get("xn_user_id", "").strip()
-
-    fields = {
-        "email": 1, "xn_user_id": 1,
-        "first_name": 1, "last_name": 1, "care_check": 1,
-    }
-
-    if xn_user_id:
-        # ── Single-user mode ──────────────────────────────────────────
-        user = db.care_learning_users.find_one(
-            _user_query_single(xn_user_id), fields
-        )
-        if not user:
-            return jsonify({
-                "success": False,
-                "error":   f"No user found with xn_user_id '{xn_user_id}'",
-            }), 404
-
-        # Lock immediately
-        db.care_learning_users.update_one(
-            {"_id": user["_id"]},
-            {"$set": {"care_check_status": "processing",
-                      "care_check_updated_at": datetime.utcnow()}},
-        )
-        t = threading.Thread(target=_background_process, args=(user,), daemon=True)
-        t.start()
-
-        return jsonify({
-            "success":   True,
-            "mode":      "single",
-            "found":     1,
-            "accepted":  True,
-            "message":   f"Processing started for {user.get('email', xn_user_id)}",
-        }), 202
-
-    else:
-        # ── Batch mode ────────────────────────────────────────────────
-        query     = _user_query_batch()
-        remaining = db.care_learning_users.count_documents(query)
-        user      = db.care_learning_users.find_one(query, fields, sort=[("_id", 1)])
-
-        if not user:
-            return jsonify({
-                "success":   True,
-                "mode":      "batch",
-                "remaining": 0,
-                "found":     0,
-                "message":   "All users already processed.",
-            })
-
-        # Lock immediately so parallel terminals skip this user
-        db.care_learning_users.update_one(
-            {"_id": user["_id"]},
-            {"$set": {"care_check_status": "processing",
-                      "care_check_updated_at": datetime.utcnow()}},
-        )
-
-        t = threading.Thread(target=_background_process, args=(user,), daemon=True)
-        t.start()
-
-        return jsonify({
-            "success":   True,
-            "mode":      "batch",
-            "remaining": remaining,
-            "found":     1,
-            "accepted":  True,
-            "email":     user.get("email", "—"),
-            "xn_user_id": user.get("xn_user_id", "—"),
-            "message":   "Processing started in background.",
-        }), 202
+    payload    = _run(xn_user_id=xn_user_id)
+    return jsonify({"success": True, **payload})
 
 
 @bp.route("/care-learning/document-status/user/<xn_user_id>")
 def care_learning_document_status_user(xn_user_id: str):
-    """Clean-URL alias for single-user async mode."""
-    return care_learning_document_status()
+    """Clean-URL alias for single-user mode."""
+    payload = _run(xn_user_id=xn_user_id.strip())
+    return jsonify({"success": True, **payload})
