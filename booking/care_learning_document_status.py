@@ -20,11 +20,17 @@ Routes
 
 care_learning_found values
 --------------------------
-  'yes'   — HSeLanD / hseland.ie branding explicitly detected
-  'maybe' — no HSeLanD branding, but a generic HSE keyword was found (secondary pass)
-  'no'    — neither HSeLanD branding nor any HSE keyword found
+  'yes'   — HSeLanD / hseland.ie branding explicitly detected  (pass 1)
+  'no'    — HSeLanD branding not found                         (pass 1)
+  'maybe' — pass 1 = 'no', recheck found a generic HSE keyword (pass 2)
+            recheck pass 2 = 'no' → stays 'no'
   'no_url'— document record has no URL to check
   'error' — download or Gemini API failure
+
+Flow
+----
+  Fresh doc  (not yet in DB)  → pass 1 only  → 'yes' | 'no' | 'error'
+  Recheck    (saved as 'no')  → pass 2 only  → 'maybe' | 'no'
 """
 
 import os
@@ -264,55 +270,69 @@ def _gemini_hse_keyword_pass(b64_data: str, mime_type: str) -> tuple:
 
 def _gemini_check(url: str) -> tuple:
     """
-    Full two-pass Gemini check for a document URL.
+    Pass 1 — strict HSeLanD / hseland.ie branding check for a FRESH document.
 
-    Pass 1 — strict HSeLanD / hseland.ie branding check.
-    Pass 2 — generic HSE keyword scan (only if pass 1 returned 'no').
+    Used when the document is not yet saved in the DB.
+    Does NOT run the HSE keyword scan — that is done only during a recheck
+    of documents already stored as 'no' (see _gemini_recheck).
 
-    Returns (care_learning_found, ai_response) where care_learning_found is one of:
+    Returns (care_learning_found, ai_response):
         'yes'   — HSeLanD / hseland.ie branding explicitly detected
-        'maybe' — no HSeLanD branding, but a generic HSE keyword was found
-        'no'    — neither HSeLanD branding nor any HSE keyword found
+        'no'    — HSeLanD branding not found
         'error' — document download or Gemini API failure
     """
     if not GEMINI_API_KEY:
         return "error", "GEMINI_API_KEY not configured"
 
-    # ── Download once; reuse b64 for both passes ───────────────────────────
     try:
         b64_data, mime_type = _download_as_base64(url)
     except Exception as exc:
         logger.warning("Download failed for Gemini: %s — %s", url[:80], exc)
         return "error", f"Document download failed: {exc}"
 
-    # ── Pass 1: strict HSeLanD branding check ─────────────────────────────
     try:
-        hseland_found, primary_ai_text = _gemini_hseland_pass(b64_data, mime_type)
+        hseland_found, ai_text = _gemini_hseland_pass(b64_data, mime_type)
     except Exception as exc:
-        logger.warning("Gemini primary pass error for %s: %s", url[:80], exc)
+        logger.warning("Gemini pass 1 error for %s: %s", url[:80], exc)
         return "error", str(exc)
 
     if hseland_found:
         logger.debug("URL %s → yes (HSeLanD branding found)", url[:80])
-        return "yes", primary_ai_text
+        return "yes", ai_text
 
-    # ── Pass 2: generic HSE keyword fallback ──────────────────────────────
-    hse_found, keyword_ai_text = _gemini_hse_keyword_pass(b64_data, mime_type)
+    logger.debug("URL %s → no (HSeLanD branding not found)", url[:80])
+    return "no", ai_text
+
+
+def _gemini_recheck(url: str) -> tuple:
+    """
+    Pass 2 — HSE keyword scan for documents already stored as 'no'.
+
+    Called only during a recheck of a saved 'no' document.
+    Downloads the document fresh and runs the HSE keyword scan.
+
+    Returns (care_learning_found, ai_response):
+        'maybe' — a generic HSE keyword was found  → upgrade from 'no'
+        'no'    — no HSE keyword found             → stays 'no'
+        'error' — document download or Gemini API failure
+    """
+    if not GEMINI_API_KEY:
+        return "error", "GEMINI_API_KEY not configured"
+
+    try:
+        b64_data, mime_type = _download_as_base64(url)
+    except Exception as exc:
+        logger.warning("Download failed for Gemini recheck: %s — %s", url[:80], exc)
+        return "error", f"Document download failed: {exc}"
+
+    hse_found, ai_text = _gemini_hse_keyword_pass(b64_data, mime_type)
 
     if hse_found:
-        combined = (
-            f"[Pass 1 — HSeLanD branding check: NO]\n{primary_ai_text}"
-            f"\n\n[Pass 2 — HSE keyword check: YES → upgraded to 'maybe']\n{keyword_ai_text}"
-        )
-        logger.debug("URL %s → maybe (HSE keyword found, no HSeLanD branding)", url[:80])
-        return "maybe", combined
+        logger.debug("URL %s → maybe (HSE keyword found on recheck)", url[:80])
+        return "maybe", ai_text
 
-    combined = (
-        f"[Pass 1 — HSeLanD branding check: NO]\n{primary_ai_text}"
-        f"\n\n[Pass 2 — HSE keyword check: NO]\n{keyword_ai_text}"
-    )
-    logger.debug("URL %s → no (neither HSeLanD nor HSE keyword found)", url[:80])
-    return "no", combined
+    logger.debug("URL %s → no (no HSE keyword found on recheck)", url[:80])
+    return "no", ai_text
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -324,9 +344,9 @@ def _save_document_result(user_id, xn_user_id, doc, hseland_found, ai_response):
     Upsert keyed on (user_id, document_type_name).
 
     care_learning_found values stored:
-        'yes'   — HSeLanD / hseland.ie detected
-        'maybe' — generic HSE keyword found but no HSeLanD branding
-        'no'    — not HSE at all
+        'yes'   — HSeLanD / hseland.ie detected            (pass 1)
+        'no'    — HSeLanD branding not found               (pass 1, or recheck pass 2 = no keyword)
+        'maybe' — HSE keyword found on recheck             (pass 2)
         'no_url'— no URL available to check
         'error' — Gemini / download failure
     """
@@ -405,14 +425,12 @@ def _process_user(user: dict) -> None:
 
     1. Call outreach API for the user's documents.
     2. Filter to allowed types (normalised name match).
-    3. Skip docs whose document_type_name is already saved.
-    4. no_url docs  → save "no_url" immediately.
-    5. URL docs     → two-pass Gemini check:
-                       Pass 1 → strict HSeLanD / hseland.ie branding
-                       Pass 2 → generic HSE keyword scan (if pass 1 = 'no')
-                       Result: 'yes' | 'maybe' | 'no' | 'error'
-    6. Stamp care_check = 1 only when this call processed zero new docs
-       (everything the API returned is already saved).
+    3. Bucket docs into:
+         - new (not yet saved)         → pass 1 HSeLanD branding check
+         - saved as 'no' with URL      → pass 2 HSE keyword recheck → 'maybe' or 'no'
+         - saved as anything else      → skipped (already final)
+         - no URL (new)                → save 'no_url' immediately
+    4. Stamp care_check = 1 only when this call processed zero new/recheck docs.
     """
     email      = (user.get("email") or "").strip()
     xn_user_id = user.get("xn_user_id") or ""
@@ -443,62 +461,84 @@ def _process_user(user: dict) -> None:
             in ALLOWED_DOCUMENT_TYPES_LOWER
         ]
 
-        # ── Already-saved names (normalised) ──────────────────────────
-        already_saved_names = {
-            (rec.get("document_type_name") or "").strip().lower()
+        # ── Load saved records keyed by normalised name ────────────────
+        # Maps normalised_name → care_learning_found value (or None if unsaved)
+        saved_records = {
+            (rec.get("document_type_name") or "").strip().lower(): rec.get("care_learning_found")
             for rec in db.care_learning_document.find(
                 {"user_id": user_id},
-                {"document_type_name": 1},
+                {"document_type_name": 1, "care_learning_found": 1},
             )
         }
 
-        def _is_saved(doc):
-            return (doc.get("document_type_name") or "").strip().lower() \
-                   in already_saved_names
+        def _saved_status(doc):
+            return saved_records.get(
+                (doc.get("document_type_name") or "").strip().lower()
+            )
 
         # ── Split into buckets ─────────────────────────────────────────
-        docs_with_url    = [d for d in allowed_docs if d.get("url")     and not _is_saved(d)]
-        docs_without_url = [d for d in allowed_docs if not d.get("url") and not _is_saved(d)]
-        docs_skipped     = [d for d in allowed_docs if _is_saved(d)]
+        # New docs — not yet in DB at all
+        docs_new_with_url    = [d for d in allowed_docs if d.get("url")     and _saved_status(d) is None]
+        docs_new_without_url = [d for d in allowed_docs if not d.get("url") and _saved_status(d) is None]
+        # Docs already saved as 'no' with a URL → eligible for pass 2 recheck
+        docs_recheck         = [d for d in allowed_docs if d.get("url")     and _saved_status(d) == "no"]
+        # Everything else (yes / maybe / no_url / error) → skip
+        docs_skipped         = [
+            d for d in allowed_docs
+            if _saved_status(d) not in (None, "no") or (not d.get("url") and _saved_status(d) is not None)
+        ]
 
         logger.info(
-            "User %s — allowed:%d  with_url:%d  no_url:%d  skipped:%d",
+            "User %s — allowed:%d  new_url:%d  new_no_url:%d  recheck:%d  skipped:%d",
             email, len(allowed_docs),
-            len(docs_with_url), len(docs_without_url), len(docs_skipped),
+            len(docs_new_with_url), len(docs_new_without_url),
+            len(docs_recheck), len(docs_skipped),
         )
 
-        # ── No URL → save immediately ──────────────────────────────────
-        for doc in docs_without_url:
+        # ── New docs without URL → save immediately ────────────────────
+        for doc in docs_new_without_url:
             _save_document_result(user_id, xn_user_id, doc, "no_url", None)
 
-        # ── Has URL → two-pass Gemini check ───────────────────────────
-        for i in range(0, len(docs_with_url), GEMINI_BATCH):
-            for doc in docs_with_url[i: i + GEMINI_BATCH]:
+        # ── New docs with URL → pass 1 HSeLanD branding check ─────────
+        for i in range(0, len(docs_new_with_url), GEMINI_BATCH):
+            for doc in docs_new_with_url[i: i + GEMINI_BATCH]:
                 found, ai_resp = _gemini_check(doc.get("url", ""))
                 _save_document_result(user_id, xn_user_id, doc, found, ai_resp)
                 logger.info(
-                    "User %s | doc '%s' → %s",
+                    "User %s | [pass 1] doc '%s' → %s",
+                    email, doc.get("document_type_name", "?"), found,
+                )
+
+        # ── Saved 'no' docs → pass 2 HSE keyword recheck ──────────────
+        for i in range(0, len(docs_recheck), GEMINI_BATCH):
+            for doc in docs_recheck[i: i + GEMINI_BATCH]:
+                found, ai_resp = _gemini_recheck(doc.get("url", ""))
+                _save_document_result(user_id, xn_user_id, doc, found, ai_resp)
+                logger.info(
+                    "User %s | [pass 2 recheck] doc '%s' → %s",
                     email, doc.get("document_type_name", "?"), found,
                 )
 
         # ── Completion check ───────────────────────────────────────────
-        docs_processed = len(docs_with_url) + len(docs_without_url)
+        docs_processed = (
+            len(docs_new_with_url) + len(docs_new_without_url) + len(docs_recheck)
+        )
 
         if docs_processed == 0:
-            # Nothing new this call — all done
+            # Nothing new or to recheck — fully done
             _mark_done(user_oid, status="ok")
             logger.info(
                 "User %s fully done — %d allowed docs total in DB",
                 email, len(docs_skipped),
             )
         else:
-            # Just saved new docs — re-queue so the next poll confirms nothing is left
+            # Processed something — re-queue so next poll confirms nothing is left
             db.care_learning_users.update_one(
                 {"_id": user_oid},
                 {"$unset": {"care_check": "", "care_check_status": ""}},
             )
             logger.info(
-                "User %s processed %d new docs — re-queued for next run",
+                "User %s processed %d docs — re-queued for next run",
                 email, docs_processed,
             )
 
