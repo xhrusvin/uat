@@ -172,6 +172,7 @@ def care_learning_users_export_csv():
             "name":       1,   # some docs may use a single name field
             "email":      1,
             "xn_user_id": 1,
+            "phone":      1,
         })
         .sort([("first_name", 1), ("last_name", 1)])
     )
@@ -226,7 +227,7 @@ def care_learning_users_export_csv():
     # ── Write CSV ─────────────────────────────────────────────────────
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Name", "Email", "Document Type", "Care Learning Found"])
+    writer.writerow(["Name", "Email", "Phone", "Document Type", "Care Learning Found"])
 
     for u in raw_users:
         uid   = str(u["_id"])
@@ -238,14 +239,17 @@ def care_learning_users_export_csv():
         saved = docs_by_user.get(uid, {})   # normalised_name → care_learning_found
 
         # One row per allowed type — always all 27 rows per user
+        phone = u.get("phone") or "—"   # ✅ added above the loop
+
         for i, doc_type in enumerate(ALLOWED_ORDERED):
-            found = saved.get(doc_type.strip().lower(), "—")
-            writer.writerow([
-                name  if i == 0 else "",
-                email if i == 0 else "",
-                doc_type,
-                found,
-            ])
+          found = saved.get(doc_type.strip().lower(), "—")
+          writer.writerow([
+            name  if i == 0 else "",
+            email if i == 0 else "",
+            phone if i == 0 else "",   # ✅ added
+            doc_type,
+            found,
+    ])
 
     ts    = datetime.utcnow().strftime("%Y%m%d_%H%M")
     fname = f"care_learning_users_{ts}.csv"
