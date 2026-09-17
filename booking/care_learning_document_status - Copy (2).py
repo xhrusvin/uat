@@ -177,26 +177,13 @@ def _gemini_check(url: str) -> tuple[str, str]:
         return "error", f"Document download failed: {exc}"
 
     prompt = (
-        "You are a strict document verification assistant. "
-        "Examine this document carefully and answer ONLY about the specific "
-        "organisation named 'Care Learning'. "
-        "\n\n"
-        "'Care Learning' is a specific UK/Ireland-based training provider. "
-        "It is NOT the same as any of the following — do NOT answer YES for these: "
-        "HSE (Health Service Executive), HSeLanD, hseland.ie, AMRIC, NMBI, RCPI, "
-        "HSELanD, Health Service Executive, or any other Irish health organisation. "
-        "\n\n"
-        "Answer YES only if the document explicitly contains: "
-        "1. The exact text 'Care Learning' as a brand/organisation name, OR "
-        "2. The exact URL 'carelearning.org.uk' or 'care-learning.com', OR "
-        "3. A logo that is specifically identified as the Care Learning logo. "
-        "\n\n"
-        "If the document is from HSeLanD, HSE, hseland.ie or any other provider, "
-        "answer NO. "
-        "\n\n"
-        "Answer with YES or NO on the very first line only. "
-        "Then on the next lines state exactly what organisation or branding you found "
-        "and why you answered YES or NO."
+        "Examine this document carefully. "
+        "Does it contain any text, heading, logo, watermark, or branding "
+        "related to 'Care Learning' (including variations such as "
+        "'carelearning', 'care-learning', 'Care Learning Ireland', or any "
+        "recognisable Care Learning logo)? "
+        "Answer with YES or NO on the very first line, then on the next "
+        "lines briefly explain what you found (or did not find)."
     )
 
     payload = {
