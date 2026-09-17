@@ -17,14 +17,6 @@ Routes
 
   GET /booking/care-learning/document-status/debug?email=<email>
       Show API doc names vs allowlist for a user
-
-care_learning_found values
---------------------------
-  'yes'   — HSeLanD / hseland.ie branding explicitly detected
-  'maybe' — no HSeLanD branding, but a generic HSE keyword was found (secondary pass)
-  'no'    — neither HSeLanD branding nor any HSE keyword found
-  'no_url'— document record has no URL to check
-  'error' — download or Gemini API failure
 """
 
 import os
@@ -96,18 +88,6 @@ ALLOWED_DOCUMENT_TYPES = {
 ALLOWED_DOCUMENT_TYPES_LOWER = {v.strip().lower() for v in ALLOWED_DOCUMENT_TYPES}
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HSE keyword list for secondary Gemini pass
-# ──────────────────────────────────────────────────────────────────────────────
-
-HSE_KEYWORDS = [
-    "hse",
-    "health service executive",
-    "hse.ie",
-    "hseland",
-    "hselands",
-]
-
-# ──────────────────────────────────────────────────────────────────────────────
 # Outreach API
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -135,7 +115,6 @@ def _fetch_document_list(email: str) -> dict:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _download_as_base64(url: str) -> tuple:
-    """Download a document URL and return (base64_string, mime_type)."""
     resp = requests.get(url, timeout=20)
     resp.raise_for_status()
 
@@ -153,48 +132,26 @@ def _download_as_base64(url: str) -> tuple:
     return base64.b64encode(resp.content).decode("utf-8"), mime_type
 
 
-def _gemini_call(b64_data: str, mime_type: str, prompt: str) -> str:
+def _gemini_check(url: str) -> tuple:
     """
-    Shared Gemini API caller.
-    Sends the already-encoded document + prompt and returns the raw AI text.
-    Raises on HTTP / parsing errors so callers can handle them.
+    Returns (hseland_found, ai_response).
+
+    Checks whether the document was issued by HSeLanD / hseland.ie.
+
+    'hseland_found' values:
+        'yes'   — hseland.ie text or HSeLanD logo detected
+        'no'    — document is from another provider
+        'error' — download or Gemini API failure
     """
-    payload = {
-        "contents": [{
-            "parts": [
-                {"inline_data": {"mime_type": mime_type, "data": b64_data}},
-                {"text": prompt},
-            ]
-        }]
-    }
+    if not GEMINI_API_KEY:
+        return "error", "GEMINI_API_KEY not configured"
 
-    resp = requests.post(
-        GEMINI_URL,
-        params={"key": GEMINI_API_KEY},
-        json=payload,
-        timeout=60,
-    )
-    resp.raise_for_status()
-    data = resp.json()
+    try:
+        b64_data, mime_type = _download_as_base64(url)
+    except Exception as exc:
+        logger.warning("Download failed for Gemini: %s — %s", url[:80], exc)
+        return "error", f"Document download failed: {exc}"
 
-    return (
-        data.get("candidates", [{}])[0]
-        .get("content", {})
-        .get("parts", [{}])[0]
-        .get("text", "")
-        .strip()
-    )
-
-
-def _gemini_hseland_pass(b64_data: str, mime_type: str) -> tuple:
-    """
-    Primary pass: strict check for HSeLanD / hseland.ie branding.
-
-    Returns:
-        (found: bool, ai_text: str)
-        found=True  → 'yes'
-        found=False → continue to secondary pass
-    """
     prompt = (
         "You are a strict document verification assistant. "
         "Examine this document carefully and answer ONLY about whether it was "
@@ -215,104 +172,39 @@ def _gemini_hseland_pass(b64_data: str, mime_type: str) -> tuple:
         "and why you answered YES or NO."
     )
 
-    try:
-        ai_text    = _gemini_call(b64_data, mime_type, prompt)
-        first_line = ai_text.splitlines()[0].upper() if ai_text else ""
-        return ("YES" in first_line), ai_text
-    except Exception as exc:
-        raise RuntimeError(f"Primary Gemini pass failed: {exc}") from exc
-
-
-def _gemini_hse_keyword_pass(b64_data: str, mime_type: str) -> tuple:
-    """
-    Secondary pass: look for ANY generic HSE keyword in the document.
-    Called only when the primary HSeLanD check returned False (no branding found).
-
-    Returns:
-        (found: bool, ai_text: str)
-        found=True  → upgrade result to 'maybe'
-        found=False → final result is 'no'
-    """
-    keyword_list = ", ".join(f'"{k}"' for k in HSE_KEYWORDS)
-
-    prompt = (
-        "You are a document text extraction assistant. "
-        "Carefully read ALL visible text in this document — including headers, "
-        "footers, logos, watermarks, and small print. "
-        "\n\n"
-        f"Does the document contain ANY of the following keywords or phrases: {keyword_list}? "
-        "These keywords are NOT case-sensitive (e.g. 'HSE', 'hse', 'Hse' all count). "
-        "\n\n"
-        "Answer YES if ANY of those keywords appear ANYWHERE in the document, "
-        "even once, even in a footer or small print. "
-        "Answer NO only if none of them appear at all. "
-        "\n\n"
-        "Answer with YES or NO on the very first line only. "
-        "On the next lines, quote the exact text snippet where you found the keyword, "
-        "or explain why you answered NO."
-    )
+    payload = {
+        "contents": [{
+            "parts": [
+                {"inline_data": {"mime_type": mime_type, "data": b64_data}},
+                {"text": prompt},
+            ]
+        }]
+    }
 
     try:
-        ai_text    = _gemini_call(b64_data, mime_type, prompt)
-        first_line = ai_text.splitlines()[0].upper() if ai_text else ""
-        return ("YES" in first_line), ai_text
-    except Exception as exc:
-        logger.warning("Secondary HSE keyword Gemini pass failed: %s", exc)
-        # Non-fatal: return False so we fall back to 'no' rather than 'error'
-        return False, f"HSE keyword check error: {exc}"
-
-
-def _gemini_check(url: str) -> tuple:
-    """
-    Full two-pass Gemini check for a document URL.
-
-    Pass 1 — strict HSeLanD / hseland.ie branding check.
-    Pass 2 — generic HSE keyword scan (only if pass 1 returned 'no').
-
-    Returns (care_learning_found, ai_response) where care_learning_found is one of:
-        'yes'   — HSeLanD / hseland.ie branding explicitly detected
-        'maybe' — no HSeLanD branding, but a generic HSE keyword was found
-        'no'    — neither HSeLanD branding nor any HSE keyword found
-        'error' — document download or Gemini API failure
-    """
-    if not GEMINI_API_KEY:
-        return "error", "GEMINI_API_KEY not configured"
-
-    # ── Download once; reuse b64 for both passes ───────────────────────────
-    try:
-        b64_data, mime_type = _download_as_base64(url)
-    except Exception as exc:
-        logger.warning("Download failed for Gemini: %s — %s", url[:80], exc)
-        return "error", f"Document download failed: {exc}"
-
-    # ── Pass 1: strict HSeLanD branding check ─────────────────────────────
-    try:
-        hseland_found, primary_ai_text = _gemini_hseland_pass(b64_data, mime_type)
-    except Exception as exc:
-        logger.warning("Gemini primary pass error for %s: %s", url[:80], exc)
-        return "error", str(exc)
-
-    if hseland_found:
-        logger.debug("URL %s → yes (HSeLanD branding found)", url[:80])
-        return "yes", primary_ai_text
-
-    # ── Pass 2: generic HSE keyword fallback ──────────────────────────────
-    hse_found, keyword_ai_text = _gemini_hse_keyword_pass(b64_data, mime_type)
-
-    if hse_found:
-        combined = (
-            f"[Pass 1 — HSeLanD branding check: NO]\n{primary_ai_text}"
-            f"\n\n[Pass 2 — HSE keyword check: YES → upgraded to 'maybe']\n{keyword_ai_text}"
+        resp = requests.post(
+            GEMINI_URL,
+            params={"key": GEMINI_API_KEY},
+            json=payload,
+            timeout=60,
         )
-        logger.debug("URL %s → maybe (HSE keyword found, no HSeLanD branding)", url[:80])
-        return "maybe", combined
+        resp.raise_for_status()
+        data = resp.json()
 
-    combined = (
-        f"[Pass 1 — HSeLanD branding check: NO]\n{primary_ai_text}"
-        f"\n\n[Pass 2 — HSE keyword check: NO]\n{keyword_ai_text}"
-    )
-    logger.debug("URL %s → no (neither HSeLanD nor HSE keyword found)", url[:80])
-    return "no", combined
+        ai_text = (
+            data.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+            .strip()
+        )
+        first_line = ai_text.splitlines()[0].upper() if ai_text else ""
+        found = "yes" if "YES" in first_line else "no"
+        return found, ai_text
+
+    except Exception as exc:
+        logger.warning("Gemini API error for %s: %s", url[:80], exc)
+        return "error", f"Gemini API error: {exc}"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -320,15 +212,10 @@ def _gemini_check(url: str) -> tuple:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _save_document_result(user_id, xn_user_id, doc, hseland_found, ai_response):
-    """
-    Upsert keyed on (user_id, document_type_name).
+    """Upsert keyed on (user_id, document_type_name).
 
-    care_learning_found values stored:
-        'yes'   — HSeLanD / hseland.ie detected
-        'maybe' — generic HSE keyword found but no HSeLanD branding
-        'no'    — not HSE at all
-        'no_url'— no URL available to check
-        'error' — Gemini / download failure
+    The DB field is kept as 'care_learning_found' for backwards compatibility,
+    but the value now reflects whether hseland.ie was detected.
     """
     db.care_learning_document.update_one(
         {
@@ -342,7 +229,7 @@ def _save_document_result(user_id, xn_user_id, doc, hseland_found, ai_response):
                 "document_type_name":  doc.get("document_type_name"),
                 "status":              doc.get("status"),
                 "url":                 doc.get("url"),
-                "care_learning_found": hseland_found,
+                "care_learning_found": hseland_found,   # 'yes' = hseland.ie detected
                 "ai_response":         ai_response,
                 "ai_checked_at":       datetime.utcnow(),
             }
@@ -375,7 +262,7 @@ def _user_query_single(xn_user_id: str) -> dict:
 
 def _user_query_batch(batch: int = None) -> dict:
     """
-    MongoDB filter for the next un-flagged user.
+    Return the MongoDB filter for the next un-flagged user.
     If batch is given (1, 2, or 3), restrict to that batch only.
     """
     conditions = [
@@ -407,12 +294,9 @@ def _process_user(user: dict) -> None:
     2. Filter to allowed types (normalised name match).
     3. Skip docs whose document_type_name is already saved.
     4. no_url docs  → save "no_url" immediately.
-    5. URL docs     → two-pass Gemini check:
-                       Pass 1 → strict HSeLanD / hseland.ie branding
-                       Pass 2 → generic HSE keyword scan (if pass 1 = 'no')
-                       Result: 'yes' | 'maybe' | 'no' | 'error'
+    5. URL docs     → Gemini Vision check for hseland.ie → save result.
     6. Stamp care_check = 1 only when this call processed zero new docs
-       (everything the API returned is already saved).
+       (everything the API returned is already saved or just saved).
     """
     email      = (user.get("email") or "").strip()
     xn_user_id = user.get("xn_user_id") or ""
@@ -471,36 +355,32 @@ def _process_user(user: dict) -> None:
         for doc in docs_without_url:
             _save_document_result(user_id, xn_user_id, doc, "no_url", None)
 
-        # ── Has URL → two-pass Gemini check ───────────────────────────
+        # ── Has URL → Gemini Vision (hseland.ie check) ─────────────────
         for i in range(0, len(docs_with_url), GEMINI_BATCH):
             for doc in docs_with_url[i: i + GEMINI_BATCH]:
                 found, ai_resp = _gemini_check(doc.get("url", ""))
                 _save_document_result(user_id, xn_user_id, doc, found, ai_resp)
-                logger.info(
-                    "User %s | doc '%s' → %s",
-                    email, doc.get("document_type_name", "?"), found,
-                )
 
         # ── Completion check ───────────────────────────────────────────
+        # If this run had zero new docs to process (all already saved or
+        # nothing new from API) → stamp care_check = 1 (fully done).
+        # If we just saved new docs → re-queue so the next poller call
+        # will confirm nothing is left.
         docs_processed = len(docs_with_url) + len(docs_without_url)
 
         if docs_processed == 0:
             # Nothing new this call — all done
             _mark_done(user_oid, status="ok")
-            logger.info(
-                "User %s fully done — %d allowed docs total in DB",
-                email, len(docs_skipped),
-            )
+            logger.info("User %s fully done — %d allowed docs total in DB",
+                        email, len(docs_skipped))
         else:
-            # Just saved new docs — re-queue so the next poll confirms nothing is left
+            # Just saved new docs — re-queue for verification next call
             db.care_learning_users.update_one(
                 {"_id": user_oid},
                 {"$unset": {"care_check": "", "care_check_status": ""}},
             )
-            logger.info(
-                "User %s processed %d new docs — re-queued for next run",
-                email, docs_processed,
-            )
+            logger.info("User %s processed %d new docs — re-queued for next run",
+                        email, docs_processed)
 
     except requests.HTTPError as exc:
         code = exc.response.status_code if exc.response else None
@@ -692,10 +572,10 @@ def care_learning_document_status_debug():
         return jsonify({"error": str(exc)}), 500
 
     uid = str(user["_id"])
-    saved_records = {
-        (r.get("document_type_name") or "").strip().lower(): r.get("care_learning_found")
+    saved_names = {
+        (r.get("document_type_name") or "").strip().lower()
         for r in db.care_learning_document.find(
-            {"user_id": uid}, {"document_type_name": 1, "care_learning_found": 1}
+            {"user_id": uid}, {"document_type_name": 1}
         )
     }
 
@@ -708,27 +588,20 @@ def care_learning_document_status_debug():
             "document_category_type": d.get("document_category_type"),
             "in_allowlist":           normalised in ALLOWED_DOCUMENT_TYPES_LOWER,
             "has_url":                bool(d.get("url")),
-            "already_saved":          normalised in saved_records,
-            "care_learning_found":    saved_records.get(normalised),
+            "already_saved":          normalised in saved_names,
             "will_process":           normalised in ALLOWED_DOCUMENT_TYPES_LOWER
-                                      and normalised not in saved_records,
+                                      and normalised not in saved_names,
         })
 
     matched   = [r for r in rows if r["in_allowlist"]]
     unmatched = [r for r in rows if not r["in_allowlist"]]
 
-    # Breakdown of saved results by value
-    result_breakdown = {}
-    for v in saved_records.values():
-        result_breakdown[v] = result_breakdown.get(v, 0) + 1
-
     return jsonify({
-        "success":          True,
-        "email":            user.get("email"),
-        "total_from_api":   len(all_docs),
-        "matched":          len(matched),
-        "unmatched_count":  len(unmatched),
-        "unmatched_names":  [r["document_type_name"] for r in unmatched],
-        "result_breakdown": result_breakdown,   # e.g. {"yes": 3, "maybe": 2, "no": 1}
-        "rows":             rows,
+        "success":         True,
+        "email":           user.get("email"),
+        "total_from_api":  len(all_docs),
+        "matched":         len(matched),
+        "unmatched_count": len(unmatched),
+        "unmatched_names": [r["document_type_name"] for r in unmatched],
+        "rows":            rows,
     })
