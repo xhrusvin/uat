@@ -365,28 +365,30 @@ def _process_user(user: dict) -> dict:
         result["documents_skipped"] = len(docs_skipped)
 
         # ── Completion check ───────────────────────────────────────────
-        # Count unique allowed names from API — should all be in DB now.
-        unique_allowed = len({
-            (d.get("document_type_name") or "").strip().lower()
-            for d in allowed_docs
-        })
-        saved_after = db.care_learning_document.count_documents({"user_id": user_id})
+        # docs_missing = allowed docs from this API call not yet saved.
+        # If zero missing this call → this batch is complete → stamp done.
+        # If still missing → re-queue so next call processes them.
+        docs_still_missing = len(docs_with_url) + len(docs_without_url)
+        # Note: docs_with_url / docs_without_url were already filtered
+        # to exclude already-saved ones, so if both are 0 after processing
+        # it means everything the API returned this time is now saved.
 
-        if saved_after >= unique_allowed:
+        if docs_still_missing == 0:
             _mark_done(user_oid,
                        status="ok" if result["success"] else "api_returned_failure",
                        error=None if result["success"] else api_data.get("message"))
             result["care_check"] = 1
-            logger.info("User %s done — %d/%d saved", email, saved_after, unique_allowed)
+            logger.info("User %s done — all %d allowed docs from API saved",
+                        email, len(allowed_docs))
         else:
-            # Still missing some — re-queue
+            # Still had docs to process — re-queue for next run
             db.care_learning_users.update_one(
                 {"_id": user_oid},
                 {"$unset": {"care_check": "", "care_check_status": ""}},
             )
             result["care_check"] = 0
-            logger.warning("User %s incomplete — %d/%d saved, re-queuing",
-                           email, saved_after, unique_allowed)
+            logger.warning("User %s re-queued — %d docs still pending",
+                           email, docs_still_missing)
 
     except requests.HTTPError as exc:
         code = exc.response.status_code if exc.response else None
