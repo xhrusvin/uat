@@ -8,7 +8,6 @@ let notFound = 0;
 let noPhone = 0;
 let errors = 0;
 
-// ✅ No filter — process ALL care_learning_users docs
 const cursor = targetDb.care_learning_users.find({});
 
 cursor.forEach((clUser) => {
@@ -19,10 +18,8 @@ cursor.forEach((clUser) => {
     return;
   }
 
-  const sourceUser = sourceDb.users.findOne(
-    { email: email },
-    { projection: { phone: 1 } }
-  );
+  // ✅ No projection — fetch full document
+  const sourceUser = sourceDb.users.findOne({ email: email });
 
   if (!sourceUser) {
     print(`[NOT FOUND] ${email}`);
