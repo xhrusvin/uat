@@ -8,16 +8,14 @@ let notFound = 0;
 let noPhone = 0;
 let errors = 0;
 
-// ✅ No projection — fetch the full document to avoid field mapping issues
-const cursor = targetDb.care_learning_users.find(
-  { email: { $exists: true, $ne: null } }
-);
+// ✅ No filter — process ALL care_learning_users docs
+const cursor = targetDb.care_learning_users.find({});
 
 cursor.forEach((clUser) => {
   const email = clUser.email;
 
   if (!email) {
-    print(`[SKIP] Document has no email: ${clUser._id}`);
+    print(`[SKIP] No email on _id: ${clUser._id}`);
     return;
   }
 
