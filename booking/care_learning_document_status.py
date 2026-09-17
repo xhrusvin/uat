@@ -40,7 +40,7 @@ XN_PORTAL_API_KEY  = os.getenv("XN_PORTAL_API_KEY", "")
 XN_APP_COUNTRY     = os.getenv("XN_APP_COUNTRY", "ie")
 GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY", "")
 
-OUTREACH_URL = "https://user.xpresshealthapp.com/api/"
+OUTREACH_URL = "https://user.xpresshealthapp.com/api/ai/recruitments/user-document-list"
 GEMINI_URL   = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "gemini-2.5-flash:generateContent"
