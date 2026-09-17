@@ -1,6 +1,4 @@
 // sync_phones.js
-// Copies phone from xpress_health.users → xpress_health_pio.care_learning_users
-// Matched by email | Run on: mongosh (same Debian instance)
 
 const sourceDb = db.getSiblingDB("xpress_health");
 const targetDb = db.getSiblingDB("xpress_health_pio");
@@ -18,7 +16,7 @@ const cursor = targetDb.care_learning_users.find(
 cursor.forEach((clUser) => {
   const sourceUser = sourceDb.users.findOne(
     { email: clUser.email },
-    { projection: { _id: 0, phone: 1 } }
+    { projection: { phone: 1 } }  // ✅ fixed: only inclusion fields
   );
 
   if (!sourceUser) {
