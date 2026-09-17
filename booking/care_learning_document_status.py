@@ -41,6 +41,7 @@ Flag behaviour
 """
 
 import os
+import re
 import base64
 import logging
 from datetime import datetime
@@ -259,18 +260,19 @@ def _save_document_result(
     ai_response: str,
 ):
     """
-    Upsert into care_learning_document keyed on (user_id, document_id).
-    If document_id is None (category-3 docs), key on (user_id, document_type_name).
+    Upsert into care_learning_document.
+    Primary key : (user_id, document_id)  — used whenever document_id is set.
+    Upsert key  : (user_id, document_type_name)
+                  — only for null-id docs; category is included to prevent
+                  cross-category name collisions (cat-2 QQI ≠ cat-1 QQI).
     """
     document_id = doc.get("document_id")
 
+    # Upsert keyed on (user_id, document_type_name) — simple and reliable.
+    # document_type_name is unique within the allowlist so no collision risk.
     match_filter = {
-        "user_id":    user_id,
-        **(
-            {"document_id": document_id}
-            if document_id
-            else {"document_type_name": doc.get("document_type_name")}
-        ),
+        "user_id":            user_id,
+        "document_type_name": doc.get("document_type_name"),
     }
 
     db.care_learning_document.update_one(
@@ -386,38 +388,30 @@ def _process_user(user: dict) -> dict:
 
         all_docs = api_data.get("data", {}).get("documents", [])
 
-        # Filter to allowed types only
-        # Normalise both sides (strip + lower) to avoid whitespace/case mismatches
+        # Filter to allowed document_type_names only (normalised for case/whitespace)
         allowed_docs = [
             d for d in all_docs
             if (d.get("document_type_name") or "").strip().lower()
             in ALLOWED_DOCUMENT_TYPES_LOWER
         ]
 
-        # ── Fetch already-saved document keys for this user ──────────
-        # Key = document_id (when present) OR document_type_name (fallback)
+        # ── Fetch already-saved document_type_names for this user ──────
+        # Simply skip any document whose name is already in care_learning_document.
+        # Keyed on normalised document_type_name — document_id is not reliable
+        # (can be null) and name is unique within the allowlist.
         already_checked = set()
         for rec in db.care_learning_document.find(
             {"user_id": user_id},
-            {"document_id": 1, "document_type_name": 1},
+            {"document_type_name": 1},
         ):
-            doc_id   = rec.get("document_id")
-            doc_name = (rec.get("document_type_name") or "").strip().lower()
-            if doc_id:
-                already_checked.add(str(doc_id).strip())
-            if doc_name:
-                already_checked.add(doc_name)
+            name = (rec.get("document_type_name") or "").strip().lower()
+            if name:
+                already_checked.add(name)
 
         def _is_checked(doc):
-            """Return True if this doc already has a record in care_learning_document."""
-            doc_id   = doc.get("document_id")
-            doc_name = (doc.get("document_type_name") or "").strip().lower()
-            # Match on either document_id OR normalised document_type_name
-            if doc_id and str(doc_id).strip() in already_checked:
-                return True
-            if doc_name and doc_name in already_checked:
-                return True
-            return False
+            """Return True if document_type_name already saved for this user."""
+            name = (doc.get("document_type_name") or "").strip().lower()
+            return name in already_checked
 
         # ── Split: skip already saved, process the rest ────────────────
         docs_with_url    = [d for d in allowed_docs if d.get("url")     and not _is_checked(d)]
@@ -480,7 +474,11 @@ def _process_user(user: dict) -> dict:
         # ── Verify ALL allowed docs from API are now in DB ─────────────
         # Re-query after saves to get an accurate count
         saved_after = db.care_learning_document.count_documents({"user_id": user_id})
-        total_allowed_from_api = len(allowed_docs)
+        # Count UNIQUE names — the API can return the same document_type_name
+        # in more than one category, and the DB stores one row per name.
+        total_allowed_from_api = len({
+            (d.get("document_type_name") or "").strip().lower() for d in allowed_docs
+        })
 
         if saved_after >= total_allowed_from_api:
             # All allowed docs are accounted for — stamp done
@@ -735,21 +733,27 @@ def care_learning_document_status():
         Same async behaviour for one specific user.
     """
     xn_user_id = request.args.get("xn_user_id", "").strip()
+    email      = request.args.get("email", "").strip().lower()
 
     fields = {
         "email": 1, "xn_user_id": 1,
         "first_name": 1, "last_name": 1, "care_check": 1,
     }
 
-    if xn_user_id:
-        # ── Single-user mode ──────────────────────────────────────────
-        user = db.care_learning_users.find_one(
-            _user_query_single(xn_user_id), fields
-        )
+    if xn_user_id or email:
+        # ── Single-user mode (by xn_user_id OR email) ─────────────────
+        # Ignores care_check entirely — always processes the user.
+        # Already-saved documents are still skipped inside _process_user.
+        if xn_user_id:
+            single_q = _user_query_single(xn_user_id)
+        else:
+            single_q = {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
+
+        user = db.care_learning_users.find_one(single_q, fields)
         if not user:
             return jsonify({
                 "success": False,
-                "error":   f"No user found with xn_user_id '{xn_user_id}'",
+                "error":   f"No user found for '{xn_user_id or email}'",
             }), 404
 
         # Lock immediately
@@ -766,7 +770,7 @@ def care_learning_document_status():
             "mode":      "single",
             "found":     1,
             "accepted":  True,
-            "message":   f"Processing started for {user.get('email', xn_user_id)}",
+            "message":   f"Processing started for {user.get('email') or xn_user_id}",
         }), 202
 
     else:
