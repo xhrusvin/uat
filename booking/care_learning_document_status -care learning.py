@@ -132,16 +132,7 @@ def _download_as_base64(url: str) -> tuple:
 
 
 def _gemini_check(url: str) -> tuple:
-    """
-    Returns (hseland_found, ai_response).
-
-    Checks whether the document was issued by HSeLanD / hseland.ie.
-
-    'hseland_found' values:
-        'yes'   — hseland.ie text or HSeLanD logo detected
-        'no'    — document is from another provider
-        'error' — download or Gemini API failure
-    """
+    """Returns (care_learning_found, ai_response)."""
     if not GEMINI_API_KEY:
         return "error", "GEMINI_API_KEY not configured"
 
@@ -153,21 +144,24 @@ def _gemini_check(url: str) -> tuple:
 
     prompt = (
         "You are a strict document verification assistant. "
-        "Examine this document carefully and answer ONLY about whether it was "
-        "issued by or belongs to the organisation 'HSeLanD' (hseland.ie), "
-        "which is the HSE's online learning and development platform in Ireland. "
+        "Examine this document carefully and answer ONLY about the specific "
+        "organisation named 'Care Learning'. "
         "\n\n"
-        "Answer YES only if the document explicitly contains ANY of: "
-        "1. The text 'hseland.ie' (the website/domain name), OR "
-        "2. The text 'HSeLanD' or 'HSELanD' as a brand or organisation name, OR "
-        "3. A logo that is specifically identified as the HSeLanD / hseland.ie logo. "
+        "'Care Learning' is a specific UK/Ireland-based training provider. "
+        "It is NOT the same as any of the following — do NOT answer YES for these: "
+        "HSE (Health Service Executive), HSeLanD, hseland.ie, AMRIC, NMBI, RCPI, "
+        "HSELanD, Health Service Executive, or any other Irish health organisation. "
         "\n\n"
-        "Do NOT answer YES for documents from any other provider, including: "
-        "Care Learning, carelearning.org.uk, care-learning.com, AMRIC, NMBI, RCPI, "
-        "or any other training organisation that is not HSeLanD / hseland.ie. "
+        "Answer YES only if the document explicitly contains: "
+        "1. The exact text 'Care Learning' as a brand/organisation name, OR "
+        "2. The exact URL 'carelearning.org.uk' or 'care-learning.com', OR "
+        "3. A logo that is specifically identified as the Care Learning logo. "
+        "\n\n"
+        "If the document is from HSeLanD, HSE, hseland.ie or any other provider, "
+        "answer NO. "
         "\n\n"
         "Answer with YES or NO on the very first line only. "
-        "Then on the next lines state exactly what text, branding, or logo you found "
+        "Then on the next lines state exactly what organisation or branding you found "
         "and why you answered YES or NO."
     )
 
@@ -210,12 +204,8 @@ def _gemini_check(url: str) -> tuple:
 # Persistence
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _save_document_result(user_id, xn_user_id, doc, hseland_found, ai_response):
-    """Upsert keyed on (user_id, document_type_name).
-
-    The DB field is kept as 'care_learning_found' for backwards compatibility,
-    but the value now reflects whether hseland.ie was detected.
-    """
+def _save_document_result(user_id, xn_user_id, doc, care_learning_found, ai_response):
+    """Upsert keyed on (user_id, document_type_name)."""
     db.care_learning_document.update_one(
         {
             "user_id":            user_id,
@@ -228,7 +218,7 @@ def _save_document_result(user_id, xn_user_id, doc, hseland_found, ai_response):
                 "document_type_name":  doc.get("document_type_name"),
                 "status":              doc.get("status"),
                 "url":                 doc.get("url"),
-                "care_learning_found": hseland_found,   # 'yes' = hseland.ie detected
+                "care_learning_found": care_learning_found,
                 "ai_response":         ai_response,
                 "ai_checked_at":       datetime.utcnow(),
             }
@@ -286,12 +276,10 @@ def _process_user(user: dict) -> None:
     2. Filter to allowed types (normalised name match).
     3. Skip docs whose document_type_name is already saved.
     4. no_url docs  → save "no_url" immediately.
-    5. URL docs     → Gemini Vision check for hseland.ie → save result.
+    5. URL docs     → Gemini Vision check → save result.
     6. Stamp care_check = 1 only when this call processed zero new docs
        (everything the API returned is already saved or just saved).
     """
-    from collections import defaultdict
-
     email      = (user.get("email") or "").strip()
     xn_user_id = user.get("xn_user_id") or ""
     user_oid   = user["_id"]
@@ -349,7 +337,7 @@ def _process_user(user: dict) -> None:
         for doc in docs_without_url:
             _save_document_result(user_id, xn_user_id, doc, "no_url", None)
 
-        # ── Has URL → Gemini Vision (hseland.ie check) ─────────────────
+        # ── Has URL → Gemini Vision ────────────────────────────────────
         for i in range(0, len(docs_with_url), GEMINI_BATCH):
             for doc in docs_with_url[i: i + GEMINI_BATCH]:
                 found, ai_resp = _gemini_check(doc.get("url", ""))
@@ -511,9 +499,9 @@ def care_learning_document_status_rescan():
             db.care_learning_users.update_one(
                 {"_id": user["_id"]},
                 {"$unset": {
-                    "care_check":        "",
-                    "care_check_status": "",
-                    "care_check_error":  "",
+                    "care_check":       "",
+                    "care_check_status":"",
+                    "care_check_error": "",
                 }},
             )
             reset_count += 1
@@ -535,7 +523,7 @@ def care_learning_document_status_debug():
     if not xn_user_id and not email:
         return jsonify({"error": "xn_user_id or email param required"}), 400
 
-    q = (
+    q    = (
         _user_query_single(xn_user_id) if xn_user_id
         else {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
     )
