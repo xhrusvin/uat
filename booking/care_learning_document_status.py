@@ -393,9 +393,32 @@ def _process_user(user: dict) -> dict:
             in ALLOWED_DOCUMENT_TYPES_LOWER
         ]
 
-        # ── Split docs into url-bearing and url-less ───────────────────
-        docs_with_url    = [d for d in allowed_docs if d.get("url")]
-        docs_without_url = [d for d in allowed_docs if not d.get("url")]
+        # ── Fetch already-checked document_ids for this user ─────────
+        already_checked = set()
+        for rec in db.care_learning_document.find(
+            {"user_id": user_id},
+            {"document_id": 1, "document_type_name": 1},
+        ):
+            # Key by document_id when present, else by document_type_name
+            key = rec.get("document_id") or rec.get("document_type_name")
+            if key:
+                already_checked.add(key)
+
+        def _is_checked(doc):
+            """Return True if this doc already has a record in care_learning_document."""
+            key = doc.get("document_id") or doc.get("document_type_name")
+            return key in already_checked
+
+        # ── Split docs into url-bearing and url-less, skip already done ─
+        docs_with_url    = [d for d in allowed_docs if d.get("url")      and not _is_checked(d)]
+        docs_without_url = [d for d in allowed_docs if not d.get("url")  and not _is_checked(d)]
+        docs_skipped     = [d for d in allowed_docs if _is_checked(d)]
+
+        logger.info(
+            "User %s — allowed:%d  with_url:%d  no_url:%d  skipped(already done):%d",
+            email, len(allowed_docs), len(docs_with_url),
+            len(docs_without_url), len(docs_skipped),
+        )
 
         # ── Docs without URL — save immediately, no Gemini call ────────
         for doc in docs_without_url:
@@ -433,6 +456,8 @@ def _process_user(user: dict) -> dict:
                     "care_learning_found": care_learning_found,
                     "ai_response":         ai_response,
                 })
+
+        result["documents_skipped"] = len(docs_skipped)
 
         # Stamp done — whether API returned success or failure
         api_status = "ok" if result["success"] else "api_returned_failure"
