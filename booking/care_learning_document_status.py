@@ -9,11 +9,12 @@ Routes
       ?email=<email>     → single user (force re-check, skips already-saved docs)
       ?xn_user_id=<id>   → single user by xn_user_id
       (no param)         → batch: picks next un-flagged user
+      All modes return 202 immediately; Gemini runs in a background thread.
 
   GET /booking/care-learning/document-status/rescan
       Reset care_check for all users with incomplete docs
 
-  GET /booking/care-learning/document-status/debug?xn_user_id=<id>
+  GET /booking/care-learning/document-status/debug?email=<email>
       Show API doc names vs allowlist for a user
 """
 
@@ -21,6 +22,7 @@ import os
 import re
 import base64
 import logging
+import threading
 from datetime import datetime
 
 import requests
@@ -40,7 +42,7 @@ XN_PORTAL_API_KEY  = os.getenv("XN_PORTAL_API_KEY", "")
 XN_APP_COUNTRY     = os.getenv("XN_APP_COUNTRY", "ie")
 GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY", "")
 
-OUTREACH_URL = "https://user.xpresshealthapp.com/api/ai/recruitments/user-document-list"
+OUTREACH_URL = f"{XN_PORTAL_BASE_URL}/ai/recruitments/user-document-list"
 GEMINI_URL   = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "gemini-2.5-flash:generateContent"
@@ -203,10 +205,7 @@ def _gemini_check(url: str) -> tuple:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _save_document_result(user_id, xn_user_id, doc, care_learning_found, ai_response):
-    """
-    Upsert keyed on (user_id, document_type_name).
-    Simple and collision-free — document_type_name is unique within the allowlist.
-    """
+    """Upsert keyed on (user_id, document_type_name)."""
     db.care_learning_document.update_one(
         {
             "user_id":            user_id,
@@ -259,68 +258,58 @@ def _user_query_batch() -> dict:
                     {"care_check": {"$ne": 1}},
                 ]
             },
+            # Exclude users currently being processed by another worker
             {"care_check_status": {"$ne": "processing"}},
         ]
     }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Core: process one user
+# Core: process one user  (runs in background thread)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _process_user(user: dict) -> dict:
+def _process_user(user: dict) -> None:
     """
+    Called in a background thread — no return value used.
+
     1. Call outreach API for the user's documents.
     2. Filter to allowed types (normalised name match).
-    3. Skip docs whose document_type_name is already in care_learning_document.
-    4. no_url docs → save "no_url" immediately.
-    5. URL docs → Gemini Vision check → save result.
-    6. Stamp care_check = 1 only when all allowed docs are confirmed saved.
+    3. Skip docs whose document_type_name is already saved.
+    4. no_url docs  → save "no_url" immediately.
+    5. URL docs     → Gemini Vision check → save result.
+    6. Stamp care_check = 1 only when this call processed zero new docs
+       (everything the API returned is already saved or just saved).
     """
     email      = (user.get("email") or "").strip()
     xn_user_id = user.get("xn_user_id") or ""
     user_oid   = user["_id"]
     user_id    = str(user_oid)
 
-    result = {
-        "user_id":         user_id,
-        "xn_user_id":      xn_user_id,
-        "email":           email,
-        "api_status":      None,
-        "success":         False,
-        "care_check":      None,
-        "error":           None,
-        "documents_saved": [],
-        "documents_skipped": 0,
-    }
-
     if not email:
-        result["error"]      = "No email on user record"
-        result["care_check"] = 1
-        _mark_done(user_oid, status="no_email", error=result["error"])
-        return result
+        _mark_done(user_oid, status="no_email", error="No email on user record")
+        return
 
     if not XN_PORTAL_BASE_URL or not XN_PORTAL_API_KEY:
-        result["error"] = "XN_PORTAL_BASE_URL or XN_PORTAL_API_KEY not configured"
-        logger.error(result["error"])
-        return result
+        logger.error("XN_PORTAL_BASE_URL or XN_PORTAL_API_KEY not configured")
+        # Don't stamp done — server config problem, not a user problem
+        db.care_learning_users.update_one(
+            {"_id": user_oid},
+            {"$unset": {"care_check": "", "care_check_status": ""}},
+        )
+        return
 
     try:
         api_data = _fetch_document_list(email)
-        result["api_status"] = 200
-        result["success"]    = api_data.get("success", False)
-
         all_docs = api_data.get("data", {}).get("documents", [])
 
-        # ── Filter to allowed types (normalised name match) ────────────
+        # ── Filter to allowed types ────────────────────────────────────
         allowed_docs = [
             d for d in all_docs
             if (d.get("document_type_name") or "").strip().lower()
             in ALLOWED_DOCUMENT_TYPES_LOWER
         ]
 
-        # ── Already-saved names for this user (keyed on normalised name) ─
-        # Using ONLY document_type_name — avoids all cross-category collisions.
+        # ── Already-saved names (normalised) ──────────────────────────
         already_saved_names = {
             (rec.get("document_type_name") or "").strip().lower()
             for rec in db.care_learning_document.find(
@@ -330,87 +319,63 @@ def _process_user(user: dict) -> dict:
         }
 
         def _is_saved(doc):
-            return (doc.get("document_type_name") or "").strip().lower() in already_saved_names
+            return (doc.get("document_type_name") or "").strip().lower() \
+                   in already_saved_names
 
-        # ── Split ──────────────────────────────────────────────────────
+        # ── Split into buckets ─────────────────────────────────────────
         docs_with_url    = [d for d in allowed_docs if d.get("url")     and not _is_saved(d)]
         docs_without_url = [d for d in allowed_docs if not d.get("url") and not _is_saved(d)]
         docs_skipped     = [d for d in allowed_docs if _is_saved(d)]
 
         logger.info(
             "User %s — allowed:%d  with_url:%d  no_url:%d  skipped:%d",
-            email, len(allowed_docs), len(docs_with_url),
-            len(docs_without_url), len(docs_skipped),
+            email, len(allowed_docs),
+            len(docs_with_url), len(docs_without_url), len(docs_skipped),
         )
 
         # ── No URL → save immediately ──────────────────────────────────
         for doc in docs_without_url:
             _save_document_result(user_id, xn_user_id, doc, "no_url", None)
-            result["documents_saved"].append({
-                "document_type_name":  doc.get("document_type_name"),
-                "care_learning_found": "no_url",
-            })
 
         # ── Has URL → Gemini Vision ────────────────────────────────────
         for i in range(0, len(docs_with_url), GEMINI_BATCH):
             for doc in docs_with_url[i: i + GEMINI_BATCH]:
                 found, ai_resp = _gemini_check(doc.get("url", ""))
                 _save_document_result(user_id, xn_user_id, doc, found, ai_resp)
-                result["documents_saved"].append({
-                    "document_type_name":  doc.get("document_type_name"),
-                    "care_learning_found": found,
-                    "ai_response":         ai_resp,
-                })
-
-        result["documents_skipped"] = len(docs_skipped)
 
         # ── Completion check ───────────────────────────────────────────
-        # docs_missing = allowed docs from this API call not yet saved.
-        # If zero missing this call → this batch is complete → stamp done.
-        # If still missing → re-queue so next call processes them.
-        docs_still_missing = len(docs_with_url) + len(docs_without_url)
-        # Note: docs_with_url / docs_without_url were already filtered
-        # to exclude already-saved ones, so if both are 0 after processing
-        # it means everything the API returned this time is now saved.
+        # If this run had zero new docs to process (all already saved or
+        # nothing new from API) → stamp care_check = 1 (fully done).
+        # If we just saved new docs → re-queue so the next poller call
+        # will confirm nothing is left.
+        docs_processed = len(docs_with_url) + len(docs_without_url)
 
-        if docs_still_missing == 0:
-            _mark_done(user_oid,
-                       status="ok" if result["success"] else "api_returned_failure",
-                       error=None if result["success"] else api_data.get("message"))
-            result["care_check"] = 1
-            logger.info("User %s done — all %d allowed docs from API saved",
-                        email, len(allowed_docs))
+        if docs_processed == 0:
+            # Nothing new this call — all done
+            _mark_done(user_oid, status="ok")
+            logger.info("User %s fully done — %d allowed docs total in DB",
+                        email, len(docs_skipped))
         else:
-            # Still had docs to process — re-queue for next run
+            # Just saved new docs — re-queue for verification next call
             db.care_learning_users.update_one(
                 {"_id": user_oid},
                 {"$unset": {"care_check": "", "care_check_status": ""}},
             )
-            result["care_check"] = 0
-            logger.warning("User %s re-queued — %d docs still pending",
-                           email, docs_still_missing)
+            logger.info("User %s processed %d new docs — re-queued for next run",
+                        email, docs_processed)
 
     except requests.HTTPError as exc:
         code = exc.response.status_code if exc.response else None
-        result["api_status"] = code
-        result["error"]      = f"HTTP {code}: {exc}"
-        logger.warning("Outreach HTTP error for %s: %s", email, exc)
-        _mark_done(user_oid, status="api_error", error=result["error"])
-        result["care_check"] = 1
+        logger.warning("Outreach HTTP %s error for %s: %s", code, email, exc)
+        _mark_done(user_oid, status="api_error", error=f"HTTP {code}: {exc}")
 
     except requests.RequestException as exc:
-        result["error"] = f"Request failed: {exc}"
         logger.warning("Outreach network error for %s: %s", email, exc)
-        _mark_done(user_oid, status="network_error", error=result["error"])
-        result["care_check"] = 1
+        _mark_done(user_oid, status="network_error", error=f"Request failed: {exc}")
 
     except Exception as exc:
-        result["error"] = f"Unexpected error: {exc}"
         logger.exception("Unexpected error for %s", email)
-        _mark_done(user_oid, status="unexpected_error", error=result["error"])
-        result["care_check"] = 1
-
-    return result
+        _mark_done(user_oid, status="unexpected_error", error=f"Unexpected error: {exc}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -423,19 +388,23 @@ def care_learning_document_status():
     ?email=<email>     → force re-process this user (bypasses care_check)
     ?xn_user_id=<id>   → same by xn_user_id
     (no param)         → batch: next un-flagged user
+
+    Returns 202 immediately — Gemini processing runs in a background thread.
     """
     email      = request.args.get("email", "").strip().lower()
     xn_user_id = request.args.get("xn_user_id", "").strip()
 
-    fields = {"email": 1, "xn_user_id": 1, "first_name": 1, "last_name": 1, "care_check": 1}
+    fields = {
+        "email": 1, "xn_user_id": 1,
+        "first_name": 1, "last_name": 1, "care_check": 1,
+    }
 
     if email or xn_user_id:
         # ── Single-user mode ───────────────────────────────────────────
-        if email:
-            q = {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
-        else:
-            q = _user_query_single(xn_user_id)
-
+        q = (
+            {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
+            if email else _user_query_single(xn_user_id)
+        )
         user = db.care_learning_users.find_one(q, fields)
         if not user:
             return jsonify({
@@ -443,22 +412,32 @@ def care_learning_document_status():
                 "error":   f"No user found for '{email or xn_user_id}'",
             }), 404
 
-        # Reset stale no_url records so they are re-evaluated with correct data
+        # Clean stale no_url records that actually have a URL
         db.care_learning_document.delete_many({
             "user_id":             str(user["_id"]),
             "care_learning_found": "no_url",
-            "url":                 {"$ne": None},   # has URL but was saved as no_url
+            "url":                 {"$ne": None},
         })
 
-        result = _process_user(user)
+        # Lock immediately so batch poller skips this user
+        db.care_learning_users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "care_check_status":     "processing",
+                "care_check_updated_at": datetime.utcnow(),
+            }},
+        )
+
+        threading.Thread(target=_process_user, args=(user,), daemon=True).start()
 
         return jsonify({
             "success":    True,
             "mode":       "single",
+            "accepted":   True,
             "email":      user.get("email"),
             "xn_user_id": user.get("xn_user_id"),
-            "result":     result,
-        })
+            "message":    f"Processing started for {user.get('email')}",
+        }), 202
 
     else:
         # ── Batch mode ─────────────────────────────────────────────────
@@ -475,17 +454,27 @@ def care_learning_document_status():
                 "message":   "All users already processed.",
             })
 
-        result = _process_user(user)
+        # Lock immediately
+        db.care_learning_users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "care_check_status":     "processing",
+                "care_check_updated_at": datetime.utcnow(),
+            }},
+        )
+
+        threading.Thread(target=_process_user, args=(user,), daemon=True).start()
 
         return jsonify({
             "success":    True,
             "mode":       "batch",
             "remaining":  remaining,
             "found":      1,
+            "accepted":   True,
             "email":      user.get("email", "—"),
             "xn_user_id": user.get("xn_user_id", "—"),
-            "result":     result,
-        })
+            "message":    "Processing started in background.",
+        }), 202
 
 
 @bp.route("/care-learning/document-status/user/<xn_user_id>")
@@ -504,12 +493,16 @@ def care_learning_document_status_rescan():
 
     reset_count = 0
     for user in flagged:
-        uid = str(user["_id"])
+        uid   = str(user["_id"])
         saved = db.care_learning_document.count_documents({"user_id": uid})
         if saved < len(ALLOWED_DOCUMENT_TYPES):
             db.care_learning_users.update_one(
                 {"_id": user["_id"]},
-                {"$unset": {"care_check": "", "care_check_status": "", "care_check_error": ""}},
+                {"$unset": {
+                    "care_check":       "",
+                    "care_check_status":"",
+                    "care_check_error": "",
+                }},
             )
             reset_count += 1
 
@@ -530,8 +523,10 @@ def care_learning_document_status_debug():
     if not xn_user_id and not email:
         return jsonify({"error": "xn_user_id or email param required"}), 400
 
-    q    = _user_query_single(xn_user_id) if xn_user_id else \
-           {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
+    q    = (
+        _user_query_single(xn_user_id) if xn_user_id
+        else {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
+    )
     user = db.care_learning_users.find_one(q, {"email": 1, "xn_user_id": 1})
     if not user:
         return jsonify({"error": "User not found"}), 404
@@ -545,7 +540,9 @@ def care_learning_document_status_debug():
     uid = str(user["_id"])
     saved_names = {
         (r.get("document_type_name") or "").strip().lower()
-        for r in db.care_learning_document.find({"user_id": uid}, {"document_type_name": 1})
+        for r in db.care_learning_document.find(
+            {"user_id": uid}, {"document_type_name": 1}
+        )
     }
 
     rows = []
@@ -553,13 +550,13 @@ def care_learning_document_status_debug():
         name       = d.get("document_type_name") or ""
         normalised = name.strip().lower()
         rows.append({
-            "document_type_name":  name,
+            "document_type_name":     name,
             "document_category_type": d.get("document_category_type"),
-            "in_allowlist":        normalised in ALLOWED_DOCUMENT_TYPES_LOWER,
-            "has_url":             bool(d.get("url")),
-            "already_saved":       normalised in saved_names,
-            "will_process":        normalised in ALLOWED_DOCUMENT_TYPES_LOWER
-                                   and normalised not in saved_names,
+            "in_allowlist":           normalised in ALLOWED_DOCUMENT_TYPES_LOWER,
+            "has_url":                bool(d.get("url")),
+            "already_saved":          normalised in saved_names,
+            "will_process":           normalised in ALLOWED_DOCUMENT_TYPES_LOWER
+                                      and normalised not in saved_names,
         })
 
     matched   = [r for r in rows if r["in_allowlist"]]
