@@ -176,57 +176,76 @@ def care_learning_users_export_csv():
         .sort([("first_name", 1), ("last_name", 1)])
     )
 
+    # ── Ordered list of all 27 allowed document types ────────────────
+    # Every user gets one row per type; value filled from DB or "—".
+    ALLOWED_ORDERED = [
+        "Infection Prevention Control Certificate",
+        "Ppe",
+        "Hand Hygiene",
+        "Children First",
+        "Safeguarding Adults At Risk",
+        "Cpr/Bls",
+        "Manual And People Handling Documents",
+        "The Open Disclosure",
+        "Cpi/ Mapa/Pmav",
+        "Cyber Security",
+        "Gdpr",
+        "Dignity At Work",
+        "Fire Safety",
+        "QQI Level 5 or equivalent in Health Service Skills or Healthcare Support",
+        "Managing Feeding, Eating, Drinking And Swallowing In People With An Intellectual Disability",
+        "Enhanced Declaration Of Risk Assessment",
+        "Applying A Human Rights-Based Approach In Health And Social Care",
+        "Supporting Decision Making In Health & Social Care",
+        "Hse National Consent Policy V1.2",
+        "Sepsis Management",
+        "Hse National Consent Policy V1.1",
+        "Occupational Health",
+        "Hse Effective Complaints Handling",
+        "Medication Administration",
+        "Neurogenic Bowel Dysfunction Training (Practical)",
+        "Management Of Blood & Body Substance Spills",
+        "Haccp/Food Safety",
+    ]
+
     # ── Collect user_ids and build a lookup map ───────────────────────
+    # lookup: user_id → { normalised_doc_type_name → care_learning_found }
+    from collections import defaultdict
     user_id_strs = [str(u["_id"]) for u in raw_users]
 
     doc_cursor = db.care_learning_document.find(
         {"user_id": {"$in": user_id_strs}},
-        {
-            "user_id":             1,
-            "document_type_name":  1,
-            "care_learning_found": 1,
-        },
+        {"user_id": 1, "document_type_name": 1, "care_learning_found": 1},
     )
 
-    # Group documents by user_id
-    from collections import defaultdict
-    docs_by_user = defaultdict(list)
+    docs_by_user = defaultdict(dict)
     for d in doc_cursor:
-        docs_by_user[d["user_id"]].append(d)
+        key = (d.get("document_type_name") or "").strip().lower()
+        docs_by_user[d["user_id"]][key] = d.get("care_learning_found") or "—"
 
     # ── Write CSV ─────────────────────────────────────────────────────
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow([
-        "Name",
-        "Email",
-        "Document Type",
-        "Care Learning Found",
-    ])
+    writer.writerow(["Name", "Email", "Document Type", "Care Learning Found"])
 
     for u in raw_users:
-        uid = str(u["_id"])
-
-        # Resolve display name — prefer first+last, fall back to name field
+        uid   = str(u["_id"])
         first = (u.get("first_name") or "").strip()
         last  = (u.get("last_name")  or "").strip()
         name  = f"{first} {last}".strip() or u.get("name") or "—"
         email = u.get("email") or "—"
 
-        user_docs = docs_by_user.get(uid, [])
+        saved = docs_by_user.get(uid, {})   # normalised_name → care_learning_found
 
-        if user_docs:
-            # First doc row gets name + email; subsequent rows leave them blank
-            for i, d in enumerate(user_docs):
-                writer.writerow([
-                    name  if i == 0 else "",
-                    email if i == 0 else "",
-                    d.get("document_type_name") or "—",
-                    d.get("care_learning_found") or "—",
-                ])
-        else:
-            # User has no documents yet — still include them
-            writer.writerow([name, email, "—", "—"])
+        # One row per allowed type — always all 27 rows per user
+        for i, doc_type in enumerate(ALLOWED_ORDERED):
+            found = saved.get(doc_type.strip().lower(), "—")
+            writer.writerow([
+                name  if i == 0 else "",
+                email if i == 0 else "",
+                doc_type,
+                found,
+            ])
 
     ts    = datetime.utcnow().strftime("%Y%m%d_%H%M")
     fname = f"care_learning_users_{ts}.csv"
