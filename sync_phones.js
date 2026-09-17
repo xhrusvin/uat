@@ -8,25 +8,32 @@ let notFound = 0;
 let noPhone = 0;
 let errors = 0;
 
+// ✅ No projection — fetch the full document to avoid field mapping issues
 const cursor = targetDb.care_learning_users.find(
-  { email: { $exists: true, $ne: null } },
-  { projection: { _id: 1, email: 1 } }
+  { email: { $exists: true, $ne: null } }
 );
 
 cursor.forEach((clUser) => {
+  const email = clUser.email;
+
+  if (!email) {
+    print(`[SKIP] Document has no email: ${clUser._id}`);
+    return;
+  }
+
   const sourceUser = sourceDb.users.findOne(
-    { email: clUser.email },
-    { projection: { phone: 1 } }  // ✅ fixed: only inclusion fields
+    { email: email },
+    { projection: { phone: 1 } }
   );
 
   if (!sourceUser) {
-    print(`[NOT FOUND] ${clUser.email}`);
+    print(`[NOT FOUND] ${email}`);
     notFound++;
     return;
   }
 
   if (!sourceUser.phone) {
-    print(`[NO PHONE]  ${clUser.email}`);
+    print(`[NO PHONE]  ${email}`);
     noPhone++;
     return;
   }
@@ -36,10 +43,10 @@ cursor.forEach((clUser) => {
       { _id: clUser._id },
       { $set: { phone: sourceUser.phone } }
     );
-    print(`[OK] ${clUser.email} → ${sourceUser.phone}`);
+    print(`[OK] ${email} → ${sourceUser.phone}`);
     updated++;
   } catch (e) {
-    print(`[ERROR] ${clUser.email} → ${e.message}`);
+    print(`[ERROR] ${email} → ${e.message}`);
     errors++;
   }
 });
