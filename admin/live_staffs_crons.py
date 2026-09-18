@@ -6260,3 +6260,181 @@ If a field is not visible, set it to null.
 
 # ── Cron: Extract Garda Vetting Document details ─────────────────────
 
+@admin_bp.route('/live-staffs/cron/sync-staff-id', methods=['GET', 'POST'])
+def live_staff_cron_sync_staff_id():
+    """
+    Cron job — processes ONE staff member per call.
+
+    Finds first live_staffs record missing staff_id / xn_staff_id,
+    calls XN Portal user-document-list API, then stores data.id
+    into both staff_id and xn_staff_id.
+
+    Protect with ?cron_key=<CRON_SECRET>
+    """
+    import requests as _req
+
+    # ── Auth ──────────────────────────────────────────────────────────
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+
+    if not base_url:
+        return jsonify({"success": False,
+                        "error": "LIVE_STAFF_URL not set"}), 500
+
+    col = _staffs_col()
+
+    # ── Find next staff missing staff_id / xn_staff_id ────────────────
+    pending_query = {
+        "$and": [
+            {"$or": [
+                {"staff_id":    {"$exists": False}},
+                {"staff_id":    None},
+                {"staff_id":    ""},
+            ]},
+            {"$or": [
+                {"xn_staff_id": {"$exists": False}},
+                {"xn_staff_id": None},
+                {"xn_staff_id": ""},
+            ]},
+        ]
+    }
+
+    remaining_total = col.count_documents(pending_query)
+    staff = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff already have staff_id / xn_staff_id — nothing to do.",
+            "remaining_count": 0,
+        })
+
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email     = _v(
+        staff.get('email') or
+        s1.get('email_address') or ''
+    )
+
+    if not email:
+        # Mark so it doesn't block the queue forever
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {
+                "staff_id":    "[skipped — no email]",
+                "xn_staff_id": "[skipped — no email]",
+                "staff_id_synced_at": datetime.utcnow(),
+            }}
+        )
+        return jsonify({
+            "success":         True,
+            "message":         "Skipped — no email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Call XN Portal API ────────────────────────────────────────────
+    endpoint = f"{base_url}/ai/recruitments/user-document-list"
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.post(endpoint, json={"email": email},
+                         headers=api_headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.get(endpoint, params={"email": email},
+                            headers=api_headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {
+                "staff_id":    f"[API error: {e}]",
+                "xn_staff_id": f"[API error: {e}]",
+                "staff_id_synced_at": datetime.utcnow(),
+            }}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not data.get('success'):
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {
+                "staff_id":    f"[API error: {data.get('message')}]",
+                "xn_staff_id": f"[API error: {data.get('message')}]",
+                "staff_id_synced_at": datetime.utcnow(),
+            }}
+        )
+        return jsonify({
+            "success":         False,
+            "email":           email,
+            "error":           data.get('message', 'API returned success=false'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    api_data = data.get('data') or {}
+
+    # Extract the ID (this is what you want)
+    xpress_id = None
+    if isinstance(api_data, dict):
+        xpress_id = _v(api_data.get('id') or '')
+    # fallback if API ever returns list
+    elif isinstance(api_data, list) and api_data:
+        xpress_id = _v(api_data[0].get('id') or '')
+
+    if not xpress_id:
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {
+                "staff_id":    "[no id returned]",
+                "xn_staff_id": "[no id returned]",
+                "staff_id_synced_at": datetime.utcnow(),
+            }}
+        )
+        return jsonify({
+            "success":         True,
+            "email":           email,
+            "message":         "API returned no data.id",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Find & Replace (the actual update) ────────────────────────────
+    col.update_one(
+        {"_id": staff["_id"]},
+        {"$set": {
+            "staff_id":          xpress_id,   # ← data.id
+            "xn_staff_id":       xpress_id,   # ← data.id (same value)
+            "staff_id_synced_at": datetime.utcnow(),
+        }}
+    )
+
+    return jsonify({
+        "success":         True,
+        "email":           email,
+        "staff_name":      full_name,
+        "staff_id":        xpress_id,
+        "xn_staff_id":     xpress_id,
+        "remaining_count": max(0, remaining_total - 1),
+        "message": (
+            f"Stored staff_id = xn_staff_id = {xpress_id} for {full_name} — "
+            f"{max(0, remaining_total - 1)} remaining."
+        ),
+        "synced_at": datetime.utcnow().isoformat(),
+    })
