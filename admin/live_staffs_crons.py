@@ -186,7 +186,7 @@ def live_staff_cron_sync_documents():
     try:
         resp = _req.post(
             endpoint,
-            json={"email": email},
+            json={"email": email, "document_id" : "68daa26ba580ebbd1001fc95"},
             headers=api_headers,
             timeout=30
         )
