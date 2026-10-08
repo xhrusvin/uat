@@ -1506,6 +1506,31 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
             return;
         }
 
+        // ── Screening Interview ───────────────────────────────────────
+        if (btn.classList.contains('am-screening')) {
+            _closeAndThen(() => {
+                // Store current staff info then open screening modal directly
+                currentScreeningStaffId = _id;
+                $('screeningModalName').textContent = _name;
+                $('screeningSavedInfo').classList.add('d-none');
+                $('screeningDownloadBtn').href = '#';
+                $('screeningFirstShift').value = '';
+                setScreeningState('Idle');
+                // Check for saved record
+                fetch(screeningSavedUrl(_id))
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.success && d.found) {
+                            $('screeningSavedInfo').classList.remove('d-none');
+                            $('screeningSavedDate').textContent = d.generated_at;
+                            $('screeningExistingDownload').href = screeningDownloadUrl(_id);
+                        }
+                    }).catch(() => {});
+                new bootstrap.Modal($('screeningModal')).show();
+            });
+            return;
+        }
+
         // ── VOS HCA ───────────────────────────────────────────────────
         if (btn.classList.contains('am-vos')) {
             _closeAndThen(() => {
