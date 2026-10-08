@@ -3615,10 +3615,21 @@ def live_staff_screening_generate():
         if not doc:
             return jsonify({"success": False, "error": "Staff record not found"}), 404
 
+        def _first(*keys, default=''):
+            """Return the first non-empty value found among several
+            possible key spellings — live_staffs documents exist in more
+            than one schema shape (old nested vs new flat with spaced/
+            capitalised keys like 'Employee Code')."""
+            for k in keys:
+                val = doc.get(k)
+                if val not in (None, ''):
+                    return _v(val)
+            return default
+
         s1        = doc.get('section_1_personal_details') or {}
-        full_name = _v(s1.get('full_name') or 'staff')
-        emp_code  = _v(doc.get('employee_code') or '')
-        county    = _v(doc.get('county') or '')
+        full_name = _first('Name') or _v(s1.get('full_name') or '') or 'staff'
+        emp_code  = _first('Employee Code', 'employee_code')
+        county    = _first('County', 'county', 'Location', 'location')
         email     = _v(doc.get('email') or '')
 
         # Parse optional first shift date
@@ -3775,3 +3786,4 @@ def live_staff_screening_upload(staff_id):
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
