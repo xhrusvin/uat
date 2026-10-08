@@ -3453,12 +3453,15 @@ _SCREENING_INTERVIEWERS = [
 ]
 
 
-def _build_screening_docx(first_shift_date=None, candidate_name=''):
+def _build_screening_docx(first_shift_date=None, candidate_name='',
+                           location='', candidate_id=''):
     """
     Load the Screening Interview Record template from GCS and inject:
       - Screening Interview Conducted By = a randomly chosen interviewer
       - Title                            = that interviewer's job title
       - Candidate Name                   = candidate_name (from live_staffs)
+      - Candidate ID                     = candidate_id (live_staffs.employee_code)
+      - Location                         = location (live_staffs.county)
       - Date                             = first_shift_date − 15 days  (or blank)
       - Candidate 1st Contact Date       = first_shift_date − 20 days  (or blank)
       - Interviewer (bottom assessment)  = same randomly chosen interviewer
@@ -3571,8 +3574,10 @@ def _build_screening_docx(first_shift_date=None, candidate_name=''):
     xml = _inject(xml, 'Screening Interview Conducted By', interviewer['name'])
     xml = _inject(xml, 'Title', interviewer['title'])
     xml = _inject(xml, 'Candidate Name', candidate_name or '')
+    xml = _inject(xml, 'Candidate ID', candidate_id or '')
     xml = _inject(xml, 'Date', interview_date)
     xml = _inject(xml, 'Candidate 1st Contact Date', contact_date)
+    xml = _inject(xml, 'Location', location or '')
     xml = _inject(xml, 'Interviewer', interviewer['name'])
 
     # ── Rebuild zip ───────────────────────────────────────────────────
@@ -3613,6 +3618,7 @@ def live_staff_screening_generate():
         s1        = doc.get('section_1_personal_details') or {}
         full_name = _v(s1.get('full_name') or 'staff')
         emp_code  = _v(doc.get('employee_code') or '')
+        county    = _v(doc.get('county') or '')
         email     = _v(doc.get('email') or '')
 
         # Parse optional first shift date
@@ -3626,6 +3632,8 @@ def live_staff_screening_generate():
         docx_bytes = _build_screening_docx(
             first_shift_date=first_shift_date,
             candidate_name=full_name,
+            location=county,
+            candidate_id=emp_code,
         )
 
         safe_name = full_name.replace(' ', '_').replace('/', '_')
