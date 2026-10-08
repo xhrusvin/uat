@@ -6122,6 +6122,51 @@ def live_staff_api_get_staff_details():
             documents   = []
             doc_url_map = {}
 
+    # ── Fetch work_start_date from XN Portal (recruitments/detail) ────
+    # Only call if work_start_date is not already saved in live_staffs.
+    work_start_date = _v(staff.get('work_start_date') or '')
+    if xn_base_url and xn_api_key and not work_start_date:
+        # xn_staff_id is the _id sent to the detail API
+        xn_staff_id = _v(
+            staff.get('xn_staff_id') or staff.get('staff_id') or ''
+        )
+        if xn_staff_id:
+            try:
+                import requests as _req3
+                detail_headers = {
+                    "Api-Key":       xn_api_key,
+                    "X-App-Country": xn_country,
+                    "Content-Type":  "application/json",
+                    "Accept":        "application/json",
+                }
+                det_resp = _req3.post(
+                    f"{xn_base_url}/ai/recruitments/detail",
+                    json={"_id": xn_staff_id},
+                    headers=detail_headers,
+                    timeout=30,
+                )
+                # Retry with GET if POST not allowed
+                if det_resp.status_code == 405:
+                    det_resp = _req3.get(
+                        f"{xn_base_url}/ai/recruitments/detail",
+                        params={"_id": xn_staff_id},
+                        headers=detail_headers,
+                        timeout=30,
+                    )
+                if det_resp.status_code == 200:
+                    det_json        = det_resp.json()
+                    det_data        = det_json.get('data') or {}
+                    work_start_date = _v(det_data.get('work_start_date') or '')
+                    if work_start_date:
+                        # Persist to live_staffs so we never call this again
+                        col.update_one(
+                            {"_id": staff['_id']},
+                            {"$set": {"work_start_date": work_start_date}},
+                        )
+                        data['work_start_date'] = work_start_date
+            except Exception:
+                pass   # non-fatal — omit from response silently
+
     return jsonify({
         "success":       True,
         "email":         email,
