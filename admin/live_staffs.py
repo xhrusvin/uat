@@ -3504,15 +3504,41 @@ def _build_screening_docx(first_shift_date=None):
         if tc_end == -1:
             return xml_str
         tc_end += len('</w:tc>')
-        t_start       = xml_str.find('<w:t', tc_end)
-        t_self_close  = xml_str.find('/>', t_start)
-        t_end_tag     = xml_str.find('</w:t>', t_start)
+
+        # Find the exact <w:t ...> run tag — NOT <w:tcW>, <w:tcPr>,
+        # <w:tcBorders>, <w:tcMar> etc, which all also start with the
+        # substring '<w:t'. A genuine text-run tag is followed by a
+        # space, '>', or '/'.
+        t_start = -1
+        search_from = tc_end
+        while True:
+            cand = xml_str.find('<w:t', search_from)
+            if cand == -1:
+                break
+            next_char = xml_str[cand + 4]
+            if next_char in (' ', '>', '/'):
+                t_start = cand
+                break
+            search_from = cand + 4
+        if t_start == -1:
+            return xml_str
+
+        # Find the end of the OPENING tag (the first '>' after t_start)
+        open_tag_end = xml_str.find('>', t_start)
+        if open_tag_end == -1:
+            return xml_str
+
+        is_self_closing = xml_str[open_tag_end - 1] == '/'
         new_t = f'<w:t xml:space="preserve">{value}</w:t>'
-        if t_self_close != -1 and (t_end_tag == -1 or t_self_close < t_end_tag):
-            return xml_str[:t_start] + new_t + xml_str[t_self_close + 2:]
+
+        if is_self_closing:
+            return xml_str[:t_start] + new_t + xml_str[open_tag_end + 1:]
         else:
-            t_end_tag += len('</w:t>')
-            return xml_str[:t_start] + new_t + xml_str[t_end_tag:]
+            close_pos = xml_str.find('</w:t>', open_tag_end)
+            if close_pos == -1:
+                return xml_str
+            close_pos += len('</w:t>')
+            return xml_str[:t_start] + new_t + xml_str[close_pos:]
 
     xml = _inject(xml, 'Date', interview_date)
     xml = _inject(xml, 'Candidate 1st Contact Date', contact_date)
