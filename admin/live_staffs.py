@@ -3663,20 +3663,28 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
     def _fmt_score(v):
         return str(int(v)) if float(v) == int(v) else str(v)
 
+    # Pad the score to a fixed character width before "/ N" so the slash
+    # lines up in the same column regardless of whether the score is a
+    # short ("5") or longer ("4.5") string — avoids the ragged alignment
+    # a plain single-space join produces when values differ in length.
+    def _score_cell(score_str, out_of):
+        return f"{score_str:<4}/ {out_of}"
+
     score_choices = [3.5, 4, 4.5, 5]
-    xml = _inject(xml, 'Test Score', f"{correct_marked}        / 10",
+    xml = _inject(xml, 'Test Score',
+                  _score_cell(str(correct_marked), 10),
                   start_pos=assessment_anchor)
     xml = _inject(xml, 'Communication',
-                  f"{_fmt_score(_random.choice(score_choices))}        / 5",
+                  _score_cell(_fmt_score(_random.choice(score_choices)), 5),
                   start_pos=assessment_anchor)
     xml = _inject(xml, 'Clinical Knowledge',
-                  f"{_fmt_score(_random.choice(score_choices))}        / 5",
+                  _score_cell(_fmt_score(_random.choice(score_choices)), 5),
                   start_pos=assessment_anchor)
     xml = _inject(xml, 'Experience',
-                  f"{_fmt_score(_random.choice(score_choices))}        / 5",
+                  _score_cell(_fmt_score(_random.choice(score_choices)), 5),
                   start_pos=assessment_anchor)
     xml = _inject(xml, 'Overall',
-                  f"{_fmt_score(_random.choice(score_choices))}        / 5",
+                  _score_cell(_fmt_score(_random.choice(score_choices)), 5),
                   start_pos=assessment_anchor)
 
     # ── Rebuild zip ───────────────────────────────────────────────────
@@ -3885,3 +3893,4 @@ def live_staff_screening_upload(staff_id):
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
