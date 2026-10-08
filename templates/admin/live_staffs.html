@@ -21,233 +21,53 @@
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" style="min-width:280px;max-height:80vh;overflow-y:auto;">
                     <li><h6 class="dropdown-header text-muted small">General</h6></li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export?format=json">
-                            <i class="bi bi-filetype-json me-2 text-warning"></i>Export as JSON
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export?format=csv">
-                            <i class="bi bi-filetype-csv me-2 text-success"></i>Export as CSV
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/xlsx">
-                            <i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Staff Points (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/experience-xlsx">
-                            <i class="bi bi-file-earmark-spreadsheet me-2 text-primary"></i>Experience List (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/nmbi-xlsx">
-                            <i class="bi bi-patch-check me-2 text-primary"></i>Nurses — NMBI Numbers (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/missing-nmbi-xlsx">
-                            <i class="bi bi-patch-exclamation me-2 text-danger"></i>Nurses — Missing NMBI (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/qqi-xlsx">
-                            <i class="bi bi-award me-2 text-success"></i>HCA — QQI Numbers (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/missing-qqi-xlsx">
-                            <i class="bi bi-exclamation-triangle me-2 text-danger"></i>HCA — Missing QQI (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/cpr-xlsx">
-                            <i class="bi bi-heart-pulse me-2 text-danger"></i>CPR/BLS Certificates (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/ipc-xlsx">
-                            <i class="bi bi-shield-check me-2 text-success"></i>IPC Certificates (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/hand-hygiene-xlsx">
-                            <i class="bi bi-droplet me-2 text-info"></i>Hand Hygiene Certificates (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/children-first-xlsx">
-                            <i class="bi bi-people me-2 text-warning"></i>Children First Certificates (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/safeguarding-xlsx">
-                            <i class="bi bi-shield-fill-check me-2 text-success"></i>Safeguarding Adults At Risk (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/garda-xlsx">
-                            <i class="bi bi-shield-lock me-2 text-dark"></i>Garda Vetting Documents (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/cpi-xlsx">
-                            <i class="bi bi-person-arms-up me-2 text-warning"></i>CPI/MAPA/PMAV Certificates (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/employment-contract-xlsx">
-                            <i class="bi bi-file-earmark-text me-2 text-secondary"></i>Employment Contracts (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/open-disclosure-xlsx-new">
-                            <i class="bi bi-eye me-2 text-info"></i>Open Disclosure Certificates (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/gdpr-xlsx">
-                            <i class="bi bi-lock me-2 text-primary"></i>GDPR Certificates (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/dignity-at-work-xlsx">
-                            <i class="bi bi-hand-thumbs-up me-2 text-success"></i>Dignity At Work (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/haccp-xlsx">
-                            <i class="bi bi-clipboard2-check me-2 text-warning"></i>HACCP/Food Safety (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/cyber-security-xlsx">
-                            <i class="bi bi-shield-shaded me-2 text-danger"></i>Cyber Security (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/health-declaration-xlsx">
-                            <i class="bi bi-heart-pulse me-2 text-success"></i>Health Declaration Forms (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/code-of-conduct-xlsx">
-                            <i class="bi bi-journal-check me-2 text-primary"></i>Code Of Conduct (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/references-xlsx">
-                            <i class="bi bi-person-lines-fill me-2 text-secondary"></i>References (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/police-clearance-xlsx">
-                            <i class="bi bi-shield-fill me-2 text-danger"></i>Police Clearance Certificates (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/fire-safety-xlsx">
-                            <i class="bi bi-fire me-2 text-danger"></i>Fire Safety (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/qqi-level5-xlsx">
-                            <i class="bi bi-mortarboard me-2 text-primary"></i>QQI Level 5 Or Equivalent (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/hse-clearance-xlsx">
-                            <i class="bi bi-hospital me-2 text-success"></i>HSE Clearance Pass (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/driving-licence-xlsx">
-                            <i class="bi bi-car-front me-2 text-secondary"></i>Driving Licences (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/point-scale-xlsx">
-                            <i class="bi bi-list-ol me-2 text-info"></i>Point Scale Documents (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/application-form-xlsx">
-                            <i class="bi bi-file-earmark-person me-2 text-primary"></i>Application Forms (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/interview-notes-xlsx">
-                            <i class="bi bi-journal-text me-2 text-info"></i>Interview Notes (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/visa-xlsx">
-                            <i class="bi bi-airplane me-2 text-primary"></i>Visa Documents (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/address-proof-xlsx">
-                            <i class="bi bi-house me-2 text-success"></i>Address Proof (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/ppe-xlsx">
-                            <i class="bi bi-shield-fill-check me-2 text-warning"></i>PPE Documents (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/manual-handling-xlsx">
-                            <i class="bi bi-person-raised-hand me-2 text-info"></i>Manual & People Handling (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/nmbi-qualification-xlsx">
-                            <i class="bi bi-patch-check me-2 text-success"></i>NMBI Qualification (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/medication-management-xlsx">
-                            <i class="bi bi-capsule me-2 text-danger"></i>Medication Management (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/vde-xlsx">
-                            <i class="bi bi-display me-2 text-secondary"></i>Visual Display Equipment (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/inews-xlsx">
-                            <i class="bi bi-activity me-2 text-danger"></i>INEWS (Excel)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/passport-xlsx">
-                            <i class="bi bi-passport me-2 text-secondary"></i>Passport IDs (Excel)
-                        </a>
-                    </li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export?format=json"><i class="bi bi-filetype-json me-2 text-warning"></i>Export as JSON</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export?format=csv"><i class="bi bi-filetype-csv me-2 text-success"></i>Export as CSV</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/xlsx"><i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Staff Points (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/experience-xlsx"><i class="bi bi-file-earmark-spreadsheet me-2 text-primary"></i>Experience List (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/nmbi-xlsx"><i class="bi bi-patch-check me-2 text-primary"></i>Nurses — NMBI Numbers (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/missing-nmbi-xlsx"><i class="bi bi-patch-exclamation me-2 text-danger"></i>Nurses — Missing NMBI (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/qqi-xlsx"><i class="bi bi-award me-2 text-success"></i>HCA — QQI Numbers (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/missing-qqi-xlsx"><i class="bi bi-exclamation-triangle me-2 text-danger"></i>HCA — Missing QQI (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/cpr-xlsx"><i class="bi bi-heart-pulse me-2 text-danger"></i>CPR/BLS Certificates (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/ipc-xlsx"><i class="bi bi-shield-check me-2 text-success"></i>IPC Certificates (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/hand-hygiene-xlsx"><i class="bi bi-droplet me-2 text-info"></i>Hand Hygiene Certificates (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/children-first-xlsx"><i class="bi bi-people me-2 text-warning"></i>Children First Certificates (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/safeguarding-xlsx"><i class="bi bi-shield-fill-check me-2 text-success"></i>Safeguarding Adults At Risk (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/garda-xlsx"><i class="bi bi-shield-lock me-2 text-dark"></i>Garda Vetting Documents (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/cpi-xlsx"><i class="bi bi-person-arms-up me-2 text-warning"></i>CPI/MAPA/PMAV Certificates (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/employment-contract-xlsx"><i class="bi bi-file-earmark-text me-2 text-secondary"></i>Employment Contracts (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/open-disclosure-xlsx-new"><i class="bi bi-eye me-2 text-info"></i>Open Disclosure Certificates (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/gdpr-xlsx"><i class="bi bi-lock me-2 text-primary"></i>GDPR Certificates (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/dignity-at-work-xlsx"><i class="bi bi-hand-thumbs-up me-2 text-success"></i>Dignity At Work (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/haccp-xlsx"><i class="bi bi-clipboard2-check me-2 text-warning"></i>HACCP/Food Safety (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/cyber-security-xlsx"><i class="bi bi-shield-shaded me-2 text-danger"></i>Cyber Security (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/health-declaration-xlsx"><i class="bi bi-heart-pulse me-2 text-success"></i>Health Declaration Forms (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/code-of-conduct-xlsx"><i class="bi bi-journal-check me-2 text-primary"></i>Code Of Conduct (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/references-xlsx"><i class="bi bi-person-lines-fill me-2 text-secondary"></i>References (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/police-clearance-xlsx"><i class="bi bi-shield-fill me-2 text-danger"></i>Police Clearance Certificates (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/fire-safety-xlsx"><i class="bi bi-fire me-2 text-danger"></i>Fire Safety (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/qqi-level5-xlsx"><i class="bi bi-mortarboard me-2 text-primary"></i>QQI Level 5 Or Equivalent (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/hse-clearance-xlsx"><i class="bi bi-hospital me-2 text-success"></i>HSE Clearance Pass (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/driving-licence-xlsx"><i class="bi bi-car-front me-2 text-secondary"></i>Driving Licences (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/point-scale-xlsx"><i class="bi bi-list-ol me-2 text-info"></i>Point Scale Documents (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/application-form-xlsx"><i class="bi bi-file-earmark-person me-2 text-primary"></i>Application Forms (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/interview-notes-xlsx"><i class="bi bi-journal-text me-2 text-info"></i>Interview Notes (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/visa-xlsx"><i class="bi bi-airplane me-2 text-primary"></i>Visa Documents (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/address-proof-xlsx"><i class="bi bi-house me-2 text-success"></i>Address Proof (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/ppe-xlsx"><i class="bi bi-shield-fill-check me-2 text-warning"></i>PPE Documents (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/manual-handling-xlsx"><i class="bi bi-person-raised-hand me-2 text-info"></i>Manual & People Handling (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/nmbi-qualification-xlsx"><i class="bi bi-patch-check me-2 text-success"></i>NMBI Qualification (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/medication-management-xlsx"><i class="bi bi-capsule me-2 text-danger"></i>Medication Management (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/vde-xlsx"><i class="bi bi-display me-2 text-secondary"></i>Visual Display Equipment (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/inews-xlsx"><i class="bi bi-activity me-2 text-danger"></i>INEWS (Excel)</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/passport-xlsx"><i class="bi bi-passport me-2 text-secondary"></i>Passport IDs (Excel)</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><h6 class="dropdown-header text-muted small">Vetting Status</h6></li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=no_garda">
-                            <i class="bi bi-shield-x me-2 text-danger"></i>No Garda Vetting
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=garda_expired">
-                            <i class="bi bi-shield-exclamation me-2 text-warning"></i>Garda Vetting Expired
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=no_police">
-                            <i class="bi bi-file-earmark-x me-2 text-danger"></i>No Police Clearance
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=police_expired">
-                            <i class="bi bi-file-earmark-exclamation me-2 text-warning"></i>Police Clearance Expired
-                        </a>
-                    </li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=no_garda"><i class="bi bi-shield-x me-2 text-danger"></i>No Garda Vetting</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=garda_expired"><i class="bi bi-shield-exclamation me-2 text-warning"></i>Garda Vetting Expired</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=no_police"><i class="bi bi-file-earmark-x me-2 text-danger"></i>No Police Clearance</a></li>
+                    <li><a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=police_expired"><i class="bi bi-file-earmark-exclamation me-2 text-warning"></i>Police Clearance Expired</a></li>
                 </ul>
             </div>
             <a href="{{ '/admin/live-staffs' }}" class="btn btn-outline-secondary">
@@ -304,6 +124,7 @@
                         {% set p    = s.section_1_personal_details or {} %}
                         {% set visa = p.work_permit_visa_status or {} %}
                         {% set reg  = s.section_3_professional_registration or {} %}
+                        {% set ut_lower = (s.user_type or '') | lower %}
                         <tr>
                             <td class="ps-4 text-muted small">
                                 {{ loop.index + (page - 1) * per_page }}
@@ -321,9 +142,7 @@
                             <td class="text-muted small">{{ p.nationality or '—' }}</td>
                             <td class="small">
                                 {% if visa.visa_type %}
-                                <span class="badge bg-info text-dark rounded-pill px-2">
-                                    {{ visa.visa_type }}
-                                </span>
+                                <span class="badge bg-info text-dark rounded-pill px-2">{{ visa.visa_type }}</span>
                                 {% else %}—{% endif %}
                             </td>
                             <td class="text-center small text-muted">
@@ -333,98 +152,52 @@
                                 {% if s.status in ['found', 'active'] %}
                                 <span class="badge bg-success rounded-pill px-3">Active</span>
                                 {% else %}
-                                <span class="badge bg-secondary rounded-pill px-3">
-                                    {{ (s.status or 'unknown') | capitalize }}
-                                </span>
+                                <span class="badge bg-secondary rounded-pill px-3">{{ (s.status or 'unknown') | capitalize }}</span>
                                 {% endif %}
                             </td>
                             <td class="text-center">
                                 {% if s.extracted_cv == 'No doc found' %}
-                                <span class="badge bg-secondary rounded-pill px-2">
-                                    <i class="bi bi-slash-circle me-1"></i>No Doc
-                                </span>
+                                <span class="badge bg-secondary rounded-pill px-2"><i class="bi bi-slash-circle me-1"></i>No Doc</span>
                                 {% elif s.extracted_cv and not s.extracted_cv.startswith('[') %}
-                                <span class="badge bg-success rounded-pill px-2" title="{{ s.extracted_cv[:100] }}">
-                                    <i class="bi bi-file-text-fill me-1"></i>Done
-                                </span>
+                                <span class="badge bg-success rounded-pill px-2" title="{{ s.extracted_cv[:100] }}"><i class="bi bi-file-text-fill me-1"></i>Done</span>
                                 {% else %}
-                                <span class="badge bg-light text-muted rounded-pill px-2 border">
-                                    <i class="bi bi-hourglass me-1"></i>Pending
-                                </span>
+                                <span class="badge bg-light text-muted rounded-pill px-2 border"><i class="bi bi-hourglass me-1"></i>Pending</span>
                                 {% endif %}
                             </td>
                             <td class="text-center">
-                                <!-- store only the _id; data fetched via API on click -->
-                                <button class="btn btn-outline-primary btn-sm rounded-pill px-3 me-1 btn-view"
-                                        data-id="{{ s._id }}" title="View full record">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                                <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 me-1 btn-edit"
-                                        data-id="{{ s._id }}">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                                <button class="btn btn-outline-info btn-sm rounded-pill px-3 me-1 btn-edit-cv"
+                                <!-- Single Actions button — replaces all per-row icon buttons -->
+                                <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 btn-actions"
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
-                                        title="Edit Extracted CV Text">
-                                    <i class="bi bi-file-text"></i>
+                                        data-email="{{ s.email | e }}"
+                                        data-type="{{ s.user_type | default('') | e }}"
+                                        data-ut-lower="{{ ut_lower | e }}"
+                                        data-cv-url="{{ '/admin/live-staffs/cv/' + s._id }}">
+                                    <i class="bi bi-grid-3x3-gap-fill me-1"></i> Actions
                                 </button>
-                                <a class="btn btn-outline-success btn-sm rounded-pill px-3 me-1"
-                                   href="{{ '/admin/live-staffs/cv/' + s._id }}"
-                                   title="Download Standard CV as PDF" target="_blank">
-                                    <i class="bi bi-file-earmark-person"></i>
-                                </a>
-                                <button class="btn btn-warning btn-sm rounded-pill px-3 me-1 btn-ai-cv"
-                                        data-id="{{ s._id }}"
-                                        data-name="{{ p.full_name | default('Staff') | e }}"
-                                        title="Generate AI-Personalised CV">
-                                    <i class="bi bi-stars"></i>
-                                </button>
-                                <button class="btn btn-outline-dark btn-sm rounded-pill px-3 me-1 btn-pcc"
-                                        data-id="{{ s._id }}"
-                                        data-name="{{ p.full_name | default('Staff') | e }}"
-                                        title="Generate PCC Self-Declaration Form">
-                                    <i class="bi bi-file-earmark-lock"></i>
-                                </button>
-                                <button class="btn btn-info btn-sm rounded-pill px-3 me-1 btn-ai-interview"
-                                        data-id="{{ s._id }}"
-                                        data-name="{{ p.full_name | default('Staff') | e }}"
-                                        title="Generate AI Interview Notes">
-                                    <i class="bi bi-clipboard2-check"></i>
-                                </button>
-                                <button class="btn btn-secondary btn-sm rounded-pill px-3 me-1 btn-ai-appform"
-                                        data-id="{{ s._id }}"
-                                        data-name="{{ p.full_name | default('Staff') | e }}"
-                                        title="Generate Application Form">
-                                    <i class="bi bi-file-earmark-text"></i>
-                                </button>
-                                <button class="btn btn-danger btn-sm rounded-pill px-3 btn-delete"
-                                        data-id="{{ s._id }}"
-                                        data-name="{{ p.full_name | default('this record') | e }}">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                                {% if 'healthcare assistant' in (s.user_type or '') | lower %}
-                                <button class="btn btn-success btn-sm rounded-pill px-3 me-1 btn-vos"
-                                        data-id="{{ s._id }}"
-                                        data-name="{{ p.full_name | default('Staff') | e }}"
-                                        title="Generate Verification of Service Document">
-                                    <i class="bi bi-patch-check"></i>
-                                </button>
-                                {% endif %}
-                                {% set ut_lower = (s.user_type or '') | lower %}
-                                {% if 'nurse' in ut_lower or 'rgn' in ut_lower or 'rnm' in ut_lower or 'midwife' in ut_lower or 'nchd' in ut_lower or 'cns' in ut_lower or 'phn' in ut_lower %}
-                                <button class="btn btn-primary btn-sm rounded-pill px-3 me-1 btn-vos-nurse"
-                                        data-id="{{ s._id }}"
-                                        data-name="{{ p.full_name | default('Staff') | e }}"
-                                        title="Generate Verification of Service (Nurse)">
-                                    <i class="bi bi-patch-check-fill"></i>
-                                </button>
-                                {% endif %}
+
+                                <!-- Hidden trigger buttons — kept in DOM so existing JS handlers fire correctly -->
+                                <span class="d-none">
+                                    <button class="btn-view"      data-id="{{ s._id }}"></button>
+                                    <button class="btn-edit"      data-id="{{ s._id }}"></button>
+                                    <button class="btn-edit-cv"   data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
+                                    <button class="btn-ai-cv"     data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
+                                    <button class="btn-ai-interview" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
+                                    <button class="btn-ai-appform"   data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
+                                    <button class="btn-pcc"       data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
+                                    <button class="btn-delete"    data-id="{{ s._id }}" data-name="{{ p.full_name | default('this record') | e }}"></button>
+                                    {% if 'healthcare assistant' in ut_lower %}
+                                    <button class="btn-vos"       data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
+                                    {% endif %}
+                                    {% if 'nurse' in ut_lower or 'rgn' in ut_lower or 'rnm' in ut_lower or 'midwife' in ut_lower or 'nchd' in ut_lower or 'cns' in ut_lower or 'phn' in ut_lower %}
+                                    <button class="btn-vos-nurse" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
+                                    {% endif %}
+                                </span>
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="9" class="text-center py-5 text-muted">
+                            <td colspan="10" class="text-center py-5 text-muted">
                                 <i class="bi bi-people display-1 opacity-25 d-block mb-3"></i>
                                 <h5>No staff records found</h5>
                                 {% if search %}<p class="mb-0">Try a different search term</p>{% endif %}
@@ -463,7 +236,159 @@
 
 </div>
 
-<!-- ── Add / Edit Modal ──────────────────────────────────────────── -->
+<!-- ═══════════════════════════════════════════════════════════════════
+     ACTIONS MODAL  — replaces all per-row icon buttons
+═══════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="actionsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:560px;">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+
+            <!-- Header -->
+            <div class="modal-header border-0 pb-0 pt-3 px-4">
+                <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
+                    <div id="amAvatar"
+                         class="rounded-circle d-flex align-items-center justify-content-center fw-semibold text-white flex-shrink-0"
+                         style="width:46px;height:46px;font-size:15px;
+                                background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                    </div>
+                    <div class="min-w-0">
+                        <div class="fw-semibold text-truncate" id="amName" style="font-size:15px;max-width:340px;"></div>
+                        <div class="text-muted small text-truncate" id="amMeta" style="max-width:340px;"></div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close ms-2 flex-shrink-0" data-bs-dismiss="modal"></button>
+            </div>
+
+            <!-- Body -->
+            <div class="modal-body px-4 pb-4 pt-3">
+
+                <!-- ── Record ── -->
+                <p class="text-uppercase text-muted fw-semibold mb-2" style="font-size:10px;letter-spacing:.06em;">Record</p>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <button class="am-action-btn am-view w-100">
+                            <i class="bi bi-eye text-primary am-icon"></i>
+                            <div>
+                                <div class="am-label">View record</div>
+                                <div class="am-desc">Full profile details</div>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="col-6">
+                        <button class="am-action-btn am-edit w-100">
+                            <i class="bi bi-pencil text-secondary am-icon"></i>
+                            <div>
+                                <div class="am-label">Edit record</div>
+                                <div class="am-desc">Update staff data</div>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="col-6">
+                        <button class="am-action-btn am-edit-cv w-100">
+                            <i class="bi bi-file-text text-info am-icon"></i>
+                            <div>
+                                <div class="am-label">Edit extracted CV</div>
+                                <div class="am-desc">Fix CV text manually</div>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="col-6">
+                        <a class="am-action-btn am-dl-cv w-100 text-decoration-none" href="#" target="_blank">
+                            <i class="bi bi-file-earmark-person text-success am-icon"></i>
+                            <div>
+                                <div class="am-label">Download standard CV</div>
+                                <div class="am-desc">PDF format</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- ── AI Generation ── -->
+                <p class="text-uppercase text-muted fw-semibold mb-2" style="font-size:10px;letter-spacing:.06em;">AI generation</p>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <button class="am-action-btn am-ai-cv w-100">
+                            <i class="bi bi-stars am-icon" style="color:#f59e0b;"></i>
+                            <div>
+                                <div class="am-label">AI CV</div>
+                                <div class="am-desc">Personalised with Gemini</div>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="col-6">
+                        <button class="am-action-btn am-ai-interview w-100">
+                            <i class="bi bi-clipboard2-check text-info am-icon"></i>
+                            <div>
+                                <div class="am-label">AI interview notes</div>
+                                <div class="am-desc">Auto-completed notes</div>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="col-6">
+                        <button class="am-action-btn am-ai-appform w-100">
+                            <i class="bi bi-file-earmark-text text-secondary am-icon"></i>
+                            <div>
+                                <div class="am-label">Application form</div>
+                                <div class="am-desc">Xpress Health form</div>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="col-6">
+                        <button class="am-action-btn am-pcc w-100">
+                            <i class="bi bi-file-earmark-lock am-icon"></i>
+                            <div>
+                                <div class="am-label">PCC declaration</div>
+                                <div class="am-desc">Self-declaration form</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ── Verification of Service (shown conditionally) ── -->
+                <div id="amVosSection" class="d-none">
+                    <p class="text-uppercase text-muted fw-semibold mb-2" style="font-size:10px;letter-spacing:.06em;">Verification of service</p>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6 am-vos-hca-col d-none">
+                            <button class="am-action-btn am-vos w-100">
+                                <i class="bi bi-patch-check text-success am-icon"></i>
+                                <div>
+                                    <div class="am-label">VOS — HCA</div>
+                                    <div class="am-desc">For care staff</div>
+                                </div>
+                            </button>
+                        </div>
+                        <div class="col-6 am-vos-nurse-col d-none">
+                            <button class="am-action-btn am-vos-nurse w-100">
+                                <i class="bi bi-patch-check-fill text-primary am-icon"></i>
+                                <div>
+                                    <div class="am-label">VOS — Nurse</div>
+                                    <div class="am-desc">For nursing staff</div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Danger zone ── -->
+                <hr class="my-2">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <button class="am-action-btn am-delete w-100" style="border-color:#fca5a5;">
+                            <i class="bi bi-trash text-danger am-icon"></i>
+                            <div>
+                                <div class="am-label text-danger">Delete record</div>
+                                <div class="am-desc">Cannot be undone</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Add / Edit Modal ──────────────────────────────────────────────── -->
 <div class="modal fade" id="staffModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-lg rounded-4">
@@ -731,11 +656,6 @@
     </div>
 </div>
 
-
-
-
-
-
 <!-- ── Edit Extracted CV Modal ──────────────────────────────────── -->
 <div class="modal fade" id="editCvModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -748,12 +668,8 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-
-                <!-- User Type -->
                 <div class="mb-3">
-                    <label class="form-label fw-semibold text-navy small mb-1">
-                        <i class="bi bi-person-badge me-1"></i>User Type
-                    </label>
+                    <label class="form-label fw-semibold text-navy small mb-1"><i class="bi bi-person-badge me-1"></i>User Type</label>
                     <select id="editCvUserType" class="form-select form-select-sm">
                         <option value="">— Select —</option>
                         <option value="Nurse">Nurse</option>
@@ -766,19 +682,11 @@
                         <option value="Other">Other</option>
                     </select>
                 </div>
-
-                <!-- Extracted CV -->
                 <div class="mb-2">
-                    <label class="form-label fw-semibold text-navy small mb-1">
-                        <i class="bi bi-file-text me-1"></i>Extracted CV Text
-                    </label>
-                    <p class="text-muted" style="font-size:11px;margin-top:-4px;">
-                        Editing this will affect AI CV generation and experience analysis.
-                    </p>
-                    <textarea id="editCvTextarea" class="form-control font-monospace"
-                              rows="16" style="font-size:12px;resize:vertical;"></textarea>
+                    <label class="form-label fw-semibold text-navy small mb-1"><i class="bi bi-file-text me-1"></i>Extracted CV Text</label>
+                    <p class="text-muted" style="font-size:11px;margin-top:-4px;">Editing this will affect AI CV generation and experience analysis.</p>
+                    <textarea id="editCvTextarea" class="form-control font-monospace" rows="16" style="font-size:12px;resize:vertical;"></textarea>
                 </div>
-
                 <div id="editCvMsg" class="mt-2 small d-none"></div>
             </div>
             <div class="modal-footer border-0 pt-0">
@@ -790,7 +698,6 @@
         </div>
     </div>
 </div>
-
 
 <!-- ── PCC Self-Declaration Modal ──────────────────────────────────── -->
 <div class="modal fade" id="pccModal" tabindex="-1" aria-hidden="true">
@@ -811,13 +718,9 @@
                     <span>Generating PCC form...</span>
                 </div>
                 <div id="pccResult" class="d-none">
-                    <div class="alert alert-success small py-2">
-                        <i class="bi bi-check-circle me-1"></i> PCC form generated successfully.
-                    </div>
+                    <div class="alert alert-success small py-2"><i class="bi bi-check-circle me-1"></i> PCC form generated successfully.</div>
                     <div class="d-flex gap-2 mt-2">
-                        <a id="pccDownloadBtn" href="#" class="btn btn-primary btn-sm">
-                            <i class="bi bi-download me-1"></i>Download DOCX
-                        </a>
+                        <a id="pccDownloadBtn" href="#" class="btn btn-primary btn-sm"><i class="bi bi-download me-1"></i>Download DOCX</a>
                     </div>
                 </div>
                 <div id="pccError" class="d-none alert alert-danger small py-2"></div>
@@ -842,74 +745,41 @@
         <div class="modal-content border-0 shadow-lg rounded-4">
             <div class="modal-header text-white rounded-top-4"
                  style="background: linear-gradient(135deg,#1B3A6B 0%,#6c757d 100%);">
-                <h5 class="modal-title fw-bold">
-                    <i class="bi bi-file-earmark-text me-2"></i>Application Form
-                </h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-file-earmark-text me-2"></i>Application Form</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-
-                <!-- Idle -->
                 <div id="aiAppIdle">
-                    <p class="text-muted mb-1">
-                        Generate a filled Xpress Health Application Form for
-                        <strong id="aiAppStaffName"></strong>.
-                    </p>
-                    <p class="text-muted small mb-4">
-                        All fields are populated from the staff profile. Saved and re-downloadable any time.
-                    </p>
+                    <p class="text-muted mb-1">Generate a filled Xpress Health Application Form for <strong id="aiAppStaffName"></strong>.</p>
+                    <p class="text-muted small mb-4">All fields are populated from the staff profile. Saved and re-downloadable any time.</p>
                     <div id="aiAppSavedInfo" class="alert alert-success d-none mb-3 py-2 small">
-                        <i class="bi bi-check-circle me-1"></i>
-                        Saved application form from <strong id="aiAppSavedDate"></strong>.
+                        <i class="bi bi-check-circle me-1"></i>Saved application form from <strong id="aiAppSavedDate"></strong>.
                     </div>
                     <div class="d-flex gap-2 flex-wrap mb-3">
-                        <button class="btn btn-secondary fw-bold px-4" id="aiAppGenerateBtn">
-                            <i class="bi bi-file-earmark-text me-1"></i> Generate Form
-                        </button>
-                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiAppDownloadSavedBtn">
-                            <i class="bi bi-download me-1"></i> Download Saved
-                        </button>
+                        <button class="btn btn-secondary fw-bold px-4" id="aiAppGenerateBtn"><i class="bi bi-file-earmark-text me-1"></i> Generate Form</button>
+                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiAppDownloadSavedBtn"><i class="bi bi-download me-1"></i> Download Saved</button>
                     </div>
-                    <!-- Upload edited form back -->
                     <div id="aiAppUploadSection" class="d-none border-top pt-3 mt-2">
-                        <p class="text-muted small mb-2">
-                            <i class="bi bi-upload me-1"></i>
-                            Already edited the form? Upload your revised <code>.docx</code> to replace the saved version.
-                        </p>
+                        <p class="text-muted small mb-2"><i class="bi bi-upload me-1"></i>Already edited the form? Upload your revised <code>.docx</code> to replace the saved version.</p>
                         <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input type="file" id="aiAppUploadInput" accept=".docx"
-                                   class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiAppUploadBtn">
-                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
-                            </button>
+                            <input type="file" id="aiAppUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiAppUploadBtn"><i class="bi bi-cloud-upload me-1"></i> Upload & Replace</button>
                         </div>
                         <div id="aiAppUploadMsg" class="mt-2 small d-none"></div>
                     </div>
                 </div>
-
-                <!-- Generating -->
                 <div id="aiAppGenerating" class="text-center py-4 d-none">
                     <div class="spinner-border text-secondary mb-3" style="width:3rem;height:3rem;"></div>
                     <p class="fw-semibold text-muted mb-1">Building application form…</p>
                 </div>
-
-                <!-- Done -->
                 <div id="aiAppDone" class="d-none">
-                    <div class="alert alert-success rounded-3 mb-3">
-                        <i class="bi bi-check-circle-fill me-2"></i>
-                        Application form generated and saved!
-                    </div>
-                    <a href="#" class="btn btn-success fw-bold px-4" id="aiAppDownloadNewBtn" target="_blank">
-                        <i class="bi bi-download me-1"></i> Download Form
-                    </a>
+                    <div class="alert alert-success rounded-3 mb-3"><i class="bi bi-check-circle-fill me-2"></i>Application form generated and saved!</div>
+                    <a href="#" class="btn btn-success fw-bold px-4" id="aiAppDownloadNewBtn" target="_blank"><i class="bi bi-download me-1"></i> Download Form</a>
                 </div>
-
-                <!-- Error -->
                 <div id="aiAppError" class="d-none">
                     <div class="alert alert-danger rounded-3 mb-3" id="aiAppErrorMsg"></div>
                     <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
-
             </div>
         </div>
     </div>
@@ -921,75 +791,42 @@
         <div class="modal-content border-0 shadow-lg rounded-4">
             <div class="modal-header text-white rounded-top-4"
                  style="background: linear-gradient(135deg,#1B3A6B 0%,#17a2b8 100%);">
-                <h5 class="modal-title fw-bold">
-                    <i class="bi bi-clipboard2-check me-2"></i>AI Interview Notes
-                </h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-clipboard2-check me-2"></i>AI Interview Notes</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-
-                <!-- Idle state -->
                 <div id="aiIntIdle">
-                    <p class="text-muted mb-1">
-                        Generate completed interview notes for
-                        <strong id="aiIntStaffName"></strong> using Gemini AI.
-                    </p>
-                    <p class="text-muted small mb-4">
-                        Answers are written based on their actual profile data — no hallucination.
-                        Saved automatically and re-downloadable any time.
-                    </p>
+                    <p class="text-muted mb-1">Generate completed interview notes for <strong id="aiIntStaffName"></strong> using Gemini AI.</p>
+                    <p class="text-muted small mb-4">Answers are written based on their actual profile data — no hallucination. Saved automatically and re-downloadable any time.</p>
                     <div id="aiIntSavedInfo" class="alert alert-success d-none mb-3 py-2 small">
-                        <i class="bi bi-check-circle me-1"></i>
-                        Saved interview notes from <strong id="aiIntSavedDate"></strong>.
+                        <i class="bi bi-check-circle me-1"></i>Saved interview notes from <strong id="aiIntSavedDate"></strong>.
                     </div>
                     <div class="d-flex gap-2 flex-wrap mb-3">
-                        <button class="btn btn-info fw-bold px-4 text-white" id="aiIntGenerateBtn">
-                            <i class="bi bi-clipboard2-check me-1"></i> Generate Notes
-                        </button>
-                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiIntDownloadSavedBtn">
-                            <i class="bi bi-download me-1"></i> Download Saved
-                        </button>
+                        <button class="btn btn-info fw-bold px-4 text-white" id="aiIntGenerateBtn"><i class="bi bi-clipboard2-check me-1"></i> Generate Notes</button>
+                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiIntDownloadSavedBtn"><i class="bi bi-download me-1"></i> Download Saved</button>
                     </div>
-                    <!-- Upload edited interview notes back -->
                     <div id="aiIntUploadSection" class="d-none border-top pt-3 mt-2">
-                        <p class="text-muted small mb-2">
-                            <i class="bi bi-upload me-1"></i>
-                            Already edited the notes? Upload your revised <code>.docx</code> to replace the saved version.
-                        </p>
+                        <p class="text-muted small mb-2"><i class="bi bi-upload me-1"></i>Already edited the notes? Upload your revised <code>.docx</code> to replace the saved version.</p>
                         <div class="d-flex gap-2 align-items-center flex-wrap">
                             <input type="file" id="aiIntUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiIntUploadBtn">
-                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
-                            </button>
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiIntUploadBtn"><i class="bi bi-cloud-upload me-1"></i> Upload & Replace</button>
                         </div>
                         <div id="aiIntUploadMsg" class="mt-2 small d-none"></div>
                     </div>
                 </div>
-
-                <!-- Generating state -->
                 <div id="aiIntGenerating" class="text-center py-4 d-none">
                     <div class="spinner-border text-info mb-3" style="width:3rem;height:3rem;"></div>
                     <p class="fw-semibold text-muted mb-1">Gemini AI is writing the interview notes…</p>
                     <p class="text-muted small">This takes about 15–30 seconds.</p>
                 </div>
-
-                <!-- Done state -->
                 <div id="aiIntDone" class="d-none">
-                    <div class="alert alert-success rounded-3 mb-3">
-                        <i class="bi bi-check-circle-fill me-2"></i>
-                        Interview notes generated and saved!
-                    </div>
-                    <a href="#" class="btn btn-success fw-bold px-4" id="aiIntDownloadNewBtn" target="_blank">
-                        <i class="bi bi-download me-1"></i> Download Interview Notes
-                    </a>
+                    <div class="alert alert-success rounded-3 mb-3"><i class="bi bi-check-circle-fill me-2"></i>Interview notes generated and saved!</div>
+                    <a href="#" class="btn btn-success fw-bold px-4" id="aiIntDownloadNewBtn" target="_blank"><i class="bi bi-download me-1"></i> Download Interview Notes</a>
                 </div>
-
-                <!-- Error state -->
                 <div id="aiIntError" class="d-none">
                     <div class="alert alert-danger rounded-3 mb-3" id="aiIntErrorMsg"></div>
                     <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
-
             </div>
         </div>
     </div>
@@ -1001,74 +838,39 @@
         <div class="modal-content border-0 shadow-lg rounded-4">
             <div class="modal-header text-white rounded-top-4"
                  style="background: linear-gradient(135deg,#1B3A6B 0%,#2E9E44 100%);">
-                <h5 class="modal-title fw-bold">
-                    <i class="bi bi-stars me-2"></i>AI CV Generator
-                </h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-stars me-2"></i>AI CV Generator</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4" id="aiCvModalBody">
-                <!-- state: idle -->
                 <div id="aiCvIdle">
-                    <p class="text-muted mb-1">
-                        Generate a fully personalised, AI-written CV for
-                        <strong id="aiCvStaffName"></strong> using Gemini AI.
-                    </p>
-                    <p class="text-muted small mb-4">
-                        The CV will be tailored to their experience, qualifications, and role.
-                        Once created it is saved and can be re-downloaded any time.
-                    </p>
+                    <p class="text-muted mb-1">Generate a fully personalised, AI-written CV for <strong id="aiCvStaffName"></strong> using Gemini AI.</p>
+                    <p class="text-muted small mb-4">The CV will be tailored to their experience, qualifications, and role. Once created it is saved and can be re-downloaded any time.</p>
                     <div id="aiCvSavedInfo" class="alert alert-success d-none mb-3 py-2 small">
-                        <i class="bi bi-check-circle me-1"></i>
-                        A saved AI CV exists from <strong id="aiCvSavedDate"></strong>.
-                        You can regenerate or download the saved version.
+                        <i class="bi bi-check-circle me-1"></i>A saved AI CV exists from <strong id="aiCvSavedDate"></strong>. You can regenerate or download the saved version.
                     </div>
                     <div class="d-flex gap-2 flex-wrap mb-3">
-                        <button class="btn btn-warning fw-bold px-4" id="aiCvGenerateBtn">
-                            <i class="bi bi-stars me-1"></i> Generate with AI
-                        </button>
-                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiCvDownloadSavedBtn">
-                            <i class="bi bi-download me-1"></i> Download Saved CV
-                        </button>
+                        <button class="btn btn-warning fw-bold px-4" id="aiCvGenerateBtn"><i class="bi bi-stars me-1"></i> Generate with AI</button>
+                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiCvDownloadSavedBtn"><i class="bi bi-download me-1"></i> Download Saved CV</button>
                     </div>
-                    <!-- Upload edited CV back -->
                     <div id="aiCvUploadSection" class="d-none border-top pt-3 mt-2">
-                        <p class="text-muted small mb-2">
-                            <i class="bi bi-upload me-1"></i>
-                            Already edited the CV? Upload your revised <code>.docx</code> to replace the saved version.
-                        </p>
+                        <p class="text-muted small mb-2"><i class="bi bi-upload me-1"></i>Already edited the CV? Upload your revised <code>.docx</code> to replace the saved version.</p>
                         <div class="d-flex gap-2 align-items-center flex-wrap">
                             <input type="file" id="aiCvUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiCvUploadBtn">
-                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
-                            </button>
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiCvUploadBtn"><i class="bi bi-cloud-upload me-1"></i> Upload & Replace</button>
                         </div>
                         <div id="aiCvUploadMsg" class="mt-2 small d-none"></div>
                     </div>
                 </div>
-
-                <!-- state: generating -->
                 <div id="aiCvGenerating" class="text-center py-4 d-none">
                     <div class="spinner-border text-warning mb-3" style="width:3rem;height:3rem;"></div>
                     <p class="fw-semibold text-muted mb-1">Gemini AI is writing the CV…</p>
                     <p class="text-muted small">This takes about 15–30 seconds.</p>
                 </div>
-
-                <!-- state: done -->
                 <div id="aiCvDone" class="d-none">
-                    <div class="alert alert-success rounded-3 mb-3">
-                        <i class="bi bi-check-circle-fill me-2"></i>
-                        AI CV generated and saved successfully!
-                    </div>
-                    <p class="text-muted small mb-3">
-                        The CV has been saved. You can download it now or re-access it any time
-                        using the <i class="bi bi-stars text-warning"></i> button.
-                    </p>
-                    <a href="#" class="btn btn-success fw-bold px-4" id="aiCvDownloadNewBtn" target="_blank">
-                        <i class="bi bi-download me-1"></i> Download AI CV
-                    </a>
+                    <div class="alert alert-success rounded-3 mb-3"><i class="bi bi-check-circle-fill me-2"></i>AI CV generated and saved successfully!</div>
+                    <p class="text-muted small mb-3">The CV has been saved. You can download it now or re-access it any time using the <i class="bi bi-stars text-warning"></i> button.</p>
+                    <a href="#" class="btn btn-success fw-bold px-4" id="aiCvDownloadNewBtn" target="_blank"><i class="bi bi-download me-1"></i> Download AI CV</a>
                 </div>
-
-                <!-- state: error -->
                 <div id="aiCvError" class="d-none">
                     <div class="alert alert-danger rounded-3 mb-3" id="aiCvErrorMsg"></div>
                     <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
@@ -1083,69 +885,38 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title">
-                    <i class="bi bi-patch-check me-2 text-success"></i>Verification of Service — <span id="vosModalName"></span>
-                </h5>
+                <h5 class="modal-title"><i class="bi bi-patch-check me-2 text-success"></i>Verification of Service — <span id="vosModalName"></span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-
-                <!-- Idle state -->
                 <div id="vosIdle">
-                    <p class="text-muted small mb-3">
-                        Generate a <strong>Verification of Service – Agency Staff</strong> document
-                        with employment history and total eligible service for incremental credit.
-                    </p>
+                    <p class="text-muted small mb-3">Generate a <strong>Verification of Service – Agency Staff</strong> document with employment history and total eligible service for incremental credit.</p>
                     <div id="vosSavedInfo" class="alert alert-success py-2 small mb-3 d-none">
                         A saved document exists from <strong id="vosSavedDate"></strong>.
-                        <a href="#" id="vosExistingDownload" target="_blank" class="ms-2">
-                            <i class="bi bi-download me-1"></i>Download
-                        </a>
+                        <a href="#" id="vosExistingDownload" target="_blank" class="ms-2"><i class="bi bi-download me-1"></i>Download</a>
                     </div>
-                    <button class="btn btn-success w-100" id="vosGenerateBtn">
-                        <i class="bi bi-patch-check me-1"></i> Generate Verification of Service
-                    </button>
+                    <button class="btn btn-success w-100" id="vosGenerateBtn"><i class="bi bi-patch-check me-1"></i> Generate Verification of Service</button>
                 </div>
-
-                <!-- Generating state -->
                 <div id="vosGenerating" class="d-none text-center py-3">
                     <div class="spinner-border text-success mb-3" role="status"></div>
                     <p class="text-muted">Generating document...</p>
                 </div>
-
-                <!-- Success state -->
                 <div id="vosResult" class="d-none">
-                    <div class="alert alert-success py-2 mb-3">
-                        <i class="bi bi-check-circle me-1"></i>
-                        Document generated successfully!
-                    </div>
+                    <div class="alert alert-success py-2 mb-3"><i class="bi bi-check-circle me-1"></i>Document generated successfully!</div>
                     <div class="text-muted small mb-2" id="vosTotal"></div>
-                    <a href="#" id="vosDownloadBtn" target="_blank"
-                       class="btn btn-outline-success w-100 mb-3">
-                        <i class="bi bi-download me-1"></i> Download Verification of Service
-                    </a>
-                    <!-- Upload edited doc back -->
+                    <a href="#" id="vosDownloadBtn" target="_blank" class="btn btn-outline-success w-100 mb-3"><i class="bi bi-download me-1"></i> Download Verification of Service</a>
                     <div class="border-top pt-3 mt-1">
-                        <p class="text-muted small mb-2">
-                            <i class="bi bi-upload me-1"></i>
-                            Already edited the document? Upload your revised <code>.docx</code> to replace the saved version.
-                        </p>
+                        <p class="text-muted small mb-2"><i class="bi bi-upload me-1"></i>Already edited the document? Upload your revised <code>.docx</code> to replace the saved version.</p>
                         <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input type="file" id="vosUploadInput" accept=".docx"
-                                   class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="vosUploadBtn">
-                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
-                            </button>
+                            <input type="file" id="vosUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="vosUploadBtn"><i class="bi bi-cloud-upload me-1"></i> Upload & Replace</button>
                         </div>
                         <div id="vosUploadMsg" class="mt-2 small d-none"></div>
                     </div>
                 </div>
-
-                <!-- Error state -->
                 <div id="vosError" class="d-none">
                     <div class="alert alert-danger py-2 small" id="vosErrorMsg"></div>
                 </div>
-
             </div>
             <div class="modal-footer border-0 pt-0">
                 <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
@@ -1159,44 +930,27 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title">
-                    <i class="bi bi-patch-check-fill me-2 text-primary"></i>Verification of Service (Nurse) — <span id="vosNurseModalName"></span>
-                </h5>
+                <h5 class="modal-title"><i class="bi bi-patch-check-fill me-2 text-primary"></i>Verification of Service (Nurse) — <span id="vosNurseModalName"></span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
                 <div id="vosNurseIdle">
-                    <p class="text-muted small mb-3">
-                        Generate a <strong>Verification of Service – Agency Staff</strong> document for nurse staff with Ireland employment history.
-                    </p>
-                    <button class="btn btn-primary w-100" id="vosNurseGenerateBtn">
-                        <i class="bi bi-patch-check-fill me-1"></i> Generate Verification of Service
-                    </button>
+                    <p class="text-muted small mb-3">Generate a <strong>Verification of Service – Agency Staff</strong> document for nurse staff with Ireland employment history.</p>
+                    <button class="btn btn-primary w-100" id="vosNurseGenerateBtn"><i class="bi bi-patch-check-fill me-1"></i> Generate Verification of Service</button>
                 </div>
                 <div id="vosNurseGenerating" class="d-none text-center py-3">
                     <div class="spinner-border text-primary mb-3" role="status"></div>
                     <p class="text-muted">Generating document...</p>
                 </div>
                 <div id="vosNurseResult" class="d-none">
-                    <div class="alert alert-success py-2 mb-3">
-                        <i class="bi bi-check-circle me-1"></i> Document generated successfully!
-                    </div>
+                    <div class="alert alert-success py-2 mb-3"><i class="bi bi-check-circle me-1"></i> Document generated successfully!</div>
                     <div class="text-muted small mb-2" id="vosNurseTotal"></div>
-                    <a href="#" id="vosNurseDownloadBtn" target="_blank"
-                       class="btn btn-outline-primary w-100 mb-3">
-                        <i class="bi bi-download me-1"></i> Download Verification of Service
-                    </a>
+                    <a href="#" id="vosNurseDownloadBtn" target="_blank" class="btn btn-outline-primary w-100 mb-3"><i class="bi bi-download me-1"></i> Download Verification of Service</a>
                     <div class="border-top pt-3 mt-1">
-                        <p class="text-muted small mb-2">
-                            <i class="bi bi-upload me-1"></i>
-                            Upload an edited <code>.docx</code> to replace the saved version.
-                        </p>
+                        <p class="text-muted small mb-2"><i class="bi bi-upload me-1"></i>Upload an edited <code>.docx</code> to replace the saved version.</p>
                         <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input type="file" id="vosNurseUploadInput" accept=".docx"
-                                   class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="vosNurseUploadBtn">
-                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
-                            </button>
+                            <input type="file" id="vosNurseUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="vosNurseUploadBtn"><i class="bi bi-cloud-upload me-1"></i> Upload & Replace</button>
                         </div>
                         <div id="vosNurseUploadMsg" class="mt-2 small d-none"></div>
                     </div>
@@ -1211,6 +965,35 @@
         </div>
     </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     STYLES — Actions modal card buttons
+═══════════════════════════════════════════════════════════════════ -->
+<style>
+.am-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    cursor: pointer;
+    text-align: left;
+    transition: background .12s, border-color .12s, transform .08s;
+    text-decoration: none;
+    color: inherit;
+}
+.am-action-btn:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    transform: translateY(-1px);
+    color: inherit;
+}
+.am-icon { font-size: 18px; flex-shrink: 0; }
+.am-label { font-size: 13px; font-weight: 600; color: #1e293b; line-height: 1.3; }
+.am-desc  { font-size: 11px; color: #64748b; margin-top: 1px; }
+</style>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
@@ -1273,7 +1056,6 @@ function populateForm(rec) {
     setVal('eircode_postcode', s1.eircode_postcode);
     setVal('permission_to_work', visa.permission_to_work);
     setVal('visa_type',    visa.visa_type);
-
     setVal('passport_number', s2.passport_number);
     setVal('passport_expiry', s2.expiry_date);
     setVal('driving_licence_number', s2.driving_licence_number);
@@ -1283,16 +1065,13 @@ function populateForm(rec) {
     setChk('doc_birth_cert', docs.birth_certificate);
     setChk('doc_driving',    docs.driving_licence);
     setChk('doc_address',    docs.proof_of_address);
-
     setVal('registration_number_pin',  s3.registration_number_pin);
     setVal('registration_expiry_date', s3.registration_expiry_date);
     setChk('nmbi_active_declaration',  s3.nmbi_active_declaration);
-
     setVal('employee_code',  rec.employee_code);
     setVal('user_type',      rec.user_type);
     setVal('status',         rec.status || 'active');
     setVal('recruitment_id', rec.recruitment_id);
-
     setChk('occupational_health_screening', s9.occupational_health_screening);
     setChk('immunisation_records_provided', s9.immunisation_records_provided);
     setChk('fit_for_nursing_duties',        s9.fit_for_nursing_duties);
@@ -1300,10 +1079,8 @@ function populateForm(rec) {
     setVal('tuberculosis_vaccine', s9.tuberculosis_vaccine);
     setVal('hepatitis_antibody',  s9.hepatitis_antibody);
     setVal('mmr_vaccine',         s9.mmr_vaccine);
-
     setChk('garda_vetting_submitted',    s8.garda_vetting_submitted);
     setChk('police_clearance_submitted', s8.police_clearance_submitted);
-
     ['manual_handling','cpr_bls','fire_safety','infection_prevention_control',
      'hand_hygiene','safeguarding','children_first','cyber_security',
      'dignity_at_work','open_disclosure','mapa_pmav'
@@ -1358,141 +1135,15 @@ function prepareAddModal() {
     $('status').value = 'active';
 }
 
-// ── Edit ──────────────────────────────────────────────────────────────
-document.querySelectorAll('.btn-edit').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        $('staffModalLabel').textContent = 'Edit Staff';
-        $('staffSubmitBtn').textContent  = 'Save Changes';
-        $('staffModalBody').innerHTML =
-            '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
-
-        const modal = new bootstrap.Modal($('staffModal'));
-        modal.show();
-
-        try {
-            const rec = await fetchRecord(btn.dataset.id);
-            // rebuild the form inside the modal body
-            $('staffModalBody').innerHTML = document.querySelector('#staffForm').outerHTML
-                // re-insert the form by restoring it (it was never removed — just show spinner then restore)
-            resetForm();
-            $('staff_id').value = btn.dataset.id;
-            populateForm(rec);
-            // Re-bind submit since we didn't actually replace the DOM
-        } catch (e) {
-            Swal.fire('Error', e.message, 'error');
-            modal.hide();
-        }
-    });
-});
-
-// ── View ──────────────────────────────────────────────────────────────
-document.querySelectorAll('.btn-view').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        $('viewModalTitle').textContent = 'Loading…';
-        $('viewModalBody').innerHTML =
-            '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
-        new bootstrap.Modal($('viewModal')).show();
-
-        try {
-            const rec = await fetchRecord(btn.dataset.id);
-            const s1  = rec.section_1_personal_details || {};
-            const s3  = rec.section_3_professional_registration || {};
-            const s9  = rec.section_9_occupational_health || {};
-            const s10 = rec.section_10_mandatory_training || {};
-            const s5  = rec.section_5_employment_history || {};
-            const s7  = rec.section_7_references || {};
-            const visa = (s1.work_permit_visa_status || {});
-
-            $('viewModalTitle').textContent = s1.full_name || rec.email;
-
-            const row = (label, val) =>
-                `<tr><th class="text-muted fw-normal small pe-3" style="width:42%;white-space:nowrap">${label}</th>
-                     <td class="small fw-semibold">${val || '—'}</td></tr>`;
-
-            const badge = val => val
-                ? '<span class="badge bg-success rounded-pill">Yes</span>'
-                : '<span class="badge bg-secondary rounded-pill">No</span>';
-
-            const trainingRows = Object.entries(s10).map(([k, v]) => {
-                const label   = k.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
-                const expired = v && v.includes('Expired');
-                return `<tr><th class="text-muted fw-normal small pe-3">${label}</th>
-                             <td class="small ${expired ? 'text-danger fw-semibold' : 'text-success'}">${v || '—'}</td></tr>`;
-            }).join('');
-
-            const refs = [s7.reference_1, s7.reference_2, s7.reference_3]
-                .filter(r => r && r.name)
-                .map(r => `<div class="mb-1"><strong>${r.name}</strong> — ${r.position || ''}, ${r.organisation || ''} <span class="text-muted small">${r.email || ''}</span></div>`)
-                .join('') || '—';
-
-            const entries = (s5.entries || []).filter(e => e.employer)
-                .map(e => `<div class="mb-1"><strong>${e.employer}</strong> — ${e.position || ''}</div>`)
-                .join('') || '—';
-
-            $('viewModalBody').innerHTML = `
-                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Personal Details</h6>
-                <table class="table table-sm table-borderless mb-4">
-                    ${row('Full Name', s1.full_name)}
-                    ${row('Email', rec.email)}
-                    ${row('Mobile', s1.mobile_number)}
-                    ${row('Date of Birth', s1.date_of_birth)}
-                    ${row('Nationality', s1.nationality)}
-                    ${row('PPS Number', s1.pps_number)}
-                    ${row('Address', s1.address)}
-                    ${row('Eircode', s1.eircode_postcode)}
-                    ${row('Visa Type', visa.visa_type)}
-                    ${row('Employee Code', rec.employee_code)}
-                    ${row('User Type', rec.user_type)}
-                    ${row('Status', rec.status)}
-                    ${row('Recruitment ID', rec.recruitment_id)}
-                    ${row('NMBI Reg Expiry', s3.registration_expiry_date)}
-                </table>
-
-                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Employment</h6>
-                <div class="mb-4 small">${entries}</div>
-
-                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">References</h6>
-                <div class="mb-4 small">${refs}</div>
-
-                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Occupational Health</h6>
-                <table class="table table-sm table-borderless mb-4">
-                    <tr><th class="text-muted fw-normal small pe-3">Health Screening</th><td>${badge(s9.occupational_health_screening)}</td></tr>
-                    <tr><th class="text-muted fw-normal small pe-3">Fit for Duties</th><td>${badge(s9.fit_for_nursing_duties)}</td></tr>
-                    <tr><th class="text-muted fw-normal small pe-3">COVID-19</th><td class="small">${s9.covid_19_vaccine || '—'}</td></tr>
-                    <tr><th class="text-muted fw-normal small pe-3">Tuberculosis</th><td class="small">${s9.tuberculosis_vaccine || '—'}</td></tr>
-                    <tr><th class="text-muted fw-normal small pe-3">Hepatitis</th><td class="small">${s9.hepatitis_antibody || '—'}</td></tr>
-                    <tr><th class="text-muted fw-normal small pe-3">MMR</th><td class="small">${s9.mmr_vaccine || '—'}</td></tr>
-                </table>
-
-                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Mandatory Training</h6>
-                <table class="table table-sm table-borderless">${trainingRows}</table>`;
-        } catch (e) {
-            $('viewModalBody').innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
-        }
-    });
-});
-
-// ── Edit modal — re-bind submit after spinner swap ────────────────────
-// The form is always in DOM; spinner was just a visual overlay trick.
-// Re-attach edit properly:
-document.querySelectorAll('.btn-edit').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        // handled above — this second listener is a no-op duplicate guard
-    });
-});
-
 // ── Form submit ───────────────────────────────────────────────────────
 document.addEventListener('submit', async function (e) {
     if (!e.target.matches('#staffForm')) return;
     e.preventDefault();
-
     const btn    = $('staffSubmitBtn');
     const isEdit = !!$('staff_id').value;
     const url    = isEdit ? EDIT_URL : ADD_URL;
-
     btn.disabled    = true;
     btn.textContent = isEdit ? 'Saving…' : 'Creating…';
-
     try {
         const res    = await fetch(url, {
             method: 'POST',
@@ -1500,10 +1151,8 @@ document.addEventListener('submit', async function (e) {
             body: JSON.stringify(formPayload())
         });
         const result = await res.json();
-
         if (result.success) {
-            Swal.fire({ icon:'success', title:'Saved!', text:result.message,
-                        timer:1500, showConfirmButton:false })
+            Swal.fire({ icon:'success', title:'Saved!', text:result.message, timer:1500, showConfirmButton:false })
                 .then(() => { bootstrap.Modal.getInstance($('staffModal')).hide(); location.reload(); });
         } else {
             Swal.fire('Error', result.error || 'Operation failed', 'error');
@@ -1516,7 +1165,98 @@ document.addEventListener('submit', async function (e) {
     }
 });
 
-// ── Delete ────────────────────────────────────────────────────────────
+// ── View (called by hidden btn-view triggers) ─────────────────────────
+document.querySelectorAll('.btn-view').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        $('viewModalTitle').textContent = 'Loading…';
+        $('viewModalBody').innerHTML =
+            '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+        new bootstrap.Modal($('viewModal')).show();
+        try {
+            const rec = await fetchRecord(btn.dataset.id);
+            const s1  = rec.section_1_personal_details || {};
+            const s3  = rec.section_3_professional_registration || {};
+            const s9  = rec.section_9_occupational_health || {};
+            const s10 = rec.section_10_mandatory_training || {};
+            const s5  = rec.section_5_employment_history || {};
+            const s7  = rec.section_7_references || {};
+            const visa = (s1.work_permit_visa_status || {});
+            $('viewModalTitle').textContent = s1.full_name || rec.email;
+            const row = (label, val) =>
+                `<tr><th class="text-muted fw-normal small pe-3" style="width:42%;white-space:nowrap">${label}</th>
+                     <td class="small fw-semibold">${val || '—'}</td></tr>`;
+            const badge = val => val
+                ? '<span class="badge bg-success rounded-pill">Yes</span>'
+                : '<span class="badge bg-secondary rounded-pill">No</span>';
+            const trainingRows = Object.entries(s10).map(([k, v]) => {
+                const label   = k.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+                const expired = v && v.includes('Expired');
+                return `<tr><th class="text-muted fw-normal small pe-3">${label}</th>
+                             <td class="small ${expired ? 'text-danger fw-semibold' : 'text-success'}">${v || '—'}</td></tr>`;
+            }).join('');
+            const refs = [s7.reference_1, s7.reference_2, s7.reference_3]
+                .filter(r => r && r.name)
+                .map(r => `<div class="mb-1"><strong>${r.name}</strong> — ${r.position || ''}, ${r.organisation || ''} <span class="text-muted small">${r.email || ''}</span></div>`)
+                .join('') || '—';
+            const entries = (s5.entries || []).filter(e => e.employer)
+                .map(e => `<div class="mb-1"><strong>${e.employer}</strong> — ${e.position || ''}</div>`)
+                .join('') || '—';
+            $('viewModalBody').innerHTML = `
+                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Personal Details</h6>
+                <table class="table table-sm table-borderless mb-4">
+                    ${row('Full Name', s1.full_name)}${row('Email', rec.email)}
+                    ${row('Mobile', s1.mobile_number)}${row('Date of Birth', s1.date_of_birth)}
+                    ${row('Nationality', s1.nationality)}${row('PPS Number', s1.pps_number)}
+                    ${row('Address', s1.address)}${row('Eircode', s1.eircode_postcode)}
+                    ${row('Visa Type', visa.visa_type)}${row('Employee Code', rec.employee_code)}
+                    ${row('User Type', rec.user_type)}${row('Status', rec.status)}
+                    ${row('Recruitment ID', rec.recruitment_id)}
+                    ${row('NMBI Reg Expiry', s3.registration_expiry_date)}
+                </table>
+                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Employment</h6>
+                <div class="mb-4 small">${entries}</div>
+                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">References</h6>
+                <div class="mb-4 small">${refs}</div>
+                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Occupational Health</h6>
+                <table class="table table-sm table-borderless mb-4">
+                    <tr><th class="text-muted fw-normal small pe-3">Health Screening</th><td>${badge(s9.occupational_health_screening)}</td></tr>
+                    <tr><th class="text-muted fw-normal small pe-3">Fit for Duties</th><td>${badge(s9.fit_for_nursing_duties)}</td></tr>
+                    <tr><th class="text-muted fw-normal small pe-3">COVID-19</th><td class="small">${s9.covid_19_vaccine || '—'}</td></tr>
+                    <tr><th class="text-muted fw-normal small pe-3">Tuberculosis</th><td class="small">${s9.tuberculosis_vaccine || '—'}</td></tr>
+                    <tr><th class="text-muted fw-normal small pe-3">Hepatitis</th><td class="small">${s9.hepatitis_antibody || '—'}</td></tr>
+                    <tr><th class="text-muted fw-normal small pe-3">MMR</th><td class="small">${s9.mmr_vaccine || '—'}</td></tr>
+                </table>
+                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Mandatory Training</h6>
+                <table class="table table-sm table-borderless">${trainingRows}</table>`;
+        } catch (e) {
+            $('viewModalBody').innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+        }
+    });
+});
+
+// ── Edit (called by hidden btn-edit triggers) ─────────────────────────
+(function () {
+    let activeModal = null;
+    document.querySelectorAll('.btn-edit').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            resetForm();
+            $('staffModalLabel').textContent = 'Edit Staff';
+            $('staffSubmitBtn').textContent  = 'Save Changes';
+            $('staff_id').value = btn.dataset.id;
+            activeModal = new bootstrap.Modal($('staffModal'));
+            activeModal.show();
+            try {
+                const rec = await fetchRecord(btn.dataset.id);
+                populateForm(rec);
+            } catch (e) {
+                Swal.fire('Error', e.message, 'error');
+                activeModal.hide();
+            }
+        });
+    });
+})();
+
+// ── Delete (called by hidden btn-delete triggers) ─────────────────────
 document.querySelectorAll('.btn-delete').forEach(btn => {
     btn.addEventListener('click', async () => {
         const { isConfirmed } = await Swal.fire({
@@ -1526,7 +1266,6 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
             confirmButtonColor: '#d33', confirmButtonText: 'Yes, delete'
         });
         if (!isConfirmed) return;
-
         try {
             const res    = await fetch(DEL_URL, {
                 method: 'POST',
@@ -1545,27 +1284,164 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
     });
 });
 
-// ── Edit button — clean single handler ───────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+// ACTIONS MODAL — single consolidated entry point for all row actions
+// ═══════════════════════════════════════════════════════════════════════
 (function () {
-    let activeModal = null;
-    document.querySelectorAll('.btn-edit').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            resetForm();
-            $('staffModalLabel').textContent = 'Edit Staff';
-            $('staffSubmitBtn').textContent  = 'Save Changes';
-            $('staff_id').value = btn.dataset.id;
+    let _id = '', _name = '', _utLower = '';
 
-            activeModal = new bootstrap.Modal($('staffModal'));
-            activeModal.show();
+    function _initials(name) {
+        return (name || '').split(' ').filter(Boolean)
+            .slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+    }
 
-            try {
-                const rec = await fetchRecord(btn.dataset.id);
-                populateForm(rec);
-            } catch (e) {
-                Swal.fire('Error', e.message, 'error');
-                activeModal.hide();
-            }
+    // Helper: close actions modal, then fire callback once hidden
+    function _closeAndThen(cb) {
+        const amEl = $('actionsModal');
+        const amInst = bootstrap.Modal.getInstance(amEl);
+        if (amInst) {
+            amEl.addEventListener('hidden.bs.modal', cb, { once: true });
+            amInst.hide();
+        } else {
+            cb();
+        }
+    }
+
+    // Open actions modal
+    document.querySelectorAll('.btn-actions').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _id      = btn.dataset.id;
+            _name    = btn.dataset.name;
+            _utLower = (btn.dataset.utLower || '').toLowerCase();
+
+            // Populate header
+            $('amAvatar').textContent = _initials(_name);
+            $('amName').textContent   = _name;
+            $('amMeta').textContent   = [btn.dataset.type, btn.dataset.email].filter(Boolean).join(' · ');
+
+            // Standard CV download link
+            document.querySelector('.am-dl-cv').href = btn.dataset.cvUrl || ('/admin/live-staffs/cv/' + _id);
+
+            // VOS section visibility
+            const isHca   = /healthcare assistant|health care assistant|\bhca\b/.test(_utLower);
+            const isNurse = /nurse|rgn|rnm|midwife|nchd|cns|phn/.test(_utLower);
+            document.querySelector('.am-vos-hca-col').classList.toggle('d-none', !isHca);
+            document.querySelector('.am-vos-nurse-col').classList.toggle('d-none', !isNurse);
+            $('amVosSection').classList.toggle('d-none', !isHca && !isNurse);
+
+            new bootstrap.Modal($('actionsModal')).show();
         });
+    });
+
+    // Delegate all button clicks inside the actions modal
+    $('actionsModal').addEventListener('click', function (e) {
+        const btn = e.target.closest('.am-action-btn');
+        if (!btn) return;
+
+        // ── View ──────────────────────────────────────────────────────
+        if (btn.classList.contains('am-view')) {
+            _closeAndThen(() => {
+                const trigger = document.querySelector(`.btn-view[data-id="${_id}"]`);
+                if (trigger) trigger.click();
+            });
+            return;
+        }
+
+        // ── Edit record ───────────────────────────────────────────────
+        if (btn.classList.contains('am-edit')) {
+            _closeAndThen(() => {
+                const trigger = document.querySelector(`.btn-edit[data-id="${_id}"]`);
+                if (trigger) trigger.click();
+            });
+            return;
+        }
+
+        // ── Edit extracted CV ─────────────────────────────────────────
+        if (btn.classList.contains('am-edit-cv')) {
+            _closeAndThen(() => {
+                currentEditCvStaffId = _id;
+                $('editCvStaffName').textContent = _name;
+                $('editCvTextarea').value = 'Loading...';
+                $('editCvMsg').classList.add('d-none');
+                new bootstrap.Modal($('editCvModal')).show();
+                fetch(`${FETCH_URL}?id=${_id}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            $('editCvTextarea').value = data.record.extracted_cv || '';
+                            const sel = $('editCvUserType');
+                            const ut  = data.record.user_type || '';
+                            sel.value = Array.from(sel.options).find(o => o.value === ut) ? ut : '';
+                        } else {
+                            $('editCvTextarea').value = '';
+                        }
+                    }).catch(() => { $('editCvTextarea').value = ''; });
+            });
+            return;
+        }
+
+        // ── AI CV ─────────────────────────────────────────────────────
+        if (btn.classList.contains('am-ai-cv')) {
+            _closeAndThen(() => {
+                const trigger = document.querySelector(`.btn-ai-cv[data-id="${_id}"]`);
+                if (trigger) trigger.click();
+            });
+            return;
+        }
+
+        // ── AI Interview ──────────────────────────────────────────────
+        if (btn.classList.contains('am-ai-interview')) {
+            _closeAndThen(() => {
+                const trigger = document.querySelector(`.btn-ai-interview[data-id="${_id}"]`);
+                if (trigger) trigger.click();
+            });
+            return;
+        }
+
+        // ── Application Form ──────────────────────────────────────────
+        if (btn.classList.contains('am-ai-appform')) {
+            _closeAndThen(() => {
+                const trigger = document.querySelector(`.btn-ai-appform[data-id="${_id}"]`);
+                if (trigger) trigger.click();
+            });
+            return;
+        }
+
+        // ── PCC ───────────────────────────────────────────────────────
+        if (btn.classList.contains('am-pcc')) {
+            _closeAndThen(() => {
+                const trigger = document.querySelector(`.btn-pcc[data-id="${_id}"]`);
+                if (trigger) trigger.click();
+            });
+            return;
+        }
+
+        // ── VOS HCA ───────────────────────────────────────────────────
+        if (btn.classList.contains('am-vos')) {
+            _closeAndThen(() => {
+                const trigger = document.querySelector(`.btn-vos[data-id="${_id}"]`);
+                if (trigger) trigger.click();
+            });
+            return;
+        }
+
+        // ── VOS Nurse ─────────────────────────────────────────────────
+        if (btn.classList.contains('am-vos-nurse')) {
+            _closeAndThen(() => {
+                const trigger = document.querySelector(`.btn-vos-nurse[data-id="${_id}"]`);
+                if (trigger) trigger.click();
+            });
+            return;
+        }
+
+        // ── Delete ────────────────────────────────────────────────────
+        if (btn.classList.contains('am-delete')) {
+            _closeAndThen(() => {
+                const trigger = document.querySelector(`.btn-delete[data-id="${_id}"]`);
+                if (trigger) trigger.click();
+            });
+            return;
+        }
     });
 })();
 
@@ -1573,25 +1449,18 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
 $('importFile').addEventListener('change', async function () {
     const file = this.files[0];
     if (!file) return;
-
     const banner = $('importBanner');
     banner.classList.remove('d-none');
-
     const fd = new FormData();
     fd.append('file', file);
-
     try {
-        const res    = await fetch("{{ '/admin/live-staffs/import' }}", {
-            method:'POST', body:fd
-        });
+        const res    = await fetch("{{ '/admin/live-staffs/import' }}", { method:'POST', body:fd });
         const result = await res.json();
         banner.classList.add('d-none');
-
         if (result.success) {
             const errHtml = result.errors.length
                 ? `<br><small class="text-danger">${result.errors.slice(0,5).join('<br>')}</small>` : '';
-            await Swal.fire({ icon:'success', title:'Import Complete',
-                              html: result.message + errHtml });
+            await Swal.fire({ icon:'success', title:'Import Complete', html: result.message + errHtml });
             location.reload();
         } else {
             Swal.fire('Import Failed', result.error || 'Unknown error', 'error');
@@ -1604,505 +1473,323 @@ $('importFile').addEventListener('change', async function () {
     }
 });
 
-// ── AI CV buttons ─────────────────────────────────────────────────────
-const AI_GEN_URL   = "{{ '/admin/live-staffs/ai-cv/generate' }}";
+// ══════════════════════════════════════════════════════════════════════
+// AI CV
+// ══════════════════════════════════════════════════════════════════════
+const AI_GEN_URL    = "{{ '/admin/live-staffs/ai-cv/generate' }}";
 const AI_SAVED_BASE = "{{ '/admin/live-staffs/ai-cv/saved/__ID__' }}";
 const AI_DL_BASE    = "{{ '/admin/live-staffs/ai-cv/download/__ID__' }}";
-
-function aiSavedUrl(staffId)  { return AI_SAVED_BASE.replace('__ID__', staffId); }
-function aiDownloadUrl(cvId)  { return AI_DL_BASE.replace('__ID__', cvId); }
+function aiSavedUrl(id) { return AI_SAVED_BASE.replace('__ID__', id); }
+function aiDownloadUrl(id) { return AI_DL_BASE.replace('__ID__', id); }
 
 let currentAiStaffId = null;
-
 function setAiState(state) {
-    ['Idle','Generating','Done','Error'].forEach(s =>
-        document.getElementById('aiCv' + s).classList.add('d-none')
-    );
-    document.getElementById('aiCv' + state).classList.remove('d-none');
+    ['Idle','Generating','Done','Error'].forEach(s => $('aiCv'+s).classList.add('d-none'));
+    $('aiCv'+state).classList.remove('d-none');
 }
 
 document.querySelectorAll('.btn-ai-cv').forEach(btn => {
     btn.addEventListener('click', async () => {
         currentAiStaffId = btn.dataset.id;
-        const name = btn.dataset.name;
-
-        document.getElementById('aiCvStaffName').textContent = name;
-        document.getElementById('aiCvSavedInfo').classList.add('d-none');
-        document.getElementById('aiCvDownloadSavedBtn').classList.add('d-none');
-        document.getElementById('aiCvDownloadNewBtn').href = '#';
+        $('aiCvStaffName').textContent = btn.dataset.name;
+        $('aiCvSavedInfo').classList.add('d-none');
+        $('aiCvDownloadSavedBtn').classList.add('d-none');
+        $('aiCvDownloadNewBtn').href = '#';
+        $('aiCvUploadSection').classList.add('d-none');
+        $('aiCvUploadMsg').classList.add('d-none');
         setAiState('Idle');
-
-        new bootstrap.Modal(document.getElementById('aiCvModal')).show();
-
-        // Check for existing saved CV
+        new bootstrap.Modal($('aiCvModal')).show();
         try {
             const res  = await fetch(aiSavedUrl(currentAiStaffId));
             const data = await res.json();
             if (data.success && data.found) {
-                document.getElementById('aiCvSavedInfo').classList.remove('d-none');
-                document.getElementById('aiCvSavedDate').textContent = data.generated_at;
-                document.getElementById('aiCvDownloadSavedBtn').classList.remove('d-none');
-                document.getElementById('aiCvDownloadSavedBtn').onclick = () => {
-                    window.open(aiDownloadUrl(data.ai_cv_id || data.cv_id), '_blank');
-                };
-                // Show upload section so user can replace with edited version
-                document.getElementById('aiCvUploadSection').classList.remove('d-none');
-                document.getElementById('aiCvUploadMsg').classList.add('d-none');
-            }
-        } catch(e) { /* ignore */ }
-    });
-});
-
-document.getElementById('aiCvGenerateBtn').addEventListener('click', async () => {
-    if (!currentAiStaffId) return;
-    setAiState('Generating');
-
-    try {
-        const res  = await fetch(AI_GEN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ staff_id: currentAiStaffId })
-        });
-        const data = await res.json();
-
-        if (data.success) {
-            document.getElementById('aiCvDownloadNewBtn').href = aiDownloadUrl(data.ai_cv_id || data.cv_id);
-            setAiState('Done');
-            // Show upload section in idle for future use
-            document.getElementById('aiCvUploadSection').classList.remove('d-none');
-        } else {
-            document.getElementById('aiCvErrorMsg').textContent = data.error || 'Generation failed';
-            setAiState('Error');
-        }
-    } catch(e) {
-        document.getElementById('aiCvErrorMsg').textContent = 'Network error: ' + e.message;
-        setAiState('Error');
-    }
-});
-
-
-// ── AI Interview buttons ──────────────────────────────────────────────
-const AI_INT_GEN_URL   = "{{ '/admin/live-staffs/ai-interview/generate' }}";
-const AI_INT_SAVED_BASE = "{{ '/admin/live-staffs/ai-interview/saved/__ID__' }}";
-const AI_INT_DL_BASE    = "{{ '/admin/live-staffs/ai-interview/download/__ID__' }}";
-
-function aiIntSavedUrl(staffId)   { return AI_INT_SAVED_BASE.replace('__ID__', staffId); }
-function aiIntDownloadUrl(recId)  { return AI_INT_DL_BASE.replace('__ID__', recId); }
-
-let currentIntStaffId = null;
-
-function setIntState(state) {
-    ['Idle','Generating','Done','Error'].forEach(s =>
-        document.getElementById('aiInt' + s).classList.add('d-none')
-    );
-    document.getElementById('aiInt' + state).classList.remove('d-none');
-}
-
-document.querySelectorAll('.btn-ai-interview').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentIntStaffId = btn.dataset.id;
-        const name = btn.dataset.name;
-
-        document.getElementById('aiIntStaffName').textContent = name;
-        document.getElementById('aiIntSavedInfo').classList.add('d-none');
-        document.getElementById('aiIntDownloadSavedBtn').classList.add('d-none');
-        document.getElementById('aiIntDownloadNewBtn').href = '#';
-        setIntState('Idle');
-
-        new bootstrap.Modal(document.getElementById('aiInterviewModal')).show();
-
-        // Check for existing saved notes
-        try {
-            const res  = await fetch(aiIntSavedUrl(currentIntStaffId));
-            const data = await res.json();
-            if (data.success && data.found) {
-                document.getElementById('aiIntSavedInfo').classList.remove('d-none');
-                document.getElementById('aiIntSavedDate').textContent = data.generated_at;
-                document.getElementById('aiIntDownloadSavedBtn').classList.remove('d-none');
-                document.getElementById('aiIntDownloadSavedBtn').onclick = () => {
-                    window.open(aiIntDownloadUrl(data.interview_id || data.ai_id), '_blank');
-                };
-                // Show upload section
-                document.getElementById('aiIntUploadSection').classList.remove('d-none');
-                document.getElementById('aiIntUploadMsg').classList.add('d-none');
-            }
-        } catch(e) { /* ignore */ }
-    });
-});
-
-document.getElementById('aiIntGenerateBtn').addEventListener('click', async () => {
-    if (!currentIntStaffId) return;
-    setIntState('Generating');
-
-    try {
-        const res  = await fetch(AI_INT_GEN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ staff_id: currentIntStaffId })
-        });
-        const data = await res.json();
-
-        if (data.success) {
-            document.getElementById('aiIntDownloadNewBtn').href =
-                aiIntDownloadUrl(data.interview_id || data.ai_id);
-            setIntState('Done');
-            document.getElementById('aiIntUploadSection').classList.remove('d-none');
-        } else {
-            document.getElementById('aiIntErrorMsg').textContent =
-                data.error || 'Generation failed';
-            setIntState('Error');
-        }
-    } catch(e) {
-        document.getElementById('aiIntErrorMsg').textContent = 'Network error: ' + e.message;
-        setIntState('Error');
-    }
-});
-
-
-// ── AI CV Upload ──────────────────────────────────────────────────────
-const AI_UPLOAD_BASE = "{{ '/admin/live-staffs/ai-cv/upload/__ID__' }}";
-function aiUploadUrl(staffId) { return AI_UPLOAD_BASE.replace('__ID__', staffId); }
-
-// Show upload section when a saved CV exists
-const _origAiCvBtnListener = document.getElementById('aiCvGenerateBtn');
-
-// Extend the saved CV check to also show upload section
-const _origCheckSaved = async (staffId) => {
-    try {
-        const res  = await fetch(aiSavedUrl(staffId));
-        const data = await res.json();
-        if (data.success && data.found) {
-            document.getElementById('aiCvSavedInfo').classList.remove('d-none');
-            document.getElementById('aiCvSavedDate').textContent = data.generated_at;
-            document.getElementById('aiCvDownloadSavedBtn').classList.remove('d-none');
-            document.getElementById('aiCvDownloadSavedBtn').onclick = () => {
-                window.open(aiDownloadUrl(data.ai_cv_id || data.cv_id), '_blank');
-            };
-            // Show upload section
-            document.getElementById('aiCvUploadSection').classList.remove('d-none');
-        }
-    } catch(e) { /* ignore */ }
-};
-
-document.getElementById('aiCvUploadBtn').addEventListener('click', async () => {
-    const fileInput = document.getElementById('aiCvUploadInput');
-    const msgEl     = document.getElementById('aiCvUploadMsg');
-    const file      = fileInput.files[0];
-
-    if (!file) {
-        msgEl.textContent = 'Please select a .docx file first.';
-        msgEl.className   = 'mt-2 small text-danger';
-        msgEl.classList.remove('d-none');
-        return;
-    }
-
-    const btn       = document.getElementById('aiCvUploadBtn');
-    btn.disabled    = true;
-    btn.innerHTML   = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
-
-    const fd = new FormData();
-    fd.append('file', file);
-
-    try {
-        const res    = await fetch(aiUploadUrl(currentAiStaffId), {
-            method: 'POST',
-            body:   fd,
-        });
-        const result = await res.json();
-
-        if (result.success) {
-            msgEl.innerHTML   = `<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;
-            msgEl.className   = 'mt-2 small text-success';
-            fileInput.value   = '';
-        } else {
-            msgEl.textContent = result.error || 'Upload failed';
-            msgEl.className   = 'mt-2 small text-danger';
-        }
-        msgEl.classList.remove('d-none');
-    } catch(e) {
-        msgEl.textContent = 'Network error: ' + e.message;
-        msgEl.className   = 'mt-2 small text-danger';
-        msgEl.classList.remove('d-none');
-    } finally {
-        btn.disabled  = false;
-        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
-    }
-});
-
-
-// ── AI Interview Upload ───────────────────────────────────────────────
-const AI_INT_UPLOAD_BASE = "{{ '/admin/live-staffs/ai-interview/upload/__ID__' }}";
-function aiIntUploadUrl(staffId) { return AI_INT_UPLOAD_BASE.replace('__ID__', staffId); }
-
-document.getElementById('aiIntUploadBtn').addEventListener('click', async () => {
-    const fileInput = document.getElementById('aiIntUploadInput');
-    const msgEl     = document.getElementById('aiIntUploadMsg');
-    const file      = fileInput.files[0];
-
-    if (!file) {
-        msgEl.textContent = 'Please select a .docx file first.';
-        msgEl.className   = 'mt-2 small text-danger';
-        msgEl.classList.remove('d-none');
-        return;
-    }
-
-    const btn     = document.getElementById('aiIntUploadBtn');
-    btn.disabled  = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
-
-    const fd = new FormData();
-    fd.append('file', file);
-
-    try {
-        const res    = await fetch(aiIntUploadUrl(currentIntStaffId), {
-            method: 'POST',
-            body:   fd,
-        });
-        const result = await res.json();
-
-        if (result.success) {
-            msgEl.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;
-            msgEl.className = 'mt-2 small text-success';
-            fileInput.value = '';
-        } else {
-            msgEl.textContent = result.error || 'Upload failed';
-            msgEl.className   = 'mt-2 small text-danger';
-        }
-        msgEl.classList.remove('d-none');
-    } catch(e) {
-        msgEl.textContent = 'Network error: ' + e.message;
-        msgEl.className   = 'mt-2 small text-danger';
-        msgEl.classList.remove('d-none');
-    } finally {
-        btn.disabled  = false;
-        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
-    }
-});
-
-
-// ── Application Form ──────────────────────────────────────────────────
-const AI_APP_GEN_URL    = "{{ '/admin/live-staffs/ai-appform/generate' }}";
-const AI_APP_SAVED_BASE = "{{ '/admin/live-staffs/ai-appform/saved/__ID__' }}";
-const AI_APP_DL_BASE    = "{{ '/admin/live-staffs/ai-appform/download/__ID__' }}";
-const AI_APP_UL_BASE    = "{{ '/admin/live-staffs/ai-appform/upload/__ID__' }}";
-
-function aiAppSavedUrl(id)  { return AI_APP_SAVED_BASE.replace('__ID__', id); }
-function aiAppDownloadUrl(id){ return AI_APP_DL_BASE.replace('__ID__', id); }
-function aiAppUploadUrl(id)  { return AI_APP_UL_BASE.replace('__ID__', id); }
-
-let currentAppStaffId = null;
-
-function setAppState(state) {
-    ['Idle','Generating','Done','Error'].forEach(s =>
-        document.getElementById('aiApp' + s).classList.add('d-none')
-    );
-    document.getElementById('aiApp' + state).classList.remove('d-none');
-}
-
-document.querySelectorAll('.btn-ai-appform').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentAppStaffId = btn.dataset.id;
-        document.getElementById('aiAppStaffName').textContent = btn.dataset.name;
-        document.getElementById('aiAppSavedInfo').classList.add('d-none');
-        document.getElementById('aiAppDownloadSavedBtn').classList.add('d-none');
-        document.getElementById('aiAppUploadSection').classList.add('d-none');
-        document.getElementById('aiAppUploadMsg').classList.add('d-none');
-        document.getElementById('aiAppDownloadNewBtn').href = '#';
-        setAppState('Idle');
-        new bootstrap.Modal(document.getElementById('aiAppFormModal')).show();
-
-        try {
-            const res  = await fetch(aiAppSavedUrl(currentAppStaffId));
-            const data = await res.json();
-            if (data.success && data.found) {
-                document.getElementById('aiAppSavedInfo').classList.remove('d-none');
-                document.getElementById('aiAppSavedDate').textContent = data.generated_at;
-                document.getElementById('aiAppDownloadSavedBtn').classList.remove('d-none');
-                document.getElementById('aiAppDownloadSavedBtn').onclick = () => {
-                    window.open(aiAppDownloadUrl(data.appform_id), '_blank');
-                };
-                document.getElementById('aiAppUploadSection').classList.remove('d-none');
+                $('aiCvSavedInfo').classList.remove('d-none');
+                $('aiCvSavedDate').textContent = data.generated_at;
+                $('aiCvDownloadSavedBtn').classList.remove('d-none');
+                $('aiCvDownloadSavedBtn').onclick = () => window.open(aiDownloadUrl(data.ai_cv_id || data.cv_id), '_blank');
+                $('aiCvUploadSection').classList.remove('d-none');
             }
         } catch(e) {}
     });
 });
 
-document.getElementById('aiAppGenerateBtn').addEventListener('click', async () => {
+$('aiCvGenerateBtn').addEventListener('click', async () => {
+    if (!currentAiStaffId) return;
+    setAiState('Generating');
+    try {
+        const res  = await fetch(AI_GEN_URL, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ staff_id: currentAiStaffId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            $('aiCvDownloadNewBtn').href = aiDownloadUrl(data.ai_cv_id || data.cv_id);
+            $('aiCvUploadSection').classList.remove('d-none');
+            setAiState('Done');
+        } else {
+            $('aiCvErrorMsg').textContent = data.error || 'Generation failed';
+            setAiState('Error');
+        }
+    } catch(e) {
+        $('aiCvErrorMsg').textContent = 'Network error: ' + e.message;
+        setAiState('Error');
+    }
+});
+
+// AI CV Upload
+const AI_UPLOAD_BASE = "{{ '/admin/live-staffs/ai-cv/upload/__ID__' }}";
+function aiUploadUrl(id) { return AI_UPLOAD_BASE.replace('__ID__', id); }
+
+$('aiCvUploadBtn').addEventListener('click', async () => {
+    const fileInput = $('aiCvUploadInput');
+    const msgEl     = $('aiCvUploadMsg');
+    const file      = fileInput.files[0];
+    if (!file) { msgEl.textContent='Please select a .docx file first.'; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); return; }
+    const btn = $('aiCvUploadBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
+    const fd = new FormData(); fd.append('file', file);
+    try {
+        const res    = await fetch(aiUploadUrl(currentAiStaffId), { method:'POST', body:fd });
+        const result = await res.json();
+        if (result.success) { msgEl.innerHTML=`<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`; msgEl.className='mt-2 small text-success'; fileInput.value=''; }
+        else { msgEl.textContent = result.error || 'Upload failed'; msgEl.className='mt-2 small text-danger'; }
+        msgEl.classList.remove('d-none');
+    } catch(e) { msgEl.textContent='Network error: '+e.message; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); }
+    finally { btn.disabled=false; btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace'; }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// AI Interview
+// ══════════════════════════════════════════════════════════════════════
+const AI_INT_GEN_URL    = "{{ '/admin/live-staffs/ai-interview/generate' }}";
+const AI_INT_SAVED_BASE = "{{ '/admin/live-staffs/ai-interview/saved/__ID__' }}";
+const AI_INT_DL_BASE    = "{{ '/admin/live-staffs/ai-interview/download/__ID__' }}";
+const AI_INT_UPLOAD_BASE = "{{ '/admin/live-staffs/ai-interview/upload/__ID__' }}";
+function aiIntSavedUrl(id)  { return AI_INT_SAVED_BASE.replace('__ID__', id); }
+function aiIntDownloadUrl(id){ return AI_INT_DL_BASE.replace('__ID__', id); }
+function aiIntUploadUrl(id)  { return AI_INT_UPLOAD_BASE.replace('__ID__', id); }
+
+let currentIntStaffId = null;
+function setIntState(state) {
+    ['Idle','Generating','Done','Error'].forEach(s => $('aiInt'+s).classList.add('d-none'));
+    $('aiInt'+state).classList.remove('d-none');
+}
+
+document.querySelectorAll('.btn-ai-interview').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentIntStaffId = btn.dataset.id;
+        $('aiIntStaffName').textContent = btn.dataset.name;
+        $('aiIntSavedInfo').classList.add('d-none');
+        $('aiIntDownloadSavedBtn').classList.add('d-none');
+        $('aiIntDownloadNewBtn').href = '#';
+        $('aiIntUploadSection').classList.add('d-none');
+        $('aiIntUploadMsg').classList.add('d-none');
+        setIntState('Idle');
+        new bootstrap.Modal($('aiInterviewModal')).show();
+        try {
+            const res  = await fetch(aiIntSavedUrl(currentIntStaffId));
+            const data = await res.json();
+            if (data.success && data.found) {
+                $('aiIntSavedInfo').classList.remove('d-none');
+                $('aiIntSavedDate').textContent = data.generated_at;
+                $('aiIntDownloadSavedBtn').classList.remove('d-none');
+                $('aiIntDownloadSavedBtn').onclick = () => window.open(aiIntDownloadUrl(data.interview_id || data.ai_id), '_blank');
+                $('aiIntUploadSection').classList.remove('d-none');
+            }
+        } catch(e) {}
+    });
+});
+
+$('aiIntGenerateBtn').addEventListener('click', async () => {
+    if (!currentIntStaffId) return;
+    setIntState('Generating');
+    try {
+        const res  = await fetch(AI_INT_GEN_URL, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ staff_id: currentIntStaffId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            $('aiIntDownloadNewBtn').href = aiIntDownloadUrl(data.interview_id || data.ai_id);
+            $('aiIntUploadSection').classList.remove('d-none');
+            setIntState('Done');
+        } else {
+            $('aiIntErrorMsg').textContent = data.error || 'Generation failed';
+            setIntState('Error');
+        }
+    } catch(e) { $('aiIntErrorMsg').textContent='Network error: '+e.message; setIntState('Error'); }
+});
+
+$('aiIntUploadBtn').addEventListener('click', async () => {
+    const fileInput = $('aiIntUploadInput'); const msgEl = $('aiIntUploadMsg'); const file = fileInput.files[0];
+    if (!file) { msgEl.textContent='Please select a .docx file first.'; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); return; }
+    const btn = $('aiIntUploadBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
+    const fd = new FormData(); fd.append('file', file);
+    try {
+        const res=await fetch(aiIntUploadUrl(currentIntStaffId),{method:'POST',body:fd}); const result=await res.json();
+        if(result.success){msgEl.innerHTML=`<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;msgEl.className='mt-2 small text-success';fileInput.value='';}
+        else{msgEl.textContent=result.error||'Upload failed';msgEl.className='mt-2 small text-danger';}
+        msgEl.classList.remove('d-none');
+    } catch(e){msgEl.textContent='Network error: '+e.message;msgEl.className='mt-2 small text-danger';msgEl.classList.remove('d-none');}
+    finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';}
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// Application Form
+// ══════════════════════════════════════════════════════════════════════
+const AI_APP_GEN_URL    = "{{ '/admin/live-staffs/ai-appform/generate' }}";
+const AI_APP_SAVED_BASE = "{{ '/admin/live-staffs/ai-appform/saved/__ID__' }}";
+const AI_APP_DL_BASE    = "{{ '/admin/live-staffs/ai-appform/download/__ID__' }}";
+const AI_APP_UL_BASE    = "{{ '/admin/live-staffs/ai-appform/upload/__ID__' }}";
+function aiAppSavedUrl(id)  { return AI_APP_SAVED_BASE.replace('__ID__', id); }
+function aiAppDownloadUrl(id){ return AI_APP_DL_BASE.replace('__ID__', id); }
+function aiAppUploadUrl(id)  { return AI_APP_UL_BASE.replace('__ID__', id); }
+
+let currentAppStaffId = null;
+function setAppState(state) {
+    ['Idle','Generating','Done','Error'].forEach(s => $('aiApp'+s).classList.add('d-none'));
+    $('aiApp'+state).classList.remove('d-none');
+}
+
+document.querySelectorAll('.btn-ai-appform').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentAppStaffId = btn.dataset.id;
+        $('aiAppStaffName').textContent = btn.dataset.name;
+        $('aiAppSavedInfo').classList.add('d-none');
+        $('aiAppDownloadSavedBtn').classList.add('d-none');
+        $('aiAppUploadSection').classList.add('d-none');
+        $('aiAppUploadMsg').classList.add('d-none');
+        $('aiAppDownloadNewBtn').href = '#';
+        setAppState('Idle');
+        new bootstrap.Modal($('aiAppFormModal')).show();
+        try {
+            const res  = await fetch(aiAppSavedUrl(currentAppStaffId));
+            const data = await res.json();
+            if (data.success && data.found) {
+                $('aiAppSavedInfo').classList.remove('d-none');
+                $('aiAppSavedDate').textContent = data.generated_at;
+                $('aiAppDownloadSavedBtn').classList.remove('d-none');
+                $('aiAppDownloadSavedBtn').onclick = () => window.open(aiAppDownloadUrl(data.appform_id), '_blank');
+                $('aiAppUploadSection').classList.remove('d-none');
+            }
+        } catch(e) {}
+    });
+});
+
+$('aiAppGenerateBtn').addEventListener('click', async () => {
     if (!currentAppStaffId) return;
     setAppState('Generating');
     try {
         const res  = await fetch(AI_APP_GEN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({ staff_id: currentAppStaffId })
         });
         const data = await res.json();
         if (data.success) {
-            document.getElementById('aiAppDownloadNewBtn').href = aiAppDownloadUrl(data.appform_id);
-            document.getElementById('aiAppUploadSection').classList.remove('d-none');
+            $('aiAppDownloadNewBtn').href = aiAppDownloadUrl(data.appform_id);
+            $('aiAppUploadSection').classList.remove('d-none');
             setAppState('Done');
         } else {
-            document.getElementById('aiAppErrorMsg').textContent = data.error || 'Generation failed';
+            $('aiAppErrorMsg').textContent = data.error || 'Generation failed';
             setAppState('Error');
         }
-    } catch(e) {
-        document.getElementById('aiAppErrorMsg').textContent = 'Network error: ' + e.message;
-        setAppState('Error');
-    }
+    } catch(e) { $('aiAppErrorMsg').textContent='Network error: '+e.message; setAppState('Error'); }
 });
 
-document.getElementById('aiAppUploadBtn').addEventListener('click', async () => {
-    const fileInput = document.getElementById('aiAppUploadInput');
-    const msgEl     = document.getElementById('aiAppUploadMsg');
-    const file      = fileInput.files[0];
-    if (!file) {
-        msgEl.textContent = 'Please select a .docx file first.';
-        msgEl.className   = 'mt-2 small text-danger';
+$('aiAppUploadBtn').addEventListener('click', async () => {
+    const fileInput=$('aiAppUploadInput');const msgEl=$('aiAppUploadMsg');const file=fileInput.files[0];
+    if(!file){msgEl.textContent='Please select a .docx file first.';msgEl.className='mt-2 small text-danger';msgEl.classList.remove('d-none');return;}
+    const btn=$('aiAppUploadBtn');btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
+    const fd=new FormData();fd.append('file',file);
+    try{
+        const res=await fetch(aiAppUploadUrl(currentAppStaffId),{method:'POST',body:fd});const result=await res.json();
+        if(result.success){msgEl.innerHTML=`<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;msgEl.className='mt-2 small text-success';fileInput.value='';}
+        else{msgEl.textContent=result.error||'Upload failed';msgEl.className='mt-2 small text-danger';}
         msgEl.classList.remove('d-none');
-        return;
-    }
-    const btn     = document.getElementById('aiAppUploadBtn');
-    btn.disabled  = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
-    const fd = new FormData();
-    fd.append('file', file);
-    try {
-        const res    = await fetch(aiAppUploadUrl(currentAppStaffId), { method: 'POST', body: fd });
-        const result = await res.json();
-        if (result.success) {
-            msgEl.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;
-            msgEl.className = 'mt-2 small text-success';
-            fileInput.value = '';
-        } else {
-            msgEl.textContent = result.error || 'Upload failed';
-            msgEl.className   = 'mt-2 small text-danger';
-        }
-        msgEl.classList.remove('d-none');
-    } catch(e) {
-        msgEl.textContent = 'Network error: ' + e.message;
-        msgEl.className   = 'mt-2 small text-danger';
-        msgEl.classList.remove('d-none');
-    } finally {
-        btn.disabled  = false;
-        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
-    }
+    }catch(e){msgEl.textContent='Network error: '+e.message;msgEl.className='mt-2 small text-danger';msgEl.classList.remove('d-none');}
+    finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';}
 });
 
-
-// ── Edit Extracted CV ─────────────────────────────────────────────────
-const EDIT_CV_GET_URL  = "{{ '/admin/live-staffs/get' }}";
+// ══════════════════════════════════════════════════════════════════════
+// Edit Extracted CV
+// ══════════════════════════════════════════════════════════════════════
 const EDIT_CV_SAVE_URL = "{{ '/admin/live-staffs/edit-extracted-cv' }}";
-
 let currentEditCvStaffId = null;
 
 document.querySelectorAll('.btn-edit-cv').forEach(btn => {
     btn.addEventListener('click', async () => {
         currentEditCvStaffId = btn.dataset.id;
-        document.getElementById('editCvStaffName').textContent = btn.dataset.name || '';
-        document.getElementById('editCvTextarea').value = 'Loading...';
-        document.getElementById('editCvMsg').classList.add('d-none');
-        new bootstrap.Modal(document.getElementById('editCvModal')).show();
-
+        $('editCvStaffName').textContent = btn.dataset.name || '';
+        $('editCvTextarea').value = 'Loading...';
+        $('editCvMsg').classList.add('d-none');
+        new bootstrap.Modal($('editCvModal')).show();
         try {
-            const res  = await fetch(`${EDIT_CV_GET_URL}?id=${currentEditCvStaffId}`);
+            const res  = await fetch(`${FETCH_URL}?id=${currentEditCvStaffId}`);
             const data = await res.json();
             if (data.success) {
-                document.getElementById('editCvTextarea').value =
-                    data.record.extracted_cv || '';
-                // Set user_type dropdown
-                const sel = document.getElementById('editCvUserType');
+                $('editCvTextarea').value = data.record.extracted_cv || '';
+                const sel = $('editCvUserType');
                 const ut  = data.record.user_type || '';
-                const opt = Array.from(sel.options).find(o => o.value === ut);
-                sel.value = opt ? ut : '';
-            } else {
-                document.getElementById('editCvTextarea').value = '';
-            }
-        } catch(e) {
-            document.getElementById('editCvTextarea').value = '';
-        }
+                sel.value = Array.from(sel.options).find(o => o.value === ut) ? ut : '';
+            } else { $('editCvTextarea').value = ''; }
+        } catch(e) { $('editCvTextarea').value = ''; }
     });
 });
 
-document.getElementById('editCvSaveBtn').addEventListener('click', async () => {
-    const text      = document.getElementById('editCvTextarea').value;
-    const user_type = document.getElementById('editCvUserType').value;
-    const msgEl     = document.getElementById('editCvMsg');
-    const btn       = document.getElementById('editCvSaveBtn');
-
-    btn.disabled  = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
-
+$('editCvSaveBtn').addEventListener('click', async () => {
+    const text      = $('editCvTextarea').value;
+    const user_type = $('editCvUserType').value;
+    const msgEl     = $('editCvMsg');
+    const btn       = $('editCvSaveBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
     try {
         const res    = await fetch(EDIT_CV_SAVE_URL, {
-            method:  'POST',
-            headers: {'Content-Type': 'application/json'},
-            body:    JSON.stringify({
-                staff_id:     currentEditCvStaffId,
-                extracted_cv: text,
-                user_type:    user_type,
-            }),
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ staff_id: currentEditCvStaffId, extracted_cv: text, user_type })
         });
         const result = await res.json();
-
         if (result.success) {
             msgEl.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i> Saved successfully.';
-            msgEl.className = 'mt-2 small text-success';
-            msgEl.classList.remove('d-none');
-            setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('editCvModal')).hide(), 1200);
-        } else {
-            msgEl.textContent = result.error || 'Save failed';
-            msgEl.className   = 'mt-2 small text-danger';
-            msgEl.classList.remove('d-none');
-        }
-    } catch(e) {
-        msgEl.textContent = 'Network error: ' + e.message;
-        msgEl.className   = 'mt-2 small text-danger';
-        msgEl.classList.remove('d-none');
-    } finally {
-        btn.disabled  = false;
-        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Save Changes';
-    }
+            msgEl.className = 'mt-2 small text-success'; msgEl.classList.remove('d-none');
+            setTimeout(() => bootstrap.Modal.getInstance($('editCvModal')).hide(), 1200);
+        } else { msgEl.textContent = result.error || 'Save failed'; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); }
+    } catch(e) { msgEl.textContent='Network error: '+e.message; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); }
+    finally { btn.disabled=false; btn.innerHTML='<i class="bi bi-check-lg me-1"></i> Save Changes'; }
 });
 
-
-// ── PCC Self-Declaration ──────────────────────────────────────────────
-const PCC_GEN_URL    = "{{ '/admin/live-staffs/ai-pcc/generate' }}";
-const PCC_SAVED_URL  = "{{ '/admin/live-staffs/ai-pcc/saved/__ID__' }}";
-const PCC_DL_URL     = "{{ '/admin/live-staffs/ai-pcc/download/__ID__' }}";
-const PCC_UPL_URL    = "{{ '/admin/live-staffs/ai-pcc/upload/__ID__' }}";
-
+// ══════════════════════════════════════════════════════════════════════
+// PCC Self-Declaration
+// ══════════════════════════════════════════════════════════════════════
+const PCC_GEN_URL   = "{{ '/admin/live-staffs/ai-pcc/generate' }}";
+const PCC_SAVED_URL = "{{ '/admin/live-staffs/ai-pcc/saved/__ID__' }}";
+const PCC_DL_URL    = "{{ '/admin/live-staffs/ai-pcc/download/__ID__' }}";
+const PCC_UPL_URL   = "{{ '/admin/live-staffs/ai-pcc/upload/__ID__' }}";
 let currentPccStaffId = null;
 
 document.querySelectorAll('.btn-pcc').forEach(btn => {
     btn.addEventListener('click', async () => {
         currentPccStaffId = btn.dataset.id;
-        const name = btn.dataset.name || '';
-        document.getElementById('pccModalName').textContent = name;
-        document.getElementById('pccExistingAlert').classList.add('d-none');
-        document.getElementById('pccGenerating').classList.add('d-none');
-        document.getElementById('pccResult').classList.add('d-none');
-        document.getElementById('pccError').classList.add('d-none');
-        document.getElementById('pccGenerateBtn').disabled = false;
-        document.getElementById('pccGenerateBtn').innerHTML = '<i class="bi bi-magic me-1"></i> Generate';
-        new bootstrap.Modal(document.getElementById('pccModal')).show();
-
-        // Check if already generated — show result state directly (same as VOS)
+        $('pccModalName').textContent = btn.dataset.name || '';
+        $('pccExistingAlert').classList.add('d-none');
+        $('pccGenerating').classList.add('d-none');
+        $('pccResult').classList.add('d-none');
+        $('pccError').classList.add('d-none');
+        $('pccGenerateBtn').disabled = false;
+        $('pccGenerateBtn').innerHTML = '<i class="bi bi-magic me-1"></i> Generate';
+        new bootstrap.Modal($('pccModal')).show();
         try {
             const r = await fetch(PCC_SAVED_URL.replace('__ID__', currentPccStaffId));
             const d = await r.json();
             if (d.success && d.found) {
-                document.getElementById('pccDownloadBtn').href = PCC_DL_URL.replace('__ID__', d.pcc_id);
-                document.getElementById('pccResult').classList.remove('d-none');
-                // Add regenerate link below the success alert
-                const res = document.getElementById('pccResult');
+                $('pccDownloadBtn').href = PCC_DL_URL.replace('__ID__', d.pcc_id);
+                $('pccResult').classList.remove('d-none');
+                const res = $('pccResult');
                 if (!res.querySelector('.pcc-regen-link')) {
                     res.insertAdjacentHTML('beforeend',
-                        `<div class="text-muted small mt-2">Generated on ${d.generated_at || ''}
-                         — <a href="#" class="text-muted pcc-regen-link">Regenerate</a></div>`
-                    );
-                    res.querySelector('.pcc-regen-link').addEventListener('click', (ev) => {
+                        `<div class="text-muted small mt-2">Generated on ${d.generated_at || ''} — <a href="#" class="text-muted pcc-regen-link">Regenerate</a></div>`);
+                    res.querySelector('.pcc-regen-link').addEventListener('click', ev => {
                         ev.preventDefault();
-                        document.getElementById('pccResult').classList.add('d-none');
+                        $('pccResult').classList.add('d-none');
                         res.querySelector('.pcc-regen-link')?.closest('div')?.remove();
                     });
                 }
@@ -2111,308 +1798,155 @@ document.querySelectorAll('.btn-pcc').forEach(btn => {
     });
 });
 
-document.getElementById('pccGenerateBtn').addEventListener('click', async () => {
-    const gen  = document.getElementById('pccGenerating');
-    const res  = document.getElementById('pccResult');
-    const err  = document.getElementById('pccError');
-    const btn  = document.getElementById('pccGenerateBtn');
-    gen.classList.remove('d-none');
-    res.classList.add('d-none');
-    err.classList.add('d-none');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Generating…';
-
+$('pccGenerateBtn').addEventListener('click', async () => {
+    const gen=$('pccGenerating'),res=$('pccResult'),err=$('pccError'),btn=$('pccGenerateBtn');
+    gen.classList.remove('d-none'); res.classList.add('d-none'); err.classList.add('d-none');
+    btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Generating…';
     try {
-        const r = await fetch(PCC_GEN_URL, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({staff_id: currentPccStaffId}),
-        });
-        const text = await r.text();
-        let d;
-        try { d = JSON.parse(text); }
-        catch(_) {
-            gen.classList.add('d-none');
-            err.textContent = `Server error ${r.status}: ${text.slice(0,200)}`;
-            err.classList.remove('d-none');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-magic me-1"></i> Generate';
-            return;
-        }
+        const r=await fetch(PCC_GEN_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_id:currentPccStaffId})});
+        const text=await r.text(); let d;
+        try{d=JSON.parse(text);}catch(_){gen.classList.add('d-none');err.textContent=`Server error ${r.status}: ${text.slice(0,200)}`;err.classList.remove('d-none');btn.disabled=false;btn.innerHTML='<i class="bi bi-magic me-1"></i> Generate';return;}
         gen.classList.add('d-none');
-        if (d.success) {
-            document.getElementById('pccDownloadBtn').href = PCC_DL_URL.replace('__ID__', d.pcc_id);
-            res.classList.remove('d-none');
-        } else {
-            err.textContent = d.error || 'Generation failed';
-            err.classList.remove('d-none');
-        }
-    } catch(e) {
-        gen.classList.add('d-none');
-        err.textContent = 'Network error: ' + e.message;
-        err.classList.remove('d-none');
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-magic me-1"></i> Generate';
-    }
+        if(d.success){$('pccDownloadBtn').href=PCC_DL_URL.replace('__ID__',d.pcc_id);res.classList.remove('d-none');}
+        else{err.textContent=d.error||'Generation failed';err.classList.remove('d-none');}
+    }catch(e){gen.classList.add('d-none');err.textContent='Network error: '+e.message;err.classList.remove('d-none');}
+    finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-magic me-1"></i> Generate';}
 });
 
-document.getElementById('pccUploadInput').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file || !currentPccStaffId) return;
-    const fd = new FormData();
-    fd.append('file', file);
-    try {
-        const r = await fetch(PCC_UPL_URL.replace('__ID__', currentPccStaffId), {method:'POST', body:fd});
-        const d = await r.json();
-        const err = document.getElementById('pccError');
-        if (d.success) {
-            err.className = 'alert alert-success small py-2';
-            err.textContent = 'Uploaded successfully';
-            err.classList.remove('d-none');
-        } else {
-            err.className = 'alert alert-danger small py-2';
-            err.textContent = d.error || 'Upload failed';
-            err.classList.remove('d-none');
-        }
-    } catch(ex) {}
-    e.target.value = '';
+$('pccUploadInput').addEventListener('change', async (e) => {
+    const file=e.target.files[0]; if(!file||!currentPccStaffId)return;
+    const fd=new FormData(); fd.append('file',file);
+    try{
+        const r=await fetch(PCC_UPL_URL.replace('__ID__',currentPccStaffId),{method:'POST',body:fd});const d=await r.json();
+        const err=$('pccError');
+        if(d.success){err.className='alert alert-success small py-2';err.textContent='Uploaded successfully';err.classList.remove('d-none');}
+        else{err.className='alert alert-danger small py-2';err.textContent=d.error||'Upload failed';err.classList.remove('d-none');}
+    }catch(ex){}
+    e.target.value='';
 });
 
-// ── VOS (Verification of Service) buttons ─────────────────────────────
-const VOS_GEN_URL    = '/admin/live-staffs/vos/generate/__ID__';
-const VOS_DL_URL     = '/admin/live-staffs/vos/download/__ID__';
-const VOS_SAVED_URL  = '/admin/live-staffs/api/vos-saved/__ID__';
-
+// ══════════════════════════════════════════════════════════════════════
+// VOS (HCA)
+// ══════════════════════════════════════════════════════════════════════
+const VOS_GEN_URL   = '/admin/live-staffs/vos/generate/__ID__';
+const VOS_DL_URL    = '/admin/live-staffs/vos/download/__ID__';
+const VOS_SAVED_URL = '/admin/live-staffs/api/vos-saved/__ID__';
+const VOS_UPLOAD_BASE = '/admin/live-staffs/vos/upload/__ID__';
 let currentVosStaffId = null;
 
 document.querySelectorAll('.btn-vos').forEach(btn => {
     btn.addEventListener('click', async () => {
         currentVosStaffId = btn.dataset.id;
-        const name        = btn.dataset.name || 'Staff';
-
-        document.getElementById('vosModalName').textContent = name;
-        document.getElementById('vosIdle').classList.remove('d-none');
-        document.getElementById('vosGenerating').classList.add('d-none');
-        document.getElementById('vosResult').classList.add('d-none');
-        document.getElementById('vosError').classList.add('d-none');
-        document.getElementById('vosSavedInfo').classList.add('d-none');
-        document.getElementById('vosGenerateBtn').disabled = false;
-        document.getElementById('vosGenerateBtn').innerHTML = '<i class="bi bi-patch-check me-1"></i> Generate Verification of Service';
-
-        // Check if already generated
+        $('vosModalName').textContent = btn.dataset.name || 'Staff';
+        $('vosIdle').classList.remove('d-none');
+        $('vosGenerating').classList.add('d-none');
+        $('vosResult').classList.add('d-none');
+        $('vosError').classList.add('d-none');
+        $('vosSavedInfo').classList.add('d-none');
+        $('vosGenerateBtn').disabled = false;
+        $('vosGenerateBtn').innerHTML = '<i class="bi bi-patch-check me-1"></i> Generate Verification of Service';
         try {
-            const r = await fetch(VOS_SAVED_URL.replace('__ID__', currentVosStaffId));
-            const d = await r.json();
-            if (d.success && d.found) {
-                // Already generated — show result state directly
-                document.getElementById('vosIdle').classList.add('d-none');
-                document.getElementById('vosResult').classList.remove('d-none');
-                document.getElementById('vosDownloadBtn').href =
-                    VOS_DL_URL.replace('__ID__', currentVosStaffId);
-                if (d.total) {
-                    document.getElementById('vosTotal').textContent =
-                        'Total Eligible Service: ' + d.total;
-                }
-                document.getElementById('vosTotal').insertAdjacentHTML('afterend',
-                    `<div class="text-muted small mt-1">Generated on ${d.generated_at || ''} 
-                     — <a href="#" class="text-muted" id="vosRegenLink">Regenerate</a></div>`
-                );
-                document.getElementById('vosRegenLink')?.addEventListener('click', (ev) => {
-                    ev.preventDefault();
-                    document.getElementById('vosResult').classList.add('d-none');
-                    document.getElementById('vosIdle').classList.remove('d-none');
-                });
+            const r=await fetch(VOS_SAVED_URL.replace('__ID__',currentVosStaffId));const d=await r.json();
+            if(d.success&&d.found){
+                $('vosIdle').classList.add('d-none');$('vosResult').classList.remove('d-none');
+                $('vosDownloadBtn').href=VOS_DL_URL.replace('__ID__',currentVosStaffId);
+                if(d.total)$('vosTotal').textContent='Total Eligible Service: '+d.total;
+                $('vosTotal').insertAdjacentHTML('afterend',`<div class="text-muted small mt-1">Generated on ${d.generated_at||''} — <a href="#" class="text-muted" id="vosRegenLink">Regenerate</a></div>`);
+                $('vosRegenLink')?.addEventListener('click',ev=>{ev.preventDefault();$('vosResult').classList.add('d-none');$('vosIdle').classList.remove('d-none');});
             }
         } catch(e) {}
-
-        new bootstrap.Modal(document.getElementById('vosModal')).show();
+        new bootstrap.Modal($('vosModal')).show();
     });
 });
 
-document.getElementById('vosGenerateBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('vosGenerateBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Generating...';
-
-    document.getElementById('vosIdle').classList.add('d-none');
-    document.getElementById('vosGenerating').classList.remove('d-none');
-    document.getElementById('vosResult').classList.add('d-none');
-    document.getElementById('vosError').classList.add('d-none');
-
-    try {
-        const r = await fetch(VOS_GEN_URL.replace('__ID__', currentVosStaffId), {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-        });
-        const text = await r.text();
-        let d;
-        try { d = JSON.parse(text); }
-        catch(_) {
-            document.getElementById('vosGenerating').classList.add('d-none');
-            document.getElementById('vosError').classList.remove('d-none');
-            document.getElementById('vosErrorMsg').textContent = `Server error ${r.status}: ${text.slice(0,150)}`;
-            return;
-        }
-        document.getElementById('vosGenerating').classList.add('d-none');
-        if (d.success) {
-            document.getElementById('vosResult').classList.remove('d-none');
-            document.getElementById('vosDownloadBtn').href =
-                VOS_DL_URL.replace('__ID__', currentVosStaffId);
-            if (d.total) {
-                document.getElementById('vosTotal').textContent =
-                    'Total Eligible Service: ' + d.total;
-            }
-        } else {
-            document.getElementById('vosError').classList.remove('d-none');
-            document.getElementById('vosErrorMsg').textContent = d.error || 'Generation failed';
-        }
-    } catch(e) {
-        document.getElementById('vosGenerating').classList.add('d-none');
-        document.getElementById('vosError').classList.remove('d-none');
-        document.getElementById('vosErrorMsg').textContent = 'Network error: ' + e.message;
-    }
+$('vosGenerateBtn').addEventListener('click', async () => {
+    const btn=$('vosGenerateBtn');btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Generating...';
+    $('vosIdle').classList.add('d-none');$('vosGenerating').classList.remove('d-none');
+    $('vosResult').classList.add('d-none');$('vosError').classList.add('d-none');
+    try{
+        const r=await fetch(VOS_GEN_URL.replace('__ID__',currentVosStaffId),{method:'POST',headers:{'Content-Type':'application/json'}});
+        const text=await r.text();let d;
+        try{d=JSON.parse(text);}catch(_){$('vosGenerating').classList.add('d-none');$('vosError').classList.remove('d-none');$('vosErrorMsg').textContent=`Server error ${r.status}: ${text.slice(0,150)}`;return;}
+        $('vosGenerating').classList.add('d-none');
+        if(d.success){$('vosResult').classList.remove('d-none');$('vosDownloadBtn').href=VOS_DL_URL.replace('__ID__',currentVosStaffId);if(d.total)$('vosTotal').textContent='Total Eligible Service: '+d.total;}
+        else{$('vosError').classList.remove('d-none');$('vosErrorMsg').textContent=d.error||'Generation failed';}
+    }catch(e){$('vosGenerating').classList.add('d-none');$('vosError').classList.remove('d-none');$('vosErrorMsg').textContent='Network error: '+e.message;}
 });
 
-// ── VOS Upload ────────────────────────────────────────────────────────
-const VOS_UPLOAD_BASE = '/admin/live-staffs/vos/upload/__ID__';
-
-document.getElementById('vosUploadBtn').addEventListener('click', async () => {
-    const file = document.getElementById('vosUploadInput').files[0];
-    const msg  = document.getElementById('vosUploadMsg');
-    if (!file) {
-        msg.className = 'mt-2 small text-danger';
-        msg.textContent = 'Please select a .docx file first.';
+$('vosUploadBtn').addEventListener('click', async () => {
+    const file=$('vosUploadInput').files[0];const msg=$('vosUploadMsg');
+    if(!file){msg.className='mt-2 small text-danger';msg.textContent='Please select a .docx file first.';msg.classList.remove('d-none');return;}
+    const btn=$('vosUploadBtn');btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Uploading...';msg.classList.add('d-none');
+    const fd=new FormData();fd.append('file',file);
+    try{
+        const r=await fetch(VOS_UPLOAD_BASE.replace('__ID__',currentVosStaffId),{method:'POST',body:fd});const d=await r.json();
+        if(d.success){msg.className='mt-2 small text-success';msg.textContent='✅ Uploaded successfully — download link updated.';$('vosDownloadBtn').href=VOS_DL_URL.replace('__ID__',currentVosStaffId)+'?t='+Date.now();}
+        else{msg.className='mt-2 small text-danger';msg.textContent='❌ '+(d.error||'Upload failed');}
         msg.classList.remove('d-none');
-        return;
-    }
-    const btn = document.getElementById('vosUploadBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading...';
-    msg.classList.add('d-none');
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-        const r = await fetch(VOS_UPLOAD_BASE.replace('__ID__', currentVosStaffId), {
-            method: 'POST',
-            body: formData,
-        });
-        const d = await r.json();
-        if (d.success) {
-            msg.className = 'mt-2 small text-success';
-            msg.textContent = '✅ Uploaded successfully — download link updated.';
-            document.getElementById('vosDownloadBtn').href =
-                VOS_DL_URL.replace('__ID__', currentVosStaffId) + '?t=' + Date.now();
-        } else {
-            msg.className = 'mt-2 small text-danger';
-            msg.textContent = '❌ ' + (d.error || 'Upload failed');
-        }
-        msg.classList.remove('d-none');
-    } catch(e) {
-        msg.className = 'mt-2 small text-danger';
-        msg.textContent = '❌ Network error: ' + e.message;
-        msg.classList.remove('d-none');
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
-    }
+    }catch(e){msg.className='mt-2 small text-danger';msg.textContent='❌ Network error: '+e.message;msg.classList.remove('d-none');}
+    finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';}
 });
 
-// ── VOS Nurse ─────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+// VOS Nurse
+// ══════════════════════════════════════════════════════════════════════
 const VOS_NURSE_GEN_URL    = '/admin/live-staffs/vos-nurse/generate/__ID__';
 const VOS_NURSE_DL_URL     = '/admin/live-staffs/vos-nurse/download/__ID__';
 const VOS_NURSE_SAVED_URL  = '/admin/live-staffs/api/vos-nurse-saved/__ID__';
 const VOS_NURSE_UPLOAD_URL = '/admin/live-staffs/vos-nurse/upload/__ID__';
-
 let currentVosNurseStaffId = null;
 
 document.querySelectorAll('.btn-vos-nurse').forEach(btn => {
     btn.addEventListener('click', async () => {
         currentVosNurseStaffId = btn.dataset.id;
-        const name = btn.dataset.name || 'Staff';
-        document.getElementById('vosNurseModalName').textContent = name;
-        document.getElementById('vosNurseIdle').classList.remove('d-none');
-        document.getElementById('vosNurseGenerating').classList.add('d-none');
-        document.getElementById('vosNurseResult').classList.add('d-none');
-        document.getElementById('vosNurseError').classList.add('d-none');
-        document.getElementById('vosNurseGenerateBtn').disabled = false;
-        document.getElementById('vosNurseGenerateBtn').innerHTML = '<i class="bi bi-patch-check-fill me-1"></i> Generate Verification of Service';
-
-        try {
-            const r = await fetch(VOS_NURSE_SAVED_URL.replace('__ID__', currentVosNurseStaffId));
-            const d = await r.json();
-            if (d.success && d.found) {
-                document.getElementById('vosNurseIdle').classList.add('d-none');
-                document.getElementById('vosNurseResult').classList.remove('d-none');
-                document.getElementById('vosNurseDownloadBtn').href = VOS_NURSE_DL_URL.replace('__ID__', currentVosNurseStaffId);
-                if (d.total) document.getElementById('vosNurseTotal').textContent = 'Total Eligible Service: ' + d.total;
-                document.getElementById('vosNurseTotal').insertAdjacentHTML('afterend',
-                    `<div class="text-muted small mt-1">Generated on ${d.generated_at || ''} — <a href="#" class="text-muted" id="vosNurseRegenLink">Regenerate</a></div>`);
-                document.getElementById('vosNurseRegenLink')?.addEventListener('click', (ev) => {
-                    ev.preventDefault();
-                    document.getElementById('vosNurseResult').classList.add('d-none');
-                    document.getElementById('vosNurseIdle').classList.remove('d-none');
-                });
+        $('vosNurseModalName').textContent = btn.dataset.name || 'Staff';
+        $('vosNurseIdle').classList.remove('d-none');
+        $('vosNurseGenerating').classList.add('d-none');
+        $('vosNurseResult').classList.add('d-none');
+        $('vosNurseError').classList.add('d-none');
+        $('vosNurseGenerateBtn').disabled = false;
+        $('vosNurseGenerateBtn').innerHTML = '<i class="bi bi-patch-check-fill me-1"></i> Generate Verification of Service';
+        try{
+            const r=await fetch(VOS_NURSE_SAVED_URL.replace('__ID__',currentVosNurseStaffId));const d=await r.json();
+            if(d.success&&d.found){
+                $('vosNurseIdle').classList.add('d-none');$('vosNurseResult').classList.remove('d-none');
+                $('vosNurseDownloadBtn').href=VOS_NURSE_DL_URL.replace('__ID__',currentVosNurseStaffId);
+                if(d.total)$('vosNurseTotal').textContent='Total Eligible Service: '+d.total;
+                $('vosNurseTotal').insertAdjacentHTML('afterend',`<div class="text-muted small mt-1">Generated on ${d.generated_at||''} — <a href="#" class="text-muted" id="vosNurseRegenLink">Regenerate</a></div>`);
+                $('vosNurseRegenLink')?.addEventListener('click',ev=>{ev.preventDefault();$('vosNurseResult').classList.add('d-none');$('vosNurseIdle').classList.remove('d-none');});
             }
-        } catch(e) {}
-
-        new bootstrap.Modal(document.getElementById('vosNurseModal')).show();
+        }catch(e){}
+        new bootstrap.Modal($('vosNurseModal')).show();
     });
 });
 
-document.getElementById('vosNurseGenerateBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('vosNurseGenerateBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Generating...';
-    document.getElementById('vosNurseIdle').classList.add('d-none');
-    document.getElementById('vosNurseGenerating').classList.remove('d-none');
-    document.getElementById('vosNurseResult').classList.add('d-none');
-    document.getElementById('vosNurseError').classList.add('d-none');
-    try {
-        const r = await fetch(VOS_NURSE_GEN_URL.replace('__ID__', currentVosNurseStaffId), {method:'POST', headers:{'Content-Type':'application/json'}});
-        const text = await r.text();
-        let d; try { d = JSON.parse(text); } catch(_) {
-            document.getElementById('vosNurseGenerating').classList.add('d-none');
-            document.getElementById('vosNurseError').classList.remove('d-none');
-            document.getElementById('vosNurseErrorMsg').textContent = `Error ${r.status}: ${text.slice(0,150)}`;
-            return;
-        }
-        document.getElementById('vosNurseGenerating').classList.add('d-none');
-        if (d.success) {
-            document.getElementById('vosNurseResult').classList.remove('d-none');
-            document.getElementById('vosNurseDownloadBtn').href = VOS_NURSE_DL_URL.replace('__ID__', currentVosNurseStaffId);
-            if (d.total) document.getElementById('vosNurseTotal').textContent = 'Total Eligible Service: ' + d.total;
-        } else {
-            document.getElementById('vosNurseError').classList.remove('d-none');
-            document.getElementById('vosNurseErrorMsg').textContent = d.error || 'Generation failed';
-        }
-    } catch(e) {
-        document.getElementById('vosNurseGenerating').classList.add('d-none');
-        document.getElementById('vosNurseError').classList.remove('d-none');
-        document.getElementById('vosNurseErrorMsg').textContent = 'Network error: ' + e.message;
-    }
+$('vosNurseGenerateBtn').addEventListener('click', async () => {
+    const btn=$('vosNurseGenerateBtn');btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Generating...';
+    $('vosNurseIdle').classList.add('d-none');$('vosNurseGenerating').classList.remove('d-none');
+    $('vosNurseResult').classList.add('d-none');$('vosNurseError').classList.add('d-none');
+    try{
+        const r=await fetch(VOS_NURSE_GEN_URL.replace('__ID__',currentVosNurseStaffId),{method:'POST',headers:{'Content-Type':'application/json'}});
+        const text=await r.text();let d;
+        try{d=JSON.parse(text);}catch(_){$('vosNurseGenerating').classList.add('d-none');$('vosNurseError').classList.remove('d-none');$('vosNurseErrorMsg').textContent=`Error ${r.status}: ${text.slice(0,150)}`;return;}
+        $('vosNurseGenerating').classList.add('d-none');
+        if(d.success){$('vosNurseResult').classList.remove('d-none');$('vosNurseDownloadBtn').href=VOS_NURSE_DL_URL.replace('__ID__',currentVosNurseStaffId);if(d.total)$('vosNurseTotal').textContent='Total Eligible Service: '+d.total;}
+        else{$('vosNurseError').classList.remove('d-none');$('vosNurseErrorMsg').textContent=d.error||'Generation failed';}
+    }catch(e){$('vosNurseGenerating').classList.add('d-none');$('vosNurseError').classList.remove('d-none');$('vosNurseErrorMsg').textContent='Network error: '+e.message;}
 });
 
-document.getElementById('vosNurseUploadBtn').addEventListener('click', async () => {
-    const file = document.getElementById('vosNurseUploadInput').files[0];
-    const msg  = document.getElementById('vosNurseUploadMsg');
-    if (!file) { msg.className='mt-2 small text-danger'; msg.textContent='Select a .docx file first.'; msg.classList.remove('d-none'); return; }
-    const btn = document.getElementById('vosNurseUploadBtn');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading...';
-    msg.classList.add('d-none');
-    const formData = new FormData(); formData.append('file', file);
-    try {
-        const r = await fetch(VOS_NURSE_UPLOAD_URL.replace('__ID__', currentVosNurseStaffId), {method:'POST', body:formData});
-        const d = await r.json();
-        msg.className = d.success ? 'mt-2 small text-success' : 'mt-2 small text-danger';
-        msg.textContent = d.success ? '✅ Uploaded — download link updated.' : '❌ ' + (d.error || 'Upload failed');
-        if (d.success) document.getElementById('vosNurseDownloadBtn').href = VOS_NURSE_DL_URL.replace('__ID__', currentVosNurseStaffId) + '?t=' + Date.now();
+$('vosNurseUploadBtn').addEventListener('click', async () => {
+    const file=$('vosNurseUploadInput').files[0];const msg=$('vosNurseUploadMsg');
+    if(!file){msg.className='mt-2 small text-danger';msg.textContent='Select a .docx file first.';msg.classList.remove('d-none');return;}
+    const btn=$('vosNurseUploadBtn');btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Uploading...';msg.classList.add('d-none');
+    const fd=new FormData();fd.append('file',file);
+    try{
+        const r=await fetch(VOS_NURSE_UPLOAD_URL.replace('__ID__',currentVosNurseStaffId),{method:'POST',body:fd});const d=await r.json();
+        msg.className=d.success?'mt-2 small text-success':'mt-2 small text-danger';
+        msg.textContent=d.success?'✅ Uploaded — download link updated.':'❌ '+(d.error||'Upload failed');
+        if(d.success)$('vosNurseDownloadBtn').href=VOS_NURSE_DL_URL.replace('__ID__',currentVosNurseStaffId)+'?t='+Date.now();
         msg.classList.remove('d-none');
-    } catch(e) { msg.className='mt-2 small text-danger'; msg.textContent='❌ '+e.message; msg.classList.remove('d-none'); }
-    finally { btn.disabled=false; btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace'; }
+    }catch(e){msg.className='mt-2 small text-danger';msg.textContent='❌ '+e.message;msg.classList.remove('d-none');}
+    finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';}
 });
-
 </script>
 {% endblock %}
