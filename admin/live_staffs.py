@@ -3442,11 +3442,26 @@ def live_staff_ai_interview_upload(staff_id):
 # SCREENING INTERVIEW RECORD
 # ══════════════════════════════════════════════════════════════════════
 
-def _build_screening_docx(first_shift_date=None):
+# One of these is picked at random for each generated record — used for
+# both "Screening Interview Conducted By" / "Title" (header) and
+# "Interviewer" (bottom assessment row).
+_SCREENING_INTERVIEWERS = [
+    {"name": "Victor Cornel",      "title": "Head of Nursing & Clinical Manager"},
+    {"name": "Pomin Ponselvan",    "title": "Nursing Manager"},
+    {"name": "Namitha Ponselvan",  "title": "Nursing Supervisor"},
+    {"name": "Jijo Jerlin",        "title": "Clinical Officer"},
+]
+
+
+def _build_screening_docx(first_shift_date=None, candidate_name=''):
     """
     Load the Screening Interview Record template from GCS and inject:
-      - Date                       = first_shift_date − 15 days  (or blank)
-      - Candidate 1st Contact Date = first_shift_date − 20 days  (or blank)
+      - Screening Interview Conducted By = a randomly chosen interviewer
+      - Title                            = that interviewer's job title
+      - Candidate Name                   = candidate_name (from live_staffs)
+      - Date                             = first_shift_date − 15 days  (or blank)
+      - Candidate 1st Contact Date       = first_shift_date − 20 days  (or blank)
+      - Interviewer (bottom assessment)  = same randomly chosen interviewer
 
     All other template content and styling is preserved byte-for-byte.
 
@@ -3458,6 +3473,7 @@ def _build_screening_docx(first_shift_date=None):
     """
     import io as _sio
     import zipfile as _szip
+    import random as _random
     from datetime import timedelta as _std
 
     # ── Load template ─────────────────────────────────────────────────
@@ -3488,6 +3504,9 @@ def _build_screening_docx(first_shift_date=None):
         (first_shift_date - _std(days=20)).strftime('%d-%m-%Y')
         if first_shift_date else ''
     )
+
+    # ── Pick a random interviewer (same person used in both places) ───
+    interviewer = _random.choice(_SCREENING_INTERVIEWERS)
 
     # ── Read document.xml ─────────────────────────────────────────────
     with _szip.ZipFile(_sio.BytesIO(template_bytes), 'r') as _z:
@@ -3529,7 +3548,16 @@ def _build_screening_docx(first_shift_date=None):
             return xml_str
 
         is_self_closing = xml_str[open_tag_end - 1] == '/'
-        new_t = f'<w:t xml:space="preserve">{value}</w:t>'
+        # XML-escape the value — unescaped '&', '<', '>' (e.g. in job
+        # titles like "Nursing & Clinical Manager") would otherwise
+        # break the document.xml and corrupt the .docx on open.
+        escaped_value = (
+            str(value)
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+        )
+        new_t = f'<w:t xml:space="preserve">{escaped_value}</w:t>'
 
         if is_self_closing:
             return xml_str[:t_start] + new_t + xml_str[open_tag_end + 1:]
@@ -3540,8 +3568,12 @@ def _build_screening_docx(first_shift_date=None):
             close_pos += len('</w:t>')
             return xml_str[:t_start] + new_t + xml_str[close_pos:]
 
+    xml = _inject(xml, 'Screening Interview Conducted By', interviewer['name'])
+    xml = _inject(xml, 'Title', interviewer['title'])
+    xml = _inject(xml, 'Candidate Name', candidate_name or '')
     xml = _inject(xml, 'Date', interview_date)
     xml = _inject(xml, 'Candidate 1st Contact Date', contact_date)
+    xml = _inject(xml, 'Interviewer', interviewer['name'])
 
     # ── Rebuild zip ───────────────────────────────────────────────────
     out = _sio.BytesIO()
@@ -3591,7 +3623,10 @@ def live_staff_screening_generate():
             except ValueError:
                 pass
 
-        docx_bytes = _build_screening_docx(first_shift_date=first_shift_date)
+        docx_bytes = _build_screening_docx(
+            first_shift_date=first_shift_date,
+            candidate_name=full_name,
+        )
 
         safe_name = full_name.replace(' ', '_').replace('/', '_')
         filename  = f"Screening_{safe_name}.docx"
