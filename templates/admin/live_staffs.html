@@ -185,6 +185,7 @@
                                     <button class="btn-ai-interview" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
                                     <button class="btn-ai-appform"   data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
                                     <button class="btn-pcc"       data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
+                                    <button class="btn-screening" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}" data-first-shift="{{ s.first_shift_date or '' }}"></button>
                                     <button class="btn-delete"    data-id="{{ s._id }}" data-name="{{ p.full_name | default('this record') | e }}"></button>
                                     {% if 'healthcare assistant' in ut_lower %}
                                     <button class="btn-vos"       data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
@@ -339,6 +340,15 @@
                             <div>
                                 <div class="am-label">PCC declaration</div>
                                 <div class="am-desc">Self-declaration form</div>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="col-6">
+                        <button class="am-action-btn am-screening w-100">
+                            <i class="bi bi-clipboard2-pulse am-icon" style="color:#6366f1;"></i>
+                            <div>
+                                <div class="am-label">Screening interview</div>
+                                <div class="am-desc">Interview record form</div>
                             </div>
                         </button>
                     </div>
@@ -958,6 +968,86 @@
                 <div id="vosNurseError" class="d-none">
                     <div class="alert alert-danger py-2 small" id="vosNurseErrorMsg"></div>
                 </div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Screening Interview Modal ─────────────────────────────────── -->
+<div class="modal fade" id="screeningModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-clipboard2-pulse me-2" style="color:#6366f1;"></i>Screening Interview — <span id="screeningModalName"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+
+                <!-- Idle -->
+                <div id="screeningIdle">
+                    <p class="text-muted small mb-3">
+                        Generate the <strong>Screening Interview Record</strong> (.docx) for this staff member.
+                        The Date will be set to 15 days before first shift and Candidate 1st Contact Date
+                        to 20 days before first shift. Leave first shift blank to keep those fields empty.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">First Shift Date <span class="text-muted fw-normal">(optional — sets interview & contact dates)</span></label>
+                        <input type="date" class="form-control form-control-sm" id="screeningFirstShift">
+                    </div>
+                    <div id="screeningSavedInfo" class="alert alert-success py-2 small mb-3 d-none">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Saved record from <strong id="screeningSavedDate"></strong>.
+                        <a href="#" id="screeningExistingDownload" target="_blank" class="ms-2">
+                            <i class="bi bi-download me-1"></i>Download
+                        </a>
+                    </div>
+                    <button class="btn w-100 fw-bold" id="screeningGenerateBtn"
+                            style="background:#6366f1;color:#fff;">
+                        <i class="bi bi-clipboard2-pulse me-1"></i> Generate Screening Interview Record
+                    </button>
+                </div>
+
+                <!-- Generating -->
+                <div id="screeningGenerating" class="d-none text-center py-3">
+                    <div class="spinner-border mb-3" style="color:#6366f1;" role="status"></div>
+                    <p class="text-muted">Generating document...</p>
+                </div>
+
+                <!-- Result -->
+                <div id="screeningResult" class="d-none">
+                    <div class="alert alert-success py-2 mb-3">
+                        <i class="bi bi-check-circle me-1"></i> Document generated successfully!
+                    </div>
+                    <a href="#" id="screeningDownloadBtn" target="_blank"
+                       class="btn btn-outline-success w-100 mb-3">
+                        <i class="bi bi-download me-1"></i> Download Screening Interview Record
+                    </a>
+                    <div class="border-top pt-3 mt-1">
+                        <p class="text-muted small mb-2">
+                            <i class="bi bi-upload me-1"></i>
+                            Upload an edited <code>.docx</code> to replace the saved version.
+                        </p>
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <input type="file" id="screeningUploadInput" accept=".docx"
+                                   class="form-control form-control-sm" style="max-width:260px;">
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="screeningUploadBtn">
+                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
+                            </button>
+                        </div>
+                        <div id="screeningUploadMsg" class="mt-2 small d-none"></div>
+                    </div>
+                </div>
+
+                <!-- Error -->
+                <div id="screeningError" class="d-none">
+                    <div class="alert alert-danger py-2 small" id="screeningErrorMsg"></div>
+                </div>
+
             </div>
             <div class="modal-footer border-0 pt-0">
                 <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
@@ -1947,6 +2037,123 @@ $('vosNurseUploadBtn').addEventListener('click', async () => {
         msg.classList.remove('d-none');
     }catch(e){msg.className='mt-2 small text-danger';msg.textContent='❌ '+e.message;msg.classList.remove('d-none');}
     finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';}
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// Screening Interview Record
+// ══════════════════════════════════════════════════════════════════════
+const SCREENING_GEN_URL    = "{{ '/admin/live-staffs/screening/generate' }}";
+const SCREENING_SAVED_BASE = "{{ '/admin/live-staffs/screening/saved/__ID__' }}";
+const SCREENING_DL_BASE    = "{{ '/admin/live-staffs/screening/download/__ID__' }}";
+const SCREENING_UL_BASE    = "{{ '/admin/live-staffs/screening/upload/__ID__' }}";
+
+function screeningSavedUrl(id)  { return SCREENING_SAVED_BASE.replace('__ID__', id); }
+function screeningDownloadUrl(id){ return SCREENING_DL_BASE.replace('__ID__', id); }
+function screeningUploadUrl(id)  { return SCREENING_UL_BASE.replace('__ID__', id); }
+
+let currentScreeningStaffId = null;
+
+function setScreeningState(state) {
+    ['Idle','Generating','Result','Error'].forEach(s =>
+        $('screening' + s).classList.add('d-none')
+    );
+    $('screening' + state).classList.remove('d-none');
+}
+
+document.querySelectorAll('.btn-screening').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentScreeningStaffId = btn.dataset.id;
+        $('screeningModalName').textContent = btn.dataset.name || 'Staff';
+        $('screeningSavedInfo').classList.add('d-none');
+        $('screeningDownloadBtn').href = '#';
+        // Pre-fill first shift date from data attr if available
+        const fs = btn.dataset.firstShift || '';
+        $('screeningFirstShift').value = fs ? fs.slice(0, 10) : '';
+        setScreeningState('Idle');
+        new bootstrap.Modal($('screeningModal')).show();
+
+        // Check for saved record
+        try {
+            const r = await fetch(screeningSavedUrl(currentScreeningStaffId));
+            const d = await r.json();
+            if (d.success && d.found) {
+                $('screeningSavedInfo').classList.remove('d-none');
+                $('screeningSavedDate').textContent = d.generated_at;
+                $('screeningExistingDownload').href = screeningDownloadUrl(currentScreeningStaffId);
+            }
+        } catch(e) {}
+    });
+});
+
+$('screeningGenerateBtn').addEventListener('click', async () => {
+    if (!currentScreeningStaffId) return;
+    const firstShift = $('screeningFirstShift').value || '';
+    setScreeningState('Generating');
+    try {
+        const r = await fetch(SCREENING_GEN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                staff_id: currentScreeningStaffId,
+                first_shift_date: firstShift || null,
+            }),
+        });
+        const text = await r.text();
+        let d;
+        try { d = JSON.parse(text); }
+        catch(_) {
+            $('screeningErrorMsg').textContent = `Server error ${r.status}: ${text.slice(0,200)}`;
+            setScreeningState('Error');
+            return;
+        }
+        if (d.success) {
+            $('screeningDownloadBtn').href = screeningDownloadUrl(currentScreeningStaffId);
+            setScreeningState('Result');
+        } else {
+            $('screeningErrorMsg').textContent = d.error || 'Generation failed';
+            setScreeningState('Error');
+        }
+    } catch(e) {
+        $('screeningErrorMsg').textContent = 'Network error: ' + e.message;
+        setScreeningState('Error');
+    }
+});
+
+$('screeningUploadBtn').addEventListener('click', async () => {
+    const file = $('screeningUploadInput').files[0];
+    const msg  = $('screeningUploadMsg');
+    if (!file) {
+        msg.textContent = 'Please select a .docx file first.';
+        msg.className   = 'mt-2 small text-danger';
+        msg.classList.remove('d-none');
+        return;
+    }
+    const btn = $('screeningUploadBtn');
+    btn.disabled  = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const r = await fetch(screeningUploadUrl(currentScreeningStaffId), { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.success) {
+            msg.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>${d.message || 'Uploaded successfully'}`;
+            msg.className = 'mt-2 small text-success';
+            $('screeningDownloadBtn').href = screeningDownloadUrl(currentScreeningStaffId) + '?t=' + Date.now();
+            $('screeningUploadInput').value = '';
+        } else {
+            msg.textContent = d.error || 'Upload failed';
+            msg.className   = 'mt-2 small text-danger';
+        }
+        msg.classList.remove('d-none');
+    } catch(e) {
+        msg.textContent = 'Network error: ' + e.message;
+        msg.className   = 'mt-2 small text-danger';
+        msg.classList.remove('d-none');
+    } finally {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
+    }
 });
 </script>
 {% endblock %}

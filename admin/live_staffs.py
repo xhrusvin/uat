@@ -1185,6 +1185,9 @@ def _ai_appforms_col():
 def _ai_pcc_col():
     return db.live_staff_ai_pcc
 
+def _screening_col():
+    return db.live_staff_screening
+
 
 # ── AI CV DOCX builder ────────────────────────────────────────────────
 
@@ -3435,5 +3438,271 @@ def live_staff_ai_interview_upload(staff_id):
 # ── AI Appform saved/download/upload ──────────────────────────────────
 
 
+# ══════════════════════════════════════════════════════════════════════
+# SCREENING INTERVIEW RECORD
+# ══════════════════════════════════════════════════════════════════════
+
+def _build_screening_docx(first_shift_date=None):
+    """
+    Load the Screening Interview Record template from GCS and inject:
+      - Date                       = first_shift_date − 15 days  (or blank)
+      - Candidate 1st Contact Date = first_shift_date − 20 days  (or blank)
+
+    All other template content and styling is preserved byte-for-byte.
+
+    Template must be uploaded to GCS at the path set in env var
+    SCREENING_TEMPLATE_GCS_BLOB (default: templates/Screening_Interview_Record.docx).
+    Or set SCREENING_TEMPLATE_LOCAL_PATH to an absolute file path on disk.
+
+    Returns bytes of the .docx file.
+    """
+    import io as _sio
+    import zipfile as _szip
+    from datetime import timedelta as _std
+
+    # ── Load template ─────────────────────────────────────────────────
+    template_blob  = os.environ.get(
+        'SCREENING_TEMPLATE_GCS_BLOB',
+        'templates/Screening_Interview_Record.docx'
+    )
+    template_local = os.environ.get('SCREENING_TEMPLATE_LOCAL_PATH', '')
+
+    if template_local and os.path.exists(template_local):
+        with open(template_local, 'rb') as _tf:
+            template_bytes = _tf.read()
+    else:
+        template_bytes = _gcs_download(template_blob)
+
+    # ── Parse first_shift_date ────────────────────────────────────────
+    if isinstance(first_shift_date, str):
+        try:
+            first_shift_date = datetime.strptime(first_shift_date[:10], '%Y-%m-%d')
+        except ValueError:
+            first_shift_date = None
+
+    interview_date = (
+        (first_shift_date - _std(days=15)).strftime('%d-%m-%Y')
+        if first_shift_date else ''
+    )
+    contact_date = (
+        (first_shift_date - _std(days=20)).strftime('%d-%m-%Y')
+        if first_shift_date else ''
+    )
+
+    # ── Read document.xml ─────────────────────────────────────────────
+    with _szip.ZipFile(_sio.BytesIO(template_bytes), 'r') as _z:
+        xml       = _z.read('word/document.xml').decode('utf-8')
+        all_files = {name: _z.read(name) for name in _z.namelist()}
+
+    # ── Inject value into the cell immediately after the label cell ───
+    def _inject(xml_str, label, value):
+        label_tag = f'<w:t xml:space="preserve">{label}</w:t>'
+        pos = xml_str.find(label_tag)
+        if pos == -1:
+            return xml_str
+        tc_end = xml_str.find('</w:tc>', pos)
+        if tc_end == -1:
+            return xml_str
+        tc_end += len('</w:tc>')
+        t_start       = xml_str.find('<w:t', tc_end)
+        t_self_close  = xml_str.find('/>', t_start)
+        t_end_tag     = xml_str.find('</w:t>', t_start)
+        new_t = f'<w:t xml:space="preserve">{value}</w:t>'
+        if t_self_close != -1 and (t_end_tag == -1 or t_self_close < t_end_tag):
+            return xml_str[:t_start] + new_t + xml_str[t_self_close + 2:]
+        else:
+            t_end_tag += len('</w:t>')
+            return xml_str[:t_start] + new_t + xml_str[t_end_tag:]
+
+    xml = _inject(xml, 'Date', interview_date)
+    xml = _inject(xml, 'Candidate 1st Contact Date', contact_date)
+
+    # ── Rebuild zip ───────────────────────────────────────────────────
+    out = _sio.BytesIO()
+    with _szip.ZipFile(out, 'w', _szip.ZIP_DEFLATED) as _zout:
+        for name, data in all_files.items():
+            if name == 'word/document.xml':
+                _zout.writestr(name, xml.encode('utf-8'))
+            else:
+                _zout.writestr(name, data)
+    return out.getvalue()
 
 
+@admin_bp.route('/live-staffs/screening/generate', methods=['POST'])
+@admin_required
+def live_staff_screening_generate():
+    """
+    Generate a Screening Interview Record .docx for a staff member.
+
+    POST /admin/live-staffs/screening/generate
+    Body: {
+        "staff_id":        "<mongo_id>",
+        "first_shift_date": "YYYY-MM-DD"   # optional — sets Date (−15d) and Contact Date (−20d)
+    }
+    """
+    data            = request.get_json() or {}
+    staff_id        = (data.get('staff_id') or '').strip()
+    first_shift_str = (data.get('first_shift_date') or '').strip()
+
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        emp_code  = _v(doc.get('employee_code') or '')
+        email     = _v(doc.get('email') or '')
+
+        # Parse optional first shift date
+        first_shift_date = None
+        if first_shift_str:
+            try:
+                first_shift_date = datetime.strptime(first_shift_str[:10], '%Y-%m-%d')
+            except ValueError:
+                pass
+
+        docx_bytes = _build_screening_docx(first_shift_date=first_shift_date)
+
+        safe_name = full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"Screening_{safe_name}.docx"
+        gcs_blob  = f"screening/{filename}"
+
+        _gcs_upload(
+            gcs_blob, docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+        # Upsert into live_staff_screening collection
+        col      = _screening_col()
+        existing = col.find_one({"staff_id": staff_id})
+        rec = {
+            "staff_id":         staff_id,
+            "staff_name":       full_name,
+            "employee_code":    emp_code,
+            "filename":         filename,
+            "gcs_blob":         gcs_blob,
+            "first_shift_date": first_shift_str or None,
+            "generated_at":     datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+        else:
+            col.insert_one(rec)
+
+        return jsonify({
+            "success":    True,
+            "staff_name": full_name,
+            "filename":   filename,
+            "gcs_blob":   gcs_blob,
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/screening/saved/<staff_id>')
+@admin_required
+def live_staff_screening_saved(staff_id):
+    """
+    Check whether a saved Screening Interview Record exists for this staff member.
+
+    GET /admin/live-staffs/screening/saved/<staff_id>
+    Returns: { "success": true, "found": true/false, "generated_at": "...", "filename": "..." }
+    """
+    try:
+        rec = _screening_col().find_one({"staff_id": staff_id})
+        if not rec:
+            return jsonify({"success": True, "found": False})
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "filename":     rec.get("filename", ""),
+            "gcs_blob":     rec.get("gcs_blob", ""),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M")
+                            if rec.get("generated_at") else "",
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/screening/download/<staff_id>')
+@admin_required
+def live_staff_screening_download(staff_id):
+    """
+    Stream the saved Screening Interview Record .docx from GCS.
+
+    GET /admin/live-staffs/screening/download/<staff_id>
+    """
+    try:
+        rec = _screening_col().find_one({"staff_id": staff_id})
+        if not rec or not rec.get('gcs_blob'):
+            return "Screening record not found — please regenerate", 404
+
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        name       = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={
+                "Content-Disposition":
+                    f'attachment; filename="Screening_{name}.docx"'
+            }
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/screening/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_screening_upload(staff_id):
+    """
+    Replace the saved Screening Interview Record with an edited .docx upload.
+
+    POST /admin/live-staffs/screening/upload/<staff_id>
+    Form-data: file=<.docx>
+    """
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+    file = request.files['file']
+    if not file.filename.lower().endswith('.docx'):
+        return jsonify({"success": False, "error": "Only .docx files accepted"}), 400
+
+    try:
+        col = _screening_col()
+        rec = col.find_one({"staff_id": staff_id})
+        if not rec:
+            # Auto-create a record so the upload is not lost
+            doc2 = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            s1   = (doc2.get('section_1_personal_details') or {}) if doc2 else {}
+            name = _v(s1.get('full_name') or 'staff').replace(' ', '_').replace('/', '_')
+            gcs_blob = f"screening/Screening_{name}.docx"
+        else:
+            gcs_blob = rec.get('gcs_blob') or f"screening/Screening_{staff_id}.docx"
+
+        data_bytes = file.read()
+        _gcs_upload(
+            gcs_blob, data_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+        col.update_one(
+            {"staff_id": staff_id},
+            {"$set": {
+                "gcs_blob":      gcs_blob,
+                "filename":      os.path.basename(gcs_blob),
+                "last_uploaded": datetime.utcnow(),
+                "uploaded_by":   "admin",
+            }},
+            upsert=True
+        )
+        return jsonify({
+            "success":  True,
+            "message":  "Screening record replaced successfully",
+            "filename": os.path.basename(gcs_blob),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
