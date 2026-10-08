@@ -3452,6 +3452,23 @@ _SCREENING_INTERVIEWERS = [
     {"name": "Jijo Jerlin",        "title": "Clinical Officer"},
 ]
 
+# Correct option letter for each of the 10 Knowledge Check MCQ questions,
+# in document order — matches the HCA Questionnaire Answer Key.
+_SCREENING_MCQ_CORRECT = ['B', 'B', 'D', 'C', 'A', 'B', 'B', 'B', 'A', 'B']
+_SCREENING_MCQ_LETTERS = ['A', 'B', 'C', 'D']
+
+# Checkbox occurrence indices (0-based, in document order among all 44
+# <w:sdt> checkbox controls) — fixed by the template's layout:
+#   0-39  : the 40 MCQ option checkboxes (10 questions × A,B,C,D)
+#   40,41 : Pass, Fail
+#   42,43 : Suitable for Placement — Yes, No
+_SCREENING_PASS_CHECKBOX_IDX = 40
+_SCREENING_FAIL_CHECKBOX_IDX = 41
+
+# How many of the 10 MCQ questions are marked as answered correctly —
+# the rest get a random wrong option checked instead.
+_SCREENING_CORRECT_COUNT = 7
+
 
 def _build_screening_docx(first_shift_date=None, candidate_name='',
                            location='', candidate_id=''):
@@ -3517,9 +3534,12 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
         all_files = {name: _z.read(name) for name in _z.namelist()}
 
     # ── Inject value into the cell immediately after the label cell ───
-    def _inject(xml_str, label, value):
+    # start_pos lets a caller scope the search past an earlier point in
+    # the document — needed because some labels (e.g. "Experience") are
+    # reused in more than one section (Agency Work vs Assessment scores).
+    def _inject(xml_str, label, value, start_pos=0):
         label_tag = f'<w:t xml:space="preserve">{label}</w:t>'
-        pos = xml_str.find(label_tag)
+        pos = xml_str.find(label_tag, start_pos)
         if pos == -1:
             return xml_str
         tc_end = xml_str.find('</w:tc>', pos)
@@ -3571,6 +3591,38 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
             close_pos += len('</w:t>')
             return xml_str[:t_start] + new_t + xml_str[close_pos:]
 
+    # ── Toggle a checkbox content control by its 0-based occurrence
+    # index among all <w:sdt> blocks in document order. Flips both the
+    # w14:checked value and the displayed <w:sym> char so it renders
+    # correctly in Word, LibreOffice, and PDF conversion alike.
+    def _set_checkbox(xml_str, occurrence_index, checked=True):
+        search_from = 0
+        count = 0
+        target_start = None
+        while True:
+            pos = xml_str.find('<w:sdt>', search_from)
+            if pos == -1:
+                break
+            if count == occurrence_index:
+                target_start = pos
+                break
+            count += 1
+            search_from = pos + len('<w:sdt>')
+        if target_start is None:
+            return xml_str
+        end = xml_str.find('</w:sdt>', target_start)
+        if end == -1:
+            return xml_str
+        end += len('</w:sdt>')
+        block = xml_str[target_start:end]
+        if checked:
+            block = block.replace('w14:val="0"', 'w14:val="1"', 1)
+            block = block.replace('w:char="2610"', 'w:char="2612"', 1)
+        else:
+            block = block.replace('w14:val="1"', 'w14:val="0"', 1)
+            block = block.replace('w:char="2612"', 'w:char="2610"', 1)
+        return xml_str[:target_start] + block + xml_str[end:]
+
     xml = _inject(xml, 'Screening Interview Conducted By', interviewer['name'])
     xml = _inject(xml, 'Title', interviewer['title'])
     xml = _inject(xml, 'Candidate Name', candidate_name or '')
@@ -3579,6 +3631,53 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
     xml = _inject(xml, 'Candidate 1st Contact Date', contact_date)
     xml = _inject(xml, 'Location', location or '')
     xml = _inject(xml, 'Interviewer', interviewer['name'])
+
+    # ── Knowledge Check MCQ — mark 7 questions correct, 3 incorrect ───
+    wrong_question_indices = set(
+        _random.sample(range(len(_SCREENING_MCQ_CORRECT)),
+                        len(_SCREENING_MCQ_CORRECT) - _SCREENING_CORRECT_COUNT)
+    )
+    correct_marked = 0
+    for q_idx, correct_letter in enumerate(_SCREENING_MCQ_CORRECT):
+        if q_idx in wrong_question_indices:
+            wrong_options = [l for l in _SCREENING_MCQ_LETTERS if l != correct_letter]
+            chosen_letter = _random.choice(wrong_options)
+        else:
+            chosen_letter = correct_letter
+            correct_marked += 1
+        letter_idx = _SCREENING_MCQ_LETTERS.index(chosen_letter)
+        checkbox_occurrence = q_idx * 4 + letter_idx
+        xml = _set_checkbox(xml, checkbox_occurrence, checked=True)
+
+    # ── Pass / Fail — always Pass, since correct_marked is fixed at 7/10 ──
+    xml = _set_checkbox(xml, _SCREENING_PASS_CHECKBOX_IDX, checked=True)
+
+    # ── Test Score, and Communication / Clinical Knowledge / Experience /
+    # Overall — random score between 3.5 and 5 (0.5 steps) for each.
+    # Scoped to start AFTER the "Interviewer Assessment" heading, since
+    # "Experience" is also a label in the earlier Agency Work section.
+    assessment_anchor = xml.find('<w:t xml:space="preserve">Interviewer Assessment</w:t>')
+    if assessment_anchor == -1:
+        assessment_anchor = 0
+
+    def _fmt_score(v):
+        return str(int(v)) if float(v) == int(v) else str(v)
+
+    score_choices = [3.5, 4, 4.5, 5]
+    xml = _inject(xml, 'Test Score', f"{correct_marked}        / 10",
+                  start_pos=assessment_anchor)
+    xml = _inject(xml, 'Communication',
+                  f"{_fmt_score(_random.choice(score_choices))}        / 5",
+                  start_pos=assessment_anchor)
+    xml = _inject(xml, 'Clinical Knowledge',
+                  f"{_fmt_score(_random.choice(score_choices))}        / 5",
+                  start_pos=assessment_anchor)
+    xml = _inject(xml, 'Experience',
+                  f"{_fmt_score(_random.choice(score_choices))}        / 5",
+                  start_pos=assessment_anchor)
+    xml = _inject(xml, 'Overall',
+                  f"{_fmt_score(_random.choice(score_choices))}        / 5",
+                  start_pos=assessment_anchor)
 
     # ── Rebuild zip ───────────────────────────────────────────────────
     out = _sio.BytesIO()
@@ -3786,4 +3885,3 @@ def live_staff_screening_upload(staff_id):
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
