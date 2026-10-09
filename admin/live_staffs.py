@@ -3472,13 +3472,20 @@ _SCREENING_SUITABLE_NO_CHECKBOX_IDX  = 43
 _SCREENING_CORRECT_COUNT = 7
 
 
-def _extract_education_entries(extracted_cv, gemini_key, max_entries=5):
+def _extract_education_and_employment(extracted_cv, gemini_key,
+                                       max_education=5, max_employment=7):
     """
-    Use Gemini to pull education history (From, To, School/College/Course)
+    Single Gemini call that pulls BOTH education and employment history
     out of a staff member's extracted_cv text — strictly from what's
-    written there, no invented details. Returns a list of up to
-    max_entries dicts: {"from": "...", "to": "...", "course": "..."}.
-    Returns [] if there's no usable CV text, no API key, or on any error.
+    written there, no invented details.
+
+    Returns a tuple (education_entries, employment_entries):
+      education_entries: list of up to max_education dicts
+        {"from": "...", "to": "...", "course": "..."}
+      employment_entries: list of up to max_employment dicts
+        {"from": "...", "to": "...", "employer": "...", "reason": "..."}
+
+    Returns ([], []) if there's no usable CV text, no API key, or on error.
     """
     has_cv_text = bool(
         extracted_cv and
@@ -3486,29 +3493,44 @@ def _extract_education_entries(extracted_cv, gemini_key, max_entries=5):
         extracted_cv not in ('No doc found', '')
     )
     if not has_cv_text or not gemini_key:
-        return []
+        return [], []
 
     try:
         from google import genai as _gai_edu
         import re as _re_edu
         import json as _json_edu
 
-        prompt = f"""You are analysing a candidate's CV text to extract their EDUCATION history only.
+        prompt = f"""You are analysing a candidate's CV text to extract their EDUCATION and EMPLOYMENT history.
 
-Read the CV text below and extract EVERY education entry (degrees, diplomas,
-certificates from schools, colleges, or universities) explicitly mentioned.
+Read the CV text below and extract:
+
+1. EDUCATION — every degree, diploma, or certificate from a school, college,
+   or university explicitly mentioned.
+2. EMPLOYMENT — every job/role explicitly mentioned, in reverse chronological
+   order (most recent first).
 
 Rules:
 - Use ONLY information explicitly present in the CV text below. Do NOT invent,
   guess, or infer any detail that is not written there.
-- If a specific field (start date, end date, or institution/course name) is
-  not stated for an entry, leave that field as an empty string "".
-- Order entries from MOST RECENT to OLDEST.
-- Return at most {max_entries} entries.
-- Return ONLY a JSON array — nothing else, no markdown, no explanation.
-  Each item must have exactly these keys:
-  [{{"from": "<start year or date, or empty>", "to": "<end year or date, or empty>", "course": "<qualification, institution and/or course name>"}}]
-- If the CV contains no education information at all, return an empty array: []
+- If a specific field is not stated for an entry, leave it as an empty string "".
+- Order both lists from MOST RECENT to OLDEST.
+- Return at most {max_education} education entries and {max_employment} employment entries.
+- For employment "reason", only fill it if the CV explicitly states a reason
+  for leaving that role — otherwise leave it as "".
+- Return ONLY a single JSON object — nothing else, no markdown, no explanation —
+  with exactly this shape:
+
+{{
+  "education": [
+    {{"from": "<start year/date or empty>", "to": "<end year/date or empty>", "course": "<qualification, institution and/or course name>"}}
+  ],
+  "employment": [
+    {{"from": "<start year/date or empty>", "to": "<end year/date or empty>", "employer": "<employer, role, location>", "reason": "<reason for leaving, or empty>"}}
+  ]
+}}
+
+- If the CV contains no education information, "education" must be [].
+- If the CV contains no employment information, "employment" must be [].
 
 CV TEXT:
 {extracted_cv}
@@ -3519,21 +3541,37 @@ CV TEXT:
         raw      = _re_edu.sub(r'^```(?:json)?\s*', '', raw, flags=_re_edu.MULTILINE)
         raw      = _re_edu.sub(r'```\s*$', '', raw, flags=_re_edu.MULTILINE).strip()
 
-        entries = _json_edu.loads(raw)
-        if not isinstance(entries, list):
-            return []
-        clean = []
-        for e in entries[:max_entries]:
+        result = _json_edu.loads(raw)
+        if not isinstance(result, dict):
+            return [], []
+
+        raw_education  = result.get('education') or []
+        raw_employment = result.get('employment') or []
+
+        education_entries = []
+        for e in raw_education[:max_education]:
             if not isinstance(e, dict):
                 continue
-            clean.append({
+            education_entries.append({
                 "from":   str(e.get("from") or "").strip(),
                 "to":     str(e.get("to") or "").strip(),
                 "course": str(e.get("course") or "").strip(),
             })
-        return clean
+
+        employment_entries = []
+        for e in raw_employment[:max_employment]:
+            if not isinstance(e, dict):
+                continue
+            employment_entries.append({
+                "from":     str(e.get("from") or "").strip(),
+                "to":       str(e.get("to") or "").strip(),
+                "employer": str(e.get("employer") or "").strip(),
+                "reason":   str(e.get("reason") or "").strip(),
+            })
+
+        return education_entries, employment_entries
     except Exception:
-        return []
+        return [], []
 
 
 def _build_screening_docx(first_shift_date=None, candidate_name='',
@@ -3693,10 +3731,13 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
             block = block.replace('w:char="2612"', 'w:char="2610"', 1)
         return xml_str[:target_start] + block + xml_str[end:]
 
-    # ── Fill a plain (unlabelled) 3-cell table row — used for the
-    # Education table, whose data rows have no searchable label text,
-    # only three consecutive empty <w:t> runs.
-    def _find_nth_row_cells(xml_str, anchor_pos, row_index, num_cells=3):
+    # ── Fill a plain (unlabelled) table row's cells — used for the
+    # Education and Employment tables. Most rows have only empty
+    # <w:t> runs to fill in order; some rows (Employment's "Reason for
+    # leaving") have a non-empty LABEL cell first that must be skipped —
+    # skip_cells controls how many leading <w:t> runs to pass over
+    # before starting to capture the ones to actually fill.
+    def _find_nth_row_cells(xml_str, anchor_pos, row_index, num_cells=3, skip_cells=0):
         pos = anchor_pos
         for _ in range(row_index):
             tr_end = xml_str.find('</w:tr>', pos)
@@ -3708,7 +3749,9 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
             return None
         cells = []
         search_from = pos
-        for _ in range(num_cells):
+        total_to_scan = skip_cells + num_cells
+        scanned = 0
+        while scanned < total_to_scan:
             t_start = -1
             while True:
                 cand = xml_str.find('<w:t', search_from)
@@ -3722,12 +3765,17 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
             if t_start == -1:
                 return None
             open_end = xml_str.find('>', t_start)
-            cells.append((t_start, open_end))
+            scanned += 1
+            if scanned > skip_cells:
+                cells.append((t_start, open_end))
             search_from = open_end + 1
         return cells
 
-    def _fill_row(xml_str, anchor_pos, row_index, values):
-        cells = _find_nth_row_cells(xml_str, anchor_pos, row_index, num_cells=len(values))
+    def _fill_row(xml_str, anchor_pos, row_index, values, skip_cells=0):
+        cells = _find_nth_row_cells(
+            xml_str, anchor_pos, row_index,
+            num_cells=len(values), skip_cells=skip_cells
+        )
         if not cells:
             return xml_str
         # Process from the last cell backward so earlier offsets stay valid.
@@ -3817,8 +3865,12 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
                   _score_cell(_fmt_score(_random.choice(score_choices)), 5),
                   start_pos=assessment_anchor)
 
-    # ── Education table — filled from live_staffs.extracted_cv via Gemini ──
-    education_entries = _extract_education_entries(extracted_cv, gemini_key, max_entries=5)
+    # ── Education + Employment tables — both filled from
+    # live_staffs.extracted_cv via a single combined Gemini call ──────
+    education_entries, employment_entries = _extract_education_and_employment(
+        extracted_cv, gemini_key, max_education=5, max_employment=7
+    )
+
     if education_entries:
         edu_header_pos = xml.find('School / College / Course')
         if edu_header_pos != -1:
@@ -3828,6 +3880,24 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
                     xml, edu_anchor, row_idx,
                     [entry.get('from', ''), entry.get('to', ''), entry.get('course', '')]
                 )
+
+    if employment_entries:
+        emp_header_pos = xml.find('Employer, Role, Location')
+        if emp_header_pos != -1:
+            emp_anchor = xml.find('</w:tr>', emp_header_pos) + len('</w:tr>')
+            for i, entry in enumerate(employment_entries):
+                data_row_idx   = i * 2
+                reason_row_idx = i * 2 + 1
+                xml = _fill_row(
+                    xml, emp_anchor, data_row_idx,
+                    [entry.get('from', ''), entry.get('to', ''), entry.get('employer', '')]
+                )
+                reason = entry.get('reason', '')
+                if reason:
+                    xml = _fill_row(
+                        xml, emp_anchor, reason_row_idx,
+                        [reason], skip_cells=1
+                    )
 
     # ── Rebuild zip ───────────────────────────────────────────────────
     out = _sio.BytesIO()
