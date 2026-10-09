@@ -3882,13 +3882,32 @@ def live_staff_screening_generate():
         email        = _v(doc.get('email') or '')
         extracted_cv = _v(doc.get('extracted_cv') or '')
 
-        # Parse optional first shift date
-        first_shift_date = None
-        if first_shift_str:
-            try:
-                first_shift_date = datetime.strptime(first_shift_str[:10], '%Y-%m-%d')
-            except ValueError:
-                pass
+        def _parse_any_date(value):
+            """Accepts a native datetime (pymongo returns BSON dates this
+            way) or a string in any of several common formats. Returns a
+            datetime, or None if unparseable/empty."""
+            if value in (None, ''):
+                return None
+            if isinstance(value, datetime):
+                return value
+            s = str(value).strip()
+            for fmt in (
+                '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d',
+                '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S',
+            ):
+                try:
+                    return datetime.strptime(s, fmt)
+                except ValueError:
+                    continue
+            return None
+
+        # First shift date: an explicit value passed in the request takes
+        # priority; otherwise fall back to the staff's own work_start_date
+        # (live_staffs.work_start_date) — Date is set to 15 days before it,
+        # Candidate 1st Contact Date to 20 days before it.
+        first_shift_date = _parse_any_date(first_shift_str)
+        if first_shift_date is None:
+            first_shift_date = _parse_any_date(doc.get('work_start_date'))
 
         docx_bytes = _build_screening_docx(
             first_shift_date=first_shift_date,
