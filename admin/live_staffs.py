@@ -3472,8 +3472,72 @@ _SCREENING_SUITABLE_NO_CHECKBOX_IDX  = 43
 _SCREENING_CORRECT_COUNT = 7
 
 
+def _extract_education_entries(extracted_cv, gemini_key, max_entries=5):
+    """
+    Use Gemini to pull education history (From, To, School/College/Course)
+    out of a staff member's extracted_cv text — strictly from what's
+    written there, no invented details. Returns a list of up to
+    max_entries dicts: {"from": "...", "to": "...", "course": "..."}.
+    Returns [] if there's no usable CV text, no API key, or on any error.
+    """
+    has_cv_text = bool(
+        extracted_cv and
+        not str(extracted_cv).startswith('[') and
+        extracted_cv not in ('No doc found', '')
+    )
+    if not has_cv_text or not gemini_key:
+        return []
+
+    try:
+        from google import genai as _gai_edu
+        import re as _re_edu
+        import json as _json_edu
+
+        prompt = f"""You are analysing a candidate's CV text to extract their EDUCATION history only.
+
+Read the CV text below and extract EVERY education entry (degrees, diplomas,
+certificates from schools, colleges, or universities) explicitly mentioned.
+
+Rules:
+- Use ONLY information explicitly present in the CV text below. Do NOT invent,
+  guess, or infer any detail that is not written there.
+- If a specific field (start date, end date, or institution/course name) is
+  not stated for an entry, leave that field as an empty string "".
+- Order entries from MOST RECENT to OLDEST.
+- Return at most {max_entries} entries.
+- Return ONLY a JSON array — nothing else, no markdown, no explanation.
+  Each item must have exactly these keys:
+  [{{"from": "<start year or date, or empty>", "to": "<end year or date, or empty>", "course": "<qualification, institution and/or course name>"}}]
+- If the CV contains no education information at all, return an empty array: []
+
+CV TEXT:
+{extracted_cv}
+"""
+        client   = _gai_edu.Client(api_key=gemini_key)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        raw      = (response.text or '').strip()
+        raw      = _re_edu.sub(r'^```(?:json)?\s*', '', raw, flags=_re_edu.MULTILINE)
+        raw      = _re_edu.sub(r'```\s*$', '', raw, flags=_re_edu.MULTILINE).strip()
+
+        entries = _json_edu.loads(raw)
+        if not isinstance(entries, list):
+            return []
+        clean = []
+        for e in entries[:max_entries]:
+            if not isinstance(e, dict):
+                continue
+            clean.append({
+                "from":   str(e.get("from") or "").strip(),
+                "to":     str(e.get("to") or "").strip(),
+                "course": str(e.get("course") or "").strip(),
+            })
+        return clean
+    except Exception:
+        return []
+
+
 def _build_screening_docx(first_shift_date=None, candidate_name='',
-                           location='', candidate_id=''):
+                           location='', candidate_id='', extracted_cv=''):
     """
     Load the Screening Interview Record template from GCS and inject:
       - Screening Interview Conducted By = a randomly chosen interviewer
@@ -3484,6 +3548,8 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
       - Date                             = first_shift_date − 15 days  (or blank)
       - Candidate 1st Contact Date       = first_shift_date − 20 days  (or blank)
       - Interviewer (bottom assessment)  = same randomly chosen interviewer
+      - Education table                 = up to 5 entries extracted via
+                                            Gemini from live_staffs.extracted_cv
 
     All other template content and styling is preserved byte-for-byte.
 
@@ -3497,6 +3563,8 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
     import zipfile as _szip
     import random as _random
     from datetime import timedelta as _std
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
 
     # ── Load template ─────────────────────────────────────────────────
     template_blob  = os.environ.get(
@@ -3625,6 +3693,63 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
             block = block.replace('w:char="2612"', 'w:char="2610"', 1)
         return xml_str[:target_start] + block + xml_str[end:]
 
+    # ── Fill a plain (unlabelled) 3-cell table row — used for the
+    # Education table, whose data rows have no searchable label text,
+    # only three consecutive empty <w:t> runs.
+    def _find_nth_row_cells(xml_str, anchor_pos, row_index, num_cells=3):
+        pos = anchor_pos
+        for _ in range(row_index):
+            tr_end = xml_str.find('</w:tr>', pos)
+            if tr_end == -1:
+                return None
+            pos = tr_end + len('</w:tr>')
+        row_end = xml_str.find('</w:tr>', pos)
+        if row_end == -1:
+            return None
+        cells = []
+        search_from = pos
+        for _ in range(num_cells):
+            t_start = -1
+            while True:
+                cand = xml_str.find('<w:t', search_from)
+                if cand == -1 or cand > row_end:
+                    break
+                nxt = xml_str[cand + 4]
+                if nxt in (' ', '>', '/'):
+                    t_start = cand
+                    break
+                search_from = cand + 4
+            if t_start == -1:
+                return None
+            open_end = xml_str.find('>', t_start)
+            cells.append((t_start, open_end))
+            search_from = open_end + 1
+        return cells
+
+    def _fill_row(xml_str, anchor_pos, row_index, values):
+        cells = _find_nth_row_cells(xml_str, anchor_pos, row_index, num_cells=len(values))
+        if not cells:
+            return xml_str
+        # Process from the last cell backward so earlier offsets stay valid.
+        for (t_start, open_end), value in zip(reversed(cells), reversed(values)):
+            is_self_closing = xml_str[open_end - 1] == '/'
+            escaped = (
+                str(value)
+                .replace('&', '&amp;')
+                .replace('<', '&lt;')
+                .replace('>', '&gt;')
+            )
+            new_t = f'<w:t xml:space="preserve">{escaped}</w:t>'
+            if is_self_closing:
+                xml_str = xml_str[:t_start] + new_t + xml_str[open_end + 1:]
+            else:
+                close_pos = xml_str.find('</w:t>', open_end)
+                if close_pos == -1:
+                    continue
+                close_pos += len('</w:t>')
+                xml_str = xml_str[:t_start] + new_t + xml_str[close_pos:]
+        return xml_str
+
     xml = _inject(xml, 'Screening Interview Conducted By', interviewer['name'])
     xml = _inject(xml, 'Title', interviewer['title'])
     xml = _inject(xml, 'Candidate Name', candidate_name or '')
@@ -3692,6 +3817,18 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
                   _score_cell(_fmt_score(_random.choice(score_choices)), 5),
                   start_pos=assessment_anchor)
 
+    # ── Education table — filled from live_staffs.extracted_cv via Gemini ──
+    education_entries = _extract_education_entries(extracted_cv, gemini_key, max_entries=5)
+    if education_entries:
+        edu_header_pos = xml.find('School / College / Course')
+        if edu_header_pos != -1:
+            edu_anchor = xml.find('</w:tr>', edu_header_pos) + len('</w:tr>')
+            for row_idx, entry in enumerate(education_entries):
+                xml = _fill_row(
+                    xml, edu_anchor, row_idx,
+                    [entry.get('from', ''), entry.get('to', ''), entry.get('course', '')]
+                )
+
     # ── Rebuild zip ───────────────────────────────────────────────────
     out = _sio.BytesIO()
     with _szip.ZipFile(out, 'w', _szip.ZIP_DEFLATED) as _zout:
@@ -3738,11 +3875,12 @@ def live_staff_screening_generate():
                     return _v(val)
             return default
 
-        s1        = doc.get('section_1_personal_details') or {}
-        full_name = _first('Name') or _v(s1.get('full_name') or '') or 'staff'
-        emp_code  = _first('Employee Code', 'employee_code')
-        county    = _first('County', 'county', 'Location', 'location')
-        email     = _v(doc.get('email') or '')
+        s1           = doc.get('section_1_personal_details') or {}
+        full_name    = _first('Name') or _v(s1.get('full_name') or '') or 'staff'
+        emp_code     = _first('Employee Code', 'employee_code')
+        county       = _first('County', 'county', 'Location', 'location')
+        email        = _v(doc.get('email') or '')
+        extracted_cv = _v(doc.get('extracted_cv') or '')
 
         # Parse optional first shift date
         first_shift_date = None
@@ -3757,6 +3895,7 @@ def live_staff_screening_generate():
             candidate_name=full_name,
             location=county,
             candidate_id=emp_code,
+            extracted_cv=extracted_cv,
         )
 
         safe_name = full_name.replace(' ', '_').replace('/', '_')
