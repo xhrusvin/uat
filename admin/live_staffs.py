@@ -3471,6 +3471,91 @@ _SCREENING_SUITABLE_NO_CHECKBOX_IDX  = 43
 # the rest get a random wrong option checked instead.
 _SCREENING_CORRECT_COUNT = 7
 
+# Pool of reusable "Compliance Actions from Screening Interview" notes —
+# from Xpress_Health_Screening_Compliance_Notes_50_Options.docx. 3-4 are
+# picked at random (rarely all 5) to fill the template's 5 numbered rows.
+_SCREENING_COMPLIANCE_NOTES = [
+    "International Police Clearance Certificate (PCC) pending from country of previous residence.",
+    "Garda Vetting application form pending submission.",
+    "Garda Vetting process initiated; awaiting clearance outcome.",
+    "Proof of address required to proceed with Garda Vetting.",
+    "Name discrepancy noted between identification and vetting documents; clarification required.",
+    "Candidate reports difficulty obtaining PCC; supporting explanation required for compliance review.",
+    "Garda Vetting documentation received; status to be verified.",
+    "Practical Manual Handling training required; certificate pending.",
+    "Practical CPR/BLS training required.",
+    "PPE training certificate pending verification.",
+    "Fire Safety training evidence required.",
+    "CPI/MAPA/PMAV training status to be verified against the placement requirements.",
+    "HSEland mandatory training certificates require review.",
+    "Pre-placement Occupational Health assessment pending.",
+    "Occupational Health clearance required before allocation to the relevant setting.",
+    "EPP/non-EPP fitness-to-work status to be confirmed by Occupational Health.",
+    "Immunisation history and supporting evidence pending review.",
+    "QQI Level 5 certificate required; confirm the accepted modules against the applicable checklist.",
+    "Candidate has ongoing QQI studies; eligibility to be confirmed with the relevant client.",
+    "NMBI registration details require verification before nurse allocation.",
+    "Employment reference pending from the most recent employer.",
+    "Employment dates on CV require clarification.",
+    "Candidate to provide an updated CV with complete employment history.",
+    "Candidate is available for weekends only.",
+    "Candidate prefers morning shifts only.",
+    "Candidate is available for day shifts only.",
+    "Candidate prefers night shifts; availability to be matched with open shifts.",
+    "Candidates have limited availability due to existing employment commitments.",
+    "Candidate is willing to travel within the agreed service area.",
+    "Candidate requires clarification on shift patterns and expected hours.",
+    "Candidate meets the initial screening criteria; outstanding compliance items remain.",
+]
+
+# Pool of plausible "Reason for leaving" phrases for the Employment table
+# — a random, different one is picked per past role (never for the
+# candidate's current/ongoing role).
+_SCREENING_LEAVING_REASONS = [
+    "Limited career progression",
+    "Long commute distance",
+    "Poor work-life balance",
+    "Unsuitable shift patterns",
+    "Inadequate salary",
+    "Limited specialty experience",
+    "Narrow clinical exposure",
+    "Unstable rostering",
+    "Strained team environment",
+    "Insufficient management support",
+    "Inadequate staffing levels",
+    "Limited training access",
+    "Excessive workload pressure",
+    "Lack of new challenges",
+    "Unsupportive leadership culture",
+    "Inadequate pay and benefits",
+    "Unsuitable care setting",
+    "Inflexible working hours",
+    "Unclear promotion pathways",
+    "Limited shift availability",
+    "Delayed payment turnaround",
+    "Poor communication support",
+    "Inconsistent shift offers",
+    "Placements too far away",
+    "Unclear pay structure",
+    "Late payroll processing",
+    "Difficult onboarding experience",
+    "Unresponsive coordinator support",
+]
+
+
+def _ongoing_role(to_value):
+    """True if an employment entry's 'to' date implies the candidate is
+    still working there (so it shouldn't get a fabricated leaving reason)."""
+    t = (to_value or '').strip().lower()
+    return t in ('', 'present', 'current', 'ongoing', 'till date', 'to date', 'now', 'date')
+
+
+def _pick_compliance_actions(_random_mod):
+    """3-4 compliance notes most of the time, rarely all 5."""
+    count = _random_mod.choices([3, 4, 5], weights=[45, 45, 10])[0]
+    count = min(count, len(_SCREENING_COMPLIANCE_NOTES))
+    return _random_mod.sample(_SCREENING_COMPLIANCE_NOTES, count)
+
 
 def _extract_education_and_employment(extracted_cv, gemini_key,
                                        max_education=5, max_employment=7):
@@ -3892,12 +3977,29 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
                     xml, emp_anchor, data_row_idx,
                     [entry.get('from', ''), entry.get('to', ''), entry.get('employer', '')]
                 )
+                # Prefer a reason actually stated in the CV; otherwise
+                # backfill with a random plausible one — but never for
+                # the role the candidate is still currently in.
                 reason = entry.get('reason', '')
+                if not reason and not _ongoing_role(entry.get('to', '')):
+                    reason = _random.choice(_SCREENING_LEAVING_REASONS)
                 if reason:
                     xml = _fill_row(
                         xml, emp_anchor, reason_row_idx,
                         [reason], skip_cells=1
                     )
+
+    # ── Compliance Actions from Screening Interview — 3-4 random notes,
+    # rarely all 5, picked from the reusable compliance notes pool.
+    compliance_pos = xml.find('Compliance Actions from Screening Interview')
+    if compliance_pos != -1:
+        compliance_anchor = xml.find('</w:tr>', compliance_pos) + len('</w:tr>')
+        chosen_notes = _pick_compliance_actions(_random)
+        for row_idx, note in enumerate(chosen_notes):
+            xml = _fill_row(
+                xml, compliance_anchor, row_idx,
+                [note], skip_cells=1
+            )
 
     # ── Rebuild zip ───────────────────────────────────────────────────
     out = _sio.BytesIO()
