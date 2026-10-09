@@ -3464,6 +3464,8 @@ _SCREENING_MCQ_LETTERS = ['A', 'B', 'C', 'D']
 #   42,43 : Suitable for Placement — Yes, No
 _SCREENING_PASS_CHECKBOX_IDX = 40
 _SCREENING_FAIL_CHECKBOX_IDX = 41
+_SCREENING_SUITABLE_YES_CHECKBOX_IDX = 42
+_SCREENING_SUITABLE_NO_CHECKBOX_IDX  = 43
 
 # How many of the 10 MCQ questions are marked as answered correctly —
 # the rest get a random wrong option checked instead.
@@ -3651,6 +3653,9 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
 
     # ── Pass / Fail — always Pass, since correct_marked is fixed at 7/10 ──
     xml = _set_checkbox(xml, _SCREENING_PASS_CHECKBOX_IDX, checked=True)
+
+    # ── Suitable for Placement — always Yes, consistent with a Pass ──
+    xml = _set_checkbox(xml, _SCREENING_SUITABLE_YES_CHECKBOX_IDX, checked=True)
 
     # ── Test Score, and Communication / Clinical Knowledge / Experience /
     # Overall — random score between 3.5 and 5 (0.5 steps) for each.
@@ -3893,4 +3898,3 @@ def live_staff_screening_upload(staff_id):
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
