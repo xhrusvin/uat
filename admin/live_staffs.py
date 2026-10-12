@@ -3970,10 +3970,16 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
                     [entry.get('from', ''), entry.get('to', ''), entry.get('employer', '')]
                 )
                 # Prefer a reason actually stated in the CV; otherwise
-                # backfill with a random plausible one — but never for
-                # the role the candidate is still currently in.
+                # backfill with a random plausible one. Any entry that
+                # has real employment data (from/to/employer) always
+                # gets a reason filled in — never left blank.
                 reason = entry.get('reason', '')
-                if not reason and not _ongoing_role(entry.get('to', '')):
+                has_employment_data = bool(
+                    entry.get('employer', '').strip() or
+                    entry.get('from', '').strip() or
+                    entry.get('to', '').strip()
+                )
+                if not reason and has_employment_data:
                     reason = _random.choice(_SCREENING_LEAVING_REASONS)
                 if reason:
                     xml = _fill_row(
@@ -4220,4 +4226,3 @@ def live_staff_screening_upload(staff_id):
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
