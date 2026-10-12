@@ -57,4 +57,3 @@ from . import validate_document_noai
 from . import sms_bulk_routes
 from . import preferred_contact_whatsapp
 from . import preferred_contact_email
-from . import screening_cron_route
