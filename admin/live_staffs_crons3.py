@@ -6167,8 +6167,9 @@ def live_staff_api_get_staff_details():
             except Exception:
                 pass   # non-fatal — omit from response silently
 
-    # ── Fetch signature_url from XN Portal (not saved to DB) ─────────
+        # ── Fetch signature_url + references from XN Portal (not saved to DB) ──
     signature_url = ''
+    references    = []
     if xn_base_url and xn_api_key:
         xn_staff_id = _v(
             staff.get('xn_staff_id') or staff.get('staff_id') or ''
@@ -6196,9 +6197,11 @@ def live_staff_api_get_staff_details():
                         timeout=30,
                     )
                 if sig_resp.status_code == 200:
-                    sig_json  = sig_resp.json()
-                    sig_data  = sig_json.get('data') or {}
+                    sig_json      = sig_resp.json()
+                    sig_data      = sig_json.get('data') or {}
                     signature_url = _v(sig_data.get('signature_url') or '')
+                    raw_refs      = sig_data.get('references')
+                    references    = raw_refs if isinstance(raw_refs, list) else []
             except Exception:
                 pass   # non-fatal — omit from response silently
 
@@ -6209,6 +6212,7 @@ def live_staff_api_get_staff_details():
         "documents":     documents,
         "document_urls": doc_url_map,
         "signature_url": signature_url,
+        "references":    references,
     })
 
 
