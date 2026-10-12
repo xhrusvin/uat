@@ -6167,12 +6167,48 @@ def live_staff_api_get_staff_details():
             except Exception:
                 pass   # non-fatal — omit from response silently
 
+    # ── Fetch signature_url from XN Portal (not saved to DB) ─────────
+    signature_url = ''
+    if xn_base_url and xn_api_key:
+        xn_staff_id = _v(
+            staff.get('xn_staff_id') or staff.get('staff_id') or ''
+        )
+        if xn_staff_id:
+            try:
+                import requests as _req4
+                sig_headers = {
+                    "Api-Key":       xn_api_key,
+                    "X-App-Country": xn_country,
+                    "Content-Type":  "application/json",
+                    "Accept":        "application/json",
+                }
+                sig_resp = _req4.post(
+                    f"{xn_base_url}/ai/recruitments/detail",
+                    json={"_id": xn_staff_id},
+                    headers=sig_headers,
+                    timeout=30,
+                )
+                if sig_resp.status_code == 405:
+                    sig_resp = _req4.get(
+                        f"{xn_base_url}/ai/recruitments/detail",
+                        params={"_id": xn_staff_id},
+                        headers=sig_headers,
+                        timeout=30,
+                    )
+                if sig_resp.status_code == 200:
+                    sig_json  = sig_resp.json()
+                    sig_data  = sig_json.get('data') or {}
+                    signature_url = _v(sig_data.get('signature_url') or '')
+            except Exception:
+                pass   # non-fatal — omit from response silently
+
     return jsonify({
         "success":       True,
         "email":         email,
         "data":          data,
         "documents":     documents,
         "document_urls": doc_url_map,
+        "signature_url": signature_url,
     })
 
 
