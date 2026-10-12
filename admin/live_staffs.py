@@ -3512,34 +3512,26 @@ _SCREENING_COMPLIANCE_NOTES = [
 # — a random, different one is picked per past role (never for the
 # candidate's current/ongoing role).
 _SCREENING_LEAVING_REASONS = [
-    "Limited career progression",
-    "Long commute distance",
-    "Poor work-life balance",
-    "Unsuitable shift patterns",
-    "Inadequate salary",
-    "Limited specialty experience",
-    "Narrow clinical exposure",
-    "Unstable rostering",
-    "Strained team environment",
-    "Insufficient management support",
-    "Inadequate staffing levels",
-    "Limited training access",
-    "Excessive workload pressure",
-    "Lack of new challenges",
-    "Unsupportive leadership culture",
-    "Inadequate pay and benefits",
-    "Unsuitable care setting",
-    "Inflexible working hours",
-    "Unclear promotion pathways",
-    "Limited shift availability",
-    "Delayed payment turnaround",
-    "Poor communication support",
-    "Inconsistent shift offers",
-    "Placements too far away",
-    "Unclear pay structure",
-    "Late payroll processing",
-    "Difficult onboarding experience",
-    "Unresponsive coordinator support",
+    "Change in personal circumstances",
+    "Family commitments",
+    "Health or wellbeing reasons",
+    "Relocation to a new area",
+    "Returning to study",
+    "Pursuing further qualifications",
+    "Exploring a new career direction",
+    "Transitioning to a different specialty",
+    "Preference for fixed hours",
+    "Preference for part-time work",
+    "Reduced availability for shifts",
+    "Seeking a different pace of work",
+    "Seeking a different work setting",
+    "Pursuing other interests",
+    "Change in availability",
+    "Seeking a better work-life fit",
+    "Change in personal priorities",
+    "Change in lifestyle preferences",
+    "Personal reasons",
+    "Prefer not to say",
 ]
 
 
@@ -4228,3 +4220,4 @@ def live_staff_screening_upload(staff_id):
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
