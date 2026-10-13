@@ -4272,14 +4272,32 @@ def live_staff_screening_upload(staff_id):
             content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
 
+        update_fields = {
+            "gcs_blob":      gcs_blob,
+            "filename":      os.path.basename(gcs_blob),
+            "last_uploaded": datetime.utcnow(),
+            "uploaded_by":   "admin",
+        }
+
+        # The old PDF (if any) no longer matches this newly uploaded docx —
+        # try to regenerate it immediately; if that's not possible right
+        # now, unset the stale pointer so /download-pdf falls back to
+        # converting the fresh docx on the fly instead of serving old content.
+        pdf_base = os.path.basename(gcs_blob).rsplit('.', 1)[0]
+        pdf_blob = f"screening/{pdf_base}.pdf"
+        try:
+            pdf_bytes = _docx_to_pdf_bytes(data_bytes)
+            _gcs_upload(pdf_blob, pdf_bytes, content_type='application/pdf')
+            update_fields["pdf_gcs_blob"]     = pdf_blob
+            update_fields["pdf_filename"]     = f"{pdf_base}.pdf"
+            update_fields["pdf_generated_at"] = datetime.utcnow()
+        except Exception:
+            update_fields["pdf_gcs_blob"] = None
+            update_fields["pdf_filename"] = None
+
         col.update_one(
             {"staff_id": staff_id},
-            {"$set": {
-                "gcs_blob":      gcs_blob,
-                "filename":      os.path.basename(gcs_blob),
-                "last_uploaded": datetime.utcnow(),
-                "uploaded_by":   "admin",
-            }},
+            {"$set": update_fields},
             upsert=True
         )
         return jsonify({

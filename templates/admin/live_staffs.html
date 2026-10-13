@@ -991,7 +991,7 @@
                 <!-- Idle -->
                 <div id="screeningIdle">
                     <p class="text-muted small mb-3">
-                        Generate the <strong>Screening Interview Record</strong> (.docx) for this staff member.
+                        Generate the <strong>Screening Interview Record</strong> (.docx and .pdf) for this staff member.
                         The Date will be set to 15 days before first shift and Candidate 1st Contact Date
                         to 20 days before first shift. Leave first shift blank to keep those fields empty.
                     </p>
@@ -1002,9 +1002,14 @@
                     <div id="screeningSavedInfo" class="alert alert-success py-2 small mb-3 d-none">
                         <i class="bi bi-check-circle me-1"></i>
                         Saved record from <strong id="screeningSavedDate"></strong>.
-                        <a href="#" id="screeningExistingDownload" target="_blank" class="ms-2">
-                            <i class="bi bi-download me-1"></i>Download
-                        </a>
+                        <div class="d-flex gap-3 mt-1">
+                            <a href="#" id="screeningExistingDownloadDocx" target="_blank">
+                                <i class="bi bi-file-earmark-word me-1"></i>Download DOCX
+                            </a>
+                            <a href="#" id="screeningExistingDownloadPdf" target="_blank">
+                                <i class="bi bi-file-earmark-pdf me-1"></i>Download PDF
+                            </a>
+                        </div>
                     </div>
                     <button class="btn w-100 fw-bold" id="screeningGenerateBtn"
                             style="background:#6366f1;color:#fff;">
@@ -1023,10 +1028,20 @@
                     <div class="alert alert-success py-2 mb-3">
                         <i class="bi bi-check-circle me-1"></i> Document generated successfully!
                     </div>
-                    <a href="#" id="screeningDownloadBtn" target="_blank"
-                       class="btn btn-outline-success w-100 mb-3">
-                        <i class="bi bi-download me-1"></i> Download Screening Interview Record
-                    </a>
+                    <div class="d-flex gap-2 mb-3">
+                        <a href="#" id="screeningDownloadBtn" target="_blank"
+                           class="btn btn-outline-success flex-fill">
+                            <i class="bi bi-file-earmark-word me-1"></i> Download DOCX
+                        </a>
+                        <a href="#" id="screeningDownloadPdfBtn" target="_blank"
+                           class="btn btn-outline-danger flex-fill">
+                            <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
+                        </a>
+                    </div>
+                    <div id="screeningPdfUnavailable" class="alert alert-warning py-2 small d-none">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        PDF could not be generated for this record — the DOCX is still available above.
+                    </div>
                     <div class="border-top pt-3 mt-1">
                         <p class="text-muted small mb-2">
                             <i class="bi bi-upload me-1"></i>
@@ -1514,6 +1529,7 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
                 $('screeningModalName').textContent = _name;
                 $('screeningSavedInfo').classList.add('d-none');
                 $('screeningDownloadBtn').href = '#';
+                $('screeningDownloadPdfBtn').href = '#';
                 $('screeningFirstShift').value = '';
                 setScreeningState('Idle');
                 // Check for saved record
@@ -1523,7 +1539,8 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
                         if (d.success && d.found) {
                             $('screeningSavedInfo').classList.remove('d-none');
                             $('screeningSavedDate').textContent = d.generated_at;
-                            $('screeningExistingDownload').href = screeningDownloadUrl(_id);
+                            $('screeningExistingDownloadDocx').href = screeningDownloadUrl(_id);
+                            $('screeningExistingDownloadPdf').href = screeningDownloadPdfUrl(_id);
                         }
                     }).catch(() => {});
                 new bootstrap.Modal($('screeningModal')).show();
@@ -2067,14 +2084,16 @@ $('vosNurseUploadBtn').addEventListener('click', async () => {
 // ══════════════════════════════════════════════════════════════════════
 // Screening Interview Record
 // ══════════════════════════════════════════════════════════════════════
-const SCREENING_GEN_URL    = "{{ '/admin/live-staffs/screening/generate' }}";
-const SCREENING_SAVED_BASE = "{{ '/admin/live-staffs/screening/saved/__ID__' }}";
-const SCREENING_DL_BASE    = "{{ '/admin/live-staffs/screening/download/__ID__' }}";
-const SCREENING_UL_BASE    = "{{ '/admin/live-staffs/screening/upload/__ID__' }}";
+const SCREENING_GEN_URL     = "{{ '/admin/live-staffs/screening/generate' }}";
+const SCREENING_SAVED_BASE  = "{{ '/admin/live-staffs/screening/saved/__ID__' }}";
+const SCREENING_DL_BASE     = "{{ '/admin/live-staffs/screening/download/__ID__' }}";
+const SCREENING_DL_PDF_BASE = "{{ '/admin/live-staffs/screening/download-pdf/__ID__' }}";
+const SCREENING_UL_BASE     = "{{ '/admin/live-staffs/screening/upload/__ID__' }}";
 
-function screeningSavedUrl(id)  { return SCREENING_SAVED_BASE.replace('__ID__', id); }
-function screeningDownloadUrl(id){ return SCREENING_DL_BASE.replace('__ID__', id); }
-function screeningUploadUrl(id)  { return SCREENING_UL_BASE.replace('__ID__', id); }
+function screeningSavedUrl(id)      { return SCREENING_SAVED_BASE.replace('__ID__', id); }
+function screeningDownloadUrl(id)   { return SCREENING_DL_BASE.replace('__ID__', id); }
+function screeningDownloadPdfUrl(id){ return SCREENING_DL_PDF_BASE.replace('__ID__', id); }
+function screeningUploadUrl(id)     { return SCREENING_UL_BASE.replace('__ID__', id); }
 
 let currentScreeningStaffId = null;
 
@@ -2091,6 +2110,7 @@ document.querySelectorAll('.btn-screening').forEach(btn => {
         $('screeningModalName').textContent = btn.dataset.name || 'Staff';
         $('screeningSavedInfo').classList.add('d-none');
         $('screeningDownloadBtn').href = '#';
+        $('screeningDownloadPdfBtn').href = '#';
         // Pre-fill first shift date from data attr if available
         const fs = btn.dataset.firstShift || '';
         $('screeningFirstShift').value = fs ? fs.slice(0, 10) : '';
@@ -2104,7 +2124,8 @@ document.querySelectorAll('.btn-screening').forEach(btn => {
             if (d.success && d.found) {
                 $('screeningSavedInfo').classList.remove('d-none');
                 $('screeningSavedDate').textContent = d.generated_at;
-                $('screeningExistingDownload').href = screeningDownloadUrl(currentScreeningStaffId);
+                $('screeningExistingDownloadDocx').href = screeningDownloadUrl(currentScreeningStaffId);
+                $('screeningExistingDownloadPdf').href = screeningDownloadPdfUrl(currentScreeningStaffId);
             }
         } catch(e) {}
     });
@@ -2133,6 +2154,8 @@ $('screeningGenerateBtn').addEventListener('click', async () => {
         }
         if (d.success) {
             $('screeningDownloadBtn').href = screeningDownloadUrl(currentScreeningStaffId);
+            $('screeningDownloadPdfBtn').href = screeningDownloadPdfUrl(currentScreeningStaffId);
+            $('screeningPdfUnavailable').classList.toggle('d-none', !d.pdf_error);
             setScreeningState('Result');
         } else {
             $('screeningErrorMsg').textContent = d.error || 'Generation failed';
@@ -2165,6 +2188,9 @@ $('screeningUploadBtn').addEventListener('click', async () => {
             msg.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>${d.message || 'Uploaded successfully'}`;
             msg.className = 'mt-2 small text-success';
             $('screeningDownloadBtn').href = screeningDownloadUrl(currentScreeningStaffId) + '?t=' + Date.now();
+            // The PDF is regenerated on-the-fly from the newly uploaded docx
+            // by the download-pdf route, so just bust its cache too.
+            $('screeningDownloadPdfBtn').href = screeningDownloadPdfUrl(currentScreeningStaffId) + '?t=' + Date.now();
             $('screeningUploadInput').value = '';
         } else {
             msg.textContent = d.error || 'Upload failed';
