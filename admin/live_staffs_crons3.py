@@ -6403,3 +6403,176 @@ def _ordered_keys(rows):
 
 def _now_slug():
     return datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THIS to the same crons blueprint file as live_staff_cron_generate_pcc
+# and live_staff_cron_generate_screening.
+#
+# Renames each already-generated Screening Interview Record from its
+# name-based filename (e.g. "Screening_Akhildev_Mundapurath.docx") to
+# one keyed on the staff's Employee Code (e.g. "Screening_XH_33307.docx"),
+# re-uploads under the new GCS path, and updates the pointer in
+# live_staff_screening. The old blob is left in place (not deleted) —
+# safer in case anything else still references it.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/cron/rename-screening-by-employee-code', methods=['GET', 'POST'])
+def live_staff_cron_rename_screening_by_employee_code():
+    """
+    Cron job — renames ONE already-generated Screening Interview Record
+    per call, from its old name-based filename to one keyed on the
+    staff's Employee Code.
+
+    Finds live_staff_screening records where screening_renamed is not True.
+    Looks up the matching live_staffs document (by staff_id) to get the
+    Employee Code — handles both schema variants ('Employee Code' with
+    a space/capitals, and lowercase employee_code).
+
+    Skips (and marks done so it isn't retried forever) when:
+      - the live_staffs document can't be found
+      - no Employee Code is available for that staff member
+
+    To re-run this rename pass over ALL screening records, run in
+    MongoDB first:
+        db.live_staff_screening.updateMany({}, {$set: {screening_renamed: false}})
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    screening_col = db.live_staff_screening
+    staffs_col    = _staffs_col()
+
+    pending_query = {
+        "$or": [
+            {"screening_renamed": {"$exists": False}},
+            {"screening_renamed": False},
+            {"screening_renamed": None},
+        ]
+    }
+    remaining_total = screening_col.count_documents(pending_query)
+    rec             = screening_col.find_one(pending_query)
+
+    if not rec:
+        return jsonify({
+            "success":         True,
+            "message":         "All Screening Interview Records already renamed.",
+            "remaining_count": 0,
+        })
+
+    rec_id      = rec['_id']
+    staff_id    = rec.get('staff_id', '')
+    staff_name  = rec.get('staff_name', '') or 'staff'
+    old_blob    = rec.get('gcs_blob', '')
+
+    def _mark_done(fields):
+        fields["screening_renamed"]    = True
+        fields["screening_renamed_at"] = datetime.utcnow()
+        screening_col.update_one({"_id": rec_id}, {"$set": fields})
+
+    if not old_blob:
+        _mark_done({"screening_rename_note": "no gcs_blob on record — skipped"})
+        return jsonify({
+            "success":         True,
+            "staff_name":      staff_name,
+            "skipped":         True,
+            "message":         f"Skipped {staff_name} — no gcs_blob on record",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    # ── Look up the staff doc for the Employee Code ────────────────────
+    staff = None
+    try:
+        staff = staffs_col.find_one({"_id": ObjectId(staff_id)})
+    except Exception:
+        pass
+
+    if not staff:
+        _mark_done({"screening_rename_note": "live_staffs document not found — skipped"})
+        return jsonify({
+            "success":         True,
+            "staff_name":      staff_name,
+            "skipped":         True,
+            "message":         f"Skipped {staff_name} — live_staffs document not found (staff_id={staff_id})",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    def _first(*keys, default=''):
+        """Same multi-schema lookup used elsewhere — live_staffs documents
+        exist in more than one shape ('Employee Code' with a space/
+        capitals in the new flat schema vs lowercase employee_code in
+        the old nested schema)."""
+        for k in keys:
+            val = staff.get(k)
+            if val not in (None, ''):
+                return _v(val)
+        return default
+
+    employee_code = _first('Employee Code', 'employee_code')
+
+    if not employee_code:
+        _mark_done({"screening_rename_note": "no Employee Code available — skipped"})
+        return jsonify({
+            "success":         True,
+            "staff_name":      staff_name,
+            "skipped":         True,
+            "message":         f"Skipped {staff_name} — no Employee Code available",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    try:
+        # Download the existing file and re-upload under the new name
+        docx_bytes   = _gcs_download(old_blob)
+        safe_code    = _v(employee_code).replace(' ', '_').replace('/', '_')
+        new_filename = f"Screening_{safe_code}.docx"
+        new_blob     = f"screening/{new_filename}"
+
+        _gcs_upload(
+            new_blob, docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+        screening_col.update_one(
+            {"_id": rec_id},
+            {"$set": {
+                "gcs_blob":          new_blob,
+                "filename":          new_filename,
+                "employee_code":     employee_code,
+                "previous_gcs_blob": old_blob,
+                "renamed_at":        datetime.utcnow(),
+            }}
+        )
+
+        _mark_done({})
+
+        return jsonify({
+            "success":         True,
+            "staff_name":      staff_name,
+            "employee_code":   employee_code,
+            "old_gcs_blob":    old_blob,
+            "new_gcs_blob":    new_blob,
+            "new_filename":    new_filename,
+            "remaining_count": max(0, remaining_total - 1),
+            "message": (
+                f"Renamed Screening Interview Record for {staff_name} "
+                f"({employee_code}) — {max(0, remaining_total - 1)} remaining."
+            ),
+        })
+
+    except Exception as e:
+        _mark_done({"screening_rename_note": f"error: {e}"})
+        return jsonify({
+            "success":         False,
+            "staff_name":      staff_name,
+            "employee_code":   employee_code,
+            "error":           str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
