@@ -6664,16 +6664,35 @@ def live_staff_cron_screening_download_one():
 # ADD THIS to the same crons blueprint file as live_staff_cron_generate_pcc /
 # live_staff_cron_generate_screening / live_staff_cron_rename_screening_by_employee_code.
 #
-# Converts every already-generated Screening Interview Record .docx to
-# PDF, one record at a time, and uploads the PDF alongside the docx in
-# GCS. New records generated going forward already get a PDF created
-# automatically by the on-demand /live-staffs/screening/generate route —
-# this cron is for the bulk backlog of records generated before PDF
-# support existed.
+# PDF-ONLY regeneration — does NOT touch the saved .docx in GCS at all.
+#
+# Unlike re-converting the already-saved docx (which keeps whatever
+# checkboxes/content that file was built with, however old), this
+# REBUILDS the docx fresh in memory each time using the CURRENT
+# template and the staff's current data — the exact same code path the
+# frontend "Generate" button uses — then converts ONLY that in-memory
+# copy to PDF and uploads just the PDF. The existing saved docx file in
+# GCS is left completely untouched.
+#
+# This is what you want when the template was fixed (e.g. a font or
+# layout bug) after documents were already generated, and you want
+# corrected PDFs without re-uploading/overwriting the docx files.
 # ═══════════════════════════════════════════════════════════════════════
 
 
-# ── Add this wrapper alongside the other lazy-import wrappers ─────────
+# ── Add these wrappers alongside the other lazy-import wrappers ───────
+def _build_screening_docx(first_shift_date=None, candidate_name='',
+                           location='', candidate_id='', extracted_cv=''):
+    from admin.live_staffs import _build_screening_docx as _f
+    return _f(
+        first_shift_date=first_shift_date,
+        candidate_name=candidate_name,
+        location=location,
+        candidate_id=candidate_id,
+        extracted_cv=extracted_cv,
+    )
+
+
 def _docx_to_pdf_bytes(docx_bytes):
     from admin.live_staffs import _docx_to_pdf_bytes as _f
     return _f(docx_bytes)
@@ -6682,14 +6701,23 @@ def _docx_to_pdf_bytes(docx_bytes):
 @admin_bp.route('/live-staffs/cron/generate-screening-pdf', methods=['GET', 'POST'])
 def live_staff_cron_generate_screening_pdf():
     """
-    Cron job — converts ONE already-generated Screening Interview Record
-    .docx to .pdf per call, and uploads it to GCS alongside the docx.
+    Cron job — regenerates ONE Screening Interview Record as PDF per
+    call, WITHOUT touching the saved .docx in GCS.
 
-    Finds live_staff_screening records with no pdf_gcs_blob yet.
+    For each live_staff_screening record with no pdf_gcs_blob yet:
+      1. Looks up the matching live_staffs document
+      2. Rebuilds the docx fresh IN MEMORY from the current template
+         (same data/fields as the full generator — work_start_date,
+         Employee Code, County, extracted_cv) — this is what actually
+         picks up a template fix (e.g. corrected checkboxes)
+      3. Converts that in-memory docx to PDF
+      4. Uploads ONLY the PDF to GCS — the existing saved .docx blob
+         is never re-uploaded or modified
 
-    To re-run this conversion pass over ALL screening records, run in
-    MongoDB first:
-        db.live_staff_screening.updateMany({}, {$unset: {pdf_gcs_blob: "", pdf_filename: ""}, $set: {pdf_failed: false}})
+    To re-run this pass over ALL screening records, run in MongoDB first:
+        db.live_staff_screening.updateMany(
+            {}, {$unset: {pdf_gcs_blob: "", pdf_filename: ""}, $set: {pdf_failed: false}}
+        )
 
     Protect with ?cron_key=<CRON_SECRET> env var.
     """
@@ -6701,6 +6729,7 @@ def live_staff_cron_generate_screening_pdf():
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
     screening_col = db.live_staff_screening
+    staffs_col    = _staffs_col()
 
     pending_query = {
         "$and": [
@@ -6726,19 +6755,88 @@ def live_staff_cron_generate_screening_pdf():
             "remaining_count": 0,
         })
 
-    rec_id     = rec['_id']
-    staff_name = rec.get('staff_name', '') or 'staff'
-    docx_blob  = rec.get('gcs_blob', '')
-    filename   = rec.get('filename', '') or ''
+    rec_id       = rec['_id']
+    staff_id     = rec.get('staff_id', '')
+    staff_name   = rec.get('staff_name', '') or 'staff'
+    docx_blob    = rec.get('gcs_blob', '')
+    filename     = rec.get('filename', '') or ''
 
     def _mark_done(fields):
         screening_col.update_one({"_id": rec_id}, {"$set": fields})
 
-    try:
-        docx_bytes = _gcs_download(docx_blob)
-        pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
+    def _mark_failed(err):
+        _mark_done({
+            "pdf_failed":    True,
+            "pdf_note":      f"error: {err}",
+            "pdf_failed_at": datetime.utcnow(),
+        })
 
-        # Match the docx's base name (e.g. "XH_0031.docx" -> "XH_0031.pdf")
+    # ── Look up the staff doc to rebuild the docx with current data ───
+    staff = None
+    try:
+        staff = staffs_col.find_one({"_id": ObjectId(staff_id)})
+    except Exception:
+        pass
+
+    if not staff:
+        _mark_failed("live_staffs document not found — cannot rebuild docx")
+        return jsonify({
+            "success":         False,
+            "staff_name":      staff_name,
+            "error":           f"live_staffs document not found (staff_id={staff_id})",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    def _first(*keys, default=''):
+        """Same multi-schema lookup used by the full generator — handles
+        both 'Employee Code' (new flat schema) and employee_code (old
+        nested schema)."""
+        for k in keys:
+            val = staff.get(k)
+            if val not in (None, ''):
+                return _v(val)
+        return default
+
+    s1           = staff.get('section_1_personal_details') or {}
+    full_name    = _first('Name') or _v(s1.get('full_name') or '') or staff_name
+    emp_code     = _first('Employee Code', 'employee_code')
+    county       = _first('County', 'county', 'Location', 'location')
+    extracted_cv = _v(staff.get('extracted_cv') or '')
+
+    def _parse_any_date(value):
+        if value in (None, ''):
+            return None
+        if isinstance(value, datetime):
+            return value
+        s = str(value).strip()
+        for fmt in (
+            '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d',
+            '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S',
+        ):
+            try:
+                return datetime.strptime(s, fmt)
+            except ValueError:
+                continue
+        return None
+
+    try:
+        first_shift_date = _parse_any_date(staff.get('work_start_date'))
+
+        # Rebuild fresh in memory — this is what actually picks up any
+        # template fix. Nothing from this is uploaded as a .docx.
+        fresh_docx_bytes = _build_screening_docx(
+            first_shift_date=first_shift_date,
+            candidate_name=full_name,
+            location=county,
+            candidate_id=emp_code,
+            extracted_cv=extracted_cv,
+        )
+
+        pdf_bytes = _docx_to_pdf_bytes(fresh_docx_bytes)
+
+        # Match the SAVED docx's base name (e.g. "XH_0031.docx" -> "XH_0031.pdf")
+        # so the PDF sits alongside the existing docx under the same name —
+        # the existing docx blob itself is left untouched.
         base_name    = filename.rsplit('.', 1)[0] if filename else docx_blob.rsplit('/', 1)[-1].rsplit('.', 1)[0]
         pdf_filename = f"{base_name}.pdf"
         pdf_blob     = f"screening/{pdf_filename}"
@@ -6746,36 +6844,30 @@ def live_staff_cron_generate_screening_pdf():
         _gcs_upload(pdf_blob, pdf_bytes, content_type='application/pdf')
 
         _mark_done({
-            "pdf_gcs_blob":      pdf_blob,
-            "pdf_filename":      pdf_filename,
-            "pdf_generated_at":  datetime.utcnow(),
+            "pdf_gcs_blob":     pdf_blob,
+            "pdf_filename":     pdf_filename,
+            "pdf_generated_at": datetime.utcnow(),
+            "pdf_rebuilt_from_template": True,
         })
 
         return jsonify({
             "success":         True,
-            "staff_name":      staff_name,
-            "docx_gcs_blob":   docx_blob,
+            "staff_name":      full_name,
+            "docx_gcs_blob":   docx_blob,   # unchanged, informational only
             "pdf_gcs_blob":    pdf_blob,
             "pdf_filename":    pdf_filename,
             "remaining_count": max(0, remaining_total - 1),
             "message": (
-                f"PDF generated for {staff_name} ({pdf_filename}) — "
-                f"{max(0, remaining_total - 1)} remaining."
+                f"PDF rebuilt from current template for {full_name} "
+                f"({pdf_filename}) — {max(0, remaining_total - 1)} remaining."
             ),
         })
 
     except Exception as e:
-        # Mark as failed (not retried forever) — reset pdf_failed to
-        # false on a specific record in Mongo if you want to retry it
-        # after fixing whatever caused the error.
-        _mark_done({
-            "pdf_failed":   True,
-            "pdf_note":     f"error: {e}",
-            "pdf_failed_at": datetime.utcnow(),
-        })
+        _mark_failed(str(e))
         return jsonify({
             "success":         False,
-            "staff_name":      staff_name,
+            "staff_name":      full_name,
             "error":           str(e),
             "remaining_count": max(0, remaining_total - 1),
         })
