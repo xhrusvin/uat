@@ -5911,8 +5911,6 @@ def live_staff_export_police_clearance_xlsx():
 
 
 
-# ── Cron: Extract Fire Safety Certificate ────────────────────────────
-
 # ═══════════════════════════════════════════════════════════════════════
 # ADD THIS SECTION to the crons blueprint file (the same file that
 # contains live_staff_cron_generate_pcc, live_staff_cron_sync_garda_vetting,
@@ -5937,6 +5935,11 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
         candidate_id=candidate_id,
         extracted_cv=extracted_cv,
     )
+
+
+def _docx_to_pdf_bytes(docx_bytes):
+    from admin.live_staffs import _docx_to_pdf_bytes as _f
+    return _f(docx_bytes)
 
 
 def _screening_col():
@@ -6042,11 +6045,26 @@ def live_staff_cron_generate_screening():
             extracted_cv=extracted_cv,
         )
 
-        safe_name = full_name.replace(' ', '_').replace('/', '_')
-        filename  = f"Screening_{safe_name}.docx"
+        # Name files by Employee Code alone when available (e.g.
+        # "XH_0031.docx") — falls back to the staff's name only when no
+        # Employee Code is on record at all. Matches the on-demand route.
+        base_name = emp_code.replace(' ', '_').replace('/', '_') if emp_code \
+                    else full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"{base_name}.docx"
         gcs_blob  = f"screening/{filename}"
         _gcs_upload(gcs_blob, docx_bytes,
                     content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        # ── Also generate a PDF alongside the docx ─────────────────────
+        pdf_filename = f"{base_name}.pdf"
+        pdf_gcs_blob = f"screening/{pdf_filename}"
+        try:
+            pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
+            _gcs_upload(pdf_gcs_blob, pdf_bytes, content_type='application/pdf')
+        except Exception:
+            # Don't fail the whole record if PDF conversion isn't
+            # available right now — docx is still generated and saved.
+            pdf_gcs_blob = None
 
         existing = screening_col.find_one({"staff_id": staff_id})
         rec = {
@@ -6055,6 +6073,8 @@ def live_staff_cron_generate_screening():
             "employee_code":    emp_code,
             "filename":         filename,
             "gcs_blob":         gcs_blob,
+            "pdf_filename":     pdf_filename if pdf_gcs_blob else None,
+            "pdf_gcs_blob":     pdf_gcs_blob,
             "first_shift_date": staff.get('work_start_date'),
             "generated_at":     datetime.utcnow(),
         }
@@ -6098,10 +6118,13 @@ def live_staff_cron_generate_screening():
             "screening_id":    rec_id,
             "filename":        filename,
             "gcs_blob":        gcs_blob,
+            "pdf_filename":    pdf_filename if pdf_gcs_blob else None,
+            "pdf_gcs_blob":    pdf_gcs_blob,
             "download_url":    download_url,
             "remaining_count": max(0, remaining_total - 1),
             "message": (
-                f"Screening Interview Record generated for {full_name} — "
+                f"Screening Interview Record generated for {full_name} "
+                f"({'docx + pdf' if pdf_gcs_blob else 'docx only — pdf failed'}) — "
                 f"{max(0, remaining_total - 1)} remaining."
             ),
         })
