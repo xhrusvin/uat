@@ -4087,14 +4087,31 @@ def live_staff_screening_generate():
             extracted_cv=extracted_cv,
         )
 
-        safe_name = full_name.replace(' ', '_').replace('/', '_')
-        filename  = f"Screening_{safe_name}.docx"
+        # Name files by Employee Code alone when available (e.g.
+        # "XH_0031.docx") — falls back to the staff's name only when no
+        # Employee Code is on record at all.
+        base_name = emp_code.replace(' ', '_').replace('/', '_') if emp_code \
+                    else full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"{base_name}.docx"
         gcs_blob  = f"screening/{filename}"
 
         _gcs_upload(
             gcs_blob, docx_bytes,
             content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
+
+        # ── Also generate a PDF alongside the docx ─────────────────────
+        pdf_filename = f"{base_name}.pdf"
+        pdf_gcs_blob = f"screening/{pdf_filename}"
+        pdf_error    = None
+        try:
+            pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
+            _gcs_upload(pdf_gcs_blob, pdf_bytes, content_type='application/pdf')
+        except Exception as e:
+            # Don't fail the whole request if PDF conversion isn't available —
+            # the docx is still generated and saved either way.
+            pdf_error    = str(e)
+            pdf_gcs_blob = None
 
         # Upsert into live_staff_screening collection
         col      = _screening_col()
@@ -4105,6 +4122,8 @@ def live_staff_screening_generate():
             "employee_code":    emp_code,
             "filename":         filename,
             "gcs_blob":         gcs_blob,
+            "pdf_filename":     pdf_filename if pdf_gcs_blob else None,
+            "pdf_gcs_blob":     pdf_gcs_blob,
             "first_shift_date": first_shift_str or None,
             "generated_at":     datetime.utcnow(),
         }
@@ -4113,12 +4132,19 @@ def live_staff_screening_generate():
         else:
             col.insert_one(rec)
 
-        return jsonify({
+        result = {
             "success":    True,
             "staff_name": full_name,
             "filename":   filename,
             "gcs_blob":   gcs_blob,
-        })
+        }
+        if pdf_gcs_blob:
+            result["pdf_filename"] = pdf_filename
+            result["pdf_gcs_blob"] = pdf_gcs_blob
+        else:
+            result["pdf_error"] = pdf_error or "PDF generation unavailable"
+
+        return jsonify(result)
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -4170,6 +4196,43 @@ def live_staff_screening_download(staff_id):
             headers={
                 "Content-Disposition":
                     f'attachment; filename="Screening_{name}.docx"'
+            }
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/screening/download-pdf/<staff_id>')
+@admin_required
+def live_staff_screening_download_pdf(staff_id):
+    """
+    Stream the saved Screening Interview Record .pdf from GCS. If no PDF
+    has been generated yet for this record, converts the saved .docx
+    on the fly and returns that (without re-saving it, so the regular
+    PDF-generation cron can still pick up the "needs conversion" record
+    normally).
+
+    GET /admin/live-staffs/screening/download-pdf/<staff_id>
+    """
+    try:
+        rec = _screening_col().find_one({"staff_id": staff_id})
+        if not rec or not rec.get('gcs_blob'):
+            return "Screening record not found — please regenerate", 404
+
+        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+
+        if rec.get('pdf_gcs_blob'):
+            pdf_bytes = _gcs_download(rec['pdf_gcs_blob'])
+        else:
+            docx_bytes = _gcs_download(rec['gcs_blob'])
+            pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
+
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={
+                "Content-Disposition":
+                    f'attachment; filename="{name}.pdf"'
             }
         )
     except Exception as e:

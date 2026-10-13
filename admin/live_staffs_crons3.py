@@ -6659,3 +6659,123 @@ def live_staff_cron_screening_download_one():
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THIS to the same crons blueprint file as live_staff_cron_generate_pcc /
+# live_staff_cron_generate_screening / live_staff_cron_rename_screening_by_employee_code.
+#
+# Converts every already-generated Screening Interview Record .docx to
+# PDF, one record at a time, and uploads the PDF alongside the docx in
+# GCS. New records generated going forward already get a PDF created
+# automatically by the on-demand /live-staffs/screening/generate route —
+# this cron is for the bulk backlog of records generated before PDF
+# support existed.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+# ── Add this wrapper alongside the other lazy-import wrappers ─────────
+def _docx_to_pdf_bytes(docx_bytes):
+    from admin.live_staffs import _docx_to_pdf_bytes as _f
+    return _f(docx_bytes)
+
+
+@admin_bp.route('/live-staffs/cron/generate-screening-pdf', methods=['GET', 'POST'])
+def live_staff_cron_generate_screening_pdf():
+    """
+    Cron job — converts ONE already-generated Screening Interview Record
+    .docx to .pdf per call, and uploads it to GCS alongside the docx.
+
+    Finds live_staff_screening records with no pdf_gcs_blob yet.
+
+    To re-run this conversion pass over ALL screening records, run in
+    MongoDB first:
+        db.live_staff_screening.updateMany({}, {$unset: {pdf_gcs_blob: "", pdf_filename: ""}, $set: {pdf_failed: false}})
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    screening_col = db.live_staff_screening
+
+    pending_query = {
+        "$and": [
+            {"gcs_blob": {"$exists": True, "$ne": None, "$ne": ""}},
+            {"$or": [
+                {"pdf_gcs_blob": {"$exists": False}},
+                {"pdf_gcs_blob": None},
+                {"pdf_gcs_blob": ""},
+            ]},
+            {"$or": [
+                {"pdf_failed": {"$exists": False}},
+                {"pdf_failed": False},
+            ]},
+        ]
+    }
+    remaining_total = screening_col.count_documents(pending_query)
+    rec             = screening_col.find_one(pending_query)
+
+    if not rec:
+        return jsonify({
+            "success":         True,
+            "message":         "All Screening Interview Records already have a PDF.",
+            "remaining_count": 0,
+        })
+
+    rec_id     = rec['_id']
+    staff_name = rec.get('staff_name', '') or 'staff'
+    docx_blob  = rec.get('gcs_blob', '')
+    filename   = rec.get('filename', '') or ''
+
+    def _mark_done(fields):
+        screening_col.update_one({"_id": rec_id}, {"$set": fields})
+
+    try:
+        docx_bytes = _gcs_download(docx_blob)
+        pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
+
+        # Match the docx's base name (e.g. "XH_0031.docx" -> "XH_0031.pdf")
+        base_name    = filename.rsplit('.', 1)[0] if filename else docx_blob.rsplit('/', 1)[-1].rsplit('.', 1)[0]
+        pdf_filename = f"{base_name}.pdf"
+        pdf_blob     = f"screening/{pdf_filename}"
+
+        _gcs_upload(pdf_blob, pdf_bytes, content_type='application/pdf')
+
+        _mark_done({
+            "pdf_gcs_blob":      pdf_blob,
+            "pdf_filename":      pdf_filename,
+            "pdf_generated_at":  datetime.utcnow(),
+        })
+
+        return jsonify({
+            "success":         True,
+            "staff_name":      staff_name,
+            "docx_gcs_blob":   docx_blob,
+            "pdf_gcs_blob":    pdf_blob,
+            "pdf_filename":    pdf_filename,
+            "remaining_count": max(0, remaining_total - 1),
+            "message": (
+                f"PDF generated for {staff_name} ({pdf_filename}) — "
+                f"{max(0, remaining_total - 1)} remaining."
+            ),
+        })
+
+    except Exception as e:
+        # Mark as failed (not retried forever) — reset pdf_failed to
+        # false on a specific record in Mongo if you want to retry it
+        # after fixing whatever caused the error.
+        _mark_done({
+            "pdf_failed":   True,
+            "pdf_note":     f"error: {e}",
+            "pdf_failed_at": datetime.utcnow(),
+        })
+        return jsonify({
+            "success":         False,
+            "staff_name":      staff_name,
+            "error":           str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
