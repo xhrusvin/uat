@@ -6404,15 +6404,13 @@ def _ordered_keys(rows):
 def _now_slug():
     return datetime.utcnow().strftime('%Y%m%d_%H%M%S')
 
-
-
 # ═══════════════════════════════════════════════════════════════════════
 # ADD THIS to the same crons blueprint file as live_staff_cron_generate_pcc
 # and live_staff_cron_generate_screening.
 #
 # Renames each already-generated Screening Interview Record from its
 # name-based filename (e.g. "Screening_Akhildev_Mundapurath.docx") to
-# one keyed on the staff's Employee Code (e.g. "Screening_XH_33307.docx"),
+# just the staff's Employee Code (e.g. "XH_33307.docx"),
 # re-uploads under the new GCS path, and updates the pointer in
 # live_staff_screening. The old blob is left in place (not deleted) —
 # safer in case anything else still references it.
@@ -6532,7 +6530,7 @@ def live_staff_cron_rename_screening_by_employee_code():
         # Download the existing file and re-upload under the new name
         docx_bytes   = _gcs_download(old_blob)
         safe_code    = _v(employee_code).replace(' ', '_').replace('/', '_')
-        new_filename = f"Screening_{safe_code}.docx"
+        new_filename = f"{safe_code}.docx"
         new_blob     = f"screening/{new_filename}"
 
         _gcs_upload(
@@ -6576,3 +6574,88 @@ def live_staff_cron_rename_screening_by_employee_code():
             "error":           str(e),
             "remaining_count": max(0, remaining_total - 1),
         })
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THESE TWO ROUTES to the same crons blueprint file as
+# live_staff_cron_generate_pcc / live_staff_cron_generate_screening /
+# live_staff_cron_rename_screening_by_employee_code.
+#
+# Unlike the "generate" and "rename" crons, downloading to a LOCAL
+# folder is inherently client-side state — the server has no way to
+# know what's already on your machine — so there's no DB flag here.
+# Instead: one route lists every generated record, one route streams a
+# single file's bytes, and run_download_screening.py (below) skips any
+# file that already exists locally, making it safely resumable.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/cron/screening-list', methods=['GET'])
+def live_staff_cron_screening_list():
+    """
+    Returns every generated Screening Interview Record's metadata in one
+    call: staff_id, staff_name, employee_code, filename, gcs_blob.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    screening_col = db.live_staff_screening
+    recs = list(screening_col.find(
+        {},
+        {"staff_id": 1, "staff_name": 1, "employee_code": 1,
+         "filename": 1, "gcs_blob": 1}
+    ))
+
+    items = []
+    for r in recs:
+        items.append({
+            "staff_id":      str(r.get("staff_id", "")),
+            "staff_name":    r.get("staff_name", "") or "",
+            "employee_code": r.get("employee_code", "") or "",
+            "filename":      r.get("filename", "") or "",
+            "gcs_blob":      r.get("gcs_blob", "") or "",
+        })
+
+    return jsonify({
+        "success": True,
+        "count":   len(items),
+        "items":   items,
+    })
+
+
+@admin_bp.route('/live-staffs/cron/screening-download-one', methods=['GET'])
+def live_staff_cron_screening_download_one():
+    """
+    Streams the bytes of ONE generated Screening Interview Record,
+    identified by its gcs_blob (as returned by /screening-list).
+
+    GET /live-staffs/cron/screening-download-one?cron_key=...&gcs_blob=screening/Screening_XH_33307.docx
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    gcs_blob = (request.args.get('gcs_blob') or '').strip()
+    if not gcs_blob:
+        return jsonify({"success": False, "error": "Missing gcs_blob"}), 400
+
+    try:
+        docx_bytes = _gcs_download(gcs_blob)
+        filename   = gcs_blob.rsplit('/', 1)[-1]
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
