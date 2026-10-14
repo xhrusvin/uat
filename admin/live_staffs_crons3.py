@@ -7099,3 +7099,60 @@ def live_staff_cron_generate_incremental_credit():
             "error":           str(e),
             "remaining_count": max(0, remaining_total - 1),
         })
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THIS to the same crons blueprint file as live_staff_cron_screening_list
+# / live_staff_cron_screening_download_one (the file with
+# download_screening_cron_route.py's content already in it).
+#
+# Reuses the EXISTING /live-staffs/cron/screening-download-one route for
+# the actual file download — that route is already generic (it just
+# streams whatever gcs_blob path you give it, with the mimetype picked
+# from the file extension), so no new download route is needed. This
+# file only adds the LIST route for the Incremental Credit collection.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/cron/incremental-credit-list', methods=['GET'])
+def live_staff_cron_incremental_credit_list():
+    """
+    Returns every generated Incremental Credit for Previous Service
+    record's metadata in one call: staff_id, staff_name, employee_code,
+    filename, gcs_blob, pdf_filename, pdf_gcs_blob (empty strings if no
+    PDF has been generated for that record yet).
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    ic_col = db.live_staff_incremental_credit
+    recs = list(ic_col.find(
+        {},
+        {"staff_id": 1, "staff_name": 1, "employee_code": 1,
+         "filename": 1, "gcs_blob": 1,
+         "pdf_filename": 1, "pdf_gcs_blob": 1}
+    ))
+
+    items = []
+    for r in recs:
+        items.append({
+            "staff_id":      str(r.get("staff_id", "")),
+            "staff_name":    r.get("staff_name", "") or "",
+            "employee_code": r.get("employee_code", "") or "",
+            "filename":      r.get("filename", "") or "",
+            "gcs_blob":      r.get("gcs_blob", "") or "",
+            "pdf_filename":  r.get("pdf_filename", "") or "",
+            "pdf_gcs_blob":  r.get("pdf_gcs_blob", "") or "",
+        })
+
+    return jsonify({
+        "success": True,
+        "count":   len(items),
+        "items":   items,
+    })
