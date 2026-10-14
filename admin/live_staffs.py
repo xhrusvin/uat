@@ -4571,6 +4571,25 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
         row_to_remove = t1.rows[1]._tr
         row_to_remove.getparent().remove(row_to_remove)
 
+    # The template had two blank spacer paragraphs right after this table
+    # (originally sized to match the taller 2-row version) — remove them
+    # too so the gap doesn't look oversized now that the row is gone.
+    from docx.oxml.ns import qn as _qn1
+    _tbl_elem = t1._tbl
+    _removed = 0
+    _sibling = _tbl_elem.getnext()
+    while _sibling is not None and _removed < 2:
+        if _sibling.tag == _qn1('w:p'):
+            _texts = _sibling.findall('.//' + _qn1('w:t'))
+            _text_content = ''.join(t.text or '' for t in _texts)
+            if _text_content.strip() == '':
+                _next_sibling = _sibling.getnext()
+                _sibling.getparent().remove(_sibling)
+                _removed += 1
+                _sibling = _next_sibling
+                continue
+        break
+
     # ── Table 2: Previous Experience (up to 6 rows) ────────────────────
     t2 = doc.tables[2]
     entries = point_scale_data.get("previous_experience") or []
@@ -4590,7 +4609,9 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
 
     # ── Recommendation paragraph (name, point + LSI/Senior Nurse label,
     # effective date) ───────────────────────────────────────────────────
-    rec_para = doc.paragraphs[8]
+    # Located by text prefix rather than a fixed index — removing the
+    # spacer paragraphs above shifts every later paragraph's index.
+    rec_para = next(p for p in doc.paragraphs if p.text.startswith('Recommendation:'))
     combined = ''.join(r.text for r in rec_para.runs[1:])
     point_value = point_scale_data.get("point", "")
     point_with_label = f"{point_value}{_point_category_label(point_value)}" if point_value else ""
@@ -4610,7 +4631,7 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
         r.text = ""
 
     # ── Incremental Date paragraph ──────────────────────────────────────
-    inc_para = doc.paragraphs[9]
+    inc_para = next(p for p in doc.paragraphs if p.text.startswith('Incremental Date:'))
     inc_para.runs[1].text = point_scale_data.get("incremental_date", "")
 
     # ── Table 3: Signed Date / Verified-by Date ────────────────────────
