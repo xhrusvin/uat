@@ -4585,50 +4585,6 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
     return buf.getvalue()
 
 
-@admin_bp.route('/live-staffs/incremental-credit/upload/<staff_id>', methods=['POST'])
-@admin_required
-def live_staff_incremental_credit_upload(staff_id):
-    if 'file' not in request.files:
-        return jsonify({"success": False, "error": "No file provided"}), 400
-    file = request.files['file']
-    if not file.filename.lower().endswith('.docx'):
-        return jsonify({"success": False, "error": "Only .docx files accepted"}), 400
-    try:
-        col = _incremental_credit_col()
-        rec = col.find_one({"staff_id": staff_id})
-        if not rec:
-            return jsonify({"success": False, "error": "No saved record found — generate one first"}), 404
-
-        gcs_blob   = rec.get('gcs_blob') or f"incremental_credit/{staff_id}.docx"
-        data_bytes = file.read()
-        _gcs_upload(gcs_blob, data_bytes,
-                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-
-        update_fields = {
-            "gcs_blob":      gcs_blob,
-            "filename":      os.path.basename(gcs_blob),
-            "last_uploaded": datetime.utcnow(),
-            "uploaded_by":   "admin",
-        }
-        pdf_base = os.path.basename(gcs_blob).rsplit('.', 1)[0]
-        pdf_blob = f"incremental_credit/{pdf_base}.pdf"
-        try:
-            pdf_bytes = _docx_to_pdf_bytes(data_bytes)
-            _gcs_upload(pdf_blob, pdf_bytes, content_type='application/pdf')
-            update_fields["pdf_gcs_blob"] = pdf_blob
-            update_fields["pdf_filename"] = f"{pdf_base}.pdf"
-        except Exception:
-            update_fields["pdf_gcs_blob"] = None
-            update_fields["pdf_filename"] = None
-
-        col.update_one({"staff_id": staff_id}, {"$set": update_fields}, upsert=True)
-        return jsonify({
-            "success":  True,
-            "message":  "Incremental Credit record replaced successfully",
-            "filename": os.path.basename(gcs_blob),
-        })
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ─────────────────────────────────────────────────────────────────────
