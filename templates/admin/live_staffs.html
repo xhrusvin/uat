@@ -124,7 +124,9 @@
                         {% set p    = s.section_1_personal_details or {} %}
                         {% set visa = p.work_permit_visa_status or {} %}
                         {% set reg  = s.section_3_professional_registration or {} %}
-                        {% set ut_lower = (s.user_type or '') | lower %}
+                        {% set user_type_display = s.get('User Type') or s.user_type or '' %}
+                        {% set emp_code_display  = s.get('Employee Code') or s.employee_code or '' %}
+                        {% set ut_lower = user_type_display | lower %}
                         <tr>
                             <td class="ps-4 text-muted small">
                                 {{ loop.index + (page - 1) * per_page }}
@@ -135,10 +137,10 @@
                             </td>
                             <td>
                                 <span class="badge bg-dark font-monospace px-2 py-1">
-                                    {{ s.employee_code or '—' }}
+                                    {{ emp_code_display or '—' }}
                                 </span>
                             </td>
-                            <td class="text-muted small">{{ s.user_type or '—' }}</td>
+                            <td class="text-muted small">{{ user_type_display or '—' }}</td>
                             <td class="text-muted small">{{ p.nationality or '—' }}</td>
                             <td class="small">
                                 {% if visa.visa_type %}
@@ -170,7 +172,7 @@
                                         data-id="{{ s._id }}"
                                         data-name="{{ p.full_name | default('Staff') | e }}"
                                         data-email="{{ s.email | e }}"
-                                        data-type="{{ s.user_type | default('') | e }}"
+                                        data-type="{{ user_type_display | e }}"
                                         data-ut-lower="{{ ut_lower | e }}"
                                         data-cv-url="{{ '/admin/live-staffs/cv/' + s._id }}">
                                     <i class="bi bi-grid-3x3-gap-fill me-1"></i> Actions
