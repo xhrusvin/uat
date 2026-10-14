@@ -192,6 +192,7 @@
                                     {% endif %}
                                     {% if 'nurse' in ut_lower or 'rgn' in ut_lower or 'rnm' in ut_lower or 'midwife' in ut_lower or 'nchd' in ut_lower or 'cns' in ut_lower or 'phn' in ut_lower %}
                                     <button class="btn-vos-nurse" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
+                                    <button class="btn-incremental-credit" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
                                     {% endif %}
                                 </span>
                             </td>
@@ -373,6 +374,22 @@
                                 <div>
                                     <div class="am-label">VOS — Nurse</div>
                                     <div class="am-desc">For nursing staff</div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Incremental Credit (Nurse only) ── -->
+                <div id="amIncrementalCreditSection" class="d-none">
+                    <p class="text-uppercase text-muted fw-semibold mb-2" style="font-size:10px;letter-spacing:.06em;">Salary scale</p>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <button class="am-action-btn am-incremental-credit w-100">
+                                <i class="bi bi-graph-up-arrow am-icon" style="color:#0d9488;"></i>
+                                <div>
+                                    <div class="am-label">Incremental Credit</div>
+                                    <div class="am-desc">Previous service assessment</div>
                                 </div>
                             </button>
                         </div>
@@ -1071,6 +1088,93 @@
     </div>
 </div>
 
+<!-- ── Incremental Credit Modal ──────────────────────────────────── -->
+<div class="modal fade" id="incrementalCreditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-graph-up-arrow me-2" style="color:#0d9488;"></i>Incremental Credit — <span id="incrementalCreditModalName"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+
+                <!-- Idle -->
+                <div id="incrementalCreditIdle">
+                    <p class="text-muted small mb-3">
+                        Generate the <strong>Incremental Credit for Previous Service</strong> assessment
+                        (.docx and .pdf) for this nurse, using their Point Scale Document on file.
+                    </p>
+                    <div id="incrementalCreditSavedInfo" class="alert alert-success py-2 small mb-3 d-none">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Saved record from <strong id="incrementalCreditSavedDate"></strong>.
+                        <div class="d-flex gap-3 mt-1">
+                            <a href="#" id="incrementalCreditExistingDownloadDocx" target="_blank">
+                                <i class="bi bi-file-earmark-word me-1"></i>Download DOCX
+                            </a>
+                            <a href="#" id="incrementalCreditExistingDownloadPdf" target="_blank">
+                                <i class="bi bi-file-earmark-pdf me-1"></i>Download PDF
+                            </a>
+                        </div>
+                    </div>
+                    <button class="btn w-100 fw-bold" id="incrementalCreditGenerateBtn"
+                            style="background:#0d9488;color:#fff;">
+                        <i class="bi bi-graph-up-arrow me-1"></i> Generate Incremental Credit
+                    </button>
+                </div>
+
+                <!-- Generating -->
+                <div id="incrementalCreditGenerating" class="d-none text-center py-3">
+                    <div class="spinner-border mb-3" style="color:#0d9488;" role="status"></div>
+                    <p class="text-muted">Reading Point Scale Document and generating assessment...</p>
+                </div>
+
+                <!-- Result -->
+                <div id="incrementalCreditResult" class="d-none">
+                    <div class="alert alert-success py-2 mb-3">
+                        <i class="bi bi-check-circle me-1"></i> Document generated successfully!
+                    </div>
+                    <div id="incrementalCreditWarning" class="alert alert-warning py-2 small d-none"></div>
+                    <div class="d-flex gap-2 mb-3">
+                        <a href="#" id="incrementalCreditDownloadBtn" target="_blank"
+                           class="btn btn-outline-success flex-fill">
+                            <i class="bi bi-file-earmark-word me-1"></i> Download DOCX
+                        </a>
+                        <a href="#" id="incrementalCreditDownloadPdfBtn" target="_blank"
+                           class="btn btn-outline-danger flex-fill">
+                            <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
+                        </a>
+                    </div>
+                    <div class="border-top pt-3 mt-1">
+                        <p class="text-muted small mb-2">
+                            <i class="bi bi-upload me-1"></i>
+                            Upload an edited <code>.docx</code> to replace the saved version.
+                        </p>
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <input type="file" id="incrementalCreditUploadInput" accept=".docx"
+                                   class="form-control form-control-sm" style="max-width:260px;">
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="incrementalCreditUploadBtn">
+                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
+                            </button>
+                        </div>
+                        <div id="incrementalCreditUploadMsg" class="mt-2 small d-none"></div>
+                    </div>
+                </div>
+
+                <!-- Error -->
+                <div id="incrementalCreditError" class="d-none">
+                    <div class="alert alert-danger py-2 small" id="incrementalCreditErrorMsg"></div>
+                </div>
+
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════════════════
      STYLES — Actions modal card buttons
 ═══════════════════════════════════════════════════════════════════ -->
@@ -1433,6 +1537,7 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
             document.querySelector('.am-vos-hca-col').classList.toggle('d-none', !isHca);
             document.querySelector('.am-vos-nurse-col').classList.toggle('d-none', !isNurse);
             $('amVosSection').classList.toggle('d-none', !isHca && !isNurse);
+            $('amIncrementalCreditSection').classList.toggle('d-none', !isNurse);
 
             new bootstrap.Modal($('actionsModal')).show();
         });
@@ -1561,6 +1666,15 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
         if (btn.classList.contains('am-vos-nurse')) {
             _closeAndThen(() => {
                 const trigger = document.querySelector(`.btn-vos-nurse[data-id="${_id}"]`);
+                if (trigger) trigger.click();
+            });
+            return;
+        }
+
+        // ── Incremental Credit ───────────────────────────────────────
+        if (btn.classList.contains('am-incremental-credit')) {
+            _closeAndThen(() => {
+                const trigger = document.querySelector(`.btn-incremental-credit[data-id="${_id}"]`);
                 if (trigger) trigger.click();
             });
             return;
@@ -2192,6 +2306,128 @@ $('screeningUploadBtn').addEventListener('click', async () => {
             // by the download-pdf route, so just bust its cache too.
             $('screeningDownloadPdfBtn').href = screeningDownloadPdfUrl(currentScreeningStaffId) + '?t=' + Date.now();
             $('screeningUploadInput').value = '';
+        } else {
+            msg.textContent = d.error || 'Upload failed';
+            msg.className   = 'mt-2 small text-danger';
+        }
+        msg.classList.remove('d-none');
+    } catch(e) {
+        msg.textContent = 'Network error: ' + e.message;
+        msg.className   = 'mt-2 small text-danger';
+        msg.classList.remove('d-none');
+    } finally {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// Incremental Credit for Previous Service
+// ══════════════════════════════════════════════════════════════════════
+const IC_GEN_URL     = "{{ '/admin/live-staffs/incremental-credit/generate' }}";
+const IC_SAVED_BASE  = "{{ '/admin/live-staffs/incremental-credit/saved/__ID__' }}";
+const IC_DL_BASE     = "{{ '/admin/live-staffs/incremental-credit/download/__ID__' }}";
+const IC_DL_PDF_BASE = "{{ '/admin/live-staffs/incremental-credit/download-pdf/__ID__' }}";
+const IC_UL_BASE     = "{{ '/admin/live-staffs/incremental-credit/upload/__ID__' }}";
+
+function icSavedUrl(id)      { return IC_SAVED_BASE.replace('__ID__', id); }
+function icDownloadUrl(id)   { return IC_DL_BASE.replace('__ID__', id); }
+function icDownloadPdfUrl(id){ return IC_DL_PDF_BASE.replace('__ID__', id); }
+function icUploadUrl(id)     { return IC_UL_BASE.replace('__ID__', id); }
+
+let currentIcStaffId = null;
+
+function setIcState(state) {
+    ['Idle','Generating','Result','Error'].forEach(s =>
+        $('incrementalCredit' + s).classList.add('d-none')
+    );
+    $('incrementalCredit' + state).classList.remove('d-none');
+}
+
+document.querySelectorAll('.btn-incremental-credit').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentIcStaffId = btn.dataset.id;
+        $('incrementalCreditModalName').textContent = btn.dataset.name || 'Staff';
+        $('incrementalCreditSavedInfo').classList.add('d-none');
+        $('incrementalCreditDownloadBtn').href = '#';
+        $('incrementalCreditDownloadPdfBtn').href = '#';
+        $('incrementalCreditWarning').classList.add('d-none');
+        setIcState('Idle');
+        new bootstrap.Modal($('incrementalCreditModal')).show();
+
+        try {
+            const r = await fetch(icSavedUrl(currentIcStaffId));
+            const d = await r.json();
+            if (d.success && d.found) {
+                $('incrementalCreditSavedInfo').classList.remove('d-none');
+                $('incrementalCreditSavedDate').textContent = d.generated_at;
+                $('incrementalCreditExistingDownloadDocx').href = icDownloadUrl(currentIcStaffId);
+                $('incrementalCreditExistingDownloadPdf').href = icDownloadPdfUrl(currentIcStaffId);
+            }
+        } catch(e) {}
+    });
+});
+
+$('incrementalCreditGenerateBtn').addEventListener('click', async () => {
+    if (!currentIcStaffId) return;
+    setIcState('Generating');
+    try {
+        const r = await fetch(IC_GEN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ staff_id: currentIcStaffId }),
+        });
+        const text = await r.text();
+        let d;
+        try { d = JSON.parse(text); }
+        catch(_) {
+            $('incrementalCreditErrorMsg').textContent = `Server error ${r.status}: ${text.slice(0,200)}`;
+            setIcState('Error');
+            return;
+        }
+        if (d.success) {
+            $('incrementalCreditDownloadBtn').href = icDownloadUrl(currentIcStaffId);
+            $('incrementalCreditDownloadPdfBtn').href = icDownloadPdfUrl(currentIcStaffId);
+            if (d.warning) {
+                $('incrementalCreditWarning').textContent = d.warning;
+                $('incrementalCreditWarning').classList.remove('d-none');
+            } else {
+                $('incrementalCreditWarning').classList.add('d-none');
+            }
+            setIcState('Result');
+        } else {
+            $('incrementalCreditErrorMsg').textContent = d.error || 'Generation failed';
+            setIcState('Error');
+        }
+    } catch(e) {
+        $('incrementalCreditErrorMsg').textContent = 'Network error: ' + e.message;
+        setIcState('Error');
+    }
+});
+
+$('incrementalCreditUploadBtn').addEventListener('click', async () => {
+    const file = $('incrementalCreditUploadInput').files[0];
+    const msg  = $('incrementalCreditUploadMsg');
+    if (!file) {
+        msg.textContent = 'Please select a .docx file first.';
+        msg.className   = 'mt-2 small text-danger';
+        msg.classList.remove('d-none');
+        return;
+    }
+    const btn = $('incrementalCreditUploadBtn');
+    btn.disabled  = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const r = await fetch(icUploadUrl(currentIcStaffId), { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.success) {
+            msg.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>${d.message || 'Uploaded successfully'}`;
+            msg.className = 'mt-2 small text-success';
+            $('incrementalCreditDownloadBtn').href = icDownloadUrl(currentIcStaffId) + '?t=' + Date.now();
+            $('incrementalCreditDownloadPdfBtn').href = icDownloadPdfUrl(currentIcStaffId) + '?t=' + Date.now();
+            $('incrementalCreditUploadInput').value = '';
         } else {
             msg.textContent = d.error || 'Upload failed';
             msg.className   = 'mt-2 small text-danger';
