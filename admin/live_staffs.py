@@ -4585,31 +4585,6 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
     return buf.getvalue()
 
 
-
-
-
-@admin_bp.route('/live-staffs/incremental-credit/download-pdf/<staff_id>')
-@admin_required
-def live_staff_incremental_credit_download_pdf(staff_id):
-    try:
-        rec = _incremental_credit_col().find_one({"staff_id": staff_id})
-        if not rec or not rec.get('gcs_blob'):
-            return "Incremental Credit record not found — please generate it first", 404
-        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
-        if rec.get('pdf_gcs_blob'):
-            pdf_bytes = _gcs_download(rec['pdf_gcs_blob'])
-        else:
-            docx_bytes = _gcs_download(rec['gcs_blob'])
-            pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
-        return Response(
-            pdf_bytes,
-            mimetype='application/pdf',
-            headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'}
-        )
-    except Exception as e:
-        return str(e), 500
-
-
 @admin_bp.route('/live-staffs/incremental-credit/upload/<staff_id>', methods=['POST'])
 @admin_required
 def live_staff_incremental_credit_upload(staff_id):
