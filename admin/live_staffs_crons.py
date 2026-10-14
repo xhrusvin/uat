@@ -6438,3 +6438,287 @@ def live_staff_cron_sync_staff_id():
         ),
         "synced_at": datetime.utcnow().isoformat(),
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THIS to the same crons blueprint file as live_staff_cron_sync_garda_vetting,
+# live_staff_cron_sync_cpi_mapa, etc. (admin/live_staffs_crons.py).
+#
+# Cron: Extract "Hse Cv" document text via Gemini, one staff at a time.
+# Saves the extracted CV text to live_staffs.hsecv_extarcted (field name
+# as requested — note the spelling matches what was asked for).
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/cron/sync-hsecv', methods=['GET', 'POST'])
+def live_staff_cron_sync_hsecv():
+    """
+    Cron job — processes ONE staff member per call.
+    Finds the "Hse Cv" document via the outreach API, extracts its
+    readable text content via Gemini (same handling as extracted_cv:
+    direct PDF/image understanding where possible, pdfplumber text
+    fallback otherwise), and saves it to live_staffs.hsecv_extarcted.
+    Saves: hsecv_extarcted, hsecv_doc_url, hsecv_doc_type, hsecv_fetched = True
+    """
+    import requests as _req
+    from google import genai as google_genai
+
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = (os.environ.get('XN_PORTAL_BASE_URL', '').rstrip('/') or
+                   os.environ.get('LIVE_STAFF_URL', '').rstrip('/'))
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+    gemini_key  = os.environ.get('GEMINI_API_KEY', '')
+
+    if not base_url:
+        return jsonify({"success": False, "error": "XN_PORTAL_BASE_URL / LIVE_STAFF_URL not set"}), 500
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+    col = _staffs_col()
+
+    pending_query = {
+        "$or": [
+            {"hsecv_fetched": {"$exists": False}},
+            {"hsecv_fetched": False},
+            {"hsecv_fetched": None},
+        ]
+    }
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff Hse Cv documents already extracted.",
+            "remaining_count": 0,
+        })
+
+    def _first(*keys, default=''):
+        """Multi-schema lookup — handles both the new flat schema
+        ('Name', with capitals/spaces) and the old nested schema
+        (section_1_personal_details.full_name)."""
+        for k in keys:
+            val = staff.get(k)
+            if val not in (None, ''):
+                return _v(val)
+        return default
+
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _first('Name') or _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or s1.get('email_address') or '')
+
+    def _mark_done(fields):
+        fields["hsecv_fetched"]    = True
+        fields["hsecv_fetched_at"] = datetime.utcnow()
+        col.update_one({"_id": staff['_id']}, {"$set": fields})
+
+    if not email:
+        _mark_done({"hsecv_note": "skipped — no email"})
+        return jsonify({
+            "success":         True,
+            "message":         "Skipped — no email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    endpoint    = f"{base_url}/ai/recruitments/user-document-list"
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.post(endpoint, json={"email": email},
+                         headers=api_headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.get(endpoint, params={"email": email},
+                            headers=api_headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        _mark_done({"hsecv_note": f"API error: {e}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": f"API error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not data.get('success'):
+        _mark_done({"hsecv_note": f"API error: {data.get('message')}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": data.get('message', 'API error'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    api_data  = data.get('data')
+    documents = api_data if isinstance(api_data, list) else \
+                (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+
+    if not documents:
+        _mark_done({"hsecv_note": "no documents returned"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": False,
+            "message": f"No documents returned for {email}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    hsecv_doc = None
+    for d in documents:
+        doc_name = (d.get('document_type_name') or '').strip().lower()
+        if doc_name == 'hse cv' and d.get('url'):
+            hsecv_doc = d
+            break
+
+    if not hsecv_doc:
+        _mark_done({"hsecv_note": "no Hse Cv document found"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": False,
+            "message": f"No Hse Cv document found for {full_name}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    doc_url = (hsecv_doc.get('url') or '').strip()
+
+    if not doc_url:
+        _mark_done({"hsecv_note": "document found but URL is empty — skipped"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "doc_found": True, "skipped": True,
+            "reason": "Document URL is empty",
+            "remaining_count": max(0, remaining_total - 1),
+            "message": f"Skipped {full_name} ({email}) — Hse Cv has no URL",
+        })
+
+    try:
+        dl_headers = {k: v for k, v in api_headers.items() if k != 'Content-Type'}
+        dl_resp    = _req.get(doc_url, headers=dl_headers, timeout=60)
+
+        if dl_resp.status_code == 404:
+            _mark_done({"hsecv_note": "document URL 404 — skipped",
+                        "hsecv_doc_404": True})
+            return jsonify({
+                "success": True, "email": email, "staff_name": full_name,
+                "doc_found": True, "skipped": True,
+                "reason": "Document URL returned 404",
+                "remaining_count": max(0, remaining_total - 1),
+                "message": f"Skipped {full_name} ({email}) — Hse Cv URL 404",
+            })
+
+        dl_resp.raise_for_status()
+        raw_bytes    = dl_resp.content
+        content_type = dl_resp.headers.get('Content-Type', '').lower()
+
+        client = google_genai.Client(api_key=gemini_key)
+
+        prompt_text = """You are a professional CV parser.
+
+Extract and structure ALL content from this CV document into clean,
+readable plain text. Preserve every factual detail exactly as written —
+do NOT add, invent, or change any facts. Use clear section headings
+where the original content has distinct sections (e.g. Personal
+Details, Education, Employment History, Skills, Training).
+
+Return ONLY the clean structured CV text — no preamble, no markdown
+formatting, no commentary.
+"""
+
+        is_image = any(t in content_type for t in ('image/', 'jpeg', 'jpg', 'png', 'webp'))
+        is_pdf   = 'pdf' in content_type or doc_url.lower().split('?')[0].endswith('.pdf')
+
+        extracted_text = ''
+
+        if is_image:
+            ext = 'jpeg' if any(t in content_type for t in ('jpeg', 'jpg')) else \
+                  'png'  if 'png'  in content_type else \
+                  'webp' if 'webp' in content_type else 'jpeg'
+            parts = [
+                {"inline_data": {"mime_type": f"image/{ext}",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash', contents=[{"parts": parts}]
+            )
+            extracted_text = (response.text or '').strip()
+
+        elif is_pdf:
+            parts = [
+                {"inline_data": {"mime_type": "application/pdf",
+                                 "data": base64.b64encode(raw_bytes).decode()}},
+                {"text": prompt_text}
+            ]
+            response = client.models.generate_content(
+                model='gemini-2.5-flash', contents=[{"parts": parts}]
+            )
+            extracted_text = (response.text or '').strip()
+
+        else:
+            try:
+                import io as _io, pdfplumber
+                with pdfplumber.open(_io.BytesIO(raw_bytes)) as pdf:
+                    raw_text = chr(10).join(p.extract_text() or '' for p in pdf.pages).strip()
+            except Exception:
+                raw_text = raw_bytes.decode('utf-8', errors='replace').strip()
+
+            if raw_text:
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt_text + "\n\nRAW EXTRACTED TEXT:\n" + raw_text[:12000]
+                )
+                extracted_text = (response.text or '').strip()
+            else:
+                extracted_text = raw_text
+
+        if not extracted_text:
+            _mark_done({
+                "hsecv_note":     "Gemini returned empty extraction",
+                "hsecv_doc_url":  doc_url,
+                "hsecv_doc_type": hsecv_doc.get('document_type_name', ''),
+            })
+            return jsonify({
+                "success": True, "email": email, "staff_name": full_name,
+                "doc_found": True, "skipped": True,
+                "reason": "Gemini returned no extractable text",
+                "remaining_count": max(0, remaining_total - 1),
+                "message": f"Skipped {full_name} ({email}) — no text could be extracted",
+            })
+
+        _mark_done({
+            "hsecv_extarcted": extracted_text,
+            "hsecv_doc_url":   doc_url,
+            "hsecv_doc_type":  hsecv_doc.get('document_type_name', ''),
+            "hsecv_note":      "extracted successfully",
+        })
+
+        return jsonify({
+            "success":          True,
+            "email":            email,
+            "staff_name":       full_name,
+            "doc_found":        True,
+            "text_length":      len(extracted_text),
+            "remaining_count":  max(0, remaining_total - 1),
+            "message": (
+                f"Hse Cv extracted for {full_name} ({email}) "
+                f"— {len(extracted_text)} chars — "
+                f"{max(0, remaining_total - 1)} remaining."
+            ),
+        })
+
+    except Exception as e:
+        _mark_done({"hsecv_note": f"error: {e}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": str(e),
+            "remaining_count": max(0, remaining_total - 1),
+        })
