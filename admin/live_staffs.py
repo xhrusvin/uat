@@ -4587,40 +4587,6 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
 
 
 
-@admin_bp.route('/live-staffs/incremental-credit/saved/<staff_id>')
-@admin_required
-def live_staff_incremental_credit_saved(staff_id):
-    rec = _incremental_credit_col().find_one({"staff_id": staff_id})
-    if not rec:
-        return jsonify({"success": True, "found": False})
-    return jsonify({
-        "success":      True,
-        "found":        True,
-        "filename":     rec.get("filename", ""),
-        "gcs_blob":     rec.get("gcs_blob", ""),
-        "pdf_filename": rec.get("pdf_filename", ""),
-        "pdf_gcs_blob": rec.get("pdf_gcs_blob", ""),
-        "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M") if rec.get("generated_at") else "",
-    })
-
-
-@admin_bp.route('/live-staffs/incremental-credit/download/<staff_id>')
-@admin_required
-def live_staff_incremental_credit_download(staff_id):
-    try:
-        rec = _incremental_credit_col().find_one({"staff_id": staff_id})
-        if not rec or not rec.get('gcs_blob'):
-            return "Incremental Credit record not found — please generate it first", 404
-        docx_bytes = _gcs_download(rec['gcs_blob'])
-        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
-        return Response(
-            docx_bytes,
-            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            headers={"Content-Disposition": f'attachment; filename="{name}.docx"'}
-        )
-    except Exception as e:
-        return str(e), 500
-
 
 @admin_bp.route('/live-staffs/incremental-credit/download-pdf/<staff_id>')
 @admin_required
