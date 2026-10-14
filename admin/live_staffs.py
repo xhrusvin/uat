@@ -5000,3 +5000,524 @@ def live_staff_cron_generate_incremental_credit():
             "error":           str(e),
             "remaining_count": max(0, remaining_total - 1),
         })
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ⚠️  ADD THIS ENTIRE FILE'S CONTENTS TO admin/live_staffs.py ONLY. ⚠️
+#
+# Do NOT also add this to your crons blueprint file — see the separate
+# file "incremental_credit_for_crons_py.py" for what goes there instead.
+# Putting both in the same file causes infinite recursion (each wrapper
+# in the crons version would import a function from this same module,
+# but since the names are identical, Python resolves the import back to
+# the wrapper itself — calling itself forever).
+#
+# INCREMENTAL CREDIT FOR PREVIOUS SERVICE — builder + on-demand routes.
+# NURSE USER TYPE ONLY. Source data comes from the staff member's
+# "Point Scale Document" (fetched via the XN Portal outreach API),
+# extracted with Gemini, filled into
+# Incremental_Credit_Previous_Service_Template.docx.
+#
+# Setup required:
+#   1. Upload Incremental_Credit_Previous_Service_Template.docx to GCS at
+#      templates/Incremental_Credit_Previous_Service_Template.docx
+#      (or set INCREMENTAL_CREDIT_TEMPLATE_LOCAL_PATH to a local path).
+#   2. Ensure these env vars are set: XN_PORTAL_BASE_URL (or the
+#      existing LIVE_STAFF_URL — both are checked), XN_PORTAL_API_KEY,
+#      XN_APP_COUNTRY, GEMINI_API_KEY.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+# other screening/PCC crons.
+#
+# Scope: NURSE USER TYPE ONLY. Source data comes from the staff
+# member's "Point Scale Document" (fetched via the XN Portal outreach
+# API, same endpoint used by the Garda Vetting / CPI-MAPA / etc. crons),
+# extracted with Gemini, and filled into the clean
+# Incremental_Credit_Previous_Service_Template.docx template.
+#
+# Setup required:
+#   1. Upload Incremental_Credit_Previous_Service_Template.docx to GCS at
+#      templates/Incremental_Credit_Previous_Service_Template.docx
+#      (or set INCREMENTAL_CREDIT_TEMPLATE_LOCAL_PATH to a local path).
+#   2. Ensure these env vars are set: XN_PORTAL_BASE_URL (or the
+#      existing LIVE_STAFF_URL — both are checked), XN_PORTAL_API_KEY,
+#      XN_APP_COUNTRY, GEMINI_API_KEY.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PART 1 — add these functions to admin/live_staffs.py
+# ─────────────────────────────────────────────────────────────────────
+
+def _incremental_credit_col():
+    return db.live_staff_incremental_credit
+
+
+def _is_nurse(user_type_value):
+    """True if this user_type string indicates a Nurse (case-insensitive,
+    also matches common nursing-role variants like RGN/RNM/Midwife/etc.,
+    same pattern used elsewhere in this codebase for nurse-only features)."""
+    ut = (user_type_value or '').strip().lower()
+    return any(t in ut for t in (
+        'nurse', 'rgn', 'rnm', 'midwife', 'nchd', 'cns', 'phn',
+    ))
+
+
+def _fetch_point_scale_document_url(email):
+    """
+    Calls the XN Portal outreach API (user-document-list) for this staff
+    member's email and returns the signed URL of their "Point Scale
+    Document", or None if not found / no email / API error.
+    """
+    import requests as _req
+
+    base_url = (os.environ.get('XN_PORTAL_BASE_URL', '').rstrip('/') or
+                os.environ.get('LIVE_STAFF_URL', '').rstrip('/'))
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+
+    if not base_url or not email:
+        return None
+
+    try:
+        endpoint = f"{base_url}/ai/recruitments/user-document-list"
+        headers = {
+            "Api-Key":       api_key,
+            "X-App-Country": app_country,
+            "Content-Type":  "application/json",
+            "Accept":        "application/json",
+        }
+        resp = _req.get(endpoint, params={"email": email}, headers=headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.post(endpoint, json={"email": email}, headers=headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+
+        api_data  = data.get('data')
+        documents = api_data if isinstance(api_data, list) else \
+                    (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+
+        for d in documents:
+            if (d.get('document_type_name') or '').strip().lower() == 'point scale document':
+                return d.get('url')
+        return None
+    except Exception:
+        return None
+
+
+def _download_point_scale_pdf(url):
+    """Downloads the Point Scale Document PDF bytes from its signed URL."""
+    import requests as _req
+    resp = _req.get(url, timeout=60)
+    resp.raise_for_status()
+    return resp.content
+
+
+def _extract_point_scale_data(pdf_bytes, gemini_key):
+    """
+    Uses Gemini to read the Point Scale Document PDF and extract the
+    fields needed to fill the Incremental Credit for Previous Service
+    form. Returns an all-blank shape (not an exception) on any failure,
+    so document generation can still proceed with blanks for manual
+    completion rather than failing outright.
+    """
+    import base64 as _b64, re as _re3, json as _json3
+
+    blank = {
+        "previous_experience": [],
+        "point": "", "effective_date": "", "incremental_date": "",
+        "assessment_date": "", "signed_date": "", "verified_date": "",
+    }
+
+    if not pdf_bytes or not gemini_key:
+        return blank
+
+    try:
+        from google import genai as _gai3
+
+        prompt = """You are reading a "Point Scale Document" used in Irish healthcare HR to
+determine a nurse's incremental credit for previous service when being
+placed on a salary scale.
+
+Extract the following information from the document:
+
+1. previous_experience — every previous employment/service entry listed,
+   each with: post (job title/grade), employer (employer/location), from
+   (start date), to (end date), years (years of service in that role),
+   months (additional months), verified_by (who verified this entry, if
+   stated), eligible (whether this service was deemed eligible for
+   incremental credit — "Yes" or "No" if stated, else "").
+2. point — the recommended/assessed point on the salary scale.
+3. effective_date — the date this point is effective from.
+4. incremental_date — the incremental date noted in the document.
+5. assessment_date — the date of assessment.
+6. signed_date — the date next to any signature.
+7. verified_date — the date next to any "verified by" section.
+
+Rules:
+- Use ONLY information explicitly present in the document. Do NOT invent
+  or guess values that are not stated.
+- Leave any field you cannot find as an empty string "".
+- Return at most 6 previous_experience entries.
+- Return ONLY a JSON object — no markdown, no explanation — with exactly
+  this shape:
+
+{
+  "previous_experience": [
+    {"post": "", "employer": "", "from": "", "to": "", "years": "", "months": "", "verified_by": "", "eligible": ""}
+  ],
+  "point": "", "effective_date": "", "incremental_date": "",
+  "assessment_date": "", "signed_date": "", "verified_date": ""
+}
+"""
+
+        client = _gai3.Client(api_key=gemini_key)
+        parts = [
+            {"inline_data": {"mime_type": "application/pdf",
+                             "data": _b64.b64encode(pdf_bytes).decode()}},
+            {"text": prompt}
+        ]
+        response = client.models.generate_content(
+            model='gemini-2.5-flash', contents=[{"parts": parts}]
+        )
+        raw = (response.text or '').strip()
+        raw = _re3.sub(r'^```(?:json)?\s*', '', raw, flags=_re3.MULTILINE)
+        raw = _re3.sub(r'```\s*$', '', raw, flags=_re3.MULTILINE).strip()
+
+        result = _json3.loads(raw)
+        if not isinstance(result, dict):
+            return blank
+
+        clean = dict(blank)
+        for key in ("point", "effective_date", "incremental_date",
+                    "assessment_date", "signed_date", "verified_date"):
+            clean[key] = str(result.get(key) or "").strip()
+
+        entries = result.get("previous_experience") or []
+        clean_entries = []
+        for e in entries[:6]:
+            if not isinstance(e, dict):
+                continue
+            clean_entries.append({
+                "post":        str(e.get("post") or "").strip(),
+                "employer":    str(e.get("employer") or "").strip(),
+                "from":        str(e.get("from") or "").strip(),
+                "to":          str(e.get("to") or "").strip(),
+                "years":       str(e.get("years") or "").strip(),
+                "months":      str(e.get("months") or "").strip(),
+                "verified_by": str(e.get("verified_by") or "").strip(),
+                "eligible":    str(e.get("eligible") or "").strip(),
+            })
+        clean["previous_experience"] = clean_entries
+        return clean
+
+    except Exception:
+        return blank
+
+
+def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_data):
+    """
+    Fills the Incremental Credit for Previous Service template with the
+    staff member's details and the data extracted from their Point Scale
+    Document. Returns bytes of the generated .docx.
+    """
+    from docx import Document
+    import io as _io, re as _re4
+
+    template_blob  = os.environ.get(
+        'INCREMENTAL_CREDIT_TEMPLATE_GCS_BLOB',
+        'templates/Incremental_Credit_Previous_Service_Template.docx'
+    )
+    template_local = os.environ.get('INCREMENTAL_CREDIT_TEMPLATE_LOCAL_PATH', '')
+
+    if template_local and os.path.exists(template_local):
+        doc = Document(template_local)
+    else:
+        template_bytes = _gcs_download(template_blob)
+        doc = Document(_io.BytesIO(template_bytes))
+
+    def _fill_label_run(run, label_prefix, value):
+        if run.text.startswith(label_prefix):
+            run.text = f"{label_prefix}{value}"
+
+    # ── Table 1: Name / Post / Employee ID / Date of assessment ───────
+    t1 = doc.tables[1]
+    _fill_label_run(t1.rows[0].cells[0].paragraphs[0].runs[0], "Name: ", full_name or "")
+    _fill_label_run(t1.rows[0].cells[1].paragraphs[0].runs[0], "Post: ", post or "")
+    _fill_label_run(t1.rows[1].cells[0].paragraphs[0].runs[0], "Employee / XH ID: ", employee_code or "")
+    _fill_label_run(t1.rows[1].cells[1].paragraphs[0].runs[0], "Date of assessment: ",
+                     point_scale_data.get("assessment_date", ""))
+
+    # ── Table 2: Previous Experience (up to 6 rows) ────────────────────
+    t2 = doc.tables[2]
+    entries = point_scale_data.get("previous_experience") or []
+    for i, entry in enumerate(entries[:6]):
+        row = t2.rows[i + 1]  # row 0 is the header
+        values = [
+            entry.get("post", ""), entry.get("employer", ""),
+            entry.get("from", ""), entry.get("to", ""),
+            entry.get("years", ""), entry.get("months", ""),
+            entry.get("verified_by", ""), entry.get("eligible", ""),
+        ]
+        for cell, val in zip(row.cells, values):
+            if cell.paragraphs and cell.paragraphs[0].runs:
+                cell.paragraphs[0].runs[0].text = val
+            elif cell.paragraphs:
+                cell.paragraphs[0].add_run(val)
+
+    # ── Recommendation paragraph (name, point, effective date) ─────────
+    rec_para = doc.paragraphs[8]
+    combined = ''.join(r.text for r in rec_para.runs[1:])
+    values = iter([
+        full_name or "",
+        point_scale_data.get("point", ""),
+        point_scale_data.get("effective_date", ""),
+    ])
+    def _repl(m):
+        try:
+            return next(values)
+        except StopIteration:
+            return m.group()
+    new_combined = _re4.sub(r'_{4,}', _repl, combined)
+    rec_para.runs[1].text = new_combined
+    for r in rec_para.runs[2:]:
+        r.text = ""
+
+    # ── Incremental Date paragraph ──────────────────────────────────────
+    inc_para = doc.paragraphs[9]
+    inc_para.runs[1].text = point_scale_data.get("incremental_date", "")
+
+    # ── Table 3: Signed Date / Verified-by Date ────────────────────────
+    t3 = doc.tables[3]
+    _fill_label_run(t3.rows[0].cells[1].paragraphs[0].runs[0], "Date: ",
+                     point_scale_data.get("signed_date", ""))
+    _fill_label_run(t3.rows[1].cells[1].paragraphs[0].runs[0], "Date: ",
+                     point_scale_data.get("verified_date", ""))
+
+    buf = _io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PART 2 — on-demand routes (add to admin/live_staffs.py)
+# ─────────────────────────────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/incremental-credit/generate', methods=['POST'])
+@admin_required
+def live_staff_incremental_credit_generate():
+    """
+    Generate the Incremental Credit for Previous Service document
+    (docx + pdf) for a staff member. NURSE USER TYPE ONLY.
+
+    POST /admin/live-staffs/incremental-credit/generate
+    Body: {"staff_id": "<mongo_id>"}
+    """
+    data     = request.get_json() or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+        def _first(*keys, default=''):
+            for k in keys:
+                val = doc.get(k)
+                if val not in (None, ''):
+                    return _v(val)
+            return default
+
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _first('Name') or _v(s1.get('full_name') or '') or 'staff'
+        emp_code  = _first('Employee Code', 'employee_code')
+        user_type = _first('User Type', 'user_type')
+        email     = _v(doc.get('email') or '')
+
+        if not _is_nurse(user_type):
+            return jsonify({
+                "success": False,
+                "error": f"Incremental Credit is only generated for Nurse user types "
+                         f"(this staff member's User Type is '{user_type or 'unknown'}')"
+            }), 400
+
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+
+        point_scale_url = _fetch_point_scale_document_url(email)
+        point_scale_data = {
+            "previous_experience": [], "point": "", "effective_date": "",
+            "incremental_date": "", "assessment_date": "",
+            "signed_date": "", "verified_date": "",
+        }
+        point_scale_warning = None
+
+        if point_scale_url:
+            try:
+                pdf_bytes = _download_point_scale_pdf(point_scale_url)
+                point_scale_data = _extract_point_scale_data(pdf_bytes, gemini_key)
+            except Exception as e:
+                point_scale_warning = f"Could not read Point Scale Document: {e}"
+        else:
+            point_scale_warning = "No 'Point Scale Document' found for this staff member — form generated with blank service history."
+
+        docx_bytes = _build_incremental_credit_docx(
+            full_name=full_name, post=user_type,
+            employee_code=emp_code, point_scale_data=point_scale_data,
+        )
+
+        base_name = emp_code.replace(' ', '_').replace('/', '_') if emp_code \
+                    else full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"{base_name}.docx"
+        gcs_blob  = f"incremental_credit/{filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        pdf_filename = f"{base_name}.pdf"
+        pdf_gcs_blob = f"incremental_credit/{pdf_filename}"
+        try:
+            pdf_bytes_out = _docx_to_pdf_bytes(docx_bytes)
+            _gcs_upload(pdf_gcs_blob, pdf_bytes_out, content_type='application/pdf')
+        except Exception as e:
+            pdf_gcs_blob = None
+            point_scale_warning = (point_scale_warning + "; " if point_scale_warning else "") + f"PDF conversion failed: {e}"
+
+        col      = _incremental_credit_col()
+        existing = col.find_one({"staff_id": staff_id})
+        rec = {
+            "staff_id":          staff_id,
+            "staff_name":        full_name,
+            "employee_code":     emp_code,
+            "filename":          filename,
+            "gcs_blob":          gcs_blob,
+            "pdf_filename":      pdf_filename if pdf_gcs_blob else None,
+            "pdf_gcs_blob":      pdf_gcs_blob,
+            "point_scale_url_found": bool(point_scale_url),
+            "generated_at":      datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+        else:
+            col.insert_one(rec)
+
+        result = {
+            "success":    True,
+            "staff_name": full_name,
+            "filename":   filename,
+            "gcs_blob":   gcs_blob,
+        }
+        if pdf_gcs_blob:
+            result["pdf_filename"] = pdf_filename
+            result["pdf_gcs_blob"] = pdf_gcs_blob
+        if point_scale_warning:
+            result["warning"] = point_scale_warning
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/incremental-credit/saved/<staff_id>')
+@admin_required
+def live_staff_incremental_credit_saved(staff_id):
+    rec = _incremental_credit_col().find_one({"staff_id": staff_id})
+    if not rec:
+        return jsonify({"success": True, "found": False})
+    return jsonify({
+        "success":      True,
+        "found":        True,
+        "filename":     rec.get("filename", ""),
+        "gcs_blob":     rec.get("gcs_blob", ""),
+        "pdf_filename": rec.get("pdf_filename", ""),
+        "pdf_gcs_blob": rec.get("pdf_gcs_blob", ""),
+        "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M") if rec.get("generated_at") else "",
+    })
+
+
+@admin_bp.route('/live-staffs/incremental-credit/download/<staff_id>')
+@admin_required
+def live_staff_incremental_credit_download(staff_id):
+    try:
+        rec = _incremental_credit_col().find_one({"staff_id": staff_id})
+        if not rec or not rec.get('gcs_blob'):
+            return "Incremental Credit record not found — please generate it first", 404
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{name}.docx"'}
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/incremental-credit/download-pdf/<staff_id>')
+@admin_required
+def live_staff_incremental_credit_download_pdf(staff_id):
+    try:
+        rec = _incremental_credit_col().find_one({"staff_id": staff_id})
+        if not rec or not rec.get('gcs_blob'):
+            return "Incremental Credit record not found — please generate it first", 404
+        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        if rec.get('pdf_gcs_blob'):
+            pdf_bytes = _gcs_download(rec['pdf_gcs_blob'])
+        else:
+            docx_bytes = _gcs_download(rec['gcs_blob'])
+            pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'}
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/incremental-credit/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_incremental_credit_upload(staff_id):
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+    file = request.files['file']
+    if not file.filename.lower().endswith('.docx'):
+        return jsonify({"success": False, "error": "Only .docx files accepted"}), 400
+    try:
+        col = _incremental_credit_col()
+        rec = col.find_one({"staff_id": staff_id})
+        if not rec:
+            return jsonify({"success": False, "error": "No saved record found — generate one first"}), 404
+
+        gcs_blob   = rec.get('gcs_blob') or f"incremental_credit/{staff_id}.docx"
+        data_bytes = file.read()
+        _gcs_upload(gcs_blob, data_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        update_fields = {
+            "gcs_blob":      gcs_blob,
+            "filename":      os.path.basename(gcs_blob),
+            "last_uploaded": datetime.utcnow(),
+            "uploaded_by":   "admin",
+        }
+        pdf_base = os.path.basename(gcs_blob).rsplit('.', 1)[0]
+        pdf_blob = f"incremental_credit/{pdf_base}.pdf"
+        try:
+            pdf_bytes = _docx_to_pdf_bytes(data_bytes)
+            _gcs_upload(pdf_blob, pdf_bytes, content_type='application/pdf')
+            update_fields["pdf_gcs_blob"] = pdf_blob
+            update_fields["pdf_filename"] = f"{pdf_base}.pdf"
+        except Exception:
+            update_fields["pdf_gcs_blob"] = None
+            update_fields["pdf_filename"] = None
+
+        col.update_one({"staff_id": staff_id}, {"$set": update_fields}, upsert=True)
+        return jsonify({
+            "success":  True,
+            "message":  "Incremental Credit record replaced successfully",
+            "filename": os.path.basename(gcs_blob),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
