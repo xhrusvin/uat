@@ -6871,3 +6871,106 @@ def live_staff_cron_generate_screening_pdf():
             "error":           str(e),
             "remaining_count": max(0, remaining_total - 1),
         })
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THESE TWO ROUTES to the same crons blueprint file as
+# live_staff_cron_generate_pcc / live_staff_cron_generate_screening /
+# live_staff_cron_rename_screening_by_employee_code.
+#
+# Unlike the "generate" and "rename" crons, downloading to a LOCAL
+# folder is inherently client-side state — the server has no way to
+# know what's already on your machine — so there's no DB flag here.
+# Instead: one route lists every generated record, one route streams a
+# single file's bytes, and run_download_screening.py (below) skips any
+# file that already exists locally, making it safely resumable.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/cron/screening-list', methods=['GET'])
+def live_staff_cron_screening_list():
+    """
+    Returns every generated Screening Interview Record's metadata in one
+    call: staff_id, staff_name, employee_code, filename, gcs_blob, plus
+    the PDF equivalents (pdf_filename, pdf_gcs_blob — empty strings if
+    no PDF has been generated for that record yet).
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    screening_col = db.live_staff_screening
+    recs = list(screening_col.find(
+        {},
+        {"staff_id": 1, "staff_name": 1, "employee_code": 1,
+         "filename": 1, "gcs_blob": 1,
+         "pdf_filename": 1, "pdf_gcs_blob": 1}
+    ))
+
+    items = []
+    for r in recs:
+        items.append({
+            "staff_id":      str(r.get("staff_id", "")),
+            "staff_name":    r.get("staff_name", "") or "",
+            "employee_code": r.get("employee_code", "") or "",
+            "filename":      r.get("filename", "") or "",
+            "gcs_blob":      r.get("gcs_blob", "") or "",
+            "pdf_filename":  r.get("pdf_filename", "") or "",
+            "pdf_gcs_blob":  r.get("pdf_gcs_blob", "") or "",
+        })
+
+    return jsonify({
+        "success": True,
+        "count":   len(items),
+        "items":   items,
+    })
+
+
+_DOWNLOAD_MIMETYPES = {
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.pdf':  'application/pdf',
+}
+
+
+@admin_bp.route('/live-staffs/cron/screening-download-one', methods=['GET'])
+def live_staff_cron_screening_download_one():
+    """
+    Streams the bytes of ONE generated Screening Interview Record file
+    (docx OR pdf), identified by its gcs_blob (as returned by
+    /screening-list in either gcs_blob or pdf_gcs_blob). The response
+    mimetype is set from the blob's own file extension, so this one
+    route correctly serves both formats.
+
+    GET /live-staffs/cron/screening-download-one?cron_key=...&gcs_blob=screening/XH_33307.docx
+    GET /live-staffs/cron/screening-download-one?cron_key=...&gcs_blob=screening/XH_33307.pdf
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    gcs_blob = (request.args.get('gcs_blob') or '').strip()
+    if not gcs_blob:
+        return jsonify({"success": False, "error": "Missing gcs_blob"}), 400
+
+    try:
+        file_bytes = _gcs_download(gcs_blob)
+        filename   = gcs_blob.rsplit('/', 1)[-1]
+        ext        = '.' + filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        mimetype   = _DOWNLOAD_MIMETYPES.get(ext, 'application/octet-stream')
+        return Response(
+            file_bytes,
+            mimetype=mimetype,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
