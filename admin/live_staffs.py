@@ -4548,13 +4548,28 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
         if run.text.startswith(label_prefix):
             run.text = f"{label_prefix}{value}"
 
-    # ── Table 1: Name / Post / Employee ID / Date of assessment ───────
+    def _point_category_label(point_str):
+        """(above 12, below 15) = LSI; (above 15) = Senior Nurse. Exactly
+        12 or exactly 15, or an unparseable point, gets no label."""
+        try:
+            point_num = float(str(point_str).strip())
+        except (ValueError, TypeError):
+            return ""
+        if 12 < point_num < 15:
+            return " (LSI)"
+        elif point_num > 15:
+            return " (Senior Nurse)"
+        return ""
+
+    # ── Table 1: Name / Post ───────────────────────────────────────────
+    # The "Employee / XH ID" / "Date of assessment" row is removed
+    # entirely from the generated document (not just left blank).
     t1 = doc.tables[1]
     _fill_label_run(t1.rows[0].cells[0].paragraphs[0].runs[0], "Name: ", full_name or "")
     _fill_label_run(t1.rows[0].cells[1].paragraphs[0].runs[0], "Post: ", post or "")
-    _fill_label_run(t1.rows[1].cells[0].paragraphs[0].runs[0], "Employee / XH ID: ", employee_code or "")
-    _fill_label_run(t1.rows[1].cells[1].paragraphs[0].runs[0], "Date of assessment: ",
-                     point_scale_data.get("assessment_date", ""))
+    if len(t1.rows) > 1:
+        row_to_remove = t1.rows[1]._tr
+        row_to_remove.getparent().remove(row_to_remove)
 
     # ── Table 2: Previous Experience (up to 6 rows) ────────────────────
     t2 = doc.tables[2]
@@ -4573,12 +4588,15 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
             elif cell.paragraphs:
                 cell.paragraphs[0].add_run(val)
 
-    # ── Recommendation paragraph (name, point, effective date) ─────────
+    # ── Recommendation paragraph (name, point + LSI/Senior Nurse label,
+    # effective date) ───────────────────────────────────────────────────
     rec_para = doc.paragraphs[8]
     combined = ''.join(r.text for r in rec_para.runs[1:])
+    point_value = point_scale_data.get("point", "")
+    point_with_label = f"{point_value}{_point_category_label(point_value)}" if point_value else ""
     values = iter([
         full_name or "",
-        point_scale_data.get("point", ""),
+        point_with_label,
         point_scale_data.get("effective_date", ""),
     ])
     def _repl(m):
