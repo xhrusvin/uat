@@ -7114,16 +7114,8 @@ def live_staff_cron_generate_incremental_credit():
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@admin_bp.route('/live-staffs/cron/incremental-credit-list', methods=['GET'])
+@admin_bp.route('/live-staffs/cron/incremental-credit-list', methods=['GET', 'POST'])
 def live_staff_cron_incremental_credit_list():
-    """
-    Returns every generated Incremental Credit for Previous Service
-    record's metadata in one call: staff_id, staff_name, employee_code,
-    filename, gcs_blob, pdf_filename, pdf_gcs_blob (empty strings if no
-    PDF has been generated for that record yet).
-
-    Protect with ?cron_key=<CRON_SECRET> env var.
-    """
     cron_secret = os.environ.get('CRON_SECRET', '')
     if cron_secret:
         provided = (request.args.get('cron_key') or
@@ -7131,29 +7123,37 @@ def live_staff_cron_incremental_credit_list():
         if provided != cron_secret:
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
-    ic_col = db.live_staff_incremental_credit
-    recs = list(ic_col.find(
-        {},
-        {"staff_id": 1, "staff_name": 1, "employee_code": 1,
-         "filename": 1, "gcs_blob": 1,
-         "pdf_filename": 1, "pdf_gcs_blob": 1, "point": 1}
-    ))
+    ic_col   = _incremental_credit_col()
+    col      = _staffs_col()          # live_staffs collection
+    records  = list(ic_col.find({}))
 
     items = []
-    for r in recs:
+    for rec in records:
+        # ── Join back to live_staffs for the authoritative Point Scale ──
+        staff_point = None
+        try:
+            staff_rec = col.find_one(
+                {"_id": ObjectId(rec["staff_id"])},
+                {"Point Scale": 1, "point_scale": 1}   # projection — only fetch what we need
+            )
+            if staff_rec:
+                raw = staff_rec.get("Point Scale") or staff_rec.get("point_scale")
+                if raw not in (None, ""):
+                    staff_point = float(str(raw).strip())
+        except Exception:
+            pass
+
         items.append({
-            "staff_id":      str(r.get("staff_id", "")),
-            "staff_name":    r.get("staff_name", "") or "",
-            "employee_code": r.get("employee_code", "") or "",
-            "filename":      r.get("filename", "") or "",
-            "gcs_blob":      r.get("gcs_blob", "") or "",
-            "pdf_filename":  r.get("pdf_filename", "") or "",
-            "pdf_gcs_blob":  r.get("pdf_gcs_blob", "") or "",
-            "point":         r.get("point", "") or "",
+            "staff_id":       rec.get("staff_id"),
+            "staff_name":     rec.get("staff_name"),
+            "employee_code":  rec.get("employee_code"),
+            "pdf_gcs_blob":   rec.get("pdf_gcs_blob"),
+            "pdf_filename":   rec.get("pdf_filename"),
+            "gcs_blob":       rec.get("gcs_blob"),
+            "filename":       rec.get("filename"),
+            "point":          staff_point,          # ← authoritative value from live_staffs
+            "generated_at":   rec.get("generated_at", "").isoformat()
+                              if hasattr(rec.get("generated_at", ""), "isoformat") else "",
         })
 
-    return jsonify({
-        "success": True,
-        "count":   len(items),
-        "items":   items,
-    })
+    return jsonify({"success": True, "items": items})
