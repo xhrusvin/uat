@@ -4555,7 +4555,7 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
             point_num = float(str(point_str).strip())
         except (ValueError, TypeError):
             return ""
-        if 12 < point_num < 15:
+        if 12 < point_num <= 15:
             return " (LSI)"
         elif point_num > 15:
             return " (Senior Nurse)"
