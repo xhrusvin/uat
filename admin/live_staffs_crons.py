@@ -6439,7 +6439,6 @@ def live_staff_cron_sync_staff_id():
         "synced_at": datetime.utcnow().isoformat(),
     })
 
-
 # ═══════════════════════════════════════════════════════════════════════
 # ADD THIS to the same crons blueprint file as live_staff_cron_sync_garda_vetting,
 # live_staff_cron_sync_cpi_mapa, etc. (admin/live_staffs_crons.py).
@@ -6447,7 +6446,75 @@ def live_staff_cron_sync_staff_id():
 # Cron: Extract "Hse Cv" document text via Gemini, one staff at a time.
 # Saves the extracted CV text to live_staffs.hsecv_extarcted (field name
 # as requested — note the spelling matches what was asked for).
+#
+# Also looks for an employment entry in the CV's PROFESSIONAL EXPERIENCE
+# section where Employer == "Xpress Health", and derives
+# live_staffs.work_start_date from its start date (month+year entries
+# get a randomised valid day within that month; full dates are used
+# as-is) — this feeds the Screening Interview Record's Date / Candidate
+# 1st Contact Date computation (15/20 days before work_start_date).
 # ═══════════════════════════════════════════════════════════════════════
+
+import re as _hsecv_re
+import calendar as _hsecv_calendar
+import random as _hsecv_random
+from datetime import datetime as _hsecv_dt
+
+
+def _derive_work_start_date(date_str):
+    """
+    Parses a 'Dates' value from a CV's PROFESSIONAL EXPERIENCE entry
+    (e.g. "May 2026 - Present", "05/2026", "2026-05", "15 May 2026")
+    and returns a YYYY-MM-DD string.
+
+    If only a month+year is given (no specific day), picks a random
+    valid day within that month. If a specific day is already present,
+    uses it as-is. Returns None if nothing parseable is found.
+    """
+    if not date_str:
+        return None
+
+    s = date_str.strip()
+
+    # Only treat this as a "start - end" range if there's a clearly
+    # space-bounded dash, or an explicit "present/current/ongoing"
+    # marker — avoids mis-splitting ISO-style dates like "2026-05" or
+    # "2026-05-15" on their own internal hyphens.
+    looks_like_range = (
+        _hsecv_re.search(r'\s[-–—]\s', s) or
+        _hsecv_re.search(r'present|current|ongoing|to date|till date', s, _hsecv_re.IGNORECASE)
+    )
+    if looks_like_range:
+        s = _hsecv_re.split(r'\s*[-–—]\s*|\s+to\s+', s, maxsplit=1)[0].strip()
+
+    full_date_formats = [
+        '%d %B %Y', '%d %b %Y',
+        '%B %d, %Y', '%b %d, %Y',
+        '%d/%m/%Y', '%d-%m-%Y',
+        '%Y-%m-%d',
+    ]
+    for fmt in full_date_formats:
+        try:
+            d = _hsecv_dt.strptime(s, fmt)
+            return d.strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+
+    month_year_formats = [
+        '%B %Y', '%b %Y',
+        '%m/%Y', '%m-%Y',
+        '%Y-%m',
+    ]
+    for fmt in month_year_formats:
+        try:
+            d = _hsecv_dt.strptime(s, fmt)
+            days_in_month = _hsecv_calendar.monthrange(d.year, d.month)[1]
+            random_day = _hsecv_random.randint(1, days_in_month)
+            return f"{d.year:04d}-{d.month:02d}-{random_day:02d}"
+        except ValueError:
+            continue
+
+    return None
 
 
 @admin_bp.route('/live-staffs/cron/sync-hsecv', methods=['GET', 'POST'])
@@ -6623,20 +6690,53 @@ def live_staff_cron_sync_hsecv():
 
         prompt_text = """You are a professional CV parser.
 
-Extract and structure ALL content from this CV document into clean,
-readable plain text. Preserve every factual detail exactly as written —
-do NOT add, invent, or change any facts. Use clear section headings
-where the original content has distinct sections (e.g. Personal
-Details, Education, Employment History, Skills, Training).
+Do TWO things with this CV document:
 
-Return ONLY the clean structured CV text — no preamble, no markdown
-formatting, no commentary.
+1. Extract and structure ALL content into clean, readable plain text.
+   Preserve every factual detail exactly as written — do NOT add,
+   invent, or change any facts. Use clear section headings where the
+   original content has distinct sections (e.g. Personal Details,
+   Education, Employment History / Professional Experience, Skills,
+   Training).
+
+2. Look specifically in the PROFESSIONAL EXPERIENCE (or Employment
+   History) section for an entry whose Employer is "Xpress Health"
+   (case-insensitive — match variants like "Xpress Health" or
+   "XpressHealth"). If found, extract that entry's "Dates" field
+   exactly as written (e.g. "May 2026 - Present", "05/2026", or a full
+   date) — specifically the START of that date range. If no Xpress
+   Health entry exists, leave this field as an empty string.
+
+Return ONLY a JSON object — no markdown, no explanation — with exactly
+this shape:
+
+{
+  "cv_text": "<the full clean structured CV text>",
+  "xpress_health_start_date": "<start date exactly as written in the Dates field of the Xpress Health entry, or empty string if none found>"
+}
 """
 
         is_image = any(t in content_type for t in ('image/', 'jpeg', 'jpg', 'png', 'webp'))
         is_pdf   = 'pdf' in content_type or doc_url.lower().split('?')[0].endswith('.pdf')
 
-        extracted_text = ''
+        extracted_text          = ''
+        xpress_health_start_raw = ''
+
+        def _parse_gemini_json(raw):
+            raw = (raw or '').strip()
+            raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
+            raw = re.sub(r'```\s*$', '', raw, flags=re.MULTILINE).strip()
+            try:
+                parsed = _cjson.loads(raw)
+                if isinstance(parsed, dict):
+                    return (str(parsed.get('cv_text') or '').strip(),
+                            str(parsed.get('xpress_health_start_date') or '').strip())
+            except Exception:
+                pass
+            # Fall back to treating the whole response as plain CV text
+            # if it wasn't valid JSON (keeps the extraction useful even
+            # if the structured part failed to parse).
+            return raw, ''
 
         if is_image:
             ext = 'jpeg' if any(t in content_type for t in ('jpeg', 'jpg')) else \
@@ -6650,7 +6750,7 @@ formatting, no commentary.
             response = client.models.generate_content(
                 model='gemini-2.5-flash', contents=[{"parts": parts}]
             )
-            extracted_text = (response.text or '').strip()
+            extracted_text, xpress_health_start_raw = _parse_gemini_json(response.text)
 
         elif is_pdf:
             parts = [
@@ -6661,7 +6761,7 @@ formatting, no commentary.
             response = client.models.generate_content(
                 model='gemini-2.5-flash', contents=[{"parts": parts}]
             )
-            extracted_text = (response.text or '').strip()
+            extracted_text, xpress_health_start_raw = _parse_gemini_json(response.text)
 
         else:
             try:
@@ -6676,9 +6776,11 @@ formatting, no commentary.
                     model='gemini-2.5-flash',
                     contents=prompt_text + "\n\nRAW EXTRACTED TEXT:\n" + raw_text[:12000]
                 )
-                extracted_text = (response.text or '').strip()
+                extracted_text, xpress_health_start_raw = _parse_gemini_json(response.text)
             else:
                 extracted_text = raw_text
+
+        work_start_date = _derive_work_start_date(xpress_health_start_raw)
 
         if not extracted_text:
             _mark_done({
@@ -6694,12 +6796,15 @@ formatting, no commentary.
                 "message": f"Skipped {full_name} ({email}) — no text could be extracted",
             })
 
-        _mark_done({
+        update_fields = {
             "hsecv_extarcted": extracted_text,
             "hsecv_doc_url":   doc_url,
             "hsecv_doc_type":  hsecv_doc.get('document_type_name', ''),
             "hsecv_note":      "extracted successfully",
-        })
+        }
+        if work_start_date:
+            update_fields["work_start_date"] = work_start_date
+        _mark_done(update_fields)
 
         return jsonify({
             "success":          True,
@@ -6707,11 +6812,14 @@ formatting, no commentary.
             "staff_name":       full_name,
             "doc_found":        True,
             "text_length":      len(extracted_text),
+            "xpress_health_start_date_raw": xpress_health_start_raw,
+            "work_start_date":  work_start_date,
             "remaining_count":  max(0, remaining_total - 1),
             "message": (
                 f"Hse Cv extracted for {full_name} ({email}) "
-                f"— {len(extracted_text)} chars — "
-                f"{max(0, remaining_total - 1)} remaining."
+                f"— {len(extracted_text)} chars"
+                + (f", work_start_date={work_start_date}" if work_start_date else ", no Xpress Health start date found")
+                + f" — {max(0, remaining_total - 1)} remaining."
             ),
         })
 
