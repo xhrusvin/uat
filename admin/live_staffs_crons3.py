@@ -7136,7 +7136,7 @@ def live_staff_cron_incremental_credit_list():
         {},
         {"staff_id": 1, "staff_name": 1, "employee_code": 1,
          "filename": 1, "gcs_blob": 1,
-         "pdf_filename": 1, "pdf_gcs_blob": 1}
+         "pdf_filename": 1, "pdf_gcs_blob": 1, "point": 1}
     ))
 
     items = []
@@ -7149,6 +7149,7 @@ def live_staff_cron_incremental_credit_list():
             "gcs_blob":      r.get("gcs_blob", "") or "",
             "pdf_filename":  r.get("pdf_filename", "") or "",
             "pdf_gcs_blob":  r.get("pdf_gcs_blob", "") or "",
+            "point":         r.get("point", "") or "",
         })
 
     return jsonify({

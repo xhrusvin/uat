@@ -4740,6 +4740,7 @@ def live_staff_incremental_credit_generate():
             "gcs_blob":          gcs_blob,
             "pdf_filename":      pdf_filename if pdf_gcs_blob else None,
             "pdf_gcs_blob":      pdf_gcs_blob,
+            "point":             point_scale_data.get("point", ""),
             "point_scale_url_found": bool(point_scale_url),
             "generated_at":      datetime.utcnow(),
         }
