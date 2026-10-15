@@ -6942,19 +6942,6 @@ def _incremental_credit_col():
 
 @admin_bp.route('/live-staffs/cron/generate-incremental-credit', methods=['GET', 'POST'])
 def live_staff_cron_generate_incremental_credit():
-    """
-    Cron job — generates the Incremental Credit for Previous Service
-    document (docx + pdf) for ONE Nurse staff member per call.
-
-    Finds staff where User Type is a nurse variant AND
-    incremental_credit_generated is not True.
-
-    To regenerate ALL, run in MongoDB first:
-        db.live_staffs.updateMany({}, {$set: {incremental_credit_generated: false}})
-        db.live_staff_incremental_credit.deleteMany({})
-
-    Protect with ?cron_key=<CRON_SECRET> env var.
-    """
     cron_secret = os.environ.get('CRON_SECRET', '')
     if cron_secret:
         provided = (request.args.get('cron_key') or
@@ -6962,15 +6949,22 @@ def live_staff_cron_generate_incremental_credit():
         if provided != cron_secret:
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
-    col = _staffs_col()
+    col    = _staffs_col()
     ic_col = _incremental_credit_col()
 
     nurse_regex = "nurse|rgn|rnm|midwife|nchd|cns|phn"
+
     pending_query = {
         "$and": [
             {"$or": [
                 {"User Type": {"$regex": nurse_regex, "$options": "i"}},
                 {"user_type": {"$regex": nurse_regex, "$options": "i"}},
+            ]},
+            # ⚠️ TEMPORARY — only Point Scale == 15
+            # Revert to {"$gte": 12} after this run completes
+            {"$or": [
+                {"Point Scale": 15},
+                {"point_scale": 15},
             ]},
             {"$or": [
                 {"incremental_credit_generated": {"$exists": False}},
@@ -6979,13 +6973,14 @@ def live_staff_cron_generate_incremental_credit():
             ]},
         ]
     }
+
     remaining_total = col.count_documents(pending_query)
     staff           = col.find_one(pending_query)
 
     if not staff:
         return jsonify({
             "success":         True,
-            "message":         "All Nurse Incremental Credit documents already generated.",
+            "message":         "All Point Scale 15 Incremental Credit documents generated.",
             "remaining_count": 0,
         })
 
@@ -7012,32 +7007,37 @@ def live_staff_cron_generate_incremental_credit():
     gemini_key = os.environ.get('GEMINI_API_KEY', '')
 
     try:
-        point_scale_url = _fetch_point_scale_document_url(email)
+        point_scale_url  = _fetch_point_scale_document_url(email)
         point_scale_data = {
             "previous_experience": [], "point": "", "effective_date": "",
-            "incremental_date": "", "assessment_date": "",
-            "signed_date": "", "verified_date": "",
+            "incremental_date": "",   "assessment_date": "",
+            "signed_date": "",        "verified_date": "",
         }
         warning = None
 
         if point_scale_url:
             try:
-                pdf_bytes = _download_point_scale_pdf(point_scale_url)
+                pdf_bytes        = _download_point_scale_pdf(point_scale_url)
                 point_scale_data = _extract_point_scale_data(pdf_bytes, gemini_key)
             except Exception as e:
                 warning = f"Could not read Point Scale Document: {e}"
         else:
             warning = "No Point Scale Document found — generated with blank service history."
 
+        # ── Always prefer the authoritative Point Scale from live_staffs ──
+        direct_point_scale = _first('Point Scale', 'point_scale')
+        if direct_point_scale:
+            point_scale_data['point'] = direct_point_scale
+
         docx_bytes = _build_incremental_credit_docx(
             full_name=full_name, post=user_type,
             employee_code=emp_code, point_scale_data=point_scale_data,
         )
 
-        base_name = emp_code.replace(' ', '_').replace('/', '_') if emp_code \
-                    else full_name.replace(' ', '_').replace('/', '_')
-        filename  = f"{base_name}.docx"
-        gcs_blob  = f"incremental_credit/{filename}"
+        base_name    = emp_code.replace(' ', '_').replace('/', '_') if emp_code \
+                       else full_name.replace(' ', '_').replace('/', '_')
+        filename     = f"{base_name}.docx"
+        gcs_blob     = f"incremental_credit/{filename}"
         _gcs_upload(gcs_blob, docx_bytes,
                     content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
 
@@ -7059,6 +7059,8 @@ def live_staff_cron_generate_incremental_credit():
             "gcs_blob":              gcs_blob,
             "pdf_filename":          pdf_filename if pdf_gcs_blob else None,
             "pdf_gcs_blob":          pdf_gcs_blob,
+            # ✅ FIX — point is now saved so download filter works
+            "point":                 point_scale_data.get("point", ""),
             "point_scale_url_found": bool(point_scale_url),
             "generated_at":          datetime.utcnow(),
         }
@@ -7071,15 +7073,15 @@ def live_staff_cron_generate_incremental_credit():
         _mark_done({"incremental_credit_gcs_blob": gcs_blob})
 
         result = {
-            "success":              True,
-            "staff_name":           full_name,
-            "email":                email,
+            "success":               True,
+            "staff_name":            full_name,
+            "email":                 email,
             "incremental_credit_id": rec_id,
-            "filename":             filename,
-            "gcs_blob":             gcs_blob,
-            "pdf_filename":         pdf_filename if pdf_gcs_blob else None,
-            "pdf_gcs_blob":         pdf_gcs_blob,
-            "remaining_count":      max(0, remaining_total - 1),
+            "filename":              filename,
+            "gcs_blob":              gcs_blob,
+            "pdf_filename":          pdf_filename if pdf_gcs_blob else None,
+            "pdf_gcs_blob":          pdf_gcs_blob,
+            "remaining_count":       max(0, remaining_total - 1),
             "message": (
                 f"Incremental Credit generated for {full_name} "
                 f"({'docx + pdf' if pdf_gcs_blob else 'docx only'}) — "
