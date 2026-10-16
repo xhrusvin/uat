@@ -6009,7 +6009,7 @@ def live_staff_cron_generate_screening():
     emp_code     = _first('Employee Code', 'employee_code')
     county       = _first('County', 'county', 'Location', 'location')
     email        = _v(staff.get('email') or s1.get('email_address') or '')
-    extracted_cv = _v(staff.get('extracted_cv') or '')
+    extracted_cv = _v(staff.get('hsecv_extracted') or staff.get('extracted_cv') or '')
 
     def _mark_done(fields):
         fields["screening_generated"]    = True

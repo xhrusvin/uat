@@ -769,7 +769,7 @@ def live_staff_experience():
         })
 
     # ── Determine text to analyse ─────────────────────────────────────
-    extracted_cv = _v(doc.get('extracted_cv') or '')
+    extracted_cv = _v(doc.get('hsecv_extracted') or doc.get('extracted_cv') or '')
     has_cv_text  = (
         extracted_cv and
         not extracted_cv.startswith('[') and
@@ -3635,16 +3635,32 @@ CV TEXT:
                 "course": str(e.get("course") or "").strip(),
             })
 
+                # Employer names that should be excluded from the screening
+        # employment table — internal agency placements are not
+        # "previous service" for the purpose of this document.
+        _EXCLUDED_EMPLOYERS = {
+            'xpress health', 'xpresshealth', 'xpress-health',
+        }
+
+        def _is_excluded_employer(employer_str):
+            e = employer_str.strip().lower()
+            return any(ex in e for ex in _EXCLUDED_EMPLOYERS)
+
         employment_entries = []
-        for e in raw_employment[:max_employment]:
+        for e in raw_employment:
             if not isinstance(e, dict):
+                continue
+            employer = str(e.get("employer") or "").strip()
+            if _is_excluded_employer(employer):
                 continue
             employment_entries.append({
                 "from":     str(e.get("from") or "").strip(),
                 "to":       str(e.get("to") or "").strip(),
-                "employer": str(e.get("employer") or "").strip(),
+                "employer": employer,
                 "reason":   str(e.get("reason") or "").strip(),
             })
+            if len(employment_entries) >= max_employment:
+                break
 
         return education_entries, employment_entries
     except Exception:
