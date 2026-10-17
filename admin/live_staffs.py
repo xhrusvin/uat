@@ -3626,6 +3626,9 @@ Rules:
 - If a specific field is not stated for an entry, leave it as an empty string "".
 - Order both lists from MOST RECENT to OLDEST.
 - Return at most {max_education} education entries and {max_employment} employment entries.
+- EXCLUDE any employment entry where the employer is "Xpress Health" (the
+  recruiting agency itself, not prior work experience) — do not include it
+  in the employment list at all.
 - For employment "reason", only fill it if the CV explicitly states a reason
   for leaving that role — otherwise leave it as "".
 - Return ONLY a single JSON object — nothing else, no markdown, no explanation —
@@ -3658,6 +3661,16 @@ CV TEXT:
 
         raw_education  = result.get('education') or []
         raw_employment = result.get('employment') or []
+
+        # Deterministic filter (independent of whether Gemini honoured
+        # the prompt instruction) — never list Xpress Health itself as
+        # the candidate's own prior employment. Applied BEFORE the
+        # max_employment slice below, so excluding it doesn't bump a
+        # legitimate older entry off the list.
+        raw_employment = [
+            e for e in raw_employment
+            if isinstance(e, dict) and 'xpress health' not in str(e.get('employer') or '').strip().lower()
+        ]
 
         education_entries = []
         for e in raw_education[:max_education]:
