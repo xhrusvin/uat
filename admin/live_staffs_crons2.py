@@ -5909,8 +5909,6 @@ def live_staff_export_police_clearance_xlsx():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-
-
 # ═══════════════════════════════════════════════════════════════════════
 # ADD THIS SECTION to the crons blueprint file (the same file that
 # contains live_staff_cron_generate_pcc, live_staff_cron_sync_garda_vetting,
@@ -5926,7 +5924,8 @@ def live_staff_export_police_clearance_xlsx():
 # (near _build_pcc_docx, _build_ai_cv_docx, _build_ai_interview_docx, etc.)
 
 def _build_screening_docx(first_shift_date=None, candidate_name='',
-                           location='', candidate_id='', extracted_cv=''):
+                           location='', candidate_id='', extracted_cv='',
+                           user_type='', experience_keywords=''):
     from admin.live_staffs import _build_screening_docx as _f
     return _f(
         first_shift_date=first_shift_date,
@@ -5934,6 +5933,8 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
         location=location,
         candidate_id=candidate_id,
         extracted_cv=extracted_cv,
+        user_type=user_type,
+        experience_keywords=experience_keywords,
     )
 
 
@@ -6009,7 +6010,14 @@ def live_staff_cron_generate_screening():
     emp_code     = _first('Employee Code', 'employee_code')
     county       = _first('County', 'county', 'Location', 'location')
     email        = _v(staff.get('email') or s1.get('email_address') or '')
-    extracted_cv = _v(staff.get('hsecv_extracted') or staff.get('extracted_cv') or '')
+    extracted_cv = _v(staff.get('extracted_cv') or '')
+    user_type    = _first('User Type', 'user_type')
+
+    # Agency Work "Experience" — live_staffs.keyword1 / keyword2,
+    # comma-joined (either or both may be blank).
+    kw1 = _first('keyword1', 'Keyword1', 'Keyword 1')
+    kw2 = _first('keyword2', 'Keyword2', 'Keyword 2')
+    experience_keywords = ', '.join(k for k in (kw1, kw2) if k)
 
     def _mark_done(fields):
         fields["screening_generated"]    = True
@@ -6043,6 +6051,8 @@ def live_staff_cron_generate_screening():
             location=county,
             candidate_id=emp_code,
             extracted_cv=extracted_cv,
+            user_type=user_type,
+            experience_keywords=experience_keywords,
         )
 
         # Name files by Employee Code alone when available (e.g.
