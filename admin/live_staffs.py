@@ -3534,6 +3534,37 @@ _SCREENING_LEAVING_REASONS = [
     "Prefer not to say",
 ]
 
+# Agency Work — "Why" (Motivation for Agency Work) — Nurse user types
+# only. A random single reason is picked per generated document.
+_SCREENING_NURSE_AGENCY_WORK_REASONS = [
+    "Wants to gain acute hospital experience",
+    "Wants flexible hours that fit around family or study",
+    "Wants exposure to a range of care settings before choosing a permanent role",
+    "Wants to work in a specific hospital or facility in the local area",
+    "Wants to develop skills in a specific specialty",
+    "Wants control over own schedule and work-life balance",
+    "Wants higher hourly earnings than a fixed contract pays",
+    "Wants to build confidence across settings",
+    "Wants to make a difference and support patients in the community",
+    "Wants regular, reliable shifts with a supportive agency",
+]
+
+# Agency Work — "Why" (Motivation for Agency Work) — HCA user types
+# only. A separate, slightly differently-worded pool from the Nurse one
+# above. A random single reason is picked per generated document.
+_SCREENING_HCA_AGENCY_WORK_REASONS = [
+    "Wants to gain acute hospital experience",
+    "Wants flexible hours that fit around family or study",
+    "Wants exposure to a range of care settings before choosing a permanent role",
+    "Wants to work in a specific hospital or facility in the local area",
+    "Wants to develop skills in a specific specialty",
+    "Wants control over own schedule and work-life balance",
+    "Wants higher hourly earnings",
+    "Wants to build confidence across settings",
+    "Wants to support patients in the locality",
+    "Wants regular, reliable shifts with a supportive agency",
+]
+
 
 def _ongoing_role(to_value):
     """True if an employment entry's 'to' date implies the candidate is
@@ -3668,7 +3699,8 @@ CV TEXT:
 
 
 def _build_screening_docx(first_shift_date=None, candidate_name='',
-                           location='', candidate_id='', extracted_cv=''):
+                           location='', candidate_id='', extracted_cv='',
+                           user_type='', experience_keywords=''):
     """
     Load the Screening Interview Record template from GCS and inject:
       - Screening Interview Conducted By = a randomly chosen interviewer
@@ -3681,6 +3713,14 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
       - Interviewer (bottom assessment)  = same randomly chosen interviewer
       - Education table                 = up to 5 entries extracted via
                                             Gemini from live_staffs.extracted_cv
+      - Agency Work — Where              = same value as Location
+      - Agency Work — Why                = random motivation sentence,
+                                            Nurse or HCA pool depending on
+                                            user_type (blank otherwise)
+      - Agency Work — Experience         = experience_keywords (already
+                                            comma-joined by the caller
+                                            from live_staffs.keyword1 /
+                                            keyword2)
 
     All other template content and styling is preserved byte-for-byte.
 
@@ -3900,6 +3940,31 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
     xml = _inject(xml, 'Location', location or '')
     xml = _inject(xml, 'Interviewer', interviewer['name'])
 
+    # ── Agency Work: Where / Why / Experience ──────────────────────────
+    # "Where" mirrors the same Location value used above. "Why" is a
+    # random motivation sentence — a separate pool for Nurse vs HCA user
+    # types, blank for anything else. "Experience" is whatever the
+    # caller already joined from live_staffs.keyword1/keyword2.
+    _ut_lower_for_why = (user_type or '').lower()
+    is_nurse_for_why = any(
+        t in _ut_lower_for_why
+        for t in ('nurse', 'rgn', 'rnm', 'midwife', 'nchd', 'cns', 'phn')
+    )
+    is_hca_for_why = any(
+        t in _ut_lower_for_why
+        for t in ('healthcare assistant', 'health care assistant', 'hca')
+    )
+    if is_nurse_for_why:
+        why_text = _random.choice(_SCREENING_NURSE_AGENCY_WORK_REASONS)
+    elif is_hca_for_why:
+        why_text = _random.choice(_SCREENING_HCA_AGENCY_WORK_REASONS)
+    else:
+        why_text = ''
+
+    xml = _inject(xml, 'Where', location or '')
+    xml = _inject(xml, 'Why', why_text)
+    xml = _inject(xml, 'Experience', experience_keywords or '')
+
     # ── Knowledge Check MCQ — mark 7 questions correct, 3 incorrect ───
     wrong_question_indices = set(
         _random.sample(range(len(_SCREENING_MCQ_CORRECT)),
@@ -4067,6 +4132,13 @@ def live_staff_screening_generate():
         county       = _first('County', 'county', 'Location', 'location')
         email        = _v(doc.get('email') or '')
         extracted_cv = _v(doc.get('extracted_cv') or '')
+        user_type    = _first('User Type', 'user_type')
+
+        # Agency Work "Experience" — live_staffs.keyword1 / keyword2,
+        # comma-joined (either or both may be blank).
+        kw1 = _first('keyword1', 'Keyword1', 'Keyword 1')
+        kw2 = _first('keyword2', 'Keyword2', 'Keyword 2')
+        experience_keywords = ', '.join(k for k in (kw1, kw2) if k)
 
         def _parse_any_date(value):
             """Accepts a native datetime (pymongo returns BSON dates this
@@ -4101,6 +4173,8 @@ def live_staff_screening_generate():
             location=county,
             candidate_id=emp_code,
             extracted_cv=extracted_cv,
+            user_type=user_type,
+            experience_keywords=experience_keywords,
         )
 
         # Name files by Employee Code alone when available (e.g.
