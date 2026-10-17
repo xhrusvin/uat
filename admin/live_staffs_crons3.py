@@ -7360,6 +7360,32 @@ def live_staff_cron_screening_pdf_list_one():
 # ═══════════════════════════════════════════════════════════════════════
 
 
+def _parse_first_shift_date(raw_value):
+    """
+    Converts a first_shift_date string as returned by the outreach API
+    (e.g. "29 Jan 2026") into YYYY-MM-DD. Tries several other common
+    formats too in case the API's format varies. Returns the original
+    raw string unchanged if nothing matches, rather than dropping it.
+    """
+    if not raw_value:
+        return raw_value
+
+    s = raw_value.strip()
+    formats = (
+        '%d %b %Y', '%d %B %Y',      # 29 Jan 2026 / 29 January 2026
+        '%Y-%m-%d',                  # already correct
+        '%d/%m/%Y', '%d-%m-%Y',      # 29/01/2026 / 29-01-2026
+        '%m/%d/%Y',                  # 01/29/2026
+    )
+    for fmt in formats:
+        try:
+            d = datetime.strptime(s, fmt)
+            return d.strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    return raw_value
+
+
 @admin_bp.route('/live-staffs/cron/sync-first-shift-date', methods=['GET', 'POST'])
 def live_staff_cron_sync_first_shift_date():
     """
@@ -7465,10 +7491,10 @@ def live_staff_cron_sync_first_shift_date():
             "remaining_count": max(0, remaining_total - 1),
         })
 
-    detail = data.get('data') or {}
-    first_shift_date = _v(detail.get('first_shift_date') or '')
+    detail        = data.get('data') or {}
+    raw_value     = _v(detail.get('first_shift_date') or '')
 
-    if not first_shift_date:
+    if not raw_value:
         _mark_done({"first_shift_date_note": "no first_shift_date in API response"})
         return jsonify({
             "success": True, "email": email, "staff_name": full_name,
@@ -7477,8 +7503,11 @@ def live_staff_cron_sync_first_shift_date():
             "remaining_count": max(0, remaining_total - 1),
         })
 
+    first_shift_date = _parse_first_shift_date(raw_value)
+
     _mark_done({
         "first_shift_date": first_shift_date,
+        "first_shift_date_raw": raw_value,
         "first_shift_date_note": "fetched successfully",
     })
 
