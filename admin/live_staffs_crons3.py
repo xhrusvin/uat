@@ -7338,14 +7338,13 @@ def live_staff_cron_screening_pdf_list_one():
             "pdf_filename":  rec.get("pdf_filename", "") or "",
         }
     })
-
 # ═══════════════════════════════════════════════════════════════════════
 # ADD THIS to the same crons blueprint file as live_staff_cron_sync_hsecv,
 # live_staff_cron_sync_garda_vetting, etc.
 #
 # Cron: Fetch "first_shift_date" from the outreach API's recruitment
-# detail endpoint (POST {{XN_PORTAL_BASE_URL}}/ai/recruitments/detail,
-# body: {"_id": <xn_staff_id>}), one staff at a time, and save it to
+# detail endpoint (GET {{XN_PORTAL_BASE_URL}}/ai/recruitments/detail
+# ?_id=<xn_staff_id>), one staff at a time, and save it to
 # live_staffs.first_shift_date.
 #
 # Uses live_staffs.xn_staff_id as the identifier — NOT email, NOT
@@ -7365,9 +7364,9 @@ def live_staff_cron_screening_pdf_list_one():
 def live_staff_cron_sync_first_shift_date():
     """
     Cron job — processes ONE staff member per call.
-    Calls the outreach API's recruitment detail endpoint with
-    {"_id": xn_staff_id} and saves data.first_shift_date to
-    live_staffs.first_shift_date.
+    Calls the outreach API's recruitment detail endpoint (GET, with
+    _id=xn_staff_id as a query parameter) and saves
+    data.first_shift_date to live_staffs.first_shift_date.
     Saves: first_shift_date, first_shift_date_fetched = True
     """
     import requests as _req
@@ -7447,7 +7446,7 @@ def live_staff_cron_sync_first_shift_date():
     }
 
     try:
-        resp = _req.post(endpoint, json={"_id": xn_staff_id}, headers=api_headers, timeout=30)
+        resp = _req.get(endpoint, params={"_id": xn_staff_id}, headers=api_headers, timeout=30)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
