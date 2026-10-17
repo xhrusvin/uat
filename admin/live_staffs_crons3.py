@@ -7525,26 +7525,24 @@ def live_staff_cron_sync_first_shift_date():
         ),
     })
 
-# ─────────────────────────────────────────────────────────────────────
-# ADD THIS ROUTE to admin/live_staffs.py
+# ═══════════════════════════════════════════════════════════════════════
+# REPLACE the two existing routes in your crons blueprint file:
 #
-# Generates the Incremental Credit for Previous Service document for
-# ALL staff — no nurse-type check, no Point Scale value filter.
-# Useful for bulk generation across all user types.
+#   live_staff_incremental_credit_generate_all   (on-demand button)
+#   live_staff_cron_generate_incremental_credit_all  (cron)
 #
-# Endpoint:
-#   POST /admin/live-staffs/incremental-credit/generate-all
-#   Body: {"staff_id": "<mongo_id>"}
+# Both routes now fetch the Point Scale Document PDF from the outreach
+# API and extract previous_experience + dates via Gemini — exactly the
+# same flow as the working button for the original nurse-only route.
 #
-# Differences from the existing /incremental-credit/generate route:
-#   1. No _is_nurse() check — any user type is accepted.
-#   2. No Point Scale value filter — generates regardless of point value.
-#   3. point_scale_data["point"] is still read directly from
-#      live_staffs['Point Scale'] / ['point_scale'] (the direct-read fix)
-#      so the form is filled with whatever point is on record, or blank.
-#   4. Saves to the SAME live_staff_incremental_credit collection and
-#      GCS path (incremental_credit/<emp_code>.docx) — upserts cleanly.
-# ─────────────────────────────────────────────────────────────────────
+# Root cause of blank documents:
+#   - live_staff_incremental_credit_generate_all: `email` variable was
+#     used but never extracted from the `doc` MongoDB record.
+#   - live_staff_cron_generate_incremental_credit_all: the PDF fetch +
+#     Gemini extraction was missing entirely (just wrote blank data).
+#
+# Both are fixed here.
+# ═══════════════════════════════════════════════════════════════════════
 
 
 @admin_bp.route('/live-staffs/incremental-credit/generate-all', methods=['POST'])
@@ -7555,10 +7553,13 @@ def live_staff_incremental_credit_generate_all():
     (docx + pdf) for ANY staff member — no user-type restriction,
     no Point Scale value filter.
 
-    The point value is read directly from live_staffs['Point Scale'] /
-    ['point_scale'] — no Point Scale Document PDF is fetched or parsed.
-    The form is generated with whatever point is on the staff record
-    (or left blank if none is set).
+    Fetches the Point Scale Document PDF from the outreach API and
+    extracts previous_experience + dates via Gemini, same as the
+    standard nurse-only generate button. Falls back gracefully to
+    blank service history if no PDF is found.
+
+    point is always overridden with live_staffs['Point Scale'] /
+    ['point_scale'] as the authoritative value.
 
     POST /admin/live-staffs/incremental-credit/generate-all
     Body: {"staff_id": "<mongo_id>"}
@@ -7584,17 +7585,17 @@ def live_staff_incremental_credit_generate_all():
         full_name = _first('Name') or _v(s1.get('full_name') or '') or 'staff'
         emp_code  = _first('Employee Code', 'employee_code')
         user_type = _first('User Type', 'user_type')
+        # FIX: extract email from doc before using it
+        email     = _v(doc.get('email') or s1.get('email_address') or '')
 
-        # ── Fetch Point Scale Document PDF and extract via Gemini ─────
-        # Same flow as the button — fetch the PDF from outreach API,
-        # extract fields with Gemini, fall back to blanks if not found.
+        # Fetch Point Scale Document PDF and extract via Gemini
         gemini_key      = os.environ.get('GEMINI_API_KEY', '')
         direct_point    = _first('Point Scale', 'point_scale')
         point_scale_url = _fetch_point_scale_document_url(email)
 
         point_scale_data = {
             "previous_experience": [],
-            "point":            direct_point,   # overridden by Gemini if PDF found
+            "point":            direct_point,
             "effective_date":   "",
             "incremental_date": "",
             "assessment_date":  "",
@@ -7602,22 +7603,29 @@ def live_staff_incremental_credit_generate_all():
             "verified_date":    "",
         }
         pdf_warning = None
+        debug_info  = {
+            "email":           email,
+            "point_scale_url": point_scale_url or "(not found)",
+            "gemini_key_set":  bool(gemini_key),
+            "direct_point":    direct_point or "(not set)",
+        }
 
         if point_scale_url:
             try:
-                ps_pdf_bytes     = _download_point_scale_pdf(point_scale_url)
-                extracted        = _extract_point_scale_data(ps_pdf_bytes, gemini_key)
-                # Keep direct_point from live_staffs as authoritative for 'point';
-                # take everything else (previous_experience, dates) from Gemini
+                ps_pdf_bytes = _download_point_scale_pdf(point_scale_url)
+                debug_info["pdf_size_bytes"] = len(ps_pdf_bytes)
+                extracted    = _extract_point_scale_data(ps_pdf_bytes, gemini_key)
+                debug_info["gemini_experience_count"] = len(extracted.get("previous_experience", []))
+                debug_info["gemini_effective_date"]   = extracted.get("effective_date", "(blank)")
                 if direct_point:
                     extracted["point"] = direct_point
                 point_scale_data = extracted
             except Exception as e:
                 pdf_warning = f"Could not read Point Scale Document: {e}"
+                debug_info["fetch_error"] = str(e)
         else:
             pdf_warning = "No 'Point Scale Document' found — previous experience left blank."
 
-        # ── Build docx ─────────────────────────────────────────────────
         docx_bytes = _build_incremental_credit_docx(
             full_name=full_name,
             post=user_type,
@@ -7637,16 +7645,13 @@ def live_staff_incremental_credit_generate_all():
             content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
 
-        # ── Convert to PDF ─────────────────────────────────────────────
-        pdf_warning = None
         try:
             pdf_bytes_out = _docx_to_pdf_bytes(docx_bytes)
             _gcs_upload(pdf_gcs_blob, pdf_bytes_out, content_type='application/pdf')
         except Exception as e:
             pdf_gcs_blob = None
-            pdf_warning  = f"PDF conversion failed: {e}"
+            pdf_warning  = (pdf_warning + "; " if pdf_warning else "") + f"PDF conversion failed: {e}"
 
-        # ── Upsert into live_staff_incremental_credit ──────────────────
         col      = _incremental_credit_col()
         existing = col.find_one({"staff_id": staff_id})
         rec = {
@@ -7667,7 +7672,6 @@ def live_staff_incremental_credit_generate_all():
         else:
             col.insert_one(rec)
 
-        # ── Response ───────────────────────────────────────────────────
         result = {
             "success":    True,
             "staff_name": full_name,
@@ -7675,6 +7679,7 @@ def live_staff_incremental_credit_generate_all():
             "point":      direct_point or "(not set)",
             "filename":   filename,
             "gcs_blob":   gcs_blob,
+            "debug":      debug_info,
         }
         if pdf_gcs_blob:
             result["pdf_filename"] = pdf_filename
@@ -7686,6 +7691,199 @@ def live_staff_incremental_credit_generate_all():
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/cron/generate-incremental-credit-all', methods=['GET', 'POST'])
+def live_staff_cron_generate_incremental_credit_all():
+    """
+    Cron — generate Incremental Credit for ALL staff, one at a time,
+    with no Point Scale value filter and no user-type restriction.
+
+    FIXED: now fetches the Point Scale Document PDF from the outreach
+    API and extracts previous_experience + dates via Gemini, same as
+    the on-demand button. Previously this was generating blank documents
+    because the PDF fetch was missing entirely.
+
+    Each call picks ONE pending staff (incremental_credit_generated is
+    False / missing), generates their document, saves it to GCS and
+    MongoDB, then marks them done. Call in a loop until
+    {"remaining": 0} is returned.
+
+    Auth: CRON_SECRET env var checked against cron_key param or
+          X-Cron-Key header.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    col = _staffs_col()
+
+    pending_query = {
+        "$or": [
+            {"incremental_credit_generated": {"$exists": False}},
+            {"incremental_credit_generated": False},
+            {"incremental_credit_generated": None},
+        ]
+    }
+
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":   True,
+            "message":   "All staff Incremental Credit documents generated.",
+            "remaining": 0,
+        })
+
+    # Mark in-progress immediately to prevent double-processing
+    col.update_one(
+        {"_id": staff["_id"]},
+        {"$set": {"incremental_credit_generated": True,
+                  "incremental_credit_generated_at": datetime.utcnow()}}
+    )
+
+    def _first(*keys, default=''):
+        for k in keys:
+            val = staff.get(k)
+            if val not in (None, ''):
+                return _v(val)
+        return default
+
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _first('Name') or _v(s1.get('full_name') or '') or 'staff'
+    emp_code  = _first('Employee Code', 'employee_code')
+    user_type = _first('User Type', 'user_type')
+    staff_id  = str(staff['_id'])
+    # FIX: email extracted here — required by _fetch_point_scale_document_url
+    email     = _v(staff.get('email') or s1.get('email_address') or '')
+
+    # FIX: fetch Point Scale Document PDF + Gemini extraction
+    # (was completely missing — caused blank documents)
+    gemini_key      = os.environ.get('GEMINI_API_KEY', '')
+    direct_point    = _first('Point Scale', 'point_scale')
+    point_scale_url = _fetch_point_scale_document_url(email)
+
+    point_scale_data = {
+        "previous_experience": [],
+        "point":            direct_point,
+        "effective_date":   "",
+        "incremental_date": "",
+        "assessment_date":  "",
+        "signed_date":      "",
+        "verified_date":    "",
+    }
+    error_detail = None
+
+    debug_info = {
+        "email":           email,
+        "point_scale_url": point_scale_url or "(not found)",
+        "gemini_key_set":  bool(gemini_key),
+        "direct_point":    direct_point or "(not set)",
+        "base_url_env":    (os.environ.get('XN_PORTAL_BASE_URL', '') or
+                            os.environ.get('LIVE_STAFF_URL', '') or "(not set)"),
+    }
+
+    if point_scale_url:
+        try:
+            ps_pdf_bytes = _download_point_scale_pdf(point_scale_url)
+            debug_info["pdf_size_bytes"] = len(ps_pdf_bytes)
+            extracted    = _extract_point_scale_data(ps_pdf_bytes, gemini_key)
+            debug_info["gemini_experience_count"] = len(extracted.get("previous_experience", []))
+            debug_info["gemini_effective_date"]   = extracted.get("effective_date", "(blank)")
+            if direct_point:
+                extracted["point"] = direct_point
+            point_scale_data = extracted
+        except Exception as e:
+            error_detail = f"Could not read Point Scale Document: {e}"
+            debug_info["fetch_error"] = str(e)
+    else:
+        error_detail = "No 'Point Scale Document' found — previous experience left blank."
+
+    gcs_blob     = None
+    pdf_gcs_blob = None
+
+    try:
+        docx_bytes = _build_incremental_credit_docx(
+            full_name=full_name,
+            post=user_type,
+            employee_code=emp_code,
+            point_scale_data=point_scale_data,
+        )
+
+        base_name    = emp_code.replace(' ', '_').replace('/', '_') if emp_code \
+                       else full_name.replace(' ', '_').replace('/', '_')
+        filename     = f"{base_name}.docx"
+        gcs_blob     = f"incremental_credit/{filename}"
+        pdf_filename = f"{base_name}.pdf"
+        pdf_gcs_blob = f"incremental_credit/{pdf_filename}"
+
+        _gcs_upload(
+            gcs_blob, docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+        try:
+            pdf_bytes_out = _docx_to_pdf_bytes(docx_bytes)
+            _gcs_upload(pdf_gcs_blob, pdf_bytes_out, content_type='application/pdf')
+        except Exception as pdf_err:
+            pdf_gcs_blob = None
+            error_detail = (error_detail + "; " if error_detail else "") + f"PDF conversion failed: {pdf_err}"
+
+        ic_col   = _incremental_credit_col()
+        existing = ic_col.find_one({"staff_id": staff_id})
+        rec = {
+            "staff_id":              staff_id,
+            "staff_name":            full_name,
+            "employee_code":         emp_code,
+            "user_type":             user_type,
+            "filename":              filename,
+            "gcs_blob":              gcs_blob,
+            "pdf_filename":          pdf_filename if pdf_gcs_blob else None,
+            "pdf_gcs_blob":          pdf_gcs_blob,
+            "point":                 direct_point,
+            "point_scale_url_found": bool(point_scale_url),
+            "generated_at":          datetime.utcnow(),
+        }
+        if existing:
+            ic_col.update_one({"_id": existing["_id"]}, {"$set": rec})
+        else:
+            ic_col.insert_one(rec)
+
+    except Exception as e:
+        # Roll back in-progress flag so this staff can be retried
+        col.update_one(
+            {"_id": staff["_id"]},
+            {"$set": {"incremental_credit_generated": False}}
+        )
+        return jsonify({
+            "success":    False,
+            "staff_id":   staff_id,
+            "staff_name": full_name,
+            "error":      str(e),
+            "remaining":  remaining_total,
+            "debug":      debug_info,
+        }), 500
+
+    response = {
+        "success":    True,
+        "staff_id":   staff_id,
+        "staff_name": full_name,
+        "user_type":  user_type,
+        "point":      direct_point or "(not set)",
+        "gcs_blob":   gcs_blob,
+        "remaining":  max(remaining_total - 1, 0),
+        "debug":      debug_info,
+    }
+    if pdf_gcs_blob:
+        response["pdf_gcs_blob"] = pdf_gcs_blob
+    if error_detail:
+        response["warning"] = error_detail
+
+    return jsonify(response)
 
 
 
