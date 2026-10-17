@@ -1,2450 +1,5112 @@
-{% extends "admin/base.html" %}
-{% block title %}Live Staffs • Admin{% endblock %}
+from flask import render_template, request, jsonify, Response
+from bson import ObjectId
+from datetime import datetime
+import json
+import json as _cjson
+import json as _cjson2
+import base64
+import csv
+import io
+import re
+import re as _re
+import os
+import threading
 
-{% block content %}
-<div class="container-fluid px-4 py-4">
+# ── Module-level helpers ─────────────────────────────────────────────
+def _v(val):
+    """Strip and stringify — safe for None."""
+    if val is None: return ''
+    return str(val).strip()
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0 fw-bold text-primary">Live Staff Management</h2>
-        <div class="d-flex gap-2 flex-wrap align-items-center">
-            <button class="btn btn-primary" onclick="prepareAddModal()"
-                    data-bs-toggle="modal" data-bs-target="#staffModal">
-                <i class="bi bi-person-plus-fill"></i> Add Staff
-            </button>
-            <button class="btn btn-success" onclick="document.getElementById('importFile').click()">
-                <i class="bi bi-upload"></i> Import JSON
-            </button>
-            <input type="file" id="importFile" accept=".json" class="d-none">
-            <div class="dropdown">
-                <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                    <i class="bi bi-download"></i> Export
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" style="min-width:280px;max-height:80vh;overflow-y:auto;">
-                    <li><h6 class="dropdown-header text-muted small">General</h6></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export?format=json"><i class="bi bi-filetype-json me-2 text-warning"></i>Export as JSON</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export?format=csv"><i class="bi bi-filetype-csv me-2 text-success"></i>Export as CSV</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/xlsx"><i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Staff Points (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/work-start-date-xlsx"><i class="bi bi-calendar-check me-2 text-primary"></i>Work Start Date (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/first-shift-date-xlsx"><i class="bi bi-calendar-event me-2 text-success"></i>First Shift Date (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/experience-xlsx"><i class="bi bi-file-earmark-spreadsheet me-2 text-primary"></i>Experience List (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/nmbi-xlsx"><i class="bi bi-patch-check me-2 text-primary"></i>Nurses — NMBI Numbers (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/missing-nmbi-xlsx"><i class="bi bi-patch-exclamation me-2 text-danger"></i>Nurses — Missing NMBI (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/qqi-xlsx"><i class="bi bi-award me-2 text-success"></i>HCA — QQI Numbers (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/missing-qqi-xlsx"><i class="bi bi-exclamation-triangle me-2 text-danger"></i>HCA — Missing QQI (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/cpr-xlsx"><i class="bi bi-heart-pulse me-2 text-danger"></i>CPR/BLS Certificates (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/ipc-xlsx"><i class="bi bi-shield-check me-2 text-success"></i>IPC Certificates (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/hand-hygiene-xlsx"><i class="bi bi-droplet me-2 text-info"></i>Hand Hygiene Certificates (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/children-first-xlsx"><i class="bi bi-people me-2 text-warning"></i>Children First Certificates (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/safeguarding-xlsx"><i class="bi bi-shield-fill-check me-2 text-success"></i>Safeguarding Adults At Risk (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/garda-xlsx"><i class="bi bi-shield-lock me-2 text-dark"></i>Garda Vetting Documents (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/cpi-xlsx"><i class="bi bi-person-arms-up me-2 text-warning"></i>CPI/MAPA/PMAV Certificates (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/employment-contract-xlsx"><i class="bi bi-file-earmark-text me-2 text-secondary"></i>Employment Contracts (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/open-disclosure-xlsx-new"><i class="bi bi-eye me-2 text-info"></i>Open Disclosure Certificates (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/gdpr-xlsx"><i class="bi bi-lock me-2 text-primary"></i>GDPR Certificates (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/dignity-at-work-xlsx"><i class="bi bi-hand-thumbs-up me-2 text-success"></i>Dignity At Work (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/haccp-xlsx"><i class="bi bi-clipboard2-check me-2 text-warning"></i>HACCP/Food Safety (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/cyber-security-xlsx"><i class="bi bi-shield-shaded me-2 text-danger"></i>Cyber Security (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/health-declaration-xlsx"><i class="bi bi-heart-pulse me-2 text-success"></i>Health Declaration Forms (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/code-of-conduct-xlsx"><i class="bi bi-journal-check me-2 text-primary"></i>Code Of Conduct (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/references-xlsx"><i class="bi bi-person-lines-fill me-2 text-secondary"></i>References (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/police-clearance-xlsx"><i class="bi bi-shield-fill me-2 text-danger"></i>Police Clearance Certificates (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/fire-safety-xlsx"><i class="bi bi-fire me-2 text-danger"></i>Fire Safety (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/qqi-level5-xlsx"><i class="bi bi-mortarboard me-2 text-primary"></i>QQI Level 5 Or Equivalent (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/hse-clearance-xlsx"><i class="bi bi-hospital me-2 text-success"></i>HSE Clearance Pass (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/driving-licence-xlsx"><i class="bi bi-car-front me-2 text-secondary"></i>Driving Licences (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/point-scale-xlsx"><i class="bi bi-list-ol me-2 text-info"></i>Point Scale Documents (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/application-form-xlsx"><i class="bi bi-file-earmark-person me-2 text-primary"></i>Application Forms (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/interview-notes-xlsx"><i class="bi bi-journal-text me-2 text-info"></i>Interview Notes (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/visa-xlsx"><i class="bi bi-airplane me-2 text-primary"></i>Visa Documents (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/address-proof-xlsx"><i class="bi bi-house me-2 text-success"></i>Address Proof (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/ppe-xlsx"><i class="bi bi-shield-fill-check me-2 text-warning"></i>PPE Documents (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/manual-handling-xlsx"><i class="bi bi-person-raised-hand me-2 text-info"></i>Manual & People Handling (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/nmbi-qualification-xlsx"><i class="bi bi-patch-check me-2 text-success"></i>NMBI Qualification (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/medication-management-xlsx"><i class="bi bi-capsule me-2 text-danger"></i>Medication Management (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/vde-xlsx"><i class="bi bi-display me-2 text-secondary"></i>Visual Display Equipment (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/inews-xlsx"><i class="bi bi-activity me-2 text-danger"></i>INEWS (Excel)</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/passport-xlsx"><i class="bi bi-passport me-2 text-secondary"></i>Passport IDs (Excel)</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><h6 class="dropdown-header text-muted small">Vetting Status</h6></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=no_garda"><i class="bi bi-shield-x me-2 text-danger"></i>No Garda Vetting</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=garda_expired"><i class="bi bi-shield-exclamation me-2 text-warning"></i>Garda Vetting Expired</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=no_police"><i class="bi bi-file-earmark-x me-2 text-danger"></i>No Police Clearance</a></li>
-                    <li><a class="dropdown-item" href="/admin/live-staffs/export/vetting-xlsx?filter=police_expired"><i class="bi bi-file-earmark-exclamation me-2 text-warning"></i>Police Clearance Expired</a></li>
-                </ul>
-            </div>
-            <a href="{{ '/admin/live-staffs' }}" class="btn btn-outline-secondary">
-                <i class="bi bi-arrow-repeat"></i> Refresh
-            </a>
-            <span class="badge bg-primary fs-5 px-3 py-2 align-self-center">
-                {{ total }} Staff{{ 's' if total != 1 }}
-            </span>
-        </div>
-    </div>
+def _validate_api_key():
+    """Validate X-API-Key header against LIVE_STAFF_API_KEY env var.
+    Returns (True, None) if valid or no key configured, else (False, response)."""
+    api_key = os.environ.get('LIVE_STAFF_API_KEY', '')
+    if not api_key:
+        return True, None
+    provided = (request.headers.get('X-API-Key') or
+                request.headers.get('X-Api-Key') or '')
+    if provided != api_key:
+        return False, (jsonify({"success": False, "error": "Unauthorised"}), 401)
+    return True, None
 
-    <!-- Search -->
-    <form method="get" class="mb-5">
-        <div class="input-group input-group-lg shadow-sm rounded-4 overflow-hidden">
-            <span class="input-group-text bg-white border-0">Search</span>
-            <input type="text" name="search" class="form-control border-0 ps-0"
-                   placeholder="Search by name, email, employee code, nationality, user type…"
-                   value="{{ search }}" autofocus>
-            <button class="btn btn-primary px-4" type="submit">Search</button>
-            {% if search %}
-            <a href="{{ '/admin/live-staffs' }}" class="btn btn-outline-secondary">Clear</a>
-            {% endif %}
-        </div>
-    </form>
 
-    <!-- Import progress banner -->
-    <div id="importBanner" class="alert alert-info d-none mb-4 rounded-4 d-flex align-items-center gap-3">
-        <div class="spinner-border spinner-border-sm" role="status"></div>
-        <span>Importing records, please wait…</span>
-    </div>
+def _extract_missing_fields(nationality, total_exp, extracted_cv, entries):
+    """
+    Fill missing nationality and total_exp by analysing extracted_cv and employment entries.
+    Returns (nationality, total_exp) with best available values.
+    """
+    import re as _re_mf
+    from datetime import datetime as _dt_mf
 
-    <!-- Table -->
-    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0 align-middle">
-                    <thead class="text-white"
-                           style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
-                        <tr>
-                            <th class="ps-4">#</th>
-                            <th>Employee</th>
-                            <th>Code</th>
-                            <th>Type</th>
-                            <th>Nationality</th>
-                            <th>Visa</th>
-                            <th class="text-center">NMBI Exp.</th>
-                            <th class="text-center">Status</th>
-                            <th class="text-center">CV</th>
-                            <th class="text-center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for s in staffs %}
-                        {% set p    = s.section_1_personal_details or {} %}
-                        {% set visa = p.work_permit_visa_status or {} %}
-                        {% set reg  = s.section_3_professional_registration or {} %}
-                        {% set user_type_display = s.get('User Type') or s.user_type or '' %}
-                        {% set emp_code_display  = s.get('Employee Code') or s.employee_code or '' %}
-                        {% set ut_lower = user_type_display | lower %}
-                        <tr>
-                            <td class="ps-4 text-muted small">
-                                {{ loop.index + (page - 1) * per_page }}
-                            </td>
-                            <td>
-                                <div class="fw-semibold">{{ p.full_name or '—' }}</div>
-                                <div class="text-muted small">{{ s.email }}</div>
-                            </td>
-                            <td>
-                                <span class="badge bg-dark font-monospace px-2 py-1">
-                                    {{ emp_code_display or '—' }}
-                                </span>
-                            </td>
-                            <td class="text-muted small">{{ user_type_display or '—' }}</td>
-                            <td class="text-muted small">{{ p.nationality or '—' }}</td>
-                            <td class="small">
-                                {% if visa.visa_type %}
-                                <span class="badge bg-info text-dark rounded-pill px-2">{{ visa.visa_type }}</span>
-                                {% else %}—{% endif %}
-                            </td>
-                            <td class="text-center small text-muted">
-                                {{ reg.registration_expiry_date or '—' }}
-                            </td>
-                            <td class="text-center">
-                                {% if s.status in ['found', 'active'] %}
-                                <span class="badge bg-success rounded-pill px-3">Active</span>
-                                {% else %}
-                                <span class="badge bg-secondary rounded-pill px-3">{{ (s.status or 'unknown') | capitalize }}</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if s.extracted_cv == 'No doc found' %}
-                                <span class="badge bg-secondary rounded-pill px-2"><i class="bi bi-slash-circle me-1"></i>No Doc</span>
-                                {% elif s.extracted_cv and not s.extracted_cv.startswith('[') %}
-                                <span class="badge bg-success rounded-pill px-2" title="{{ s.extracted_cv[:100] }}"><i class="bi bi-file-text-fill me-1"></i>Done</span>
-                                {% else %}
-                                <span class="badge bg-light text-muted rounded-pill px-2 border"><i class="bi bi-hourglass me-1"></i>Pending</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                <!-- Single Actions button — replaces all per-row icon buttons -->
-                                <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 btn-actions"
-                                        data-id="{{ s._id }}"
-                                        data-name="{{ p.full_name | default('Staff') | e }}"
-                                        data-email="{{ s.email | e }}"
-                                        data-type="{{ user_type_display | e }}"
-                                        data-ut-lower="{{ ut_lower | e }}"
-                                        data-cv-url="{{ '/admin/live-staffs/cv/' + s._id }}">
-                                    <i class="bi bi-grid-3x3-gap-fill me-1"></i> Actions
-                                </button>
+    cv = extracted_cv or ''
 
-                                <!-- Hidden trigger buttons — kept in DOM so existing JS handlers fire correctly -->
-                                <span class="d-none">
-                                    <button class="btn-view"      data-id="{{ s._id }}"></button>
-                                    <button class="btn-edit"      data-id="{{ s._id }}"></button>
-                                    <button class="btn-edit-cv"   data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
-                                    <button class="btn-ai-cv"     data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
-                                    <button class="btn-ai-interview" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
-                                    <button class="btn-ai-appform"   data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
-                                    <button class="btn-pcc"       data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
-                                    <button class="btn-screening" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}" data-first-shift="{{ s.first_shift_date or '' }}"></button>
-                                    <button class="btn-delete"    data-id="{{ s._id }}" data-name="{{ p.full_name | default('this record') | e }}"></button>
-                                    {% if 'healthcare assistant' in ut_lower %}
-                                    <button class="btn-vos"       data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
-                                    {% endif %}
-                                    {% if 'nurse' in ut_lower or 'rgn' in ut_lower or 'rnm' in ut_lower or 'midwife' in ut_lower or 'nchd' in ut_lower or 'cns' in ut_lower or 'phn' in ut_lower %}
-                                    <button class="btn-vos-nurse" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
-                                    <button class="btn-incremental-credit" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
-                                    {% endif %}
-                                </span>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="10" class="text-center py-5 text-muted">
-                                <i class="bi bi-people display-1 opacity-25 d-block mb-3"></i>
-                                <h5>No staff records found</h5>
-                                {% if search %}<p class="mb-0">Try a different search term</p>{% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+    # ── Nationality from CV text ──────────────────────────────────────
+    if not nationality and cv:
+        _m = _re_mf.search(
+            r'(?i)\bnationality\s*[:\-]\s*([A-Za-z ]{2,40})',
+            cv
+        )
+        if _m:
+            nationality = _m.group(1).strip().title()
 
-    <!-- Pagination -->
-    {% set pages = ((total / per_page) | round(0,'ceil')) | int %}
-    {% if total > per_page %}
-    <nav class="mt-4">
-        <ul class="pagination justify-content-center pagination-lg">
-            {% if page > 1 %}
-            <li class="page-item">
-                <a class="page-link" href="?page={{ page-1 }}&search={{ search }}">Previous</a>
-            </li>
-            {% endif %}
-            {% for pg in range([page-2,1]|max, [page+3,pages+1]|min) %}
-            <li class="page-item {% if pg == page %}active{% endif %}">
-                <a class="page-link" href="?page={{ pg }}&search={{ search }}">{{ pg }}</a>
-            </li>
-            {% endfor %}
-            {% if page < pages %}
-            <li class="page-item">
-                <a class="page-link" href="?page={{ page+1 }}&search={{ search }}">Next</a>
-            </li>
-            {% endif %}
-        </ul>
-    </nav>
-    {% endif %}
+    # ── Total Experience: calculate from employment entries ───────────
+    if not total_exp and entries:
+        try:
+            _now = _dt_mf.now()
+            _earliest = None
+            for _e in entries:
+                _from_str = str(_e.get('from') or '').strip()
+                for _fmt in ('%B %Y', '%b %Y', '%m/%Y', '%Y-%m',
+                              '%d/%m/%Y', '%Y-%m-%d', '%Y'):
+                    try:
+                        _d = _dt_mf.strptime(_from_str, _fmt)
+                        if _earliest is None or _d < _earliest:
+                            _earliest = _d
+                        break
+                    except Exception:
+                        pass
+            if _earliest:
+                _months = (_now.year - _earliest.year) * 12 +                           (_now.month - _earliest.month)
+                _yrs    = _months // 12
+                _mos    = _months % 12
+                total_exp = (
+                    f"{_yrs} year{'s' if _yrs != 1 else ''}" +
+                    (f" {_mos} month{'s' if _mos != 1 else ''}" if _mos else "")
+                )
+        except Exception:
+            pass
 
-</div>
+    # ── Total Experience: scan CV text for "X years experience" ──────
+    if not total_exp and cv:
+        _m2 = _re_mf.search(
+            r'(?i)(\d+\.?\d*)\s*\+?\s*years?\s*(?:of\s+)?(?:experience|nursing|working)',
+            cv
+        )
+        if _m2:
+            total_exp = f"{_m2.group(1)} years"
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     ACTIONS MODAL  — replaces all per-row icon buttons
-═══════════════════════════════════════════════════════════════════ -->
-<div class="modal fade" id="actionsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width:560px;">
-        <div class="modal-content border-0 shadow-lg rounded-4">
+    return nationality, total_exp
 
-            <!-- Header -->
-            <div class="modal-header border-0 pb-0 pt-3 px-4">
-                <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
-                    <div id="amAvatar"
-                         class="rounded-circle d-flex align-items-center justify-content-center fw-semibold text-white flex-shrink-0"
-                         style="width:46px;height:46px;font-size:15px;
-                                background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
-                    </div>
-                    <div class="min-w-0">
-                        <div class="fw-semibold text-truncate" id="amName" style="font-size:15px;max-width:340px;"></div>
-                        <div class="text-muted small text-truncate" id="amMeta" style="max-width:340px;"></div>
-                    </div>
-                </div>
-                <button type="button" class="btn-close ms-2 flex-shrink-0" data-bs-dismiss="modal"></button>
-            </div>
 
-            <!-- Body -->
-            <div class="modal-body px-4 pb-4 pt-3">
+# ── PCC constants ─────────────────────────────────────────────────────
+_PCC_REVIEWERS = [
+    'Letty Mathew',
+    'Valencia Da Silva',
+    'Ann Maria',
+    'Audrey Maguire',
+    'Liberata Gama',
+]
+_PCC_COMPLIANCE_OFFICER = 'Betsy Daniel'
 
-                <!-- ── Record ── -->
-                <p class="text-uppercase text-muted fw-semibold mb-2" style="font-size:10px;letter-spacing:.06em;">Record</p>
-                <div class="row g-2 mb-3">
-                    <div class="col-6">
-                        <button class="am-action-btn am-view w-100">
-                            <i class="bi bi-eye text-primary am-icon"></i>
-                            <div>
-                                <div class="am-label">View record</div>
-                                <div class="am-desc">Full profile details</div>
-                            </div>
-                        </button>
-                    </div>
-                    <div class="col-6">
-                        <button class="am-action-btn am-edit w-100">
-                            <i class="bi bi-pencil text-secondary am-icon"></i>
-                            <div>
-                                <div class="am-label">Edit record</div>
-                                <div class="am-desc">Update staff data</div>
-                            </div>
-                        </button>
-                    </div>
-                    <div class="col-6">
-                        <button class="am-action-btn am-edit-cv w-100">
-                            <i class="bi bi-file-text text-info am-icon"></i>
-                            <div>
-                                <div class="am-label">Edit extracted CV</div>
-                                <div class="am-desc">Fix CV text manually</div>
-                            </div>
-                        </button>
-                    </div>
-                    <div class="col-6">
-                        <a class="am-action-btn am-dl-cv w-100 text-decoration-none" href="#" target="_blank">
-                            <i class="bi bi-file-earmark-person text-success am-icon"></i>
-                            <div>
-                                <div class="am-label">Download standard CV</div>
-                                <div class="am-desc">PDF format</div>
-                            </div>
-                        </a>
-                    </div>
-                </div>
 
-                <!-- ── AI Generation ── -->
-                <p class="text-uppercase text-muted fw-semibold mb-2" style="font-size:10px;letter-spacing:.06em;">AI generation</p>
-                <div class="row g-2 mb-3">
-                    <div class="col-6">
-                        <button class="am-action-btn am-ai-cv w-100">
-                            <i class="bi bi-stars am-icon" style="color:#f59e0b;"></i>
-                            <div>
-                                <div class="am-label">AI CV</div>
-                                <div class="am-desc">Personalised with Gemini</div>
-                            </div>
-                        </button>
-                    </div>
-                    <div class="col-6">
-                        <button class="am-action-btn am-ai-interview w-100">
-                            <i class="bi bi-clipboard2-check text-info am-icon"></i>
-                            <div>
-                                <div class="am-label">AI interview notes</div>
-                                <div class="am-desc">Auto-completed notes</div>
-                            </div>
-                        </button>
-                    </div>
-                    <div class="col-6">
-                        <button class="am-action-btn am-ai-appform w-100">
-                            <i class="bi bi-file-earmark-text text-secondary am-icon"></i>
-                            <div>
-                                <div class="am-label">Application form</div>
-                                <div class="am-desc">Xpress Health form</div>
-                            </div>
-                        </button>
-                    </div>
-                    <div class="col-6">
-                        <button class="am-action-btn am-pcc w-100">
-                            <i class="bi bi-file-earmark-lock am-icon"></i>
-                            <div>
-                                <div class="am-label">PCC declaration</div>
-                                <div class="am-desc">Self-declaration form</div>
-                            </div>
-                        </button>
-                    </div>
-                    <div class="col-6">
-                        <button class="am-action-btn am-screening w-100">
-                            <i class="bi bi-clipboard2-pulse am-icon" style="color:#6366f1;"></i>
-                            <div>
-                                <div class="am-label">Screening interview</div>
-                                <div class="am-desc">Interview record form</div>
-                            </div>
-                        </button>
-                    </div>
-                </div>
+from database import db
+from . import admin_bp
+from admin.views import admin_required
 
-                <!-- ── Verification of Service (shown conditionally) ── -->
-                <div id="amVosSection" class="d-none">
-                    <p class="text-uppercase text-muted fw-semibold mb-2" style="font-size:10px;letter-spacing:.06em;">Verification of service</p>
-                    <div class="row g-2 mb-3">
-                        <div class="col-6 am-vos-hca-col d-none">
-                            <button class="am-action-btn am-vos w-100">
-                                <i class="bi bi-patch-check text-success am-icon"></i>
-                                <div>
-                                    <div class="am-label">VOS — HCA</div>
-                                    <div class="am-desc">For care staff</div>
-                                </div>
-                            </button>
-                        </div>
-                        <div class="col-6 am-vos-nurse-col d-none">
-                            <button class="am-action-btn am-vos-nurse w-100">
-                                <i class="bi bi-patch-check-fill text-primary am-icon"></i>
-                                <div>
-                                    <div class="am-label">VOS — Nurse</div>
-                                    <div class="am-desc">For nursing staff</div>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- ── Incremental Credit (Nurse only) ── -->
-                <div id="amIncrementalCreditSection" class="d-none">
-                    <p class="text-uppercase text-muted fw-semibold mb-2" style="font-size:10px;letter-spacing:.06em;">Salary scale</p>
-                    <div class="row g-2 mb-3">
-                        <div class="col-6">
-                            <button class="am-action-btn am-incremental-credit w-100">
-                                <i class="bi bi-graph-up-arrow am-icon" style="color:#0d9488;"></i>
-                                <div>
-                                    <div class="am-label">Incremental Credit</div>
-                                    <div class="am-desc">Previous service assessment</div>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-                </div>
+# ── Helpers ──────────────────────────────────────────────────────────
 
-                <!-- ── Danger zone ── -->
-                <hr class="my-2">
-                <div class="row g-2">
-                    <div class="col-6">
-                        <button class="am-action-btn am-delete w-100" style="border-color:#fca5a5;">
-                            <i class="bi bi-trash text-danger am-icon"></i>
-                            <div>
-                                <div class="am-label text-danger">Delete record</div>
-                                <div class="am-desc">Cannot be undone</div>
-                            </div>
-                        </button>
-                    </div>
-                </div>
+# ── Google Cloud Storage helpers ──────────────────────────────────────
 
-            </div>
-        </div>
-    </div>
-</div>
+def _gcs_client():
+    """Return an authenticated GCS client.
+    Priority:
+      1. GCS_CREDENTIALS_JSON env var (full JSON as string) — recommended
+      2. GCS_KEY_FILE env var (path to JSON key file)
+      3. Application Default Credentials (ADC) — if on Google Cloud VM
+    """
+    from google.cloud import storage as _gcs
+    import json as _json
 
-<!-- ── Add / Edit Modal ──────────────────────────────────────────────── -->
-<div class="modal fade" id="staffModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <div class="modal-header text-white rounded-top-4"
-                 style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
-                <h5 class="modal-title fw-bold" id="staffModalLabel">Add Staff</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="staffModalBody">
-                <form id="staffForm">
-                    <input type="hidden" id="staff_id">
+    creds_json = os.environ.get('GCS_CREDENTIALS_JSON', '').strip()
+    if creds_json:
+        from google.oauth2 import service_account
+        info  = _json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(
+            info,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        return _gcs.Client(credentials=creds, project=info.get('project_id'))
 
-                    <!-- Section 1 – Personal Details -->
-                    <h6 class="text-uppercase text-muted fw-bold mb-3 border-bottom pb-2">
-                        <i class="bi bi-person-lines-fill me-2"></i>Personal Details
-                    </h6>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Full Name <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="full_name" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
-                            <input type="email" class="form-control" id="email" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Mobile Number</label>
-                            <input type="text" class="form-control" id="mobile_number">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">Date of Birth</label>
-                            <input type="text" class="form-control" id="date_of_birth" placeholder="DD-MM-YYYY">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">PPS Number</label>
-                            <input type="text" class="form-control font-monospace" id="pps_number">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">Nationality</label>
-                            <input type="text" class="form-control" id="nationality">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">NMBI PIN</label>
-                            <input type="text" class="form-control font-monospace" id="nmbi_pin_number">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Address</label>
-                            <input type="text" class="form-control" id="address">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Eircode / Postcode</label>
-                            <input type="text" class="form-control font-monospace" id="eircode_postcode">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Permission to Work</label>
-                            <select class="form-select" id="permission_to_work">
-                                <option value="">— select —</option>
-                                <option value="Yes">Yes</option>
-                                <option value="No">No</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Visa Type</label>
-                            <input type="text" class="form-control" id="visa_type">
-                        </div>
-                    </div>
+    key_path = os.environ.get('GCS_KEY_FILE', '').strip()
+    if key_path and os.path.exists(key_path):
+        return _gcs.Client.from_service_account_json(key_path)
 
-                    <!-- Section – Identity -->
-                    <h6 class="text-uppercase text-muted fw-bold mb-3 border-bottom pb-2">
-                        <i class="bi bi-card-heading me-2"></i>Identity Verification
-                    </h6>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Passport Number</label>
-                            <input type="text" class="form-control font-monospace" id="passport_number">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Passport Expiry</label>
-                            <input type="text" class="form-control" id="passport_expiry" placeholder="DD-MM-YYYY">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Driving Licence</label>
-                            <select class="form-select" id="driving_licence_number">
-                                <option value="">— select —</option>
-                                <option value="Yes">Yes</option>
-                                <option value="No">No</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Verification Date</label>
-                            <input type="text" class="form-control" id="verification_date" placeholder="DD-MM-YYYY">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Verified By</label>
-                            <input type="text" class="form-control" id="verified_by">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Documents Submitted</label>
-                            <div class="d-flex gap-4 flex-wrap pt-1">
-                                <div class="form-check"><input class="form-check-input" type="checkbox" id="doc_passport"><label class="form-check-label" for="doc_passport">Passport</label></div>
-                                <div class="form-check"><input class="form-check-input" type="checkbox" id="doc_birth_cert"><label class="form-check-label" for="doc_birth_cert">Birth Certificate</label></div>
-                                <div class="form-check"><input class="form-check-input" type="checkbox" id="doc_driving"><label class="form-check-label" for="doc_driving">Driving Licence</label></div>
-                                <div class="form-check"><input class="form-check-input" type="checkbox" id="doc_address"><label class="form-check-label" for="doc_address">Proof of Address</label></div>
-                            </div>
-                        </div>
-                    </div>
+    # Fallback — Application Default Credentials (works on GCE/Cloud Run)
+    return _gcs.Client()
 
-                    <!-- Section – Professional Registration -->
-                    <h6 class="text-uppercase text-muted fw-bold mb-3 border-bottom pb-2">
-                        <i class="bi bi-patch-check-fill me-2"></i>Professional Registration
-                    </h6>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Registration Number / PIN</label>
-                            <input type="text" class="form-control font-monospace" id="registration_number_pin">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Registration Expiry</label>
-                            <input type="text" class="form-control" id="registration_expiry_date" placeholder="DD-MM-YYYY">
-                        </div>
-                        <div class="col-md-4 d-flex align-items-end pb-1">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="nmbi_active_declaration">
-                                <label class="form-check-label fw-semibold" for="nmbi_active_declaration">NMBI Active Declaration</label>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Section – Employee Info -->
-                    <h6 class="text-uppercase text-muted fw-bold mb-3 border-bottom pb-2">
-                        <i class="bi bi-briefcase-fill me-2"></i>Employee Information
-                    </h6>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Employee Code</label>
-                            <input type="text" class="form-control font-monospace" id="employee_code">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">User Type</label>
-                            <select class="form-select" id="user_type">
-                                <option value="">— select —</option>
-                                <option value="Nurse">Nurse</option>
-                                <option value="HCA">HCA</option>
-                                <option value="Healthcare Assistant">Healthcare Assistant</option>
-                                <option value="Support Worker">Support Worker</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Status</label>
-                            <select class="form-select" id="status">
-                                <option value="active">Active</option>
-                                <option value="found">Found</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Recruitment ID</label>
-                            <input type="number" class="form-control" id="recruitment_id">
-                        </div>
-                    </div>
+def _gcs_bucket():
+    return _gcs_client().bucket(os.environ.get('GCS_BUCKET_NAME', ''))
 
-                    <!-- Section – Occupational Health -->
-                    <h6 class="text-uppercase text-muted fw-bold mb-3 border-bottom pb-2">
-                        <i class="bi bi-heart-pulse-fill me-2"></i>Occupational Health
-                    </h6>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="occupational_health_screening">
-                                <label class="form-check-label" for="occupational_health_screening">Health Screening</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="immunisation_records_provided">
-                                <label class="form-check-label" for="immunisation_records_provided">Immunisation Records</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="fit_for_nursing_duties">
-                                <label class="form-check-label" for="fit_for_nursing_duties">Fit for Duties</label>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">COVID-19</label>
-                            <select class="form-select" id="covid_19_vaccine"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option></select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">Tuberculosis</label>
-                            <select class="form-select" id="tuberculosis_vaccine"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option></select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">Hepatitis</label>
-                            <select class="form-select" id="hepatitis_antibody"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option></select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">MMR</label>
-                            <select class="form-select" id="mmr_vaccine"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option></select>
-                        </div>
-                    </div>
 
-                    <!-- Section – Garda Vetting -->
-                    <h6 class="text-uppercase text-muted fw-bold mb-3 border-bottom pb-2">
-                        <i class="bi bi-shield-check me-2"></i>Garda Vetting
-                    </h6>
-                    <div class="d-flex gap-4 flex-wrap mb-4">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="garda_vetting_submitted">
-                            <label class="form-check-label fw-semibold" for="garda_vetting_submitted">Garda Vetting Submitted</label>
-                        </div>
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="police_clearance_submitted">
-                            <label class="form-check-label fw-semibold" for="police_clearance_submitted">Police Clearance Submitted</label>
-                        </div>
-                    </div>
+def _gcs_upload(blob_name, data_bytes, content_type='application/octet-stream'):
+    """Upload bytes to GCS and return the blob name."""
+    bucket = _gcs_bucket()
+    blob   = bucket.blob(blob_name)
+    blob.upload_from_string(data_bytes, content_type=content_type)
+    return blob_name
 
-                    <!-- Section – Mandatory Training -->
-                    <h6 class="text-uppercase text-muted fw-bold mb-3 border-bottom pb-2">
-                        <i class="bi bi-journal-check me-2"></i>Mandatory Training
-                    </h6>
-                    <div class="row g-3 mb-2">
-                        {% for t_id, t_label in [
-                            ('manual_handling','Manual Handling'),('cpr_bls','CPR/BLS'),
-                            ('fire_safety','Fire Safety'),('infection_prevention_control','Infection Prevention'),
-                            ('hand_hygiene','Hand Hygiene'),('safeguarding','Safeguarding'),
-                            ('children_first','Children First'),('cyber_security','Cyber Security'),
-                            ('dignity_at_work','Dignity at Work'),('open_disclosure','Open Disclosure'),
-                            ('mapa_pmav','MAPA/PMAV')
-                        ] %}
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold small">{{ t_label }}</label>
-                            <input type="text" class="form-control form-control-sm font-monospace"
-                                   id="{{ t_id }}" placeholder="Certificate on file; Expiry: DD-MM-YYYY; Approved">
-                        </div>
-                        {% endfor %}
-                    </div>
 
-                    <div class="modal-footer border-0 px-0 pb-0 mt-3">
-                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary px-4 fw-bold" id="staffSubmitBtn">Create</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
+def _gcs_download(blob_name):
+    """Download bytes from GCS blob."""
+    bucket = _gcs_bucket()
+    blob   = bucket.blob(blob_name)
+    return blob.download_as_bytes()
 
-<!-- ── View Modal ─────────────────────────────────────────────────── -->
-<div class="modal fade" id="viewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <div class="modal-header text-white"
-                 style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
-                <h5 class="modal-title fw-bold" id="viewModalTitle">Staff Record</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4" id="viewModalBody">
-                <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- ── Edit Extracted CV Modal ──────────────────────────────────── -->
-<div class="modal fade" id="editCvModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <div class="modal-header text-white rounded-top-4"
-                 style="background: linear-gradient(135deg,#0369a1 0%,#0ea5e9 100%);">
-                <h5 class="modal-title fw-bold">
-                    <i class="bi bi-file-text me-2"></i>Edit Extracted CV — <span id="editCvStaffName"></span>
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4">
-                <div class="mb-3">
-                    <label class="form-label fw-semibold text-navy small mb-1"><i class="bi bi-person-badge me-1"></i>User Type</label>
-                    <select id="editCvUserType" class="form-select form-select-sm">
-                        <option value="">— Select —</option>
-                        <option value="Nurse">Nurse</option>
-                        <option value="Healthcare Assistant">Healthcare Assistant</option>
-                        <option value="Midwife">Midwife</option>
-                        <option value="Doctor">Doctor</option>
-                        <option value="Physiotherapist">Physiotherapist</option>
-                        <option value="Occupational Therapist">Occupational Therapist</option>
-                        <option value="Social Worker">Social Worker</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label fw-semibold text-navy small mb-1"><i class="bi bi-file-text me-1"></i>Extracted CV Text</label>
-                    <p class="text-muted" style="font-size:11px;margin-top:-4px;">Editing this will affect AI CV generation and experience analysis.</p>
-                    <textarea id="editCvTextarea" class="form-control font-monospace" rows="16" style="font-size:12px;resize:vertical;"></textarea>
-                </div>
-                <div id="editCvMsg" class="mt-2 small d-none"></div>
-            </div>
-            <div class="modal-footer border-0 pt-0">
-                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button class="btn btn-primary fw-bold px-4" id="editCvSaveBtn">
-                    <i class="bi bi-check-lg me-1"></i> Save Changes
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+def _gcs_signed_url(blob_name, expiry_minutes=60):
+    """
+    Generate a signed URL for a GCS blob (time-limited, no public access needed).
+    Requires the service account to have roles/iam.serviceAccountTokenCreator.
+    Falls back to a direct Flask download URL if signing fails.
+    """
+    import datetime as _dt
+    try:
+        bucket = _gcs_bucket()
+        blob   = bucket.blob(blob_name)
+        url    = blob.generate_signed_url(
+            expiration=_dt.timedelta(minutes=expiry_minutes),
+            method='GET',
+            version='v4',
+        )
+        return url
+    except Exception:
+        # Return None — caller will use internal download route instead
+        return None
 
-<!-- ── PCC Self-Declaration Modal ──────────────────────────────────── -->
-<div class="modal fade" id="pccModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <div class="modal-header text-white rounded-top-4"
-                 style="background: linear-gradient(135deg,#1B3A6B 0%,#2E9E44 100%);">
-                <h5 class="modal-title fw-bold">
-                    <i class="bi bi-file-earmark-lock me-2"></i>PCC Self-Declaration — <span id="pccModalName"></span>
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4" id="pccModalBody">
-                <p class="text-muted small">Generate the International Police Clearance Certificate Self-Declaration & Risk Assessment Form for this staff member.</p>
-                <div id="pccExistingAlert" class="alert alert-info d-none small py-2 mb-3"></div>
-                <div id="pccGenerating" class="d-none text-center py-3">
-                    <div class="spinner-border text-primary me-2"></div>
-                    <span>Generating PCC form...</span>
-                </div>
-                <div id="pccResult" class="d-none">
-                    <div class="alert alert-success small py-2"><i class="bi bi-check-circle me-1"></i> PCC form generated successfully.</div>
-                    <div class="d-flex gap-2 mt-2">
-                        <a id="pccDownloadBtn" href="#" class="btn btn-primary btn-sm"><i class="bi bi-download me-1"></i>Download DOCX</a>
-                    </div>
-                </div>
-                <div id="pccError" class="d-none alert alert-danger small py-2"></div>
-            </div>
-            <div class="modal-footer border-0 pt-0">
-                <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-                <label class="btn btn-outline-secondary btn-sm mb-0">
-                    <i class="bi bi-upload me-1"></i> Upload Edited
-                    <input type="file" id="pccUploadInput" accept=".docx" class="d-none">
-                </label>
-                <button class="btn btn-dark btn-sm fw-bold px-4" id="pccGenerateBtn">
-                    <i class="bi bi-magic me-1"></i> Generate
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- ── Application Form Modal ───────────────────────────────────── -->
-<div class="modal fade" id="aiAppFormModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <div class="modal-header text-white rounded-top-4"
-                 style="background: linear-gradient(135deg,#1B3A6B 0%,#6c757d 100%);">
-                <h5 class="modal-title fw-bold"><i class="bi bi-file-earmark-text me-2"></i>Application Form</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4">
-                <div id="aiAppIdle">
-                    <p class="text-muted mb-1">Generate a filled Xpress Health Application Form for <strong id="aiAppStaffName"></strong>.</p>
-                    <p class="text-muted small mb-4">All fields are populated from the staff profile. Saved and re-downloadable any time.</p>
-                    <div id="aiAppSavedInfo" class="alert alert-success d-none mb-3 py-2 small">
-                        <i class="bi bi-check-circle me-1"></i>Saved application form from <strong id="aiAppSavedDate"></strong>.
-                    </div>
-                    <div class="d-flex gap-2 flex-wrap mb-3">
-                        <button class="btn btn-secondary fw-bold px-4" id="aiAppGenerateBtn"><i class="bi bi-file-earmark-text me-1"></i> Generate Form</button>
-                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiAppDownloadSavedBtn"><i class="bi bi-download me-1"></i> Download Saved</button>
-                    </div>
-                    <div id="aiAppUploadSection" class="d-none border-top pt-3 mt-2">
-                        <p class="text-muted small mb-2"><i class="bi bi-upload me-1"></i>Already edited the form? Upload your revised <code>.docx</code> to replace the saved version.</p>
-                        <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input type="file" id="aiAppUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiAppUploadBtn"><i class="bi bi-cloud-upload me-1"></i> Upload & Replace</button>
-                        </div>
-                        <div id="aiAppUploadMsg" class="mt-2 small d-none"></div>
-                    </div>
-                </div>
-                <div id="aiAppGenerating" class="text-center py-4 d-none">
-                    <div class="spinner-border text-secondary mb-3" style="width:3rem;height:3rem;"></div>
-                    <p class="fw-semibold text-muted mb-1">Building application form…</p>
-                </div>
-                <div id="aiAppDone" class="d-none">
-                    <div class="alert alert-success rounded-3 mb-3"><i class="bi bi-check-circle-fill me-2"></i>Application form generated and saved!</div>
-                    <a href="#" class="btn btn-success fw-bold px-4" id="aiAppDownloadNewBtn" target="_blank"><i class="bi bi-download me-1"></i> Download Form</a>
-                </div>
-                <div id="aiAppError" class="d-none">
-                    <div class="alert alert-danger rounded-3 mb-3" id="aiAppErrorMsg"></div>
-                    <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- ── AI Interview Notes Modal ──────────────────────────────────── -->
-<div class="modal fade" id="aiInterviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <div class="modal-header text-white rounded-top-4"
-                 style="background: linear-gradient(135deg,#1B3A6B 0%,#17a2b8 100%);">
-                <h5 class="modal-title fw-bold"><i class="bi bi-clipboard2-check me-2"></i>AI Interview Notes</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4">
-                <div id="aiIntIdle">
-                    <p class="text-muted mb-1">Generate completed interview notes for <strong id="aiIntStaffName"></strong> using Gemini AI.</p>
-                    <p class="text-muted small mb-4">Answers are written based on their actual profile data — no hallucination. Saved automatically and re-downloadable any time.</p>
-                    <div id="aiIntSavedInfo" class="alert alert-success d-none mb-3 py-2 small">
-                        <i class="bi bi-check-circle me-1"></i>Saved interview notes from <strong id="aiIntSavedDate"></strong>.
-                    </div>
-                    <div class="d-flex gap-2 flex-wrap mb-3">
-                        <button class="btn btn-info fw-bold px-4 text-white" id="aiIntGenerateBtn"><i class="bi bi-clipboard2-check me-1"></i> Generate Notes</button>
-                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiIntDownloadSavedBtn"><i class="bi bi-download me-1"></i> Download Saved</button>
-                    </div>
-                    <div id="aiIntUploadSection" class="d-none border-top pt-3 mt-2">
-                        <p class="text-muted small mb-2"><i class="bi bi-upload me-1"></i>Already edited the notes? Upload your revised <code>.docx</code> to replace the saved version.</p>
-                        <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input type="file" id="aiIntUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiIntUploadBtn"><i class="bi bi-cloud-upload me-1"></i> Upload & Replace</button>
-                        </div>
-                        <div id="aiIntUploadMsg" class="mt-2 small d-none"></div>
-                    </div>
-                </div>
-                <div id="aiIntGenerating" class="text-center py-4 d-none">
-                    <div class="spinner-border text-info mb-3" style="width:3rem;height:3rem;"></div>
-                    <p class="fw-semibold text-muted mb-1">Gemini AI is writing the interview notes…</p>
-                    <p class="text-muted small">This takes about 15–30 seconds.</p>
-                </div>
-                <div id="aiIntDone" class="d-none">
-                    <div class="alert alert-success rounded-3 mb-3"><i class="bi bi-check-circle-fill me-2"></i>Interview notes generated and saved!</div>
-                    <a href="#" class="btn btn-success fw-bold px-4" id="aiIntDownloadNewBtn" target="_blank"><i class="bi bi-download me-1"></i> Download Interview Notes</a>
-                </div>
-                <div id="aiIntError" class="d-none">
-                    <div class="alert alert-danger rounded-3 mb-3" id="aiIntErrorMsg"></div>
-                    <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+# ── Doc webhook collection ────────────────────────────────────────────
 
-<!-- ── AI CV Modal ────────────────────────────────────────────────── -->
-<div class="modal fade" id="aiCvModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <div class="modal-header text-white rounded-top-4"
-                 style="background: linear-gradient(135deg,#1B3A6B 0%,#2E9E44 100%);">
-                <h5 class="modal-title fw-bold"><i class="bi bi-stars me-2"></i>AI CV Generator</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4" id="aiCvModalBody">
-                <div id="aiCvIdle">
-                    <p class="text-muted mb-1">Generate a fully personalised, AI-written CV for <strong id="aiCvStaffName"></strong> using Gemini AI.</p>
-                    <p class="text-muted small mb-4">The CV will be tailored to their experience, qualifications, and role. Once created it is saved and can be re-downloaded any time.</p>
-                    <div id="aiCvSavedInfo" class="alert alert-success d-none mb-3 py-2 small">
-                        <i class="bi bi-check-circle me-1"></i>A saved AI CV exists from <strong id="aiCvSavedDate"></strong>. You can regenerate or download the saved version.
-                    </div>
-                    <div class="d-flex gap-2 flex-wrap mb-3">
-                        <button class="btn btn-warning fw-bold px-4" id="aiCvGenerateBtn"><i class="bi bi-stars me-1"></i> Generate with AI</button>
-                        <button class="btn btn-outline-success d-none fw-bold px-4" id="aiCvDownloadSavedBtn"><i class="bi bi-download me-1"></i> Download Saved CV</button>
-                    </div>
-                    <div id="aiCvUploadSection" class="d-none border-top pt-3 mt-2">
-                        <p class="text-muted small mb-2"><i class="bi bi-upload me-1"></i>Already edited the CV? Upload your revised <code>.docx</code> to replace the saved version.</p>
-                        <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input type="file" id="aiCvUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="aiCvUploadBtn"><i class="bi bi-cloud-upload me-1"></i> Upload & Replace</button>
-                        </div>
-                        <div id="aiCvUploadMsg" class="mt-2 small d-none"></div>
-                    </div>
-                </div>
-                <div id="aiCvGenerating" class="text-center py-4 d-none">
-                    <div class="spinner-border text-warning mb-3" style="width:3rem;height:3rem;"></div>
-                    <p class="fw-semibold text-muted mb-1">Gemini AI is writing the CV…</p>
-                    <p class="text-muted small">This takes about 15–30 seconds.</p>
-                </div>
-                <div id="aiCvDone" class="d-none">
-                    <div class="alert alert-success rounded-3 mb-3"><i class="bi bi-check-circle-fill me-2"></i>AI CV generated and saved successfully!</div>
-                    <p class="text-muted small mb-3">The CV has been saved. You can download it now or re-access it any time using the <i class="bi bi-stars text-warning"></i> button.</p>
-                    <a href="#" class="btn btn-success fw-bold px-4" id="aiCvDownloadNewBtn" target="_blank"><i class="bi bi-download me-1"></i> Download AI CV</a>
-                </div>
-                <div id="aiCvError" class="d-none">
-                    <div class="alert alert-danger rounded-3 mb-3" id="aiCvErrorMsg"></div>
-                    <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+def _doc_webhook_col():
+    return db.doc_webhook
 
-<!-- ── VOS Modal ─────────────────────────────────────────────────── -->
-<div class="modal fade" id="vosModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title"><i class="bi bi-patch-check me-2 text-success"></i>Verification of Service — <span id="vosModalName"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4">
-                <div id="vosIdle">
-                    <p class="text-muted small mb-3">Generate a <strong>Verification of Service – Agency Staff</strong> document with employment history and total eligible service for incremental credit.</p>
-                    <div id="vosSavedInfo" class="alert alert-success py-2 small mb-3 d-none">
-                        A saved document exists from <strong id="vosSavedDate"></strong>.
-                        <a href="#" id="vosExistingDownload" target="_blank" class="ms-2"><i class="bi bi-download me-1"></i>Download</a>
-                    </div>
-                    <button class="btn btn-success w-100" id="vosGenerateBtn"><i class="bi bi-patch-check me-1"></i> Generate Verification of Service</button>
-                </div>
-                <div id="vosGenerating" class="d-none text-center py-3">
-                    <div class="spinner-border text-success mb-3" role="status"></div>
-                    <p class="text-muted">Generating document...</p>
-                </div>
-                <div id="vosResult" class="d-none">
-                    <div class="alert alert-success py-2 mb-3"><i class="bi bi-check-circle me-1"></i>Document generated successfully!</div>
-                    <div class="text-muted small mb-2" id="vosTotal"></div>
-                    <a href="#" id="vosDownloadBtn" target="_blank" class="btn btn-outline-success w-100 mb-3"><i class="bi bi-download me-1"></i> Download Verification of Service</a>
-                    <div class="border-top pt-3 mt-1">
-                        <p class="text-muted small mb-2"><i class="bi bi-upload me-1"></i>Already edited the document? Upload your revised <code>.docx</code> to replace the saved version.</p>
-                        <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input type="file" id="vosUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="vosUploadBtn"><i class="bi bi-cloud-upload me-1"></i> Upload & Replace</button>
-                        </div>
-                        <div id="vosUploadMsg" class="mt-2 small d-none"></div>
-                    </div>
-                </div>
-                <div id="vosError" class="d-none">
-                    <div class="alert alert-danger py-2 small" id="vosErrorMsg"></div>
-                </div>
-            </div>
-            <div class="modal-footer border-0 pt-0">
-                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- ── VOS Nurse Modal ─────────────────────────────────────────── -->
-<div class="modal fade" id="vosNurseModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title"><i class="bi bi-patch-check-fill me-2 text-primary"></i>Verification of Service (Nurse) — <span id="vosNurseModalName"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4">
-                <div id="vosNurseIdle">
-                    <p class="text-muted small mb-3">Generate a <strong>Verification of Service – Agency Staff</strong> document for nurse staff with Ireland employment history.</p>
-                    <button class="btn btn-primary w-100" id="vosNurseGenerateBtn"><i class="bi bi-patch-check-fill me-1"></i> Generate Verification of Service</button>
-                </div>
-                <div id="vosNurseGenerating" class="d-none text-center py-3">
-                    <div class="spinner-border text-primary mb-3" role="status"></div>
-                    <p class="text-muted">Generating document...</p>
-                </div>
-                <div id="vosNurseResult" class="d-none">
-                    <div class="alert alert-success py-2 mb-3"><i class="bi bi-check-circle me-1"></i> Document generated successfully!</div>
-                    <div class="text-muted small mb-2" id="vosNurseTotal"></div>
-                    <a href="#" id="vosNurseDownloadBtn" target="_blank" class="btn btn-outline-primary w-100 mb-3"><i class="bi bi-download me-1"></i> Download Verification of Service</a>
-                    <div class="border-top pt-3 mt-1">
-                        <p class="text-muted small mb-2"><i class="bi bi-upload me-1"></i>Upload an edited <code>.docx</code> to replace the saved version.</p>
-                        <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input type="file" id="vosNurseUploadInput" accept=".docx" class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="vosNurseUploadBtn"><i class="bi bi-cloud-upload me-1"></i> Upload & Replace</button>
-                        </div>
-                        <div id="vosNurseUploadMsg" class="mt-2 small d-none"></div>
-                    </div>
-                </div>
-                <div id="vosNurseError" class="d-none">
-                    <div class="alert alert-danger py-2 small" id="vosNurseErrorMsg"></div>
-                </div>
-            </div>
-            <div class="modal-footer border-0 pt-0">
-                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
+# ── DOCX → PDF converter ──────────────────────────────────────────────
 
-<!-- ── Screening Interview Modal ─────────────────────────────────── -->
-<div class="modal fade" id="screeningModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title fw-bold">
-                    <i class="bi bi-clipboard2-pulse me-2" style="color:#6366f1;"></i>Screening Interview — <span id="screeningModalName"></span>
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4">
+def _docx_to_pdf_bytes(docx_bytes):
+    """
+    Convert DOCX bytes to PDF bytes.
+    Uses LibreOffice (soffice) via subprocess — available on the server.
+    Falls back to docx2pdf if soffice not found.
+    """
+    import subprocess, tempfile, pathlib
 
-                <!-- Idle -->
-                <div id="screeningIdle">
-                    <p class="text-muted small mb-3">
-                        Generate the <strong>Screening Interview Record</strong> (.docx and .pdf) for this staff member.
-                        The Date will be set to 15 days before first shift and Candidate 1st Contact Date
-                        to 20 days before first shift. Leave first shift blank to keep those fields empty.
-                    </p>
-                    <div class="mb-3">
-                        <label class="form-label small fw-semibold">First Shift Date <span class="text-muted fw-normal">(optional — sets interview & contact dates)</span></label>
-                        <input type="date" class="form-control form-control-sm" id="screeningFirstShift">
-                    </div>
-                    <div id="screeningSavedInfo" class="alert alert-success py-2 small mb-3 d-none">
-                        <i class="bi bi-check-circle me-1"></i>
-                        Saved record from <strong id="screeningSavedDate"></strong>.
-                        <div class="d-flex gap-3 mt-1">
-                            <a href="#" id="screeningExistingDownloadDocx" target="_blank">
-                                <i class="bi bi-file-earmark-word me-1"></i>Download DOCX
-                            </a>
-                            <a href="#" id="screeningExistingDownloadPdf" target="_blank">
-                                <i class="bi bi-file-earmark-pdf me-1"></i>Download PDF
-                            </a>
-                        </div>
-                    </div>
-                    <button class="btn w-100 fw-bold" id="screeningGenerateBtn"
-                            style="background:#6366f1;color:#fff;">
-                        <i class="bi bi-clipboard2-pulse me-1"></i> Generate Screening Interview Record
-                    </button>
-                </div>
+    with tempfile.TemporaryDirectory() as tmp:
+        docx_path = pathlib.Path(tmp) / 'input.docx'
+        pdf_path  = pathlib.Path(tmp) / 'input.pdf'
+        docx_path.write_bytes(docx_bytes)
 
-                <!-- Generating -->
-                <div id="screeningGenerating" class="d-none text-center py-3">
-                    <div class="spinner-border mb-3" style="color:#6366f1;" role="status"></div>
-                    <p class="text-muted">Generating document...</p>
-                </div>
+        # Try LibreOffice first (preferred)
+        for soffice in ['soffice', 'libreoffice',
+                        '/usr/bin/soffice', '/usr/bin/libreoffice']:
+            try:
+                result = subprocess.run(
+                    [soffice, '--headless', '--convert-to', 'pdf',
+                     '--outdir', tmp, str(docx_path)],
+                    capture_output=True, timeout=60
+                )
+                if result.returncode == 0 and pdf_path.exists():
+                    return pdf_path.read_bytes()
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                continue
 
-                <!-- Result -->
-                <div id="screeningResult" class="d-none">
-                    <div class="alert alert-success py-2 mb-3">
-                        <i class="bi bi-check-circle me-1"></i> Document generated successfully!
-                    </div>
-                    <div class="d-flex gap-2 mb-3">
-                        <a href="#" id="screeningDownloadBtn" target="_blank"
-                           class="btn btn-outline-success flex-fill">
-                            <i class="bi bi-file-earmark-word me-1"></i> Download DOCX
-                        </a>
-                        <a href="#" id="screeningDownloadPdfBtn" target="_blank"
-                           class="btn btn-outline-danger flex-fill">
-                            <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
-                        </a>
-                    </div>
-                    <div id="screeningPdfUnavailable" class="alert alert-warning py-2 small d-none">
-                        <i class="bi bi-exclamation-triangle me-1"></i>
-                        PDF could not be generated for this record — the DOCX is still available above.
-                    </div>
-                    <div class="border-top pt-3 mt-1">
-                        <p class="text-muted small mb-2">
-                            <i class="bi bi-upload me-1"></i>
-                            Upload an edited <code>.docx</code> to replace the saved version.
-                        </p>
-                        <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input type="file" id="screeningUploadInput" accept=".docx"
-                                   class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="screeningUploadBtn">
-                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
-                            </button>
-                        </div>
-                        <div id="screeningUploadMsg" class="mt-2 small d-none"></div>
-                    </div>
-                </div>
+        raise RuntimeError(
+            'LibreOffice not found. Install with: sudo apt install libreoffice'
+        )
 
-                <!-- Error -->
-                <div id="screeningError" class="d-none">
-                    <div class="alert alert-danger py-2 small" id="screeningErrorMsg"></div>
-                </div>
 
-            </div>
-            <div class="modal-footer border-0 pt-0">
-                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
+# ── Background HSE document upload ───────────────────────────────────
 
-<!-- ── Incremental Credit Modal ──────────────────────────────────── -->
-<div class="modal fade" id="incrementalCreditModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title fw-bold">
-                    <i class="bi bi-graph-up-arrow me-2" style="color:#0d9488;"></i>Incremental Credit — <span id="incrementalCreditModalName"></span>
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4">
-
-                <!-- Idle -->
-                <div id="incrementalCreditIdle">
-                    <p class="text-muted small mb-3">
-                        Generate the <strong>Incremental Credit for Previous Service</strong> assessment
-                        (.docx and .pdf) for this nurse, using their Point Scale Document on file.
-                    </p>
-                    <div id="incrementalCreditSavedInfo" class="alert alert-success py-2 small mb-3 d-none">
-                        <i class="bi bi-check-circle me-1"></i>
-                        Saved record from <strong id="incrementalCreditSavedDate"></strong>.
-                        <div class="d-flex gap-3 mt-1">
-                            <a href="#" id="incrementalCreditExistingDownloadDocx" target="_blank">
-                                <i class="bi bi-file-earmark-word me-1"></i>Download DOCX
-                            </a>
-                            <a href="#" id="incrementalCreditExistingDownloadPdf" target="_blank">
-                                <i class="bi bi-file-earmark-pdf me-1"></i>Download PDF
-                            </a>
-                        </div>
-                    </div>
-                    <button class="btn w-100 fw-bold" id="incrementalCreditGenerateBtn"
-                            style="background:#0d9488;color:#fff;">
-                        <i class="bi bi-graph-up-arrow me-1"></i> Generate Incremental Credit
-                    </button>
-                </div>
-
-                <!-- Generating -->
-                <div id="incrementalCreditGenerating" class="d-none text-center py-3">
-                    <div class="spinner-border mb-3" style="color:#0d9488;" role="status"></div>
-                    <p class="text-muted">Reading Point Scale Document and generating assessment...</p>
-                </div>
-
-                <!-- Result -->
-                <div id="incrementalCreditResult" class="d-none">
-                    <div class="alert alert-success py-2 mb-3">
-                        <i class="bi bi-check-circle me-1"></i> Document generated successfully!
-                    </div>
-                    <div id="incrementalCreditWarning" class="alert alert-warning py-2 small d-none"></div>
-                    <div class="d-flex gap-2 mb-3">
-                        <a href="#" id="incrementalCreditDownloadBtn" target="_blank"
-                           class="btn btn-outline-success flex-fill">
-                            <i class="bi bi-file-earmark-word me-1"></i> Download DOCX
-                        </a>
-                        <a href="#" id="incrementalCreditDownloadPdfBtn" target="_blank"
-                           class="btn btn-outline-danger flex-fill">
-                            <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
-                        </a>
-                    </div>
-                    <div class="border-top pt-3 mt-1">
-                        <p class="text-muted small mb-2">
-                            <i class="bi bi-upload me-1"></i>
-                            Upload an edited <code>.docx</code> to replace the saved version.
-                        </p>
-                        <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input type="file" id="incrementalCreditUploadInput" accept=".docx"
-                                   class="form-control form-control-sm" style="max-width:260px;">
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-3" id="incrementalCreditUploadBtn">
-                                <i class="bi bi-cloud-upload me-1"></i> Upload & Replace
-                            </button>
-                        </div>
-                        <div id="incrementalCreditUploadMsg" class="mt-2 small d-none"></div>
-                    </div>
-                </div>
-
-                <!-- Error -->
-                <div id="incrementalCreditError" class="d-none">
-                    <div class="alert alert-danger py-2 small" id="incrementalCreditErrorMsg"></div>
-                </div>
-
-            </div>
-            <div class="modal-footer border-0 pt-0">
-                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════
-     STYLES — Actions modal card buttons
-═══════════════════════════════════════════════════════════════════ -->
-<style>
-.am-action-btn {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    background: #f8fafc;
-    cursor: pointer;
-    text-align: left;
-    transition: background .12s, border-color .12s, transform .08s;
-    text-decoration: none;
-    color: inherit;
-}
-.am-action-btn:hover {
-    background: #f1f5f9;
-    border-color: #94a3b8;
-    transform: translateY(-1px);
-    color: inherit;
-}
-.am-icon { font-size: 18px; flex-shrink: 0; }
-.am-label { font-size: 13px; font-weight: 600; color: #1e293b; line-height: 1.3; }
-.am-desc  { font-size: 11px; color: #64748b; margin-top: 1px; }
-</style>
-
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script>
-const FETCH_URL = "{{ '/admin/live-staffs/get' }}";
-const ADD_URL   = "{{ '/admin/live-staffs/add' }}";
-const EDIT_URL  = "{{ '/admin/live-staffs/edit' }}";
-const DEL_URL   = "{{ '/admin/live-staffs/delete' }}";
-
-// ── Fetch one record from server ──────────────────────────────────────
-async function fetchRecord(id) {
-    const res = await fetch(`${FETCH_URL}?id=${id}`);
-    if (!res.ok) throw new Error('Failed to load record');
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Unknown error');
-    return data.record;
+HSE_DOC_TYPES = {
+    'cv':          'hse_cv',
+    'interview':   'interview_notes',
+    'appform':     'application_form',
+    'pcc':         'others_2',
 }
 
-// ── Field helpers ─────────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
-const setVal = (id, val) => { if ($(id)) $(id).value = val ?? ''; };
-const setChk = (id, val) => { if ($(id)) $(id).checked = !!val; };
 
-function resetForm() {
-    ['full_name','email','mobile_number','date_of_birth','pps_number','nationality',
-     'nmbi_pin_number','address','eircode_postcode','permission_to_work','visa_type',
-     'passport_number','passport_expiry','driving_licence_number','verification_date',
-     'verified_by','registration_number_pin','registration_expiry_date',
-     'employee_code','user_type','status','recruitment_id',
-     'covid_19_vaccine','tuberculosis_vaccine','hepatitis_antibody','mmr_vaccine',
-     'manual_handling','cpr_bls','fire_safety','infection_prevention_control',
-     'hand_hygiene','safeguarding','children_first','cyber_security',
-     'dignity_at_work','open_disclosure','mapa_pmav'
-    ].forEach(id => setVal(id, ''));
-    ['doc_passport','doc_birth_cert','doc_driving','doc_address',
-     'nmbi_active_declaration','occupational_health_screening',
-     'immunisation_records_provided','fit_for_nursing_duties',
-     'garda_vetting_submitted','police_clearance_submitted'
-    ].forEach(id => setChk(id, false));
-    $('staff_id').value = '';
-}
+def _resolve_xn_staff_id(staff_mongo_id, email):
+    """
+    Get the XN Portal staff_id to use in the HSE document upload API.
 
-function populateForm(rec) {
-    const s1   = rec.section_1_personal_details || {};
-    const s2   = rec.section_2_identity_verification || {};
-    const s3   = rec.section_3_professional_registration || {};
-    const s8   = rec.section_8_garda_vetting_police_clearance || {};
-    const s9   = rec.section_9_occupational_health || {};
-    const s10  = rec.section_10_mandatory_training || {};
-    const visa = s1.work_permit_visa_status || {};
-    const docs = s2.documents_submitted || {};
+    Priority:
+      1. live_staffs.staff_id field (already stored) — use directly
+      2. live_staffs.xn_staff_id field (previously fetched) — use directly
+      3. Call XN Portal user-document-list API with email → get data.id
+         → store in live_staffs.xn_staff_id for future use
 
-    setVal('full_name',    s1.full_name);
-    setVal('email',        rec.email);
-    setVal('mobile_number', s1.mobile_number);
-    setVal('date_of_birth', s1.date_of_birth);
-    setVal('pps_number',   s1.pps_number);
-    setVal('nationality',  s1.nationality);
-    setVal('nmbi_pin_number', s1.nmbi_pin_number);
-    setVal('address',      s1.address);
-    setVal('eircode_postcode', s1.eircode_postcode);
-    setVal('permission_to_work', visa.permission_to_work);
-    setVal('visa_type',    visa.visa_type);
-    setVal('passport_number', s2.passport_number);
-    setVal('passport_expiry', s2.expiry_date);
-    setVal('driving_licence_number', s2.driving_licence_number);
-    setVal('verification_date', s2.verification_date);
-    setVal('verified_by',  s2.verified_by);
-    setChk('doc_passport',   docs.passport);
-    setChk('doc_birth_cert', docs.birth_certificate);
-    setChk('doc_driving',    docs.driving_licence);
-    setChk('doc_address',    docs.proof_of_address);
-    setVal('registration_number_pin',  s3.registration_number_pin);
-    setVal('registration_expiry_date', s3.registration_expiry_date);
-    setChk('nmbi_active_declaration',  s3.nmbi_active_declaration);
-    setVal('employee_code',  rec.employee_code);
-    setVal('user_type',      rec.user_type);
-    setVal('status',         rec.status || 'active');
-    setVal('recruitment_id', rec.recruitment_id);
-    setChk('occupational_health_screening', s9.occupational_health_screening);
-    setChk('immunisation_records_provided', s9.immunisation_records_provided);
-    setChk('fit_for_nursing_duties',        s9.fit_for_nursing_duties);
-    setVal('covid_19_vaccine',    s9.covid_19_vaccine);
-    setVal('tuberculosis_vaccine', s9.tuberculosis_vaccine);
-    setVal('hepatitis_antibody',  s9.hepatitis_antibody);
-    setVal('mmr_vaccine',         s9.mmr_vaccine);
-    setChk('garda_vetting_submitted',    s8.garda_vetting_submitted);
-    setChk('police_clearance_submitted', s8.police_clearance_submitted);
-    ['manual_handling','cpr_bls','fire_safety','infection_prevention_control',
-     'hand_hygiene','safeguarding','children_first','cyber_security',
-     'dignity_at_work','open_disclosure','mapa_pmav'
-    ].forEach(k => setVal(k, s10[k]));
-}
+    Returns the resolved staff_id string, or None if not found.
+    """
+    import requests as _req
 
-function formPayload() {
-    const g = id => $(id)?.value?.trim() ?? '';
-    const c = id => $(id)?.checked ?? false;
-    return {
-        staff_id: $('staff_id').value,
-        full_name: g('full_name'), email: g('email'),
-        mobile_number: g('mobile_number'), date_of_birth: g('date_of_birth'),
-        pps_number: g('pps_number'), nationality: g('nationality'),
-        nmbi_pin_number: g('nmbi_pin_number'), address: g('address'),
-        eircode_postcode: g('eircode_postcode'),
-        permission_to_work: g('permission_to_work'), visa_type: g('visa_type'),
-        passport_number: g('passport_number'), passport_expiry: g('passport_expiry'),
-        driving_licence_number: g('driving_licence_number'),
-        verification_date: g('verification_date'), verified_by: g('verified_by'),
-        doc_passport: c('doc_passport'), doc_birth_cert: c('doc_birth_cert'),
-        doc_driving: c('doc_driving'), doc_address: c('doc_address'),
-        registration_number_pin: g('registration_number_pin'),
-        registration_expiry_date: g('registration_expiry_date'),
-        nmbi_active_declaration: c('nmbi_active_declaration'),
-        employee_code: g('employee_code'), user_type: g('user_type'),
-        status: g('status'),
-        recruitment_id: g('recruitment_id') ? parseInt(g('recruitment_id')) : null,
-        occupational_health_screening: c('occupational_health_screening'),
-        immunisation_records_provided: c('immunisation_records_provided'),
-        fit_for_nursing_duties: c('fit_for_nursing_duties'),
-        covid_19_vaccine: g('covid_19_vaccine'),
-        tuberculosis_vaccine: g('tuberculosis_vaccine'),
-        hepatitis_antibody: g('hepatitis_antibody'), mmr_vaccine: g('mmr_vaccine'),
-        garda_vetting_submitted: c('garda_vetting_submitted'),
-        police_clearance_submitted: c('police_clearance_submitted'),
-        manual_handling: g('manual_handling'), cpr_bls: g('cpr_bls'),
-        fire_safety: g('fire_safety'),
-        infection_prevention_control: g('infection_prevention_control'),
-        hand_hygiene: g('hand_hygiene'), safeguarding: g('safeguarding'),
-        children_first: g('children_first'), cyber_security: g('cyber_security'),
-        dignity_at_work: g('dignity_at_work'), open_disclosure: g('open_disclosure'),
-        mapa_pmav: g('mapa_pmav'),
-    };
-}
+    col = _staffs_col()
 
-// ── Add ───────────────────────────────────────────────────────────────
-function prepareAddModal() {
-    resetForm();
-    $('staffModalLabel').textContent = 'Add Staff';
-    $('staffSubmitBtn').textContent  = 'Create';
-    $('status').value = 'active';
-}
+    # 1. Check live_staffs.staff_id field first (primary source)
+    doc = col.find_one(
+        {"_id": ObjectId(staff_mongo_id)},
+        {"staff_id": 1, "xn_staff_id": 1, "email": 1}
+    )
+    if doc and doc.get('staff_id'):
+        return str(doc['staff_id'])
 
-// ── Form submit ───────────────────────────────────────────────────────
-document.addEventListener('submit', async function (e) {
-    if (!e.target.matches('#staffForm')) return;
-    e.preventDefault();
-    const btn    = $('staffSubmitBtn');
-    const isEdit = !!$('staff_id').value;
-    const url    = isEdit ? EDIT_URL : ADD_URL;
-    btn.disabled    = true;
-    btn.textContent = isEdit ? 'Saving…' : 'Creating…';
-    try {
-        const res    = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formPayload())
-        });
-        const result = await res.json();
-        if (result.success) {
-            Swal.fire({ icon:'success', title:'Saved!', text:result.message, timer:1500, showConfirmButton:false })
-                .then(() => { bootstrap.Modal.getInstance($('staffModal')).hide(); location.reload(); });
-        } else {
-            Swal.fire('Error', result.error || 'Operation failed', 'error');
-        }
-    } catch {
-        Swal.fire('Error', 'Network error – please try again', 'error');
-    } finally {
-        btn.disabled    = false;
-        btn.textContent = isEdit ? 'Save Changes' : 'Create';
-    }
-});
+    # 2. Check previously resolved xn_staff_id
+    if doc and doc.get('xn_staff_id'):
+        return str(doc['xn_staff_id'])
 
-// ── View (called by hidden btn-view triggers) ─────────────────────────
-document.querySelectorAll('.btn-view').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        $('viewModalTitle').textContent = 'Loading…';
-        $('viewModalBody').innerHTML =
-            '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
-        new bootstrap.Modal($('viewModal')).show();
-        try {
-            const rec = await fetchRecord(btn.dataset.id);
-            const s1  = rec.section_1_personal_details || {};
-            const s3  = rec.section_3_professional_registration || {};
-            const s9  = rec.section_9_occupational_health || {};
-            const s10 = rec.section_10_mandatory_training || {};
-            const s5  = rec.section_5_employment_history || {};
-            const s7  = rec.section_7_references || {};
-            const visa = (s1.work_permit_visa_status || {});
-            $('viewModalTitle').textContent = s1.full_name || rec.email;
-            const row = (label, val) =>
-                `<tr><th class="text-muted fw-normal small pe-3" style="width:42%;white-space:nowrap">${label}</th>
-                     <td class="small fw-semibold">${val || '—'}</td></tr>`;
-            const badge = val => val
-                ? '<span class="badge bg-success rounded-pill">Yes</span>'
-                : '<span class="badge bg-secondary rounded-pill">No</span>';
-            const trainingRows = Object.entries(s10).map(([k, v]) => {
-                const label   = k.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
-                const expired = v && v.includes('Expired');
-                return `<tr><th class="text-muted fw-normal small pe-3">${label}</th>
-                             <td class="small ${expired ? 'text-danger fw-semibold' : 'text-success'}">${v || '—'}</td></tr>`;
-            }).join('');
-            const refs = [s7.reference_1, s7.reference_2, s7.reference_3]
-                .filter(r => r && r.name)
-                .map(r => `<div class="mb-1"><strong>${r.name}</strong> — ${r.position || ''}, ${r.organisation || ''} <span class="text-muted small">${r.email || ''}</span></div>`)
-                .join('') || '—';
-            const entries = (s5.entries || []).filter(e => e.employer)
-                .map(e => `<div class="mb-1"><strong>${e.employer}</strong> — ${e.position || ''}</div>`)
-                .join('') || '—';
-            $('viewModalBody').innerHTML = `
-                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Personal Details</h6>
-                <table class="table table-sm table-borderless mb-4">
-                    ${row('Full Name', s1.full_name)}${row('Email', rec.email)}
-                    ${row('Mobile', s1.mobile_number)}${row('Date of Birth', s1.date_of_birth)}
-                    ${row('Nationality', s1.nationality)}${row('PPS Number', s1.pps_number)}
-                    ${row('Address', s1.address)}${row('Eircode', s1.eircode_postcode)}
-                    ${row('Visa Type', visa.visa_type)}${row('Employee Code', rec.employee_code)}
-                    ${row('User Type', rec.user_type)}${row('Status', rec.status)}
-                    ${row('Recruitment ID', rec.recruitment_id)}
-                    ${row('NMBI Reg Expiry', s3.registration_expiry_date)}
-                </table>
-                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Employment</h6>
-                <div class="mb-4 small">${entries}</div>
-                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">References</h6>
-                <div class="mb-4 small">${refs}</div>
-                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Occupational Health</h6>
-                <table class="table table-sm table-borderless mb-4">
-                    <tr><th class="text-muted fw-normal small pe-3">Health Screening</th><td>${badge(s9.occupational_health_screening)}</td></tr>
-                    <tr><th class="text-muted fw-normal small pe-3">Fit for Duties</th><td>${badge(s9.fit_for_nursing_duties)}</td></tr>
-                    <tr><th class="text-muted fw-normal small pe-3">COVID-19</th><td class="small">${s9.covid_19_vaccine || '—'}</td></tr>
-                    <tr><th class="text-muted fw-normal small pe-3">Tuberculosis</th><td class="small">${s9.tuberculosis_vaccine || '—'}</td></tr>
-                    <tr><th class="text-muted fw-normal small pe-3">Hepatitis</th><td class="small">${s9.hepatitis_antibody || '—'}</td></tr>
-                    <tr><th class="text-muted fw-normal small pe-3">MMR</th><td class="small">${s9.mmr_vaccine || '—'}</td></tr>
-                </table>
-                <h6 class="text-uppercase text-muted fw-bold border-bottom pb-2 mb-3">Mandatory Training</h6>
-                <table class="table table-sm table-borderless">${trainingRows}</table>`;
-        } catch (e) {
-            $('viewModalBody').innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
-        }
-    });
-});
+    # 3. Fetch from XN Portal API
+    if not email:
+        return None
 
-// ── Edit (called by hidden btn-edit triggers) ─────────────────────────
-(function () {
-    let activeModal = null;
-    document.querySelectorAll('.btn-edit').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            resetForm();
-            $('staffModalLabel').textContent = 'Edit Staff';
-            $('staffSubmitBtn').textContent  = 'Save Changes';
-            $('staff_id').value = btn.dataset.id;
-            activeModal = new bootstrap.Modal($('staffModal'));
-            activeModal.show();
-            try {
-                const rec = await fetchRecord(btn.dataset.id);
-                populateForm(rec);
-            } catch (e) {
-                Swal.fire('Error', e.message, 'error');
-                activeModal.hide();
-            }
-        });
-    });
-})();
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
 
-// ── Delete (called by hidden btn-delete triggers) ─────────────────────
-document.querySelectorAll('.btn-delete').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        const { isConfirmed } = await Swal.fire({
-            title: 'Delete Staff Record?',
-            html: `Remove <strong>${btn.dataset.name}</strong>? This cannot be undone.`,
-            icon: 'warning', showCancelButton: true,
-            confirmButtonColor: '#d33', confirmButtonText: 'Yes, delete'
-        });
-        if (!isConfirmed) return;
-        try {
-            const res    = await fetch(DEL_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ staff_id: btn.dataset.id })
-            });
-            const result = await res.json();
-            if (result.success) {
-                Swal.fire('Deleted!', '', 'success').then(() => location.reload());
-            } else {
-                Swal.fire('Error', result.error || 'Delete failed', 'error');
-            }
-        } catch {
-            Swal.fire('Error', 'Network error', 'error');
-        }
-    });
-});
+    if not base_url:
+        return None
 
-// ═══════════════════════════════════════════════════════════════════════
-// ACTIONS MODAL — single consolidated entry point for all row actions
-// ═══════════════════════════════════════════════════════════════════════
-(function () {
-    let _id = '', _name = '', _utLower = '';
+    try:
+        resp = _req.post(
+            f"{base_url}/ai/recruitments/user-document-list",
+            json={"email": email},
+            headers={
+                "Api-Key":       api_key,
+                "X-App-Country": app_country,
+                "Content-Type":  "application/json",
+                "Accept":        "application/json",
+            },
+            timeout=30,
+        )
+        # Handle 405 — retry with GET
+        if resp.status_code == 405:
+            resp = _req.get(
+                f"{base_url}/ai/recruitments/user-document-list",
+                params={"email": email},
+                headers={
+                    "Api-Key":       api_key,
+                    "X-App-Country": app_country,
+                    "Accept":        "application/json",
+                },
+                timeout=30,
+            )
 
-    function _initials(name) {
-        return (name || '').split(' ').filter(Boolean)
-            .slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
-    }
+        data     = resp.json()
+        api_data = data.get('data') or {}
 
-    // Helper: close actions modal, then fire callback once hidden
-    function _closeAndThen(cb) {
-        const amEl = $('actionsModal');
-        const amInst = bootstrap.Modal.getInstance(amEl);
-        if (amInst) {
-            amEl.addEventListener('hidden.bs.modal', cb, { once: true });
-            amInst.hide();
-        } else {
-            cb();
-        }
-    }
+        # Handle both list and dict response
+        if isinstance(api_data, list):
+            api_data = api_data[0] if api_data else {}
 
-    // Open actions modal
-    document.querySelectorAll('.btn-actions').forEach(btn => {
-        btn.addEventListener('click', () => {
-            _id      = btn.dataset.id;
-            _name    = btn.dataset.name;
-            _utLower = (btn.dataset.utLower || '').toLowerCase();
+        xn_id = str(api_data.get('id', '')).strip()
+        if xn_id:
+            # Store as xn_staff_id and also as staff_id for future use
+            col.update_one(
+                {"_id": ObjectId(staff_mongo_id)},
+                {"$set": {
+                    "xn_staff_id": xn_id,
+                    "staff_id":    xn_id,
+                }}
+            )
+            return xn_id
 
-            // Populate header
-            $('amAvatar').textContent = _initials(_name);
-            $('amName').textContent   = _name;
-            $('amMeta').textContent   = [btn.dataset.type, btn.dataset.email].filter(Boolean).join(' · ');
+    except Exception:
+        pass
 
-            // Standard CV download link
-            document.querySelector('.am-dl-cv').href = btn.dataset.cvUrl || ('/admin/live-staffs/cv/' + _id);
+    return None
 
-            // VOS section visibility
-            const isHca   = /healthcare assistant|health care assistant|\bhca\b/.test(_utLower);
-            const isNurse = /nurse|rgn|rnm|midwife|nchd|cns|phn/.test(_utLower);
-            document.querySelector('.am-vos-hca-col').classList.toggle('d-none', !isHca);
-            document.querySelector('.am-vos-nurse-col').classList.toggle('d-none', !isNurse);
-            $('amVosSection').classList.toggle('d-none', !isHca && !isNurse);
-            $('amIncrementalCreditSection').classList.toggle('d-none', !isNurse);
 
-            new bootstrap.Modal($('actionsModal')).show();
-        });
-    });
+def _push_hse_document_background(staff_id_str, doc_type_key,
+                                   docx_bytes, staff_name='',
+                                   mongo_id=None, email=''):
+    """
+    Fire-and-forget background task.
+    Converts DOCX → PDF, POSTs to HSE document upload API,
+    saves full response to doc_webhook collection.
+    """
+    def _run():
+        import requests as _req
 
-    // Delegate all button clicks inside the actions modal
-    $('actionsModal').addEventListener('click', function (e) {
-        const btn = e.target.closest('.am-action-btn');
-        if (!btn) return;
+        base_url    = os.environ.get('DOC_BASE_URL', '').rstrip('/')
+        api_key     = os.environ.get('DOC_API_KEY', '')
+        app_country = os.environ.get('XN_APP_COUNTRY', '')
 
-        // ── View ──────────────────────────────────────────────────────
-        if (btn.classList.contains('am-view')) {
-            _closeAndThen(() => {
-                const trigger = document.querySelector(`.btn-view[data-id="${_id}"]`);
-                if (trigger) trigger.click();
-            });
-            return;
-        }
+        if not base_url:
+            _doc_webhook_col().insert_one({
+                "staff_id":     staff_id_str,
+                "staff_name":   staff_name,
+                "doc_type":     doc_type_key,
+                "status":       "error",
+                "error":        "DOC_BASE_URL not set in environment",
+                "triggered_at": datetime.utcnow(),
+            })
+            return
 
-        // ── Edit record ───────────────────────────────────────────────
-        if (btn.classList.contains('am-edit')) {
-            _closeAndThen(() => {
-                const trigger = document.querySelector(`.btn-edit[data-id="${_id}"]`);
-                if (trigger) trigger.click();
-            });
-            return;
-        }
+        # Resolve xn_staff_id — fetch from XN Portal if missing
+        resolved_staff_id = staff_id_str
+        if mongo_id and email:
+            xn_id = _resolve_xn_staff_id(mongo_id, email)
+            if xn_id:
+                resolved_staff_id = xn_id
 
-        // ── Edit extracted CV ─────────────────────────────────────────
-        if (btn.classList.contains('am-edit-cv')) {
-            _closeAndThen(() => {
-                currentEditCvStaffId = _id;
-                $('editCvStaffName').textContent = _name;
-                $('editCvTextarea').value = 'Loading...';
-                $('editCvMsg').classList.add('d-none');
-                new bootstrap.Modal($('editCvModal')).show();
-                fetch(`${FETCH_URL}?id=${_id}`)
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.success) {
-                            $('editCvTextarea').value = data.record.extracted_cv || '';
-                            const sel = $('editCvUserType');
-                            const ut  = data.record.user_type || '';
-                            sel.value = Array.from(sel.options).find(o => o.value === ut) ? ut : '';
-                        } else {
-                            $('editCvTextarea').value = '';
-                        }
-                    }).catch(() => { $('editCvTextarea').value = ''; });
-            });
-            return;
-        }
+        endpoint      = f"{base_url}/api/admin/staff/hse-document-upload"
+        hse_type      = HSE_DOC_TYPES.get(doc_type_key, doc_type_key)
+        pdf_bytes     = None
+        convert_error = None
 
-        // ── AI CV ─────────────────────────────────────────────────────
-        if (btn.classList.contains('am-ai-cv')) {
-            _closeAndThen(() => {
-                const trigger = document.querySelector(`.btn-ai-cv[data-id="${_id}"]`);
-                if (trigger) trigger.click();
-            });
-            return;
-        }
+        # Convert DOCX → PDF
+        try:
+            pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
+        except Exception as e:
+            convert_error = str(e)
 
-        // ── AI Interview ──────────────────────────────────────────────
-        if (btn.classList.contains('am-ai-interview')) {
-            _closeAndThen(() => {
-                const trigger = document.querySelector(`.btn-ai-interview[data-id="${_id}"]`);
-                if (trigger) trigger.click();
-            });
-            return;
-        }
+        if not pdf_bytes:
+            _doc_webhook_col().insert_one({
+                "staff_id":     staff_id_str,
+                "staff_name":   staff_name,
+                "doc_type":     doc_type_key,
+                "hse_type":     hse_type,
+                "status":       "error",
+                "error":        f"PDF conversion failed: {convert_error}",
+                "triggered_at": datetime.utcnow(),
+            })
+            return
 
-        // ── Application Form ──────────────────────────────────────────
-        if (btn.classList.contains('am-ai-appform')) {
-            _closeAndThen(() => {
-                const trigger = document.querySelector(`.btn-ai-appform[data-id="${_id}"]`);
-                if (trigger) trigger.click();
-            });
-            return;
-        }
+        # POST to HSE API
+        try:
+            resp = _req.post(
+                endpoint,
+                data={
+                    "staff_id":          resolved_staff_id,
+                    "hse_document_type": hse_type,
+                },
+                files={
+                    "file": (f"{hse_type}.pdf", pdf_bytes, "application/pdf"),
+                },
+                headers={
+                    "Api-Key":       api_key,
+                    "X-App-Country": app_country,
+                    "Accept":        "application/json",
+                },
+                timeout=60,
+            )
 
-        // ── PCC ───────────────────────────────────────────────────────
-        if (btn.classList.contains('am-pcc')) {
-            _closeAndThen(() => {
-                const trigger = document.querySelector(`.btn-pcc[data-id="${_id}"]`);
-                if (trigger) trigger.click();
-            });
-            return;
-        }
+            # Try to parse JSON response
+            try:
+                resp_json = resp.json()
+            except Exception:
+                resp_json = {"raw": resp.text[:500]}
 
-        // ── Screening Interview ───────────────────────────────────────
-        if (btn.classList.contains('am-screening')) {
-            _closeAndThen(() => {
-                // Store current staff info then open screening modal directly
-                currentScreeningStaffId = _id;
-                $('screeningModalName').textContent = _name;
-                $('screeningSavedInfo').classList.add('d-none');
-                $('screeningDownloadBtn').href = '#';
-                $('screeningDownloadPdfBtn').href = '#';
-                $('screeningFirstShift').value = '';
-                setScreeningState('Idle');
-                // Check for saved record
-                fetch(screeningSavedUrl(_id))
-                    .then(r => r.json())
-                    .then(d => {
-                        if (d.success && d.found) {
-                            $('screeningSavedInfo').classList.remove('d-none');
-                            $('screeningSavedDate').textContent = d.generated_at;
-                            $('screeningExistingDownloadDocx').href = screeningDownloadUrl(_id);
-                            $('screeningExistingDownloadPdf').href = screeningDownloadPdfUrl(_id);
-                        }
-                    }).catch(() => {});
-                new bootstrap.Modal($('screeningModal')).show();
-            });
-            return;
-        }
+            _doc_webhook_col().insert_one({
+                "staff_id":           staff_id_str,
+                "xn_staff_id":        resolved_staff_id,
+                "staff_name":         staff_name,
+                "doc_type":           doc_type_key,
+                "hse_type":           hse_type,
+                "endpoint":           endpoint,
+                "status":             "success" if resp.status_code < 300 else "api_error",
+                "http_status":        resp.status_code,
+                "response":           resp_json,
+                "triggered_at":       datetime.utcnow(),
+            })
 
-        // ── VOS HCA ───────────────────────────────────────────────────
-        if (btn.classList.contains('am-vos')) {
-            _closeAndThen(() => {
-                const trigger = document.querySelector(`.btn-vos[data-id="${_id}"]`);
-                if (trigger) trigger.click();
-            });
-            return;
-        }
+        except Exception as e:
+            _doc_webhook_col().insert_one({
+                "staff_id":     staff_id_str,
+                "staff_name":   staff_name,
+                "doc_type":     doc_type_key,
+                "hse_type":     hse_type,
+                "endpoint":     endpoint,
+                "status":       "error",
+                "error":        str(e),
+                "triggered_at": datetime.utcnow(),
+            })
 
-        // ── VOS Nurse ─────────────────────────────────────────────────
-        if (btn.classList.contains('am-vos-nurse')) {
-            _closeAndThen(() => {
-                const trigger = document.querySelector(`.btn-vos-nurse[data-id="${_id}"]`);
-                if (trigger) trigger.click();
-            });
-            return;
-        }
+    # Launch in background thread — does not block the HTTP response
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
 
-        // ── Incremental Credit ───────────────────────────────────────
-        if (btn.classList.contains('am-incremental-credit')) {
-            _closeAndThen(() => {
-                const trigger = document.querySelector(`.btn-incremental-credit[data-id="${_id}"]`);
-                if (trigger) trigger.click();
-            });
-            return;
-        }
 
-        // ── Delete ────────────────────────────────────────────────────
-        if (btn.classList.contains('am-delete')) {
-            _closeAndThen(() => {
-                const trigger = document.querySelector(`.btn-delete[data-id="${_id}"]`);
-                if (trigger) trigger.click();
-            });
-            return;
-        }
-    });
-})();
+def _staffs_col():
+    return db.live_staffs
 
-// ── Import ────────────────────────────────────────────────────────────
-$('importFile').addEventListener('change', async function () {
-    const file = this.files[0];
-    if (!file) return;
-    const banner = $('importBanner');
-    banner.classList.remove('d-none');
-    const fd = new FormData();
-    fd.append('file', file);
-    try {
-        const res    = await fetch("{{ '/admin/live-staffs/import' }}", { method:'POST', body:fd });
-        const result = await res.json();
-        banner.classList.add('d-none');
-        if (result.success) {
-            const errHtml = result.errors.length
-                ? `<br><small class="text-danger">${result.errors.slice(0,5).join('<br>')}</small>` : '';
-            await Swal.fire({ icon:'success', title:'Import Complete', html: result.message + errHtml });
-            location.reload();
-        } else {
-            Swal.fire('Import Failed', result.error || 'Unknown error', 'error');
-        }
-    } catch {
-        banner.classList.add('d-none');
-        Swal.fire('Error', 'Network error during import', 'error');
-    } finally {
-        this.value = '';
-    }
-});
 
-// ══════════════════════════════════════════════════════════════════════
-// AI CV
-// ══════════════════════════════════════════════════════════════════════
-const AI_GEN_URL    = "{{ '/admin/live-staffs/ai-cv/generate' }}";
-const AI_SAVED_BASE = "{{ '/admin/live-staffs/ai-cv/saved/__ID__' }}";
-const AI_DL_BASE    = "{{ '/admin/live-staffs/ai-cv/download/__ID__' }}";
-function aiSavedUrl(id) { return AI_SAVED_BASE.replace('__ID__', id); }
-function aiDownloadUrl(id) { return AI_DL_BASE.replace('__ID__', id); }
+def _serialize(doc):
+    """Recursively convert ObjectId / datetime to JSON-safe types."""
+    if isinstance(doc, list):
+        return [_serialize(i) for i in doc]
+    if isinstance(doc, dict):
+        return {k: _serialize(v) for k, v in doc.items()}
+    if isinstance(doc, ObjectId):
+        return str(doc)
+    if isinstance(doc, datetime):
+        return doc.isoformat()
+    return doc
 
-let currentAiStaffId = null;
-function setAiState(state) {
-    ['Idle','Generating','Done','Error'].forEach(s => $('aiCv'+s).classList.add('d-none'));
-    $('aiCv'+state).classList.remove('d-none');
-}
 
-document.querySelectorAll('.btn-ai-cv').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentAiStaffId = btn.dataset.id;
-        $('aiCvStaffName').textContent = btn.dataset.name;
-        $('aiCvSavedInfo').classList.add('d-none');
-        $('aiCvDownloadSavedBtn').classList.add('d-none');
-        $('aiCvDownloadNewBtn').href = '#';
-        $('aiCvUploadSection').classList.add('d-none');
-        $('aiCvUploadMsg').classList.add('d-none');
-        setAiState('Idle');
-        new bootstrap.Modal($('aiCvModal')).show();
-        try {
-            const res  = await fetch(aiSavedUrl(currentAiStaffId));
-            const data = await res.json();
-            if (data.success && data.found) {
-                $('aiCvSavedInfo').classList.remove('d-none');
-                $('aiCvSavedDate').textContent = data.generated_at;
-                $('aiCvDownloadSavedBtn').classList.remove('d-none');
-                $('aiCvDownloadSavedBtn').onclick = () => window.open(aiDownloadUrl(data.ai_cv_id || data.cv_id), '_blank');
-                $('aiCvUploadSection').classList.remove('d-none');
-            }
-        } catch(e) {}
-    });
-});
+def _get_all(search, page, per_page):
+    match = {}
+    if search:
+        pattern = re.compile(re.escape(search), re.IGNORECASE)
+        match = {"$or": [
+            {"section_1_personal_details.full_name": pattern},
+            {"email": pattern},
+            {"employee_code": pattern},
+            {"section_1_personal_details.nationality": pattern},
+            {"user_type": pattern},
+        ]}
+    col   = _staffs_col()
+    total = col.count_documents(match)
 
-$('aiCvGenerateBtn').addEventListener('click', async () => {
-    if (!currentAiStaffId) return;
-    setAiState('Generating');
-    try {
-        const res  = await fetch(AI_GEN_URL, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ staff_id: currentAiStaffId })
-        });
-        const data = await res.json();
-        if (data.success) {
-            $('aiCvDownloadNewBtn').href = aiDownloadUrl(data.ai_cv_id || data.cv_id);
-            $('aiCvUploadSection').classList.remove('d-none');
-            setAiState('Done');
-        } else {
-            $('aiCvErrorMsg').textContent = data.error || 'Generation failed';
-            setAiState('Error');
-        }
-    } catch(e) {
-        $('aiCvErrorMsg').textContent = 'Network error: ' + e.message;
-        setAiState('Error');
-    }
-});
-
-// AI CV Upload
-const AI_UPLOAD_BASE = "{{ '/admin/live-staffs/ai-cv/upload/__ID__' }}";
-function aiUploadUrl(id) { return AI_UPLOAD_BASE.replace('__ID__', id); }
-
-$('aiCvUploadBtn').addEventListener('click', async () => {
-    const fileInput = $('aiCvUploadInput');
-    const msgEl     = $('aiCvUploadMsg');
-    const file      = fileInput.files[0];
-    if (!file) { msgEl.textContent='Please select a .docx file first.'; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); return; }
-    const btn = $('aiCvUploadBtn');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
-    const fd = new FormData(); fd.append('file', file);
-    try {
-        const res    = await fetch(aiUploadUrl(currentAiStaffId), { method:'POST', body:fd });
-        const result = await res.json();
-        if (result.success) { msgEl.innerHTML=`<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`; msgEl.className='mt-2 small text-success'; fileInput.value=''; }
-        else { msgEl.textContent = result.error || 'Upload failed'; msgEl.className='mt-2 small text-danger'; }
-        msgEl.classList.remove('d-none');
-    } catch(e) { msgEl.textContent='Network error: '+e.message; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); }
-    finally { btn.disabled=false; btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace'; }
-});
-
-// ══════════════════════════════════════════════════════════════════════
-// AI Interview
-// ══════════════════════════════════════════════════════════════════════
-const AI_INT_GEN_URL    = "{{ '/admin/live-staffs/ai-interview/generate' }}";
-const AI_INT_SAVED_BASE = "{{ '/admin/live-staffs/ai-interview/saved/__ID__' }}";
-const AI_INT_DL_BASE    = "{{ '/admin/live-staffs/ai-interview/download/__ID__' }}";
-const AI_INT_UPLOAD_BASE = "{{ '/admin/live-staffs/ai-interview/upload/__ID__' }}";
-function aiIntSavedUrl(id)  { return AI_INT_SAVED_BASE.replace('__ID__', id); }
-function aiIntDownloadUrl(id){ return AI_INT_DL_BASE.replace('__ID__', id); }
-function aiIntUploadUrl(id)  { return AI_INT_UPLOAD_BASE.replace('__ID__', id); }
-
-let currentIntStaffId = null;
-function setIntState(state) {
-    ['Idle','Generating','Done','Error'].forEach(s => $('aiInt'+s).classList.add('d-none'));
-    $('aiInt'+state).classList.remove('d-none');
-}
-
-document.querySelectorAll('.btn-ai-interview').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentIntStaffId = btn.dataset.id;
-        $('aiIntStaffName').textContent = btn.dataset.name;
-        $('aiIntSavedInfo').classList.add('d-none');
-        $('aiIntDownloadSavedBtn').classList.add('d-none');
-        $('aiIntDownloadNewBtn').href = '#';
-        $('aiIntUploadSection').classList.add('d-none');
-        $('aiIntUploadMsg').classList.add('d-none');
-        setIntState('Idle');
-        new bootstrap.Modal($('aiInterviewModal')).show();
-        try {
-            const res  = await fetch(aiIntSavedUrl(currentIntStaffId));
-            const data = await res.json();
-            if (data.success && data.found) {
-                $('aiIntSavedInfo').classList.remove('d-none');
-                $('aiIntSavedDate').textContent = data.generated_at;
-                $('aiIntDownloadSavedBtn').classList.remove('d-none');
-                $('aiIntDownloadSavedBtn').onclick = () => window.open(aiIntDownloadUrl(data.interview_id || data.ai_id), '_blank');
-                $('aiIntUploadSection').classList.remove('d-none');
-            }
-        } catch(e) {}
-    });
-});
-
-$('aiIntGenerateBtn').addEventListener('click', async () => {
-    if (!currentIntStaffId) return;
-    setIntState('Generating');
-    try {
-        const res  = await fetch(AI_INT_GEN_URL, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ staff_id: currentIntStaffId })
-        });
-        const data = await res.json();
-        if (data.success) {
-            $('aiIntDownloadNewBtn').href = aiIntDownloadUrl(data.interview_id || data.ai_id);
-            $('aiIntUploadSection').classList.remove('d-none');
-            setIntState('Done');
-        } else {
-            $('aiIntErrorMsg').textContent = data.error || 'Generation failed';
-            setIntState('Error');
-        }
-    } catch(e) { $('aiIntErrorMsg').textContent='Network error: '+e.message; setIntState('Error'); }
-});
-
-$('aiIntUploadBtn').addEventListener('click', async () => {
-    const fileInput = $('aiIntUploadInput'); const msgEl = $('aiIntUploadMsg'); const file = fileInput.files[0];
-    if (!file) { msgEl.textContent='Please select a .docx file first.'; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); return; }
-    const btn = $('aiIntUploadBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
-    const fd = new FormData(); fd.append('file', file);
-    try {
-        const res=await fetch(aiIntUploadUrl(currentIntStaffId),{method:'POST',body:fd}); const result=await res.json();
-        if(result.success){msgEl.innerHTML=`<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;msgEl.className='mt-2 small text-success';fileInput.value='';}
-        else{msgEl.textContent=result.error||'Upload failed';msgEl.className='mt-2 small text-danger';}
-        msgEl.classList.remove('d-none');
-    } catch(e){msgEl.textContent='Network error: '+e.message;msgEl.className='mt-2 small text-danger';msgEl.classList.remove('d-none');}
-    finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';}
-});
-
-// ══════════════════════════════════════════════════════════════════════
-// Application Form
-// ══════════════════════════════════════════════════════════════════════
-const AI_APP_GEN_URL    = "{{ '/admin/live-staffs/ai-appform/generate' }}";
-const AI_APP_SAVED_BASE = "{{ '/admin/live-staffs/ai-appform/saved/__ID__' }}";
-const AI_APP_DL_BASE    = "{{ '/admin/live-staffs/ai-appform/download/__ID__' }}";
-const AI_APP_UL_BASE    = "{{ '/admin/live-staffs/ai-appform/upload/__ID__' }}";
-function aiAppSavedUrl(id)  { return AI_APP_SAVED_BASE.replace('__ID__', id); }
-function aiAppDownloadUrl(id){ return AI_APP_DL_BASE.replace('__ID__', id); }
-function aiAppUploadUrl(id)  { return AI_APP_UL_BASE.replace('__ID__', id); }
-
-let currentAppStaffId = null;
-function setAppState(state) {
-    ['Idle','Generating','Done','Error'].forEach(s => $('aiApp'+s).classList.add('d-none'));
-    $('aiApp'+state).classList.remove('d-none');
-}
-
-document.querySelectorAll('.btn-ai-appform').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentAppStaffId = btn.dataset.id;
-        $('aiAppStaffName').textContent = btn.dataset.name;
-        $('aiAppSavedInfo').classList.add('d-none');
-        $('aiAppDownloadSavedBtn').classList.add('d-none');
-        $('aiAppUploadSection').classList.add('d-none');
-        $('aiAppUploadMsg').classList.add('d-none');
-        $('aiAppDownloadNewBtn').href = '#';
-        setAppState('Idle');
-        new bootstrap.Modal($('aiAppFormModal')).show();
-        try {
-            const res  = await fetch(aiAppSavedUrl(currentAppStaffId));
-            const data = await res.json();
-            if (data.success && data.found) {
-                $('aiAppSavedInfo').classList.remove('d-none');
-                $('aiAppSavedDate').textContent = data.generated_at;
-                $('aiAppDownloadSavedBtn').classList.remove('d-none');
-                $('aiAppDownloadSavedBtn').onclick = () => window.open(aiAppDownloadUrl(data.appform_id), '_blank');
-                $('aiAppUploadSection').classList.remove('d-none');
-            }
-        } catch(e) {}
-    });
-});
-
-$('aiAppGenerateBtn').addEventListener('click', async () => {
-    if (!currentAppStaffId) return;
-    setAppState('Generating');
-    try {
-        const res  = await fetch(AI_APP_GEN_URL, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ staff_id: currentAppStaffId })
-        });
-        const data = await res.json();
-        if (data.success) {
-            $('aiAppDownloadNewBtn').href = aiAppDownloadUrl(data.appform_id);
-            $('aiAppUploadSection').classList.remove('d-none');
-            setAppState('Done');
-        } else {
-            $('aiAppErrorMsg').textContent = data.error || 'Generation failed';
-            setAppState('Error');
-        }
-    } catch(e) { $('aiAppErrorMsg').textContent='Network error: '+e.message; setAppState('Error'); }
-});
-
-$('aiAppUploadBtn').addEventListener('click', async () => {
-    const fileInput=$('aiAppUploadInput');const msgEl=$('aiAppUploadMsg');const file=fileInput.files[0];
-    if(!file){msgEl.textContent='Please select a .docx file first.';msgEl.className='mt-2 small text-danger';msgEl.classList.remove('d-none');return;}
-    const btn=$('aiAppUploadBtn');btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
-    const fd=new FormData();fd.append('file',file);
-    try{
-        const res=await fetch(aiAppUploadUrl(currentAppStaffId),{method:'POST',body:fd});const result=await res.json();
-        if(result.success){msgEl.innerHTML=`<i class="bi bi-check-circle-fill text-success me-1"></i>${result.message}`;msgEl.className='mt-2 small text-success';fileInput.value='';}
-        else{msgEl.textContent=result.error||'Upload failed';msgEl.className='mt-2 small text-danger';}
-        msgEl.classList.remove('d-none');
-    }catch(e){msgEl.textContent='Network error: '+e.message;msgEl.className='mt-2 small text-danger';msgEl.classList.remove('d-none');}
-    finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';}
-});
-
-// ══════════════════════════════════════════════════════════════════════
-// Edit Extracted CV
-// ══════════════════════════════════════════════════════════════════════
-const EDIT_CV_SAVE_URL = "{{ '/admin/live-staffs/edit-extracted-cv' }}";
-let currentEditCvStaffId = null;
-
-document.querySelectorAll('.btn-edit-cv').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentEditCvStaffId = btn.dataset.id;
-        $('editCvStaffName').textContent = btn.dataset.name || '';
-        $('editCvTextarea').value = 'Loading...';
-        $('editCvMsg').classList.add('d-none');
-        new bootstrap.Modal($('editCvModal')).show();
-        try {
-            const res  = await fetch(`${FETCH_URL}?id=${currentEditCvStaffId}`);
-            const data = await res.json();
-            if (data.success) {
-                $('editCvTextarea').value = data.record.extracted_cv || '';
-                const sel = $('editCvUserType');
-                const ut  = data.record.user_type || '';
-                sel.value = Array.from(sel.options).find(o => o.value === ut) ? ut : '';
-            } else { $('editCvTextarea').value = ''; }
-        } catch(e) { $('editCvTextarea').value = ''; }
-    });
-});
-
-$('editCvSaveBtn').addEventListener('click', async () => {
-    const text      = $('editCvTextarea').value;
-    const user_type = $('editCvUserType').value;
-    const msgEl     = $('editCvMsg');
-    const btn       = $('editCvSaveBtn');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
-    try {
-        const res    = await fetch(EDIT_CV_SAVE_URL, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ staff_id: currentEditCvStaffId, extracted_cv: text, user_type })
-        });
-        const result = await res.json();
-        if (result.success) {
-            msgEl.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i> Saved successfully.';
-            msgEl.className = 'mt-2 small text-success'; msgEl.classList.remove('d-none');
-            setTimeout(() => bootstrap.Modal.getInstance($('editCvModal')).hide(), 1200);
-        } else { msgEl.textContent = result.error || 'Save failed'; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); }
-    } catch(e) { msgEl.textContent='Network error: '+e.message; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); }
-    finally { btn.disabled=false; btn.innerHTML='<i class="bi bi-check-lg me-1"></i> Save Changes'; }
-});
-
-// ══════════════════════════════════════════════════════════════════════
-// PCC Self-Declaration
-// ══════════════════════════════════════════════════════════════════════
-const PCC_GEN_URL   = "{{ '/admin/live-staffs/ai-pcc/generate' }}";
-const PCC_SAVED_URL = "{{ '/admin/live-staffs/ai-pcc/saved/__ID__' }}";
-const PCC_DL_URL    = "{{ '/admin/live-staffs/ai-pcc/download/__ID__' }}";
-const PCC_UPL_URL   = "{{ '/admin/live-staffs/ai-pcc/upload/__ID__' }}";
-let currentPccStaffId = null;
-
-document.querySelectorAll('.btn-pcc').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentPccStaffId = btn.dataset.id;
-        $('pccModalName').textContent = btn.dataset.name || '';
-        $('pccExistingAlert').classList.add('d-none');
-        $('pccGenerating').classList.add('d-none');
-        $('pccResult').classList.add('d-none');
-        $('pccError').classList.add('d-none');
-        $('pccGenerateBtn').disabled = false;
-        $('pccGenerateBtn').innerHTML = '<i class="bi bi-magic me-1"></i> Generate';
-        new bootstrap.Modal($('pccModal')).show();
-        try {
-            const r = await fetch(PCC_SAVED_URL.replace('__ID__', currentPccStaffId));
-            const d = await r.json();
-            if (d.success && d.found) {
-                $('pccDownloadBtn').href = PCC_DL_URL.replace('__ID__', d.pcc_id);
-                $('pccResult').classList.remove('d-none');
-                const res = $('pccResult');
-                if (!res.querySelector('.pcc-regen-link')) {
-                    res.insertAdjacentHTML('beforeend',
-                        `<div class="text-muted small mt-2">Generated on ${d.generated_at || ''} — <a href="#" class="text-muted pcc-regen-link">Regenerate</a></div>`);
-                    res.querySelector('.pcc-regen-link').addEventListener('click', ev => {
-                        ev.preventDefault();
-                        $('pccResult').classList.add('d-none');
-                        res.querySelector('.pcc-regen-link')?.closest('div')?.remove();
-                    });
+    # Aggregation: add a sort key so records with extracted_cv come first
+    pipeline = []
+    if match:
+        pipeline.append({"$match": match})
+    pipeline += [
+        {"$addFields": {
+            "_cv_filled": {
+                "$cond": {
+                    "if": {
+                        "$and": [
+                            {"$ifNull": ["$extracted_cv", False]},
+                            {"$ne": ["$extracted_cv", ""]},
+                            {"$ne": ["$extracted_cv", None]},
+                        ]
+                    },
+                    "then": 0,   # has CV — sort first
+                    "else": 1    # no CV — sort after
                 }
             }
-        } catch(e) {}
-    });
-});
+        }},
+        {"$sort": {
+            "_cv_filled": 1,
+            "section_1_personal_details.full_name": 1
+        }},
+        {"$skip":  (page - 1) * per_page},
+        {"$limit": per_page},
+    ]
 
-$('pccGenerateBtn').addEventListener('click', async () => {
-    const gen=$('pccGenerating'),res=$('pccResult'),err=$('pccError'),btn=$('pccGenerateBtn');
-    gen.classList.remove('d-none'); res.classList.add('d-none'); err.classList.add('d-none');
-    btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Generating…';
-    try {
-        const r=await fetch(PCC_GEN_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_id:currentPccStaffId})});
-        const text=await r.text(); let d;
-        try{d=JSON.parse(text);}catch(_){gen.classList.add('d-none');err.textContent=`Server error ${r.status}: ${text.slice(0,200)}`;err.classList.remove('d-none');btn.disabled=false;btn.innerHTML='<i class="bi bi-magic me-1"></i> Generate';return;}
-        gen.classList.add('d-none');
-        if(d.success){$('pccDownloadBtn').href=PCC_DL_URL.replace('__ID__',d.pcc_id);res.classList.remove('d-none');}
-        else{err.textContent=d.error||'Generation failed';err.classList.remove('d-none');}
-    }catch(e){gen.classList.add('d-none');err.textContent='Network error: '+e.message;err.classList.remove('d-none');}
-    finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-magic me-1"></i> Generate';}
-});
+    items = list(col.aggregate(pipeline))
+    # Serialize BEFORE passing to template so tojson never sees ObjectId
+    return [_serialize(doc) for doc in items], total
 
-$('pccUploadInput').addEventListener('change', async (e) => {
-    const file=e.target.files[0]; if(!file||!currentPccStaffId)return;
-    const fd=new FormData(); fd.append('file',file);
-    try{
-        const r=await fetch(PCC_UPL_URL.replace('__ID__',currentPccStaffId),{method:'POST',body:fd});const d=await r.json();
-        const err=$('pccError');
-        if(d.success){err.className='alert alert-success small py-2';err.textContent='Uploaded successfully';err.classList.remove('d-none');}
-        else{err.className='alert alert-danger small py-2';err.textContent=d.error||'Upload failed';err.classList.remove('d-none');}
-    }catch(ex){}
-    e.target.value='';
-});
 
-// ══════════════════════════════════════════════════════════════════════
-// VOS (HCA)
-// ══════════════════════════════════════════════════════════════════════
-const VOS_GEN_URL   = '/admin/live-staffs/vos/generate/__ID__';
-const VOS_DL_URL    = '/admin/live-staffs/vos/download/__ID__';
-const VOS_SAVED_URL = '/admin/live-staffs/api/vos-saved/__ID__';
-const VOS_UPLOAD_BASE = '/admin/live-staffs/vos/upload/__ID__';
-let currentVosStaffId = null;
+def _parse_json_content(content):
+    """
+    Handle all JSON variants that can come from the export pipeline:
+      1. Standard JSON array  [ {...}, ... ]
+      2. Standard JSON object { "records": [ ... ] }
+      3. Bare fragment        "records": [ ... ]   ← missing outer braces
+      4. JSONL                {...}\n{...}\n
+      5. Concatenated objects {...}{...}
+    """
+    content = content.strip()
 
-document.querySelectorAll('.btn-vos').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentVosStaffId = btn.dataset.id;
-        $('vosModalName').textContent = btn.dataset.name || 'Staff';
-        $('vosIdle').classList.remove('d-none');
-        $('vosGenerating').classList.add('d-none');
-        $('vosResult').classList.add('d-none');
-        $('vosError').classList.add('d-none');
-        $('vosSavedInfo').classList.add('d-none');
-        $('vosGenerateBtn').disabled = false;
-        $('vosGenerateBtn').innerHTML = '<i class="bi bi-patch-check me-1"></i> Generate Verification of Service';
-        try {
-            const r=await fetch(VOS_SAVED_URL.replace('__ID__',currentVosStaffId));const d=await r.json();
-            if(d.success&&d.found){
-                $('vosIdle').classList.add('d-none');$('vosResult').classList.remove('d-none');
-                $('vosDownloadBtn').href=VOS_DL_URL.replace('__ID__',currentVosStaffId);
-                if(d.total)$('vosTotal').textContent='Total Eligible Service: '+d.total;
-                $('vosTotal').insertAdjacentHTML('afterend',`<div class="text-muted small mt-1">Generated on ${d.generated_at||''} — <a href="#" class="text-muted" id="vosRegenLink">Regenerate</a></div>`);
-                $('vosRegenLink')?.addEventListener('click',ev=>{ev.preventDefault();$('vosResult').classList.add('d-none');$('vosIdle').classList.remove('d-none');});
+    # 1 & 2 — standard JSON
+    try:
+        raw = json.loads(content)
+        return raw if isinstance(raw, list) else raw.get('records', [raw])
+    except json.JSONDecodeError:
+        pass
+
+    # 3 — bare fragment (missing outer braces)
+    try:
+        raw = json.loads('{' + content + '}')
+        if 'records' in raw:
+            return raw['records']
+    except json.JSONDecodeError:
+        pass
+
+    # 4 — JSONL
+    try:
+        lines = [l for l in content.splitlines() if l.strip()]
+        records = [json.loads(l) for l in lines]
+        if records:
+            return records
+    except json.JSONDecodeError:
+        pass
+
+    # 5 — concatenated objects
+    try:
+        records = []
+        decoder = json.JSONDecoder()
+        idx = 0
+        while idx < len(content):
+            while idx < len(content) and content[idx] in ' \t\r\n,':
+                idx += 1
+            if idx >= len(content):
+                break
+            obj, end = decoder.raw_decode(content, idx)
+            records.append(obj)
+            idx = end
+        if records:
+            return records
+    except json.JSONDecodeError:
+        pass
+
+    raise ValueError("Could not parse JSON — unrecognised format.")
+
+
+# ── Routes ───────────────────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs')
+@admin_required
+def live_staffs():
+    page     = int(request.args.get('page', 1))
+    search   = request.args.get('search', '').strip()
+    per_page = 20
+
+    items, total = _get_all(search, page, per_page)
+
+    return render_template(
+        'admin/live_staffs.html',
+        staffs=items,
+        page=page,
+        total=total,
+        per_page=per_page,
+        search=search,
+    )
+
+
+@admin_bp.route('/live-staffs/get')
+@admin_required
+def live_staff_get():
+    """Return a single staff record as JSON — used by view/edit modals."""
+    staff_id = (request.args.get('id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing id"}), 400
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Record not found"}), 404
+        return jsonify({"success": True, "record": _serialize(doc)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/edit-extracted-cv', methods=['POST'])
+@admin_required
+def live_staff_edit_extracted_cv():
+    """
+    Save edited extracted_cv text for a staff member.
+    Also resets experience_analysed_at so AI analysis re-runs on next cron call.
+
+    POST /admin/live-staffs/edit-extracted-cv
+    Body: {"staff_id": "...", "extracted_cv": "..."}
+    """
+    data      = request.get_json() or {}
+    staff_id  = (data.get('staff_id') or '').strip()
+    new_text  = data.get('extracted_cv', '')
+    user_type = (data.get('user_type') or '').strip()
+
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+    try:
+        update_fields = {
+            "extracted_cv":               new_text,
+            "extracted_cv_at":            datetime.utcnow(),
+            "extracted_cv_edited":        True,
+            # Reset AI analysis so it re-runs with updated text/type
+            "experience_analysed_at":     None,
+            "experience_list_at":         None,
+            "experience_list_processing": False,
+        }
+        if user_type:
+            update_fields["user_type"] = user_type
+
+        result = _staffs_col().update_one(
+            {"_id": ObjectId(staff_id)},
+            {"$set": update_fields}
+        )
+        if result.matched_count == 0:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+        return jsonify({"success": True, "message": "Changes saved successfully"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@admin_bp.route('/live-staffs/points')
+@admin_required
+def live_staff_points():
+    """
+    Get points for a staff member by email address.
+
+    GET /admin/live-staffs/points?email=someone@example.com
+
+    Returns:
+      {
+        "success": true,
+        "email": "someone@example.com",
+        "name": "Sherin Augustine",
+        "points": 8
+      }
+    """
+    email = (request.args.get('email') or '').strip().lower()
+    if not email:
+        return jsonify({"success": False, "error": "Missing email parameter"}), 400
+    try:
+        doc = _staffs_col().find_one(
+            {"email": email},
+            {"points": 1, "section_1_personal_details": 1, "email": 1}
+        )
+        if not doc:
+            return jsonify({"success": False, "error": f"No staff found with email: {email}"}), 404
+
+        s1   = doc.get('section_1_personal_details') or {}
+        name = _v(s1.get('full_name') or '')
+
+        return jsonify({
+            "success": True,
+            "email":   email,
+            "name":    name,
+            "points":  doc.get('points'),
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@admin_bp.route('/live-staffs/experience', methods=['GET', 'POST'])
+def live_staff_experience():
+    """
+    Analyse a staff member's extracted_cv using Gemini AI and return
+    total years and months of experience as digits.
+
+    Accepts X-API-Key header (no session required) OR admin session cookie.
+
+    GET  /admin/live-staffs/experience?email=someone@example.com
+    POST /admin/live-staffs/experience  body: {"staff_id": "68abc..."} or {"email": "..."}
+
+    Response:
+      {
+        "success": true,
+        "staff_name": "Jane Smith",
+        "email": "jane@example.com",
+        "years": 4,
+        "months": 6,
+        "total_months": 54,
+        "summary": "4 years and 6 months",
+        "source": "extracted_cv"   // or "section_5" if CV text unavailable
+      }
+    """
+    # Accept either API key or admin session
+    api_key_provided = request.headers.get('X-API-Key', '').strip()
+    if api_key_provided:
+        ok, err = _validate_api_key()
+        if not ok:
+            return jsonify({"success": False, "error": err}), 401
+    else:
+        from admin.views import admin_required as _admin_required
+        from flask import session, redirect, url_for
+        if not session.get('admin_logged_in'):
+            return jsonify({"success": False,
+                            "error": "Unauthorised — provide X-API-Key header or login"}), 401
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
+
+    # ── Resolve staff record ──────────────────────────────────────────
+    if request.method == 'POST':
+        data     = request.get_json(silent=True) or {}
+        staff_id = (data.get('staff_id') or '').strip()
+        email    = (data.get('email') or '').strip().lower()
+    else:
+        staff_id = (request.args.get('id') or '').strip()
+        email    = (request.args.get('email') or '').strip().lower()
+
+    if staff_id:
+        # 1. Try live_staffs.staff_id field (XN Portal ID)
+        doc = _staffs_col().find_one({"staff_id": staff_id})
+        # 2. Try live_staffs.xn_staff_id field
+        if not doc:
+            doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+        # 3. Try MongoDB _id
+        if not doc:
+            try:
+                doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            except Exception:
+                pass
+    elif email:
+        # Search email in top-level field and section_1 sub-field
+        doc = _staffs_col().find_one({"$or": [
+            {"email": email},
+            {"section_1_personal_details.email_address": email},
+        ]})
+    else:
+        return jsonify({"success": False,
+                        "error": "Provide staff_id or email (query param or JSON body)"}), 400
+
+    if not doc:
+        return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+    s1        = doc.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email_out = _v(doc.get('email') or s1.get('email_address') or email)
+    user_type = _v(doc.get('user_type') or '')
+
+    # ── Return cached result if already analysed ─────────────────────
+    if doc.get('experience_analysed_at') and doc.get('experience_years') is not None:
+        years        = int(doc.get('experience_years') or 0)
+        months       = int(doc.get('experience_months') or 0)
+        total_months = int(doc.get('experience_total_months') or 0)
+        if total_months == 0:
+            total_months = years * 12 + months
+        parts   = []
+        if years:  parts.append(f"{years} year{'s' if years != 1 else ''}")
+        if months: parts.append(f"{months} month{'s' if months != 1 else ''}")
+        summary = ' and '.join(parts) if parts else '0 months'
+        return jsonify({
+            "success":      True,
+            "staff_name":   full_name,
+            "email":        email_out,
+            "years":        years,
+            "months":       months,
+            "total_months": total_months,
+            "summary":      summary,
+            "note":         _v(doc.get('experience_note') or ''),
+            "source":       _v(doc.get('experience_source') or 'cached'),
+            "cached":       True,
+        })
+
+    # ── Determine text to analyse ─────────────────────────────────────
+    extracted_cv = _v(doc.get('hsecv_extracted') or doc.get('extracted_cv') or '')
+    has_cv_text  = (
+        extracted_cv and
+        not extracted_cv.startswith('[') and
+        extracted_cv != 'No doc found'
+    )
+
+    # Fallback: use section_5 employment history total_experience string
+    s5           = doc.get('section_5_employment_history') or {}
+    total_exp_db = _v(s5.get('total_experience') or '')
+
+    if not has_cv_text and not total_exp_db:
+        return jsonify({
+            "success":      True,
+            "staff_name":   full_name,
+            "email":        email_out,
+            "years":        None,
+            "months":       None,
+            "total_months": None,
+            "summary":      "No experience data available",
+            "source":       "none",
+        })
+
+    # ── Call Gemini ───────────────────────────────────────────────────
+    try:
+        from google import genai as google_genai
+
+        # Determine role filter based on user_type
+        ut_lower = (user_type or '').lower()
+        if 'nurse' in ut_lower or 'nursing' in ut_lower:
+            role_rule = (
+                "IMPORTANT — Count ONLY nursing-related work experience, regardless of the country where it was gained. "
+                "This includes: Registered Nurse, Staff Nurse, Clinical Nurse, ICU Nurse, Theatre Nurse, "
+                "Community Nurse, Mental Health Nurse, Nursing Home Nurse, or any role with Nurse or Nursing in the title. "
+                "DO NOT count non-nursing roles such as healthcare assistant, carer, support worker, admin, or any other role."
+            )
+        elif 'hca' in ut_lower or 'healthcare assistant' in ut_lower or 'health care assistant' in ut_lower:
+            role_rule = (
+                "IMPORTANT — Count ONLY Healthcare Assistant (HCA) work experience, regardless of the country where it was gained. "
+                "This includes: Healthcare Assistant, HCA, Care Assistant, Care Worker, Support Worker in a clinical/care setting, "
+                "or any role with Healthcare Assistant or HCA in the title. "
+                "DO NOT count nursing roles (Registered Nurse, Staff Nurse, etc.) or non-care roles such as admin, retail, or hospitality."
+            )
+        else:
+            role_rule = (
+                "Count only direct healthcare or care-related work experience, regardless of country. "
+                "Exclude non-healthcare roles such as admin, retail, hospitality, or general support roles "
+                "unless they are clearly in a clinical or care setting."
+            )
+
+        if has_cv_text:
+            source = 'extracted_cv'
+            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+
+Candidate role: {user_type}
+
+Read the CV text below and calculate the candidate's TOTAL relevant work experience.
+
+{role_rule}
+
+Calculation Rules:
+- Only count roles that match the role filter above.
+- Experience gained in ANY country counts — not just Ireland.
+- If a matching role has no end date, assume it is still ongoing (use today's date to calculate).
+- If two matching roles overlap in time, count the overlapping period only once.
+- Ignore all non-matching roles entirely — do not add them.
+- Return ONLY a JSON object with these exact keys — nothing else, no markdown, no explanation:
+  {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary of which roles were counted and why>"}}
+
+CV TEXT:
+{extracted_cv}
+"""
+        else:
+            source = 'section_5'
+            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+
+Candidate role: {user_type}
+
+The candidate's total experience is described as: "{total_exp_db}"
+
+{role_rule}
+
+Extract the relevant years and months from this description, applying the role filter above.
+Return ONLY a JSON object — nothing else, no markdown:
+{{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary>"}}
+"""
+
+        client   = google_genai.Client(api_key=gemini_key)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        raw = (response.text or '').strip()
+
+        # Strip markdown code fences if Gemini wraps it
+        raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
+        raw = _re.sub(r'```\s*$', '', raw, flags=_re.MULTILINE).strip()
+
+        result = _json.loads(raw)
+
+        years        = int(result.get('years', 0) or 0)
+        months       = int(result.get('months', 0) or 0)
+        total_months = int(result.get('total_months', 0) or 0)
+        note         = _v(result.get('note', ''))
+
+        # Recalculate total_months as sanity check
+        if total_months == 0:
+            total_months = years * 12 + months
+
+        # Build human-readable summary
+        parts = []
+        if years:  parts.append(f"{years} year{'s' if years != 1 else ''}")
+        if months: parts.append(f"{months} month{'s' if months != 1 else ''}")
+        summary = ' and '.join(parts) if parts else '0 months'
+
+        # Save to DB
+        _staffs_col().update_one(
+            {"_id": doc['_id']},
+            {"$set": {
+                "experience_years":        years,
+                "experience_months":       months,
+                "experience_total_months": total_months,
+                "experience_note":         note,
+                "experience_source":       source,
+                "experience_analysed_at":  datetime.utcnow(),
+            }}
+        )
+
+        return jsonify({
+            "success":      True,
+            "staff_name":   full_name,
+            "email":        email_out,
+            "years":        years,
+            "months":       months,
+            "total_months": total_months,
+            "summary":      summary,
+            "note":         note,
+            "source":       source,
+            "cached":       False,
+        })
+
+    except _cjson.JSONDecodeError:
+        return jsonify({
+            "success": False,
+            "error":   "Gemini returned non-JSON response",
+            "raw":     raw[:300],
+        }), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/api/experience', methods=['POST'])
+def api_experience():
+    """
+    External API — analyse experience from extracted_cv via Gemini.
+
+    Headers:
+      X-API-Key: <LIVE_STAFF_API_KEY>
+      Content-Type: application/json
+
+    Body:
+      {"staff_id": "68abc123..."} or {"email": "jane@example.com"}
+    """
+    ok, err = _validate_api_key()
+    if not ok:
+        return jsonify({"success": False, "error": err}), 401
+
+    data     = request.get_json(silent=True) or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    email    = (data.get('email') or '').strip().lower()
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
+
+    if staff_id:
+        # 1. Try live_staffs.staff_id field (XN Portal ID)
+        doc = _staffs_col().find_one({"staff_id": staff_id})
+        # 2. Try live_staffs.xn_staff_id field
+        if not doc:
+            doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+        # 3. Try MongoDB _id
+        if not doc:
+            try:
+                doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            except Exception:
+                pass
+    elif email:
+        # Search email in top-level field and section_1 sub-field
+        doc = _staffs_col().find_one({"$or": [
+            {"email": email},
+            {"section_1_personal_details.email_address": email},
+        ]})
+    else:
+        return jsonify({"success": False,
+                        "error": "Provide staff_id or email in JSON body"}), 400
+
+    if not doc:
+        return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+    s1        = doc.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    email_out = _v(doc.get('email') or s1.get('email_address') or email)
+    user_type = _v(doc.get('user_type') or '')
+
+    extracted_cv = _v(doc.get('extracted_cv') or '')
+    has_cv_text  = (
+        extracted_cv and
+        not extracted_cv.startswith('[') and
+        extracted_cv != 'No doc found'
+    )
+
+    s5           = doc.get('section_5_employment_history') or {}
+    total_exp_db = _v(s5.get('total_experience') or '')
+
+    if not has_cv_text and not total_exp_db:
+        return jsonify({
+            "success":      True,
+            "staff_name":   full_name,
+            "email":        email_out,
+            "years":        None,
+            "months":       None,
+            "total_months": None,
+            "summary":      "No experience data available",
+            "source":       "none",
+        })
+
+    # ── Return cached result if already analysed ──────────────────────
+    if doc.get('experience_analysed_at') and doc.get('experience_years') is not None:
+        years        = int(doc.get('experience_years') or 0)
+        months       = int(doc.get('experience_months') or 0)
+        total_months = int(doc.get('experience_total_months') or 0)
+        if total_months == 0:
+            total_months = years * 12 + months
+        parts   = []
+        if years:  parts.append(f"{years} year{'s' if years != 1 else ''}")
+        if months: parts.append(f"{months} month{'s' if months != 1 else ''}")
+        summary = ' and '.join(parts) if parts else '0 months'
+        return jsonify({
+            "success":      True,
+            "staff_name":   full_name,
+            "email":        email_out,
+            "years":        years,
+            "months":       months,
+            "total_months": total_months,
+            "summary":      summary,
+            "note":         _v(doc.get('experience_note') or ''),
+            "source":       _v(doc.get('experience_source') or 'cached'),
+            "cached":       True,
+        })
+
+    try:
+        from google import genai as google_genai
+
+        # Determine role filter based on user_type
+        ut_lower = (user_type or '').lower()
+        if 'nurse' in ut_lower or 'nursing' in ut_lower:
+            role_rule = (
+                "IMPORTANT — Count ONLY nursing-related work experience, regardless of the country where it was gained. "
+                "This includes: Registered Nurse, Staff Nurse, Clinical Nurse, ICU Nurse, Theatre Nurse, "
+                "Community Nurse, Mental Health Nurse, Nursing Home Nurse, or any role with Nurse or Nursing in the title. "
+                "DO NOT count non-nursing roles such as healthcare assistant, carer, support worker, admin, or any other role."
+            )
+        elif 'hca' in ut_lower or 'healthcare assistant' in ut_lower or 'health care assistant' in ut_lower:
+            role_rule = (
+                "IMPORTANT — Count ONLY Healthcare Assistant (HCA) work experience, regardless of the country where it was gained. "
+                "This includes: Healthcare Assistant, HCA, Care Assistant, Care Worker, Support Worker in a clinical/care setting, "
+                "or any role with Healthcare Assistant or HCA in the title. "
+                "DO NOT count nursing roles (Registered Nurse, Staff Nurse, etc.) or non-care roles such as admin, retail, or hospitality."
+            )
+        else:
+            role_rule = (
+                "Count only direct healthcare or care-related work experience, regardless of country. "
+                "Exclude non-healthcare roles such as admin, retail, hospitality, or general support roles "
+                "unless they are clearly in a clinical or care setting."
+            )
+
+        if has_cv_text:
+            source = 'extracted_cv'
+            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+
+Candidate role: {user_type}
+
+Read the CV text below and calculate the candidate's TOTAL relevant work experience.
+
+{role_rule}
+
+Calculation Rules:
+- Only count roles that match the role filter above.
+- Experience gained in ANY country counts — not just Ireland.
+- If a matching role has no end date, assume it is still ongoing (use today's date to calculate).
+- If two matching roles overlap in time, count the overlapping period only once.
+- Ignore all non-matching roles entirely — do not add them.
+- Return ONLY a JSON object with these exact keys — nothing else, no markdown, no explanation:
+  {{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary of which roles were counted>"}}
+
+CV TEXT:
+{extracted_cv}
+"""
+        else:
+            source = 'section_5'
+            prompt = f"""You are a professional CV analyser specialising in Irish healthcare staffing.
+
+Candidate role: {user_type}
+
+The candidate's total experience is described as: "{total_exp_db}"
+
+{role_rule}
+
+Extract the relevant years and months from this description, applying the role filter above.
+Return ONLY a JSON object — nothing else, no markdown:
+{{"years": <integer>, "months": <integer 0-11>, "total_months": <integer>, "note": "<one sentence summary>"}}
+"""
+
+
+        client   = google_genai.Client(api_key=gemini_key)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        raw      = (response.text or '').strip()
+        raw      = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
+        raw      = _re.sub(r'```\s*$', '', raw, flags=_re.MULTILINE).strip()
+
+        result       = _json.loads(raw)
+        years        = int(result.get('years', 0) or 0)
+        months       = int(result.get('months', 0) or 0)
+        total_months = int(result.get('total_months', 0) or 0)
+        note         = _v(result.get('note', ''))
+        if total_months == 0:
+            total_months = years * 12 + months
+
+        parts   = []
+        if years:  parts.append(f"{years} year{'s' if years != 1 else ''}")
+        if months: parts.append(f"{months} month{'s' if months != 1 else ''}")
+        summary = ' and '.join(parts) if parts else '0 months'
+
+        _staffs_col().update_one(
+            {"_id": doc['_id']},
+            {"$set": {
+                "experience_years":        years,
+                "experience_months":       months,
+                "experience_total_months": total_months,
+                "experience_analysed_at":  datetime.utcnow(),
+            }}
+        )
+
+        return jsonify({
+            "success":      True,
+            "staff_name":   full_name,
+            "email":        email_out,
+            "years":        years,
+            "months":       months,
+            "total_months": total_months,
+            "summary":      summary,
+            "note":         note,
+            "source":       source,
+        })
+
+    except _cjson.JSONDecodeError:
+        return jsonify({"success": False, "error": "Gemini returned non-JSON response", "raw": raw[:300]}), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/import-last-point-scale', methods=['POST'])
+@admin_required
+def live_staff_import_last_point_scale():
+    """
+    Seed last_point_scale for a staff member by email.
+    Also resets points_checked so the cron will re-check them.
+
+    POST /admin/live-staffs/import-last-point-scale
+    Body: {"email": "...", "last_point_scale": 9}
+    """
+    data     = request.get_json() or {}
+    email    = (data.get('email') or '').strip().lower()
+    last_ps  = data.get('last_point_scale')
+
+    if not email:
+        return jsonify({"success": False, "error": "Missing email"}), 400
+    if last_ps is None:
+        return jsonify({"success": False, "error": "Missing last_point_scale"}), 400
+
+    try:
+        result = _staffs_col().update_one(
+            {"email": email},
+            {"$set": {
+                "last_point_scale": last_ps,
+                "points_checked":   False,   # reset so cron re-checks
+            }}
+        )
+        if result.matched_count == 0:
+            return jsonify({"success": False,
+                            "error": f"No staff found with email: {email}"}), 404
+        return jsonify({
+            "success":  True,
+            "email":    email,
+            "last_point_scale": last_ps,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+# ── AI CV Collection helper ───────────────────────────────────────────
+
+def _ai_cvs_col():
+    return db.live_staff_ai_cvs
+
+def _ai_interviews_col():
+    return db.live_staff_ai_interviews
+
+def _ai_appforms_col():
+    return db.live_staff_ai_appforms
+
+def _ai_pcc_col():
+    return db.live_staff_ai_pcc
+
+def _screening_col():
+    return db.live_staff_screening
+
+
+# ── AI CV DOCX builder ────────────────────────────────────────────────
+
+def _build_ai_cv_docx(doc, cv_text):
+    """
+    Build an ATS-friendly, clean CV DOCX from AI-generated text.
+    No colours, no tables, no images — plain text with simple formatting
+    that passes all ATS parsers.
+    """
+    import io as _io
+    from docx import Document as _Doc
+    from docx.shared import Pt, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    SECTION_HEADINGS = {
+        'EMPLOYMENT ELIGIBILITY', 'PROFESSIONAL PROFILE',
+        'EDUCATION & QUALIFICATIONS', 'PROFESSIONAL EXPERIENCE',
+        'TRAINING & CERTIFICATIONS', 'KEY SKILLS', 'ADDITIONAL INFORMATION',
+    }
+
+    document = _Doc()
+    for sec in document.sections:
+        sec.top_margin    = Cm(2.0)
+        sec.bottom_margin = Cm(2.0)
+        sec.left_margin   = Cm(2.5)
+        sec.right_margin  = Cm(2.5)
+
+    # Use Calibri — best ATS font
+    style = document.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+
+    s1        = doc.get('section_1_personal_details') or {}
+    full_name = _v(s1.get('full_name') or '')
+    user_type = _v(doc.get('user_type') or '')
+    email     = _v(doc.get('email') or s1.get('email_address') or '')
+    phone     = _v(s1.get('mobile_number') or s1.get('phone_number') or '')
+
+    # ── Name header — large, bold, left-aligned ───────────────────────
+    p = document.add_paragraph()
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after  = Pt(0)
+    run = p.add_run(full_name if full_name else 'Curriculum Vitae')
+    run.bold = True
+    run.font.name = 'Calibri'
+    run.font.size = Pt(22)
+
+    # Role title
+    if user_type:
+        p2 = document.add_paragraph()
+        p2.paragraph_format.space_before = Pt(2)
+        p2.paragraph_format.space_after  = Pt(2)
+        r2 = p2.add_run(user_type)
+        r2.font.name = 'Calibri'
+        r2.font.size = Pt(12)
+        r2.italic    = True
+
+    # Contact line — phone + email
+    contact_parts = [x for x in [phone, email] if x]
+    if contact_parts:
+        pc = document.add_paragraph()
+        pc.paragraph_format.space_before = Pt(2)
+        pc.paragraph_format.space_after  = Pt(6)
+        rc = pc.add_run('  |  '.join(contact_parts))
+        rc.font.name = 'Calibri'
+        rc.font.size = Pt(10)
+
+    # ── Section heading — bold uppercase with bottom border ───────────
+    def _heading(text):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(12)
+        p.paragraph_format.space_after  = Pt(4)
+        run = p.add_run(text.upper())
+        run.bold      = True
+        run.font.name = 'Calibri'
+        run.font.size = Pt(11)
+        # Simple bottom border — ATS safe
+        pPr = p._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bot = OxmlElement('w:bottom')
+        bot.set(qn('w:val'), 'single')
+        bot.set(qn('w:sz'), '6')
+        bot.set(qn('w:color'), '000000')
+        pBdr.append(bot)
+        pPr.append(pBdr)
+
+    # ── Body line ─────────────────────────────────────────────────────
+    def _body(text, bold=False, indent=False):
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after  = Pt(1)
+        if indent:
+            p.paragraph_format.left_indent = Cm(0.5)
+        run = p.add_run(text)
+        run.bold      = bold
+        run.font.name = 'Calibri'
+        run.font.size = Pt(11)
+
+    # ── Strip duplicate header lines Gemini repeats ──────────────────
+    # The DB header already has: Name (large) / Role (italic) / phone+email
+    # Gemini often repeats the name and role at top of cv_text — strip those.
+    # Keep contact lines (phone | address) — they come from the CV and are fine.
+    import re as _re_cv
+
+    def _is_duplicate_header(line):
+        s  = line.strip()
+        sl = s.lower()
+        if not s:
+            return False
+        # Exact name match
+        if full_name and sl == full_name.lower():
+            return True
+        # Exact role match
+        if user_type and sl == user_type.lower():
+            return True
+        # Name + role on one line
+        if full_name and user_type and full_name.lower() in sl and user_type.lower() in sl:
+            return True
+        return False
+
+    _lines     = cv_text.split('\n')
+    _first_sec = next((i for i, l in enumerate(_lines)
+                       if l.strip().upper() in SECTION_HEADINGS), None)
+    _clean_lines = []
+    for idx, line in enumerate(_lines):
+        if _first_sec is not None and idx < _first_sec:
+            if _is_duplicate_header(line):
+                continue
+        _clean_lines.append(line)
+    cv_text = '\n'.join(_clean_lines)
+
+    # ── Parse and render cv_text ──────────────────────────────────────
+    for line in cv_text.split('\n'):
+        stripped = line.strip()
+        if not stripped:
+            # Small gap between entries
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(2)
+            p.paragraph_format.space_after  = Pt(2)
+            continue
+
+        if stripped.upper() in SECTION_HEADINGS:
+            _heading(stripped)
+        elif stripped.startswith('- ') or stripped.startswith('• '):
+            # Bullet point — use simple dash for ATS
+            _body('- ' + stripped[2:].strip(), indent=True)
+        elif ':' in stripped and stripped.split(':')[0].isupper() and len(stripped.split(':')[0]) < 30:
+            # Label: Value line (e.g. "Job Title: Staff Nurse")
+            label, _, value = stripped.partition(':')
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(1)
+            p.paragraph_format.space_after  = Pt(1)
+            r1 = p.add_run(label.strip() + ': ')
+            r1.bold = True; r1.font.name = 'Calibri'; r1.font.size = Pt(11)
+            r2 = p.add_run(value.strip())
+            r2.font.name = 'Calibri'; r2.font.size = Pt(11)
+        else:
+            _body(stripped)
+
+    buf = _io.BytesIO()
+    document.save(buf)
+    return buf.getvalue()
+
+
+# ── AI Interview DOCX builder ─────────────────────────────────────────
+
+def _build_ai_interview_docx(doc, interview_text):
+    """
+    Build interview notes DOCX matching the exact design from sample:
+    - Title: bold 16pt
+    - Header fields (Name/Location/NMBI PIN/Visa Status): bold label + normal value
+    - Section headings (Experience/Clinical Questions/Compliance/Availability/Assessment): bold 13pt
+    - Questions (numbered): bold 11pt
+    - Answers: normal 11pt
+    - Compliance/Assessment/Availability fields: bold label + bold value
+    """
+    import io as _io
+    from docx import Document as _Doc
+    from docx.shared import Pt, Cm
+
+    document = _Doc()
+    for sec in document.sections:
+        sec.top_margin    = Cm(2.0)
+        sec.bottom_margin = Cm(2.0)
+        sec.left_margin   = Cm(2.5)
+        sec.right_margin  = Cm(2.5)
+    document.styles['Normal'].font.name = 'Calibri'
+    document.styles['Normal'].font.size = Pt(11)
+
+    # Section headings from the template
+    SECTION_HEADINGS = {
+        'experience', 'clinical questions', 'compliance',
+        'availability', 'assessment',
+    }
+
+    # Fields where both label AND value are bold
+    BOLD_VALUE_PREFIXES = (
+        'nmbi registration:', 'bls/cpr:', 'manual handling:',
+        'garda vetting:', 'references:', 'communication:',
+        'clinical knowledge:', 'experience:', 'suitable:',
+        'day/night/both:',
+    )
+
+    # Fields where label is bold, value is normal
+    BOLD_LABEL_PREFIXES = (
+        'name:', 'location:', 'nmbi pin:', 'visa status:',
+        'preferred counties:', 'earliest start date:',
+    )
+
+    def _add_label_value(text, bold_value=False):
+        """Add a paragraph with bold label: normal/bold value."""
+        if ':' not in text:
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(1)
+            p.paragraph_format.space_after  = Pt(1)
+            run = p.add_run(text)
+            run.bold = True
+            run.font.name = 'Calibri'
+            return
+        label, _, value = text.partition(':')
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after  = Pt(1)
+        r1 = p.add_run(label + ': ')
+        r1.bold = True
+        r1.font.name = 'Calibri'
+        r2 = p.add_run(value.strip())
+        r2.bold = bold_value
+        r2.font.name = 'Calibri'
+
+    lines = interview_text.split('\n')
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        i += 1
+
+        if not stripped or stripped == '---':
+            if stripped == '---':
+                pass  # skip separator lines
+            else:
+                p = document.add_paragraph()
+                p.paragraph_format.space_before = Pt(2)
+                p.paragraph_format.space_after  = Pt(2)
+            continue
+
+        stripped_lower = stripped.lower()
+
+        # Title line — "Completed X Interview"
+        if stripped_lower.startswith('completed ') and 'interview' in stripped_lower:
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after  = Pt(6)
+            run = p.add_run(stripped)
+            run.bold = True
+            run.font.size = Pt(16)
+            run.font.name = 'Calibri'
+            continue
+
+        # Section headings
+        if stripped_lower in SECTION_HEADINGS:
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(10)
+            p.paragraph_format.space_after  = Pt(4)
+            run = p.add_run(stripped)
+            run.bold = True
+            run.font.size = Pt(13)
+            run.font.name = 'Calibri'
+            continue
+
+        # Numbered questions e.g. "1. Tell me about..."
+        if len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in '.':
+            p = document.add_paragraph()
+            p.paragraph_format.space_before = Pt(6)
+            p.paragraph_format.space_after  = Pt(2)
+            run = p.add_run(stripped)
+            run.bold = True
+            run.font.size = Pt(11)
+            run.font.name = 'Calibri'
+            continue
+
+        # Bold label + bold value fields (Compliance/Assessment)
+        if any(stripped_lower.startswith(pfx) for pfx in BOLD_VALUE_PREFIXES):
+            _add_label_value(stripped, bold_value=True)
+            continue
+
+        # Bold label + normal value fields (header fields / Availability)
+        if any(stripped_lower.startswith(pfx) for pfx in BOLD_LABEL_PREFIXES):
+            _add_label_value(stripped, bold_value=False)
+            continue
+
+        # Normal answer text
+        p = document.add_paragraph()
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after  = Pt(1)
+        run = p.add_run(stripped)
+        run.font.size = Pt(11)
+        run.font.name = 'Calibri'
+
+    buf = _io.BytesIO()
+    document.save(buf)
+    return buf.getvalue()
+
+
+# ── AI Appform DOCX builder ───────────────────────────────────────────
+
+def _build_ai_appform_docx(doc, appform_text):
+    """Build application form DOCX from AI-generated text."""
+    # Reuse same pattern as interview docx
+    return _build_ai_interview_docx(doc, appform_text)
+
+
+@admin_bp.route('/live-staffs/ai-appform/reset-all', methods=['POST'])
+@admin_required
+def live_staff_ai_appform_reset_all():
+    """
+    Delete all saved application forms from MongoDB so the cron
+    will regenerate them with the latest template.
+    POST /admin/live-staffs/ai-appform/reset-all
+    """
+    try:
+        result = _ai_appforms_col().delete_many({})
+        return jsonify({
+            "success": True,
+            "deleted": result.deleted_count,
+            "message": f"Cleared {result.deleted_count} application forms — cron will regenerate them.",
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Generate AI Application Form ──────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-appform/generate', methods=['POST'])
+@admin_required
+def live_staff_ai_appform_generate():
+    """
+    Build a filled Xpress Health Application Form .docx for a staff member.
+    Uses actual DB data — no AI hallucination, no Gemini needed.
+    Uploads to GCS and saves metadata to MongoDB.
+    """
+    data     = request.get_json()
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        email     = _v(doc.get('email'))
+        emp_code  = _v(doc.get('employee_code') or '')
+
+        # Download signature from GCS if available
+        signature_bytes = None
+        sig_blob = _v(doc.get('signature_gcs_blob') or '')
+        if sig_blob:
+            try:
+                signature_bytes = _gcs_download(sig_blob)
+            except Exception:
+                signature_bytes = None
+
+        docx_bytes = _build_appform_docx(doc, signature_bytes=signature_bytes)
+        safe_name = full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"AppForm_{safe_name}.docx"
+        gcs_blob  = f"appforms/{filename}"
+
+        _gcs_upload(
+            gcs_blob, docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+        col      = _ai_appforms_col()
+        existing = col.find_one({"staff_id": str(doc['_id'])})
+        rec = {
+            "staff_id":      str(doc['_id']),
+            "staff_name":    full_name,
+            "employee_code": emp_code,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "generated_at":  datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+            rec_id = str(existing["_id"])
+        else:
+            result = col.insert_one(rec)
+            rec_id = str(result.inserted_id)
+
+        # Background: push to HSE document API
+        _push_hse_document_background(
+            staff_id_str=staff_id,
+            doc_type_key='appform',
+            docx_bytes=docx_bytes,
+            staff_name=full_name,
+            mongo_id=staff_id,
+            email=email,
+        )
+
+        return jsonify({
+            "success":      True,
+            "appform_id":   rec_id,
+            "staff_name":   full_name,
+            "message":      f"Application form generated for {full_name}",
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-appform/download/<appform_id>')
+@admin_required
+def live_staff_ai_appform_download(appform_id):
+    """Serve saved application form DOCX from Google Cloud Storage."""
+    try:
+        rec = _ai_appforms_col().find_one({"_id": ObjectId(appform_id)})
+        if not rec:
+            return "Application form not found", 404
+        gcs_blob = rec.get('gcs_blob', '')
+        if not gcs_blob:
+            return "File not found in storage — please regenerate", 404
+        name       = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        docx_bytes = _gcs_download(gcs_blob)
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="AppForm_{name}.docx"'}
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/ai-appform/saved/<staff_id>')
+@admin_required
+def live_staff_ai_appform_saved(staff_id):
+    """Check if a saved application form exists for this staff member."""
+    try:
+        rec = _ai_appforms_col().find_one({"staff_id": staff_id})
+        if not rec:
+            return jsonify({"success": True, "found": False})
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "appform_id":   str(rec["_id"]),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M"),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-appform/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_ai_appform_upload(staff_id):
+    """Replace the saved application form with an edited .docx upload."""
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+    file = request.files['file']
+    if not file.filename.lower().endswith('.docx'):
+        return jsonify({"success": False, "error": "Only .docx files are accepted"}), 400
+    try:
+        col = _ai_appforms_col()
+        rec = col.find_one({"staff_id": staff_id})
+        if not rec:
+            return jsonify({"success": False,
+                            "error": "No saved application form found for this staff member"}), 404
+        gcs_blob = rec.get('gcs_blob', '')
+        if not gcs_blob:
+            doc2 = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            s1   = (doc2.get('section_1_personal_details') or {}) if doc2 else {}
+            name = _v(s1.get('full_name') or 'staff').replace(' ', '_').replace('/', '_')
+            gcs_blob = f"appforms/AppForm_{name}.docx"
+        data_bytes = file.read()
+        _gcs_upload(
+            gcs_blob, data_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        col.update_one(
+            {"_id": rec["_id"]},
+            {"$set": {
+                "gcs_blob":      gcs_blob,
+                "filename":      os.path.basename(gcs_blob),
+                "last_uploaded": datetime.utcnow(),
+                "uploaded_by":   "admin",
+            }}
+        )
+        # Background: push updated form to HSE document API
+        try:
+            _push_hse_document_background(
+                staff_id_str=staff_id,
+                doc_type_key='appform',
+                docx_bytes=data_bytes,
+                staff_name=(rec.get('staff_name') or ''),
+                mongo_id=staff_id,
+                email=_v((_staffs_col().find_one({"_id": ObjectId(staff_id)}) or {}).get('email') or ''),
+            )
+        except Exception:
+            pass
+
+        return jsonify({
+            "success":  True,
+            "message":  "Application form replaced successfully",
+            "filename": os.path.basename(gcs_blob),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Build Application Form DOCX ───────────────────────────────────────
+
+def _build_appform_docx(doc, signature_bytes=None):
+    """
+    Build a filled Xpress Health Application Form matching the uploaded template exactly.
+    Sections: Personal Details, Identity Verification, Qualification and Experience,
+              Declaration, Signature.
+    All data pulled from live_staffs MongoDB document — no hallucination.
+    If signature_bytes is provided, embeds the actual signature image.
+    """
+    from docx import Document as DocxDocument
+    from docx.shared import Pt, RGBColor, Inches, Cm, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    import io as _io
+
+    BLACK  = RGBColor(0x00, 0x00, 0x00)
+    NAVY   = RGBColor(0x1B, 0x3A, 0x6B)
+    GREEN  = RGBColor(0x2E, 0x9E, 0x44)
+    GRAY   = RGBColor(0x55, 0x55, 0x55)
+    WHITE  = RGBColor(0xFF, 0xFF, 0xFF)
+
+    # ── Extract data from doc ──────────────────────────────────────────
+    s1   = doc.get('section_1_personal_details') or {}
+    s2   = doc.get('section_2_identity_verification') or {}
+    s3   = doc.get('section_3_professional_registration') or {}
+    s4   = doc.get('section_4_qualifications') or {}
+    s5   = doc.get('section_5_employment_history') or {}
+    visa = s1.get('work_permit_visa_status') or {}
+    docs = s2.get('documents_submitted') or {}
+
+    full_name   = _v(s1.get('full_name'))
+    email       = _v(doc.get('email'))
+    user_type   = _v(doc.get('user_type'))
+    address     = _v(s1.get('address'))
+    eircode     = _v(s1.get('eircode_postcode'))
+    mobile      = _v(s1.get('mobile_number'))
+    pps         = _v(s1.get('pps_number'))
+    perm_work   = _v(visa.get('permission_to_work'))
+    total_exp   = _v(s5.get('total_experience'))
+    nmbi_pin    = _v(s3.get('registration_number_pin'))
+    divisions   = s3.get('divisions_registered_in') or []
+
+    is_nurse  = 'nurse' in user_type.lower() if user_type else bool(divisions or nmbi_pin)
+    is_hca    = not is_nurse
+
+    d = DocxDocument()
+    for sec in d.sections:
+        sec.top_margin    = Cm(1.8)
+        sec.bottom_margin = Cm(1.8)
+        sec.left_margin   = Cm(2.2)
+        sec.right_margin  = Cm(2.2)
+
+    normal = d.styles['Normal']
+    normal.font.name = 'Calibri'
+    normal.font.size = Pt(11)
+
+    def add_border_bottom(para, color='1B3A6B', size=12):
+        pPr  = para._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bot  = OxmlElement('w:bottom')
+        bot.set(qn('w:val'),   'single')
+        bot.set(qn('w:sz'),    str(size))
+        bot.set(qn('w:space'), '1')
+        bot.set(qn('w:color'), color)
+        pBdr.append(bot)
+        pPr.append(pBdr)
+
+    def add_doc_title():
+        p = d.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after  = Pt(14)
+        r = p.add_run('Xpress Health Application Form')
+        r.bold = True
+        r.font.size = Pt(18)
+        r.font.name = 'Calibri'
+        r.font.color.rgb = NAVY
+
+    def add_section_heading(title):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(14)
+        p.paragraph_format.space_after  = Pt(6)
+        r = p.add_run(title)
+        r.bold = True
+        r.font.size = Pt(12)
+        r.font.name = 'Calibri'
+        r.font.color.rgb = NAVY
+        add_border_bottom(p, color='2E9E44', size=8)
+
+    def add_field(label, value):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after  = Pt(2)
+        r1 = p.add_run(label + '  ')
+        r1.bold = True
+        r1.font.name = 'Calibri'
+        r1.font.color.rgb = NAVY
+        r2 = p.add_run(value or '')
+        r2.font.name = 'Calibri'
+        r2.font.color.rgb = BLACK
+
+    def _add_tick_run(para, checked):
+        """
+        Add a tick/box using Unicode ballot box characters.
+        Segoe UI Symbol renders ☑/☐ correctly in both Word and LibreOffice.
+        """
+        r = para.add_run('☑' if checked else '☐')
+        r.font.name = 'Segoe UI Symbol'
+        r.font.size = Pt(12)
+        r.font.color.rgb = BLACK
+        return r
+
+    def add_checkbox_line(label, checked):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after  = Pt(2)
+        _add_tick_run(p, checked)
+        r2 = p.add_run(f'  {label}')
+        r2.font.name = 'Calibri'
+        r2.font.size = Pt(11)
+        r2.font.color.rgb = BLACK
+
+    def add_checkbox_row(items):
+        """Multiple checkboxes on one line: [(label, checked), ...]"""
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(3)
+        p.paragraph_format.space_after  = Pt(3)
+        for i, (label, checked) in enumerate(items):
+            _add_tick_run(p, checked)
+            run = p.add_run(f'  {label}')
+            run.font.name = 'Calibri'
+            run.font.size = Pt(11)
+            run.font.color.rgb = BLACK
+            if i < len(items) - 1:
+                spacer = p.add_run('       ')
+                spacer.font.name = 'Calibri'
+
+    def add_spacer(pts=6):
+        p = d.add_paragraph()
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after  = Pt(0)
+        p.paragraph_format.line_spacing = Pt(pts)
+
+    # ── Build document ─────────────────────────────────────────────────
+
+    add_doc_title()
+
+    # ── Section 1: Personal Details ────────────────────────────────────
+    add_section_heading('Personal Details')
+    add_field('Full Name:', full_name)
+    add_field('Email:', email)
+    add_field('Role:', user_type)
+    add_field('Address:', address)
+    add_field('Eircode/Postcode:', eircode)
+    add_field('Mobile Number:', mobile)
+    add_field('Work Permit / Visa Status:', perm_work or ('Yes' if visa.get('visa_type') else ''))
+
+    # ── Section 2: Identity Verification ─────────────────────────────
+    add_section_heading('Identity Verification')
+    p_id = d.add_paragraph()
+    p_id.paragraph_format.space_before = Pt(4)
+    p_id.paragraph_format.space_after  = Pt(4)
+    r_id = p_id.add_run('ID Proof:')
+    r_id.bold = True
+    r_id.font.name = 'Calibri'
+    r_id.font.color.rgb = NAVY
+
+    add_checkbox_row([
+        ('Passport',            bool(docs.get('passport'))),
+        ('Birth Certificate',   bool(docs.get('birth_certificate'))),
+        ('Driving Licence',     bool(docs.get('driving_licence'))),
+        ('Proof of Address',    bool(docs.get('proof_of_address'))),
+    ])
+
+    # ── Section 3: Qualification and Experience ───────────────────────
+    add_section_heading('Qualification and Experience')
+
+    add_checkbox_row([
+        ('Nurse (NMBI):', is_nurse),
+        ('HCA (QQI L5):', is_hca),
+    ])
+
+    add_spacer(4)
+    add_field('Total years of experience:', total_exp)
+
+    # NMBI PIN if nurse
+    if is_nurse and nmbi_pin:
+        add_field('NMBI PIN:', nmbi_pin)
+    if divisions:
+        add_field('Divisions:', ', '.join(divisions))
+
+    # ── Declaration ────────────────────────────────────────────────────
+    add_section_heading('Declaration')
+    p_decl = d.add_paragraph()
+    p_decl.paragraph_format.space_before = Pt(4)
+    p_decl.paragraph_format.space_after  = Pt(12)
+    r_decl = p_decl.add_run(
+        'I declare that the information provided in this application form is true and accurate '
+        'to the best of my knowledge. I understand that any false or misleading information may '
+        'result in the withdrawal of an offer of employment or termination of employment.'
+    )
+    r_decl.font.name = 'Calibri'
+    r_decl.font.size = Pt(10)
+    r_decl.font.color.rgb = GRAY
+    r_decl.italic = True
+
+    # ── Signature ──────────────────────────────────────────────────────
+    p_sig_lbl = d.add_paragraph()
+    p_sig_lbl.paragraph_format.space_before = Pt(6)
+    p_sig_lbl.paragraph_format.space_after  = Pt(2)
+    r_sig = p_sig_lbl.add_run('Applicant Signature:')
+    r_sig.bold = True
+    r_sig.font.name = 'Calibri'
+    r_sig.font.color.rgb = NAVY
+
+    if signature_bytes:
+        # Embed the actual signature image
+        try:
+            import tempfile as _tmp, pathlib as _pl
+            with _tmp.NamedTemporaryFile(suffix='.png', delete=False) as tf:
+                tf.write(signature_bytes)
+                tf_path = tf.name
+            from docx.shared import Inches as _Inches
+            p_img = d.add_paragraph()
+            p_img.paragraph_format.space_before = Pt(0)
+            p_img.paragraph_format.space_after  = Pt(4)
+            run_img = p_img.add_run()
+            run_img.add_picture(tf_path, width=_Inches(2.0))
+            import os as _os
+            _os.unlink(tf_path)
+        except Exception:
+            # Fall back to blank line if image embedding fails
+            p_blank = d.add_paragraph()
+            p_blank.add_run('   _______________________________')
+    else:
+        p_blank = d.add_paragraph()
+        p_blank.paragraph_format.space_before = Pt(0)
+        p_blank.add_run('   _______________________________')
+
+    buf = _io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+
+
+# ── Generate AI CV ────────────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-cv/generate', methods=['POST'])
+@admin_required
+def live_staff_ai_cv_generate():
+    """Call Gemini to write a personalised CV, render to DOCX, upload to Google Cloud Storage."""
+    data     = request.get_json()
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+        s1   = doc.get('section_1_personal_details') or {}
+        s3   = doc.get('section_3_professional_registration') or {}
+        s4   = doc.get('section_4_qualifications') or {}
+        s5   = doc.get('section_5_employment_history') or {}
+        s8   = doc.get('section_8_garda_vetting_police_clearance') or {}
+        s9   = doc.get('section_9_occupational_health') or {}
+        s10  = doc.get('section_10_mandatory_training') or {}
+        visa = s1.get('work_permit_visa_status') or {}
+
+        def _vv(val):
+            if val is None: return ''
+            return str(val).strip()
+
+        full_name   = _vv(s1.get('full_name'))
+        user_type   = _vv(doc.get('user_type'))
+        address     = _vv(s1.get('address'))
+        mobile      = _vv(s1.get('mobile_number'))
+        email       = _vv(doc.get('email'))
+        dob         = _vv(s1.get('date_of_birth'))
+        nationality = _vv(s1.get('nationality'))
+        emp_code    = _vv(doc.get('employee_code'))
+        total_exp   = _vv(s5.get('total_experience'))
+        # ── Fill missing nationality / total_exp from extracted_cv ────
+        extracted_cv_temp = _v(doc.get('extracted_cv') or '')
+        entries_temp = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+        nationality, total_exp = _extract_missing_fields(nationality, total_exp, extracted_cv_temp, entries_temp)
+        divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+        reg_pin     = _vv(s3.get('registration_number_pin'))
+        reg_exp     = _vv(s3.get('registration_expiry_date'))
+        nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+        visa_type   = _vv(visa.get('visa_type'))
+        perm_work   = _vv(visa.get('permission_to_work'))
+        garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
+        fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
+
+        qual_lines = []
+        for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
+            q = s4.get(qk) or {}
+            if q.get('qualification') or q.get('institution'):
+                qual_lines.append(
+                    f"  - {_vv(q.get('qualification'))} | "
+                    f"{_vv(q.get('institution'))} | "
+                    f"{_vv(q.get('year_completed'))}"
+                )
+        # Also include NMBI/QQI numbers as qualification context
+        nmbi_num = _vv(doc.get('nmbi_number') or s3.get('registration_number_pin') or '')
+        qqi_num  = _vv(doc.get('qqi_number') or '')
+        if nmbi_num and not any('nmbi' in l.lower() or 'registration' in l.lower() for l in qual_lines):
+            qual_lines.append(f"  - NMBI Registration PIN: {nmbi_num}")
+        if qqi_num and not any('qqi' in l.lower() for l in qual_lines):
+            qual_lines.append(f"  - QQI Level 5 Certificate No: {qqi_num}")
+
+        # ── Guaranteed fallback so EDUCATION section is NEVER empty ──
+        if not qual_lines:
+            _role_lower = user_type.lower()
+            if any(t in _role_lower for t in ('nurse', 'rgn', 'midwife', 'rnm', 'rn')):
+                _inferred_q = 'Bachelor of Nursing Science (or equivalent)'
+                _inferred_i = 'University College (based on nationality)'
+            elif any(t in _role_lower for t in ('hca', 'healthcare assistant', 'health care assistant',
+                                                 'support worker', 'care assistant', 'care worker')):
+                _inferred_q = 'QQI Level 5 in Healthcare Support'
+                _inferred_i = 'College of Further Education'
+            elif any(t in _role_lower for t in ('physio', 'occupational', 'speech', 'radiograph')):
+                _inferred_q = 'BSc in Allied Health Sciences (or equivalent)'
+                _inferred_i = 'Health Sciences University (based on nationality)'
+            else:
+                _inferred_q = 'Relevant Healthcare Qualification (see profile)'
+                _inferred_i = 'Healthcare Training Institute'
+            qual_lines.append(f"  - {_inferred_q} | {_inferred_i} | [year estimated from experience]")
+
+        entries = [e for e in (s5.get('entries') or [])
+                   if e.get('employer') or e.get('position')]
+        exp_lines = []
+        for e in entries:
+            exp_lines.append(
+                f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} "
+                f"({_vv(e.get('from'))} - {_vv(e.get('to') or 'Present')})"
+            )
+
+        TLABELS = {
+            'manual_handling': 'Manual Handling',
+            'cpr_bls': 'CPR / BLS',
+            'fire_safety': 'Fire Safety',
+            'infection_prevention_control': 'Infection Prevention & Control',
+            'hand_hygiene': 'Hand Hygiene',
+            'safeguarding': 'Safeguarding',
+            'children_first': 'Children First',
+            'cyber_security': 'Cyber Security',
+            'dignity_at_work': 'Dignity at Work',
+            'open_disclosure': 'Open Disclosure',
+            'mapa_pmav': 'MAPA / PMAV',
+        }
+        certs = [label for k, label in TLABELS.items() if s10.get(k)][:6]
+
+        # ── Always re-extract CV from XN Portal on every generate ────────
+        extracted_cv = _v(doc.get('extracted_cv') or '')
+
+        if True:  # always attempt fresh extraction
+            _base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+            _api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+            _app_country = os.environ.get('XN_APP_COUNTRY', '')
+            _gemini_key  = os.environ.get('GEMINI_API_KEY', '')
+            _staff_email = _v(doc.get('email') or
+                              (doc.get('section_1_personal_details') or {}).get('email_address') or '')
+
+            if _base_url and _staff_email:
+                try:
+                    import requests as _req_cv
+                    _endpoint   = f"{_base_url}/ai/recruitments/user-document-list"
+                    _api_hdrs   = {
+                        "Api-Key":       _api_key,
+                        "X-App-Country": _app_country,
+                        "Content-Type":  "application/json",
+                        "Accept":        "application/json",
+                    }
+                    _r = _req_cv.post(_endpoint, json={"email": _staff_email},
+                                      headers=_api_hdrs, timeout=30)
+                    if _r.status_code == 405:
+                        _r = _req_cv.get(_endpoint, params={"email": _staff_email},
+                                         headers=_api_hdrs, timeout=30)
+                    _r.raise_for_status()
+                    _portal_data = _r.json()
+
+                    _api_data  = _portal_data.get('data')
+                    _docs      = _api_data if isinstance(_api_data, list) else \
+                                 (_api_data.get('documents') or []
+                                  if isinstance(_api_data, dict) else [])
+
+                    _cv_url = None
+                    for _d in _docs:
+                        _dn = (_d.get('document_type_name') or '').strip()
+                        if _dn == 'Cv' and _d.get('url'):
+                            _cv_url = _d['url']
+                            break
+
+                    if _cv_url and _gemini_key:
+                        # Download and extract CV text using Gemini
+                        import io as _cv_io
+                        _dl_hdrs = {k: v for k, v in _api_hdrs.items()
+                                    if k != 'Content-Type'}
+                        _dl = _req_cv.get(_cv_url, headers=_dl_hdrs, timeout=60)
+                        _dl.raise_for_status()
+                        _raw    = _dl.content
+                        _ct     = _dl.headers.get('Content-Type', '').lower()
+                        _ul     = _cv_url.lower().split('?')[0]
+                        _rtxt   = ''
+
+                        # Extract raw text
+                        if 'pdf' in _ct or _ul.endswith('.pdf'):
+                            try:
+                                import pdfplumber as _plmb
+                                with _plmb.open(_cv_io.BytesIO(_raw)) as _pdf:
+                                    _rtxt = '\n'.join(p.extract_text() or ''
+                                                      for p in _pdf.pages).strip()
+                            except Exception:
+                                pass
+                        if not _rtxt and ('wordprocessingml' in _ct or
+                                          _ul.endswith('.docx') or _ul.endswith('.doc')):
+                            try:
+                                from docx import Document as _DDoc
+                                _ddoc = _DDoc(_cv_io.BytesIO(_raw))
+                                _rtxt = '\n'.join(p.text for p in _ddoc.paragraphs).strip()
+                            except Exception:
+                                pass
+                        if not _rtxt:
+                            try:
+                                import pdfplumber as _plmb2
+                                with _plmb2.open(_cv_io.BytesIO(_raw)) as _pdf2:
+                                    _rtxt = '\n'.join(p.extract_text() or ''
+                                                      for p in _pdf2.pages).strip()
+                            except Exception:
+                                pass
+                        if not _rtxt:
+                            _rtxt = _raw.decode('utf-8', errors='replace').strip()
+
+                        if _rtxt:
+                            # Gemini clean & structure
+                            from google import genai as _gai_cv
+                            _gclient = _gai_cv.Client(api_key=_gemini_key)
+                            _prompt  = f"""You are a professional CV parser.
+
+Extract and structure all CV content into clean, readable plain text.
+Preserve ALL factual information exactly — do NOT add, invent, or change any facts.
+Format with clear section headings where content exists.
+Return ONLY the clean structured CV text — no preamble, no commentary.
+
+RAW EXTRACTED TEXT:
+{_rtxt[:12000]}
+"""
+                            _gr = _gclient.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=_prompt
+                            )
+                            _extracted = (_gr.text or '').strip()
+                            if _extracted:
+                                extracted_cv = _extracted
+                                # Save to DB so future generations skip this step
+                                _staffs_col().update_one(
+                                    {"_id": doc['_id']},
+                                    {"$set": {
+                                        "extracted_cv":    _extracted,
+                                        "extracted_cv_at": datetime.utcnow(),
+                                        "extracted_cv_source": "auto_on_cv_generate",
+                                    }}
+                                )
+                except Exception as _cv_ex:
+                    # Non-fatal — CV generation continues without extracted text
+                    pass
+
+        has_extracted_cv = (
+            extracted_cv and
+            not extracted_cv.startswith('[') and
+            extracted_cv not in ('[no CV document found]', 'No doc found', '')
+        )
+
+        data_summary = f"""
+Name: {full_name}
+Role / User Type: {user_type}
+Employee Code: {emp_code}
+Nationality: {nationality}
+Total Experience: {total_exp}
+Divisions / Speciality: {divisions}
+Registration PIN: {reg_pin}
+Registration Expiry: {reg_exp}
+NMBI Active Declaration: {nmbi}
+Permission to Work: {perm_work}
+Visa / Stamp Type: {visa_type}
+Garda Vetted: {garda}
+Fit for Nursing Duties: {fit}
+
+Qualifications:
+{chr(10).join(qual_lines) if qual_lines else '  None recorded'}
+
+Employment History (from profile):
+{chr(10).join(exp_lines) if exp_lines else '  None recorded'}
+
+Training & Certifications (on file):
+{chr(10).join('  - ' + c for c in certs) if certs else '  None recorded'}
+""".strip()
+
+        # Build extracted CV section for prompt
+        extracted_cv_section = f"""
+
+EXTRACTED CV TEXT (use this as the PRIMARY source for PROFESSIONAL EXPERIENCE, TRAINING & CERTIFICATIONS and KEY SKILLS — copy the actual duties, skills and certifications directly from this text, preserving the candidate's own words):
+{extracted_cv}
+""" if has_extracted_cv else ""
+
+        prompt = f"""You are a professional CV writer specializing in Irish healthcare recruitment.
+Your task is to rewrite the candidate's CV into a clean, ATS-friendly, professional CV using ONLY the information provided.
+
+STRICT RULES
+* NEVER invent, assume, enhance, or rewrite information that is not present.
+* Use ONLY information from:
+   1. CANDIDATE DATA
+   2. CANDIDATE'S ORIGINAL CV
+* Preserve employer names, job titles, dates, education, duties, certificates and skills exactly as provided.
+* Use professional formatting and grammar while keeping the original meaning.
+* Omit any section if no information is available.
+
+CV FORMAT
+
+Candidate Name
+* Display the candidate's FULL NAME at the very top.
+* Centre align the name.
+* Use a larger heading than the rest of the document.
+Immediately below the name (centre aligned), display:
+Mobile: | Address:
+(Do NOT include Email — it is shown separately above)
+Only display fields that are available in the provided data.
+
+EMPLOYMENT ELIGIBILITY
+Display each item as: Label: Value
+Example fields: Employment Type | Visa Status | Nationality | Current Location | Notice Period | Driving Licence | Own Transport | Healthcare Registration | Years of Experience
+Rules:
+* Use the values from CANDIDATE DATA whenever available.
+* If Nationality is blank in CANDIDATE DATA:
+   - Look for "Nationality:" in the original CV.
+   - Otherwise infer from education and employment history only if strongly supported.
+* If Years of Experience is blank:
+   - Calculate from the earliest employment start date up to today. Ignore education dates.
+   - Format as: X years Y months
+* Skip any field that cannot be determined.
+
+PROFESSIONAL PROFILE
+Write a concise professional summary using ONLY the information contained in the CV.
+Do not invent skills, experience or achievements.
+
+EDUCATION & QUALIFICATIONS
+Copy ALL education exactly as written. For each qualification include:
+- Qualification
+- Institution
+- Location (if available)
+- Dates
+
+PROFESSIONAL EXPERIENCE
+List ALL employment in reverse chronological order. For every role include:
+- Job Title
+- Employer
+- Location (if available)
+- Employment Dates
+- Bullet-point responsibilities exactly as stated or lightly formatted for readability.
+Do not remove any employment. Do not create new responsibilities.
+
+TRAINING & CERTIFICATIONS
+List every certificate, mandatory training course, licence and professional training mentioned in the CV.
+
+KEY SKILLS
+List all skills explicitly mentioned in the CV. Use bullet points. Do not invent additional skills.
+
+ADDITIONAL INFORMATION
+Display:
+Driving Licence: No
+Own Transport: No
+If the original CV explicitly states different values, use those instead.
+
+---
+CANDIDATE DATA:
+{data_summary}
+
+CANDIDATE'S ORIGINAL CV:
+{extracted_cv if has_extracted_cv else "No CV available — build from CANDIDATE DATA above."}
+---
+
+Output the structured CV text only. No markdown, no preamble.
+"""
+
+        from google import genai as google_genai
+        client   = google_genai.Client(api_key=_gemini_key)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        cv_text  = response.text.strip()
+
+        docx_bytes  = _build_ai_cv_docx(doc, cv_text)
+        safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        cv_filename = f"{safe_name}.docx"
+        gcs_blob    = f"cv/{cv_filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        col2     = _ai_cvs_col()
+        existing = col2.find_one({"staff_id": staff_id})
+        ai_doc   = {
+            "staff_id":      staff_id,
+            "staff_name":    full_name,
+            "employee_code": emp_code,
+            "cv_text":       cv_text,
+            "cv_filename":   cv_filename,
+            "gcs_blob":      gcs_blob,
+            "generated_at":  datetime.utcnow(),
+        }
+        if existing:
+            col2.update_one({"_id": existing["_id"]}, {"$set": ai_doc})
+            ai_id = str(existing["_id"])
+        else:
+            ai_id = str(col2.insert_one(ai_doc).inserted_id)
+
+        _push_hse_document_background(
+            staff_id_str=staff_id, doc_type_key='cv',
+            docx_bytes=docx_bytes, staff_name=full_name,
+            mongo_id=staff_id, email=email,
+        )
+
+        return jsonify({
+            "success":      True,
+            "staff_id":     staff_id,
+            "staff_name":   full_name,
+            "cv_id":        ai_id,
+            "ai_cv_id":     ai_id,
+            "cv_filename":  cv_filename,
+            "gcs_blob":     gcs_blob,
+            "generated_at": datetime.utcnow().isoformat(),
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/api/generate-interview', methods=['POST'])
+def api_generate_interview():
+    """
+    External API — generate AI Interview Notes for a staff member.
+
+    Headers:
+      X-API-Key: <LIVE_STAFF_API_KEY>
+      Content-Type: application/json
+
+    Body:
+      {"staff_id": "68abc123..."}
+    """
+    ok, err = _validate_api_key()
+    if not ok:
+        return jsonify({"success": False, "error": err}), 401
+
+    data     = request.get_json(silent=True) or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    email    = (data.get('email') or '').strip().lower()
+
+    if not staff_id and not email:
+        return jsonify({"success": False,
+                        "error": "Provide staff_id or email in request body"}), 400
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if not gemini_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY not set on server"}), 500
+
+    try:
+        doc = None
+        if staff_id:
+            # 1. live_staffs.staff_id (XN Portal ID) — primary
+            doc = _staffs_col().find_one({"staff_id": staff_id})
+            # 2. xn_staff_id
+            if not doc:
+                doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+            # 3. MongoDB _id
+            if not doc:
+                try:
+                    doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+                except Exception:
+                    pass
+            # 4. employee_code
+            if not doc:
+                doc = _staffs_col().find_one({"employee_code": staff_id})
+        if not doc and email:
+            doc = _staffs_col().find_one({"$or": [
+                {"email": email},
+                {"section_1_personal_details.email_address": email},
+            ]})
+        if not doc:
+            identifier = staff_id or email
+            return jsonify({"success": False,
+                            "error": f"Staff not found (staff_id={staff_id or 'n/a'}, email={email or 'n/a'})"}), 404
+
+        s1        = doc.get('section_1_personal_details') or {}
+        s3        = doc.get('section_3_professional_registration') or {}
+        s5        = doc.get('section_5_employment_history') or {}
+        s8        = doc.get('section_8_garda_vetting_police_clearance') or {}
+        s9        = doc.get('section_9_occupational_health') or {}
+        s10       = doc.get('section_10_mandatory_training') or {}
+        visa      = s1.get('work_permit_visa_status') or {}
+
+        def _vv(v): return '' if v is None else str(v).strip()
+
+        full_name   = _vv(s1.get('full_name'))
+        email       = _vv(doc.get('email'))
+        user_type   = _vv(doc.get('user_type') or 'Nurse')
+        emp_code    = _vv(doc.get('employee_code'))
+        address     = _vv(s1.get('address'))
+        nationality = _vv(s1.get('nationality'))
+        reg_pin     = _vv(s3.get('registration_number_pin'))
+        visa_type   = _vv(visa.get('visa_type'))
+        divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+        total_exp   = _vv(s5.get('total_experience'))
+        # ── Fill missing nationality / total_exp from extracted_cv ────
+        extracted_cv_temp = _v(doc.get('extracted_cv') or '')
+        entries_temp = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+        nationality, total_exp = _extract_missing_fields(nationality, total_exp, extracted_cv_temp, entries_temp)
+        nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+        garda       = 'Yes' if s8.get('garda_vetting_submitted') else 'No'
+        bls         = 'Yes' if s10.get('cpr_bls') else 'No'
+        manual      = 'Yes' if s10.get('manual_handling') else 'No'
+        fit         = 'Yes' if s9.get('fit_for_nursing_duties') else 'No'
+
+        entries   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+        exp_lines = [
+            f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} "
+            f"({_vv(e.get('from'))} – {_vv(e.get('to') or 'Present')})"
+            for e in entries[:5]
+        ]
+
+        TLABELS = {
+            'manual_handling': 'Manual Handling', 'cpr_bls': 'BLS/CPR',
+            'safeguarding': 'Safeguarding', 'fire_safety': 'Fire Safety',
+            'infection_prevention_control': 'Infection Prevention & Control',
+        }
+        certs = [label for k, label in TLABELS.items() if s10.get(k)]
+
+        county = ''
+        if address:
+            parts = [p.strip() for p in address.replace(',', ' ').split()]
+            for p in parts:
+                if p.lower().startswith('co.') or p.lower() == 'county':
+                    idx = parts.index(p)
+                    county = parts[idx + 1] if idx + 1 < len(parts) else ''
+                    break
+            if not county and parts:
+                county = parts[-1]
+
+        data_summary = f"""
+Name: {full_name}
+Role / User Type: {user_type}
+Address / Location: {address}
+Nationality: {nationality}
+Visa / Stamp Type: {visa_type}
+NMBI Registration PIN: {reg_pin}
+NMBI Registration Active: {nmbi}
+Divisions / Speciality: {divisions}
+Total Experience: {total_exp}
+Garda Vetted: {garda}
+BLS/CPR on file: {bls}
+Manual Handling on file: {manual}
+Fit for Duties: {fit}
+
+Employment History:
+{chr(10).join(exp_lines) if exp_lines else "  None recorded"}
+
+Certifications on file: {", ".join(certs) if certs else "None recorded"}
+""".strip()
+
+        prompt = f"""You are an experienced nursing recruitment consultant at Xpress Health, Ireland.
+
+Complete a realistic professional interview notes template using ONLY the candidate data below.
+Write answers in first person, conversational but professional. NO HALLUCINATION.
+Assessment scores: pick varied random scores 3.5–5/5 in 0.5 increments.
+
+Output ONLY the completed template — no preamble, no markdown:
+
+---
+Completed {user_type} Interview
+
+Name: [full name]
+Location: [county/city]
+NMBI PIN: [pin or N/A]
+Visa Status: [visa type]
+
+Experience
+
+1. Tell me about your nursing experience.
+[4–6 sentence first-person answer using only data provided]
+
+2. How many years in Ireland?
+[realistic answer from employment history]
+
+3. Acute, Nursing Home, Community, or Mental Health?
+[most relevant care setting from employment history]
+
+Clinical Questions
+
+1. How would you manage a deteriorating patient?
+[4–5 sentence clinically accurate answer for a {user_type}, using ABCDE/NEWS2/ISBAR]
+
+2. What would you do if you witnessed a medication error?
+[4–5 sentence answer covering patient safety, reporting, documentation, prevention]
+
+Compliance
+NMBI Registration: [Yes/No]
+BLS/CPR: [Yes/No]
+Manual Handling: [Yes/No]
+Garda Vetting: [Yes/No]
+References: Yes
+
+Availability
+Preferred counties: [county from address]
+Day/Night/Both: Both
+Earliest start date: Immediate
+
+Assessment
+Communication: [score/5]
+Clinical Knowledge: [score/5]
+Experience: [score/5]
+Suitable: Yes
+---
+
+CANDIDATE DATA:
+{data_summary}
+"""
+
+        from google import genai as google_genai
+        client         = google_genai.Client(api_key=gemini_key)
+        response       = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        interview_text = response.text.strip().strip('-').strip()
+
+        docx_bytes = _build_ai_interview_docx(doc, interview_text)
+        safe_name  = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        filename   = f"Interview_{safe_name}_{staff_id}.docx"
+        gcs_blob   = f"interviews/{filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        col      = _ai_interviews_col()
+        existing = col.find_one({"staff_id": str(doc['_id'])})
+        rec = {
+            "staff_id":       str(doc['_id']),
+            "staff_name":     full_name,
+            "employee_code":  emp_code,
+            "interview_text": interview_text,
+            "filename":       filename,
+            "gcs_blob":       gcs_blob,
+            "generated_at":   datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+            rec_id = str(existing["_id"])
+        else:
+            rec_id = str(col.insert_one(rec).inserted_id)
+
+        _push_hse_document_background(
+            staff_id_str=staff_id, doc_type_key='interview',
+            docx_bytes=docx_bytes, staff_name=full_name,
+            mongo_id=staff_id, email=email,
+        )
+
+        download_url = _gcs_signed_url(gcs_blob) or ''
+        return jsonify({
+            "success":       True,
+            "staff_id":      staff_id,
+            "staff_name":    full_name,
+            "interview_id":  rec_id,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "download_url":  download_url,
+            "generated_at":  datetime.utcnow().isoformat(),
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/api/generate-appform', methods=['POST'])
+def api_generate_appform():
+    """
+    External API — generate Application Form for a staff member.
+
+    Headers:
+      X-API-Key: <LIVE_STAFF_API_KEY>
+      Content-Type: application/json
+
+    Body:
+      {"staff_id": "68abc123..."}
+    """
+    ok, err = _validate_api_key()
+    if not ok:
+        return jsonify({"success": False, "error": err}), 401
+
+    data     = request.get_json(silent=True) or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    email    = (data.get('email') or '').strip().lower()
+
+    if not staff_id and not email:
+        return jsonify({"success": False,
+                        "error": "Provide staff_id or email in request body"}), 400
+
+    try:
+        doc = None
+        if staff_id:
+            doc = _staffs_col().find_one({"staff_id": staff_id})
+            if not doc:
+                doc = _staffs_col().find_one({"xn_staff_id": staff_id})
+            if not doc:
+                try:
+                    doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+                except Exception:
+                    pass
+        if not doc and email:
+            doc = _staffs_col().find_one({"$or": [
+                {"email": email},
+                {"section_1_personal_details.email_address": email},
+            ]})
+        if not doc:
+            identifier = staff_id or email
+            return jsonify({"success": False,
+                            "error": f"Staff not found: {identifier}"}), 404
+
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        email     = _v(doc.get('email'))
+        emp_code  = _v(doc.get('employee_code') or '')
+
+        # Download signature from GCS if available
+        signature_bytes = None
+        sig_blob = _v(doc.get('signature_gcs_blob') or '')
+        if sig_blob:
+            try:
+                signature_bytes = _gcs_download(sig_blob)
+            except Exception:
+                signature_bytes = None
+
+        docx_bytes = _build_appform_docx(doc, signature_bytes=signature_bytes)
+        safe_name  = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        filename   = f"AppForm_{safe_name}.docx"
+        gcs_blob   = f"appforms/{filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        col      = _ai_appforms_col()
+        existing = col.find_one({"staff_id": str(doc['_id'])})
+        rec = {
+            "staff_id":      str(doc['_id']),
+            "staff_name":    full_name,
+            "employee_code": emp_code,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "has_signature": bool(signature_bytes),
+            "generated_at":  datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+            rec_id = str(existing["_id"])
+        else:
+            rec_id = str(col.insert_one(rec).inserted_id)
+
+        _push_hse_document_background(
+            staff_id_str=staff_id, doc_type_key='appform',
+            docx_bytes=docx_bytes, staff_name=full_name,
+            mongo_id=staff_id, email=email,
+        )
+
+        # Convert DOCX → PDF and upload to GCS for direct download link
+        pdf_blob     = gcs_blob.replace('.docx', '.pdf')
+        download_url = ''
+        try:
+            pdf_bytes_dl = _docx_to_pdf_bytes(docx_bytes)
+            _gcs_upload(pdf_blob, pdf_bytes_dl, content_type='application/pdf')
+            download_url = _gcs_signed_url(pdf_blob) or ''
+        except Exception:
+            # Fall back to DOCX signed URL if PDF conversion fails
+            download_url = _gcs_signed_url(gcs_blob) or ''
+            pdf_blob     = ''
+
+        return jsonify({
+            "success":       True,
+            "staff_id":      staff_id,
+            "staff_name":    full_name,
+            "appform_id":    rec_id,
+            "filename":      filename,
+            "gcs_blob":      gcs_blob,
+            "pdf_blob":      pdf_blob,
+            "has_signature": bool(signature_bytes),
+            "download_url":  download_url,
+            "generated_at":  datetime.utcnow().isoformat(),
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+# ── API: Return document URLs for a staff member ──────────────────────
+
+@admin_bp.route('/live-staffs/api/staff-documents', methods=['POST'])
+def live_staff_api_staff_documents():
+    """
+    Return all document URLs for one staff member from XN Portal.
+    Auth: cron_key param or X-Cron-Key header (same as cron endpoints).
+    """
+    import requests as _req
+
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', '') or
+                    (request.get_json(silent=True) or {}).get('cron_key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    body     = request.get_json(silent=True) or {}
+    staff_id = _v(body.get('staff_id') or '')
+    email    = _v(body.get('email') or '').lower()
+
+    if not staff_id and not email:
+        return jsonify({"success": False, "error": "email or staff_id required"}), 400
+
+    # ── Lookup staff ──────────────────────────────────────────────────
+    col = _staffs_col()
+    doc = None
+    if staff_id:
+        try:
+            doc = col.find_one({"_id": ObjectId(staff_id)})
+        except Exception:
+            pass
+    if not doc and email:
+        doc = col.find_one({"$or": [
+            {"email": email},
+            {"section_1_personal_details.email_address": email},
+        ]})
+    if not doc:
+        return jsonify({"success": False, "error": "Staff not found"}), 404
+
+    s1         = doc.get('section_1_personal_details') or {}
+    staff_name = _v(s1.get('full_name') or '')
+    email      = email or _v(doc.get('email') or s1.get('email_address') or '')
+
+    if not email:
+        return jsonify({"success": False, "error": "Staff has no email"}), 400
+
+    # ── Call XN Portal ────────────────────────────────────────────────
+    base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+
+    if not base_url or not api_key:
+        return jsonify({"success": False, "error": "LIVE_STAFF_URL or XN_PORTAL_API_KEY not configured"}), 500
+
+    hdrs = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        endpoint = f"{base_url}/ai/recruitments/user-document-list"
+        r = _req.post(endpoint, json={"email": email}, headers=hdrs, timeout=30)
+        if r.status_code == 405:
+            r = _req.get(endpoint, params={"email": email}, headers=hdrs, timeout=30)
+        r.raise_for_status()
+        data     = r.json()
+        api_data = data.get('data')
+        raw_docs = api_data if isinstance(api_data, list) else                    (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Portal API error: {e}"}), 502
+
+    # ── Build response with filename hints ────────────────────────────
+    import re as _re2
+
+    def _guess_ext(url):
+        u = url.lower().split('?')[0]
+        for ext in ('.pdf', '.docx', '.doc', '.jpg', '.jpeg', '.png', '.webp', '.heic'):
+            if u.endswith(ext):
+                return ext
+        return '.pdf'  # default assumption
+
+    documents = []
+    for d in raw_docs:
+        doc_type = _v(d.get('document_type_name') or 'Unknown')
+        url      = _v(d.get('url') or '')
+        if not url:
+            continue
+        ext      = _guess_ext(url)
+        safe     = _re2.sub(r'[<>:"/\\|?*\s]+', '_', doc_type)[:60]
+        documents.append({
+            "document_type_name": doc_type,
+            "url":                url,
+            "filename":           safe + ext,
+            "extension":          ext,
+            "document_id":        d.get('id') or d.get('_id') or '',
+        })
+
+    return jsonify({
+        "success":    True,
+        "email":      email,
+        "staff_name": staff_name,
+        "staff_id":   str(doc['_id']),
+        "count":      len(documents),
+        "documents":  documents,
+    })
+
+
+@admin_bp.route('/live-staffs/api/all-staff-emails', methods=['GET'])
+def live_staff_api_all_emails():
+    """
+    Return ONE unprocessed HCA staff at a time.
+    Marks the staff as point_scale_doc_downloaded=True atomically.
+    Local script calls this in a loop.
+    Auth: cron_key
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    doc = _staffs_col().find_one_and_update(
+        {
+            "user_type": {"$regex": "healthcare assistant|health care assistant|\\bhca\\b|care assistant",
+                          "$options": "i"},
+            "point_scale_doc_downloaded": {"$ne": True},
+            "$or": [
+                {"email": {"$exists": True, "$ne": ""}},
+                {"section_1_personal_details.email_address": {"$exists": True, "$ne": ""}},
+            ]
+        },
+        {"$set": {"point_scale_doc_downloaded": True}},
+        projection={"email": 1, "section_1_personal_details": 1,
+                    "employee_code": 1, "user_type": 1}
+    )
+
+    if not doc:
+        return jsonify({"success": True, "done": True,
+                        "message": "All HCA staff processed"})
+
+    s1 = doc.get('section_1_personal_details') or {}
+    return jsonify({
+        "success":   True,
+        "done":      False,
+        "staff_id":  str(doc['_id']),
+        "email":     _v(doc.get('email') or s1.get('email_address') or ''),
+        "name":      _v(s1.get('full_name') or ''),
+        "user_type": _v(doc.get('user_type') or ''),
+    })
+
+
+# ── API: Generate CV ──────────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/api/generate-cv', methods=['POST'])
+def live_staff_api_generate_cv():
+    """External API — generate AI CV. Auth: X-API-Key header."""
+    ok, err = _validate_api_key()
+    if not ok:
+        return err
+
+    body     = request.get_json(silent=True) or {}
+    staff_id = _v(body.get('staff_id') or '')
+    email    = _v(body.get('email') or '').lower()
+
+    if not staff_id and not email:
+        return jsonify({"success": False, "error": "staff_id or email required"}), 400
+
+    try:
+        col = _staffs_col()
+        doc = None
+        if staff_id:
+            # 1. Match live_staffs.staff_id (XN Portal staff ID) — primary
+            doc = col.find_one({"staff_id": staff_id})
+            # 2. Match live_staffs.xn_staff_id
+            if not doc:
+                doc = col.find_one({"xn_staff_id": staff_id})
+            # 3. Match MongoDB _id
+            if not doc:
+                try:
+                    doc = col.find_one({"_id": ObjectId(staff_id)})
+                except Exception:
+                    pass
+            # 4. Match employee_code
+            if not doc:
+                doc = col.find_one({"employee_code": staff_id})
+
+        if not doc and email:
+            doc = col.find_one({"$or": [
+                {"email": email},
+                {"section_1_personal_details.email_address": email},
+            ]})
+
+        if not doc:
+            return jsonify({
+                "success": False,
+                "error": f"Staff not found (staff_id={staff_id or 'n/a'}, email={email or 'n/a'})"
+            }), 404
+
+        staff_id  = str(doc['_id'])
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or '')
+        email     = email or _v(doc.get('email') or s1.get('email_address') or '')
+        emp_code  = _v(doc.get('employee_code') or '')
+        user_type = _v(doc.get('user_type') or '')
+
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        if not gemini_key:
+            return jsonify({"success": False, "error": "GEMINI_API_KEY not set"}), 500
+
+        s3 = doc.get('section_3_professional_registration') or {}
+        s4 = doc.get('section_4_qualifications') or {}
+        s5 = doc.get('section_5_employment_history') or {}
+        visa = s1.get('work_permit_visa_status') or {}
+        def _vv(v): return '' if v is None else str(v).strip()
+
+        nationality = _vv(s1.get('nationality'))
+        total_exp   = _vv(s5.get('total_experience'))
+        reg_pin     = _vv(s3.get('registration_number_pin'))
+        visa_type   = _vv(visa.get('visa_type'))
+        perm_work   = _vv(visa.get('permission_to_work'))
+        divisions   = ', '.join(s3.get('divisions_registered_in') or [])
+        nmbi        = 'Yes' if s3.get('nmbi_active_declaration') else 'No'
+
+        entries   = [e for e in (s5.get('entries') or []) if e.get('employer') or e.get('position')]
+        exp_lines = [f"  - {_vv(e.get('position'))} at {_vv(e.get('employer'))} ({_vv(e.get('from'))} - {_vv(e.get('to') or 'Present')})" for e in entries]
+
+        extracted_cv = _v(doc.get('extracted_cv') or '')
+
+        # ── Always fetch Hse Cv from XN Portal (primary source) ──────
+        _base_url    = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+        _api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+        _app_country = os.environ.get('XN_APP_COUNTRY', '')
+        if _base_url and email:
+            try:
+                import requests as _rq
+                _hdrs = {"Api-Key": _api_key, "X-App-Country": _app_country,
+                         "Content-Type": "application/json", "Accept": "application/json"}
+                _r = _rq.post(f"{_base_url}/ai/recruitments/user-document-list",
+                              json={"email": email}, headers=_hdrs, timeout=30)
+                if _r.status_code == 405:
+                    _r = _rq.get(f"{_base_url}/ai/recruitments/user-document-list",
+                                 params={"email": email}, headers=_hdrs, timeout=30)
+                if _r.status_code == 200:
+                    _pd   = _r.json().get('data')
+                    _dls  = _pd if isinstance(_pd, list) else (_pd.get('documents') or [] if isinstance(_pd, dict) else [])
+                    _cv_url = next(
+                        (_d['url'] for _d in _dls
+                         if (_d.get('document_type_name') or '').strip().lower() in ('hse cv','hse_cv','hsecv')
+                         and _d.get('url')), None
+                    )
+                    if _cv_url:
+                        import io as _cv_io
+                        _dl_hdrs = {k: v for k, v in _hdrs.items() if k != 'Content-Type'}
+                        _dl = _rq.get(_cv_url, headers=_dl_hdrs, timeout=60)
+                        _dl.raise_for_status()
+                        _raw = _dl.content
+                        _ct  = _dl.headers.get('Content-Type','').lower()
+                        _ul  = _cv_url.lower().split('?')[0]
+                        _rtxt = ''
+                        # PDF
+                        if 'pdf' in _ct or _ul.endswith('.pdf'):
+                            try:
+                                import pdfplumber as _plmb
+                                with _plmb.open(_cv_io.BytesIO(_raw)) as _pdf:
+                                    _rtxt = '\n'.join(p.extract_text() or '' for p in _pdf.pages).strip()
+                            except Exception: pass
+                        # DOCX
+                        if not _rtxt and ('wordprocessingml' in _ct or _ul.endswith('.docx')):
+                            try:
+                                from docx import Document as _DDoc
+                                _ddoc = _DDoc(_cv_io.BytesIO(_raw))
+                                _rtxt = '\n'.join(p.text for p in _ddoc.paragraphs).strip()
+                            except Exception: pass
+                        # Gemini vision fallback
+                        if not _rtxt:
+                            try:
+                                import base64 as _b64
+                                from google import genai as _gai_hse
+                                _gc = _gai_hse.Client(api_key=gemini_key)
+                                _gr = _gc.models.generate_content(
+                                    model='gemini-2.5-flash',
+                                    contents=[{"parts": [
+                                        {"inline_data": {"mime_type": "application/pdf",
+                                                         "data": _b64.b64encode(_raw).decode()}},
+                                        {"text": "Extract all text from this CV. Return plain text only."}
+                                    ]}]
+                                )
+                                _rtxt = (_gr.text or '').strip()
+                            except Exception: pass
+                        if _rtxt:
+                            extracted_cv = _rtxt
+                            _staffs_col().update_one(
+                                {"_id": doc['_id']},
+                                {"$set": {"extracted_cv": _rtxt,
+                                          "extracted_cv_at": datetime.utcnow(),
+                                          "extracted_cv_source": "hse_cv_api_generate"}}
+                            )
+            except Exception:
+                pass  # non-fatal — continue with existing extracted_cv
+
+        has_cv = bool(extracted_cv and not extracted_cv.startswith('[') and extracted_cv not in ('No doc found',''))
+        nationality, total_exp = _extract_missing_fields(nationality, total_exp, extracted_cv, entries)
+
+        qual_lines = []
+        for qk in ['nursing_degree', 'postgraduate_qualification', 'other_qualification']:
+            q = s4.get(qk) or {}
+            if q.get('qualification') or q.get('institution'):
+                qual_lines.append(f"  - {_vv(q.get('qualification'))} | {_vv(q.get('institution'))} | {_vv(q.get('year_completed'))}")
+        if not qual_lines:
+            _rl = user_type.lower()
+            if any(t in _rl for t in ('nurse','rgn','midwife')):
+                qual_lines.append('  - Bachelor of Nursing Science (or equivalent) | University College | [year estimated]')
+            elif any(t in _rl for t in ('hca','healthcare assistant','care worker','support worker')):
+                qual_lines.append('  - QQI Level 5 in Healthcare Support | College of Further Education | [year estimated]')
+
+        data_summary = f"""Name: {full_name}
+Role / User Type: {user_type}
+Nationality: {nationality}
+Visa / Stamp Type: {visa_type}
+Permission to Work: {perm_work}
+NMBI Registration PIN: {reg_pin}
+Divisions / Speciality: {divisions}
+Total Experience: {total_exp}
+NMBI Active: {nmbi}
+Qualifications:
+{chr(10).join(qual_lines) if qual_lines else '  None recorded'}
+Employment History:
+{chr(10).join(exp_lines) if exp_lines else '  None recorded'}""".strip()
+
+        prompt = f"""You are a professional CV writer specializing in Irish healthcare recruitment.
+Your task is to rewrite the candidate's CV into a clean, ATS-friendly, professional CV using ONLY the information provided.
+
+STRICT RULES
+* NEVER invent, assume, enhance, or rewrite information that is not present.
+* Use ONLY information from CANDIDATE DATA and CANDIDATE'S ORIGINAL CV.
+* Preserve employer names, job titles, dates, education, duties, certificates and skills exactly as provided.
+
+CV FORMAT
+Candidate Name (centred, large heading)
+Mobile | Address (centred, only available fields — do NOT include Email)
+
+EMPLOYMENT ELIGIBILITY
+Label: Value per line. Do NOT include name, address, mobile or email.
+For blank fields: Nationality — check CV; Years of Experience — calculate from earliest employment date to today (X years Y months).
+
+PROFESSIONAL PROFILE — concise summary from CV only.
+
+EDUCATION & QUALIFICATIONS — copy ALL education exactly (Qualification, Institution, Location, Dates).
+
+PROFESSIONAL EXPERIENCE — ALL jobs in reverse chronological order (Job Title, Employer, Location, Dates, bullet responsibilities).
+
+TRAINING & CERTIFICATIONS — every certificate and training from the CV.
+
+KEY SKILLS — all skills explicitly mentioned. No invented skills.
+
+ADDITIONAL INFORMATION
+Driving Licence: No
+Own Transport: No
+
+---
+CANDIDATE DATA:
+{data_summary}
+
+CANDIDATE'S ORIGINAL CV:
+{extracted_cv if has_cv else "No CV available — build from CANDIDATE DATA above."}
+---
+Output the structured CV text only. No markdown, no preamble.
+"""
+
+        from google import genai as _gai
+        client   = _gai.Client(api_key=gemini_key)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        cv_text  = response.text.strip()
+
+        # Re-extract CV from portal before generating
+        _base_url = os.environ.get('LIVE_STAFF_URL', '').rstrip('/')
+        _api_key  = os.environ.get('XN_PORTAL_API_KEY', '')
+        _country  = os.environ.get('XN_APP_COUNTRY', '')
+        if _base_url and email:
+            try:
+                import requests as _rq
+                _hdrs = {"Api-Key": _api_key, "X-App-Country": _country,
+                         "Content-Type": "application/json", "Accept": "application/json"}
+                _r = _rq.post(f"{_base_url}/ai/recruitments/user-document-list",
+                              json={"email": email}, headers=_hdrs, timeout=15)
+                if _r.status_code == 200:
+                    _pd  = _r.json().get('data')
+                    _dls = _pd if isinstance(_pd, list) else (_pd.get('documents') or [] if isinstance(_pd, dict) else [])
+                    _cv_url = next((_d['url'] for _d in _dls if (_d.get('document_type_name') or '').strip() == 'Cv' and _d.get('url')), None)
+                    if _cv_url:
+                        from admin.live_staffs_crons import _extract_text_from_url
+                        _et = _extract_text_from_url(_cv_url, {k: v for k, v in _hdrs.items() if k != 'Content-Type'})
+                        if _et and not _et.startswith('['):
+                            extracted_cv = _et
+                            has_cv = True
+                            _staffs_col().update_one({"_id": doc['_id']}, {"$set": {"extracted_cv": _et, "extracted_cv_at": datetime.utcnow()}})
+            except Exception:
+                pass
+
+        docx_bytes  = _build_ai_cv_docx(doc, cv_text)
+        safe_name   = (full_name or 'staff').replace(' ', '_').replace('/', '_')
+        cv_filename = f"{safe_name}.docx"
+        gcs_blob    = f"cv/{cv_filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        col2     = _ai_cvs_col()
+        existing = col2.find_one({"staff_id": staff_id})
+        ai_doc   = {"staff_id": staff_id, "staff_name": full_name,
+                    "employee_code": emp_code, "cv_text": cv_text,
+                    "cv_filename": cv_filename, "gcs_blob": gcs_blob,
+                    "generated_at": datetime.utcnow()}
+        if existing:
+            col2.update_one({"_id": existing["_id"]}, {"$set": ai_doc})
+            ai_id = str(existing["_id"])
+        else:
+            ai_id = str(col2.insert_one(ai_doc).inserted_id)
+
+        _push_hse_document_background(
+            staff_id_str=staff_id, doc_type_key='cv',
+            docx_bytes=docx_bytes, staff_name=full_name,
+            mongo_id=staff_id, email=email,
+        )
+
+        return jsonify({
+            "success": True, "staff_id": staff_id,
+            "cv_id": ai_id, "ai_cv_id": ai_id,
+            "cv_filename": cv_filename, "gcs_blob": gcs_blob,
+            "generated_at": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+@admin_bp.route('/live-staffs/api/nurse-list')
+def live_staff_api_nurse_list():
+    """
+    Return all nurse-type staff with name, email, user_type.
+    Auth: cron_key — used by the local NMBI register checker script.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    nurse_regex = (
+        "nurse|rgn|rnm|midwife|nchd|staff nurse|clinical nurse|"
+        "registered nurse|community nurse|public health nurse|"
+        "theatre nurse|icu nurse|phn|cns|cnm|rnid"
+    )
+    docs = list(_staffs_col().find(
+        {"user_type": {"$regex": nurse_regex, "$options": "i"}},
+        {"section_1_personal_details": 1, "email": 1, "user_type": 1}
+    ))
+
+    staff = []
+    for d in docs:
+        s1 = d.get('section_1_personal_details') or {}
+        staff.append({
+            "staff_name": _v(s1.get('full_name') or ''),
+            "email":      _v(d.get('email') or s1.get('email_address') or ''),
+            "user_type":  _v(d.get('user_type') or ''),
+        })
+
+    return jsonify({"success": True, "count": len(staff), "staff": staff})
+
+
+
+@admin_required
+def live_staff_export_special_flag_xlsx():
+    """
+    Export ALL staff with: Staff Name | Email | Special (1 or 0).
+
+    GET /admin/live-staffs/export/special-flag-xlsx
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1, "special": 1}
+        ))
+        docs.sort(key=lambda d: _v(
+            (d.get('section_1_personal_details') or {}).get('full_name') or ''
+        ).lower())
+
+        NAVY  = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
+        ALT   = 'EFF6FF'
+
+        h_font  = Font(name='Calibri', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Calibri', size=10)
+        l_align = Alignment(horizontal='left',   vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        g_bot   = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Special Flag'
+
+        headers    = ['Sno', 'Staff Name', 'Email', 'Special']
+        col_widths = [5, 32, 38, 10]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = g_bot
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:D{len(docs)+1}'
+
+        for ri, doc in enumerate(docs, start=2):
+            s1    = doc.get('section_1_personal_details') or {}
+            name  = _v(s1.get('full_name') or '')
+            email = _v(doc.get('email') or s1.get('email_address') or '')
+            special_val = doc.get('special')
+            special     = 1 if special_val == 1 or special_val == '1' or special_val is True else 0
+
+            row_vals = [ri - 1, name, email, special]
+            aligns   = [c_align, l_align, l_align, c_align]
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) if ri % 2 == 0 else PatternFill()
+
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border; cell.fill = alt_fill
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(docs)+2, column=1,
+                value=f'Total: {len(docs)}').font = Font(name='Calibri', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="special_flag_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/export')
+@admin_required
+def live_staff_export():
+    """Export live_staffs as JSON or CSV (format=json or format=csv)."""
+    fmt  = request.args.get('format', 'json').lower()
+    docs = list(_staffs_col().find({}))
+
+    def _ser(obj):
+        if isinstance(obj, dict):  return {k: _ser(v) for k, v in obj.items()}
+        if isinstance(obj, list):  return [_ser(i) for i in obj]
+        if hasattr(obj, 'isoformat'): return obj.isoformat()
+        if type(obj).__name__ in ('ObjectId', 'Decimal128'): return str(obj)
+        return obj
+
+    if fmt == 'csv':
+        import csv, io as _io
+        out  = _io.StringIO()
+        flat = []
+        for d in docs:
+            s = _ser(d)
+            s1 = s.get('section_1_personal_details') or {}
+            flat.append({
+                '_id':           str(d.get('_id','')),
+                'full_name':     s1.get('full_name',''),
+                'email':         s.get('email',''),
+                'user_type':     s.get('user_type',''),
+                'employee_code': s.get('employee_code',''),
+                'nationality':   s1.get('nationality',''),
+                'nmbi_number':   s.get('nmbi_number',''),
+                'qqi_number':    s.get('qqi_number',''),
+            })
+        if flat:
+            writer = csv.DictWriter(out, fieldnames=flat[0].keys())
+            writer.writeheader()
+            writer.writerows(flat)
+        return Response(
+            out.getvalue(), mimetype='text/csv',
+            headers={"Content-Disposition": "attachment; filename=live_staffs.csv"}
+        )
+
+    data = [dict(_ser(d), **{'_id': str(d['_id'])}) for d in docs]
+    return Response(
+        __import__('json').dumps(data, default=str, ensure_ascii=False),
+        mimetype='application/json',
+        headers={"Content-Disposition": "attachment; filename=live_staffs.json"}
+    )
+
+
+
+
+
+# ── AI CV saved/download/upload routes ───────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-cv/saved/<staff_id>')
+@admin_required
+def live_staff_ai_cv_saved(staff_id):
+    rec = _ai_cvs_col().find_one({"staff_id": staff_id})
+    if rec:
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "ai_cv_id":     str(rec["_id"]),
+            "cv_id":        str(rec["_id"]),
+            "cv_filename":  rec.get("cv_filename", ""),
+            "gcs_blob":     rec.get("gcs_blob", ""),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M") if rec.get("generated_at") else "",
+        })
+    return jsonify({"success": True, "found": False})
+
+
+@admin_bp.route('/live-staffs/ai-cv/download/<ai_cv_id>')
+@admin_required
+def live_staff_ai_cv_download(ai_cv_id):
+    try:
+        rec = _ai_cvs_col().find_one({"_id": ObjectId(ai_cv_id)})
+        if not rec or not rec.get('gcs_blob'):
+            return jsonify({"success": False, "error": "CV not found"}), 404
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        filename   = rec.get('cv_filename') or 'cv.docx'
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-cv/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_ai_cv_upload(staff_id):
+    f = request.files.get('file')
+    if not f:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _v(s1.get('full_name') or 'staff')
+        safe_name = full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"CV_{safe_name}.docx"
+        gcs_blob  = f"cv/{filename}"
+        docx_bytes = f.read()
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        _ai_cvs_col().update_one(
+            {"staff_id": staff_id},
+            {"$set": {"gcs_blob": gcs_blob, "cv_filename": filename, "generated_at": datetime.utcnow()}},
+            upsert=True
+        )
+        return jsonify({"success": True, "gcs_blob": gcs_blob, "cv_filename": filename})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── AI Interview routes ───────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/ai-interview/saved/<staff_id>')
+@admin_required
+def live_staff_ai_interview_saved(staff_id):
+    rec = _ai_interviews_col().find_one({"staff_id": staff_id})
+    if rec:
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "ai_id":        str(rec["_id"]),
+            "interview_id": str(rec["_id"]),
+            "filename":     rec.get("filename", ""),
+            "gcs_blob":     rec.get("gcs_blob", ""),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M") if rec.get("generated_at") else "",
+        })
+    return jsonify({"success": True, "found": False})
+
+
+@admin_bp.route('/live-staffs/ai-interview/download/<ai_id>')
+@admin_required
+def live_staff_ai_interview_download(ai_id):
+    try:
+        rec = _ai_interviews_col().find_one({"_id": ObjectId(ai_id)})
+        if not rec or not rec.get('gcs_blob'):
+            return jsonify({"success": False, "error": "Interview notes not found"}), 404
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{rec.get("filename", "interview.docx")}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/ai-interview/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_ai_interview_upload(staff_id):
+    f = request.files.get('file')
+    if not f:
+        return jsonify({"success": False, "error": "No file"}), 400
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+        s1        = (doc.get('section_1_personal_details') or {})
+        full_name = _v(s1.get('full_name') or 'staff')
+        safe_name = full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"Interview_{safe_name}.docx"
+        gcs_blob  = f"interview/{filename}"
+        _gcs_upload(gcs_blob, f.read(),
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        _ai_interviews_col().update_one(
+            {"staff_id": staff_id},
+            {"$set": {"gcs_blob": gcs_blob, "filename": filename, "generated_at": datetime.utcnow()}},
+            upsert=True
+        )
+        return jsonify({"success": True, "gcs_blob": gcs_blob})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── AI Appform saved/download/upload ──────────────────────────────────
+
+
+# ══════════════════════════════════════════════════════════════════════
+# SCREENING INTERVIEW RECORD
+# ══════════════════════════════════════════════════════════════════════
+
+# One of these is picked at random for each generated record — used for
+# both "Screening Interview Conducted By" / "Title" (header) and
+# "Interviewer" (bottom assessment row).
+_SCREENING_INTERVIEWERS = [
+    {"name": "Victor Cornel",      "title": "Head of Nursing & Clinical Manager"},
+    {"name": "Pomin Ponselvan",    "title": "Nursing Manager"},
+    {"name": "Namitha Ponselvan",  "title": "Nursing Supervisor"},
+    {"name": "Jijo Jerlin",        "title": "Clinical Officer"},
+]
+
+# Correct option letter for each of the 10 Knowledge Check MCQ questions,
+# in document order — matches the HCA Questionnaire Answer Key.
+_SCREENING_MCQ_CORRECT = ['B', 'B', 'D', 'C', 'A', 'B', 'B', 'B', 'A', 'B']
+_SCREENING_MCQ_LETTERS = ['A', 'B', 'C', 'D']
+
+# Checkbox occurrence indices (0-based, in document order among all 44
+# <w:sdt> checkbox controls) — fixed by the template's layout:
+#   0-39  : the 40 MCQ option checkboxes (10 questions × A,B,C,D)
+#   40,41 : Pass, Fail
+#   42,43 : Suitable for Placement — Yes, No
+_SCREENING_PASS_CHECKBOX_IDX = 40
+_SCREENING_FAIL_CHECKBOX_IDX = 41
+_SCREENING_SUITABLE_YES_CHECKBOX_IDX = 42
+_SCREENING_SUITABLE_NO_CHECKBOX_IDX  = 43
+
+# How many of the 10 MCQ questions are marked as answered correctly —
+# the rest get a random wrong option checked instead.
+_SCREENING_CORRECT_COUNT = 7
+
+# Pool of reusable "Compliance Actions from Screening Interview" notes —
+# from Xpress_Health_Screening_Compliance_Notes_50_Options.docx. 3-4 are
+# picked at random (rarely all 5) to fill the template's 5 numbered rows.
+_SCREENING_COMPLIANCE_NOTES = [
+    "International Police Clearance Certificate (PCC) pending from country of previous residence.",
+    "Garda Vetting application form pending submission.",
+    "Garda Vetting process initiated; awaiting clearance outcome.",
+    "Proof of address required to proceed with Garda Vetting.",
+    "Name discrepancy noted between identification and vetting documents; clarification required.",
+    "Candidate reports difficulty obtaining PCC; supporting explanation required for compliance review.",
+    "Garda Vetting documentation received; status to be verified.",
+    "Practical Manual Handling training required; certificate pending.",
+    "Practical CPR/BLS training required.",
+    "PPE training certificate pending verification.",
+    "Fire Safety training evidence required.",
+    "CPI/MAPA/PMAV training status to be verified against the placement requirements.",
+    "HSEland mandatory training certificates require review.",
+    "Pre-placement Occupational Health assessment pending.",
+    "Occupational Health clearance required before allocation to the relevant setting.",
+    "EPP/non-EPP fitness-to-work status to be confirmed by Occupational Health.",
+    "Immunisation history and supporting evidence pending review.",
+    "QQI Level 5 certificate required; confirm the accepted modules against the applicable checklist.",
+    "Candidate has ongoing QQI studies; eligibility to be confirmed with the relevant client.",
+    "NMBI registration details require verification before nurse allocation.",
+    "Employment reference pending from the most recent employer.",
+    "Employment dates on CV require clarification.",
+    "Candidate to provide an updated CV with complete employment history.",
+    "Candidate is available for weekends only.",
+    "Candidate prefers morning shifts only.",
+    "Candidate is available for day shifts only.",
+    "Candidate prefers night shifts; availability to be matched with open shifts.",
+    "Candidates have limited availability due to existing employment commitments.",
+    "Candidate is willing to travel within the agreed service area.",
+    "Candidate requires clarification on shift patterns and expected hours.",
+    "Candidate meets the initial screening criteria; outstanding compliance items remain.",
+]
+
+# Pool of plausible "Reason for leaving" phrases for the Employment table
+# — a random, different one is picked per past role (never for the
+# candidate's current/ongoing role).
+_SCREENING_LEAVING_REASONS = [
+    "Change in personal circumstances",
+    "Family commitments",
+    "Health or wellbeing reasons",
+    "Relocation to a new area",
+    "Returning to study",
+    "Pursuing further qualifications",
+    "Exploring a new career direction",
+    "Transitioning to a different specialty",
+    "Preference for fixed hours",
+    "Preference for part-time work",
+    "Reduced availability for shifts",
+    "Seeking a different pace of work",
+    "Seeking a different work setting",
+    "Pursuing other interests",
+    "Change in availability",
+    "Seeking a better work-life fit",
+    "Change in personal priorities",
+    "Change in lifestyle preferences",
+    "Personal reasons",
+    "Prefer not to say",
+]
+
+
+def _ongoing_role(to_value):
+    """True if an employment entry's 'to' date implies the candidate is
+    still working there (so it shouldn't get a fabricated leaving reason)."""
+    t = (to_value or '').strip().lower()
+    return t in ('', 'present', 'current', 'ongoing', 'till date', 'to date', 'now', 'date')
+
+
+def _pick_compliance_actions(_random_mod):
+    """3-4 compliance notes most of the time, rarely all 5."""
+    count = _random_mod.choices([3, 4, 5], weights=[45, 45, 10])[0]
+    count = min(count, len(_SCREENING_COMPLIANCE_NOTES))
+    return _random_mod.sample(_SCREENING_COMPLIANCE_NOTES, count)
+
+
+def _extract_education_and_employment(extracted_cv, gemini_key,
+                                       max_education=5, max_employment=7):
+    """
+    Single Gemini call that pulls BOTH education and employment history
+    out of a staff member's extracted_cv text — strictly from what's
+    written there, no invented details.
+
+    Returns a tuple (education_entries, employment_entries):
+      education_entries: list of up to max_education dicts
+        {"from": "...", "to": "...", "course": "..."}
+      employment_entries: list of up to max_employment dicts
+        {"from": "...", "to": "...", "employer": "...", "reason": "..."}
+
+    Returns ([], []) if there's no usable CV text, no API key, or on error.
+    """
+    has_cv_text = bool(
+        extracted_cv and
+        not str(extracted_cv).startswith('[') and
+        extracted_cv not in ('No doc found', '')
+    )
+    if not has_cv_text or not gemini_key:
+        return [], []
+
+    try:
+        from google import genai as _gai_edu
+        import re as _re_edu
+        import json as _json_edu
+
+        prompt = f"""You are analysing a candidate's CV text to extract their EDUCATION and EMPLOYMENT history.
+
+Read the CV text below and extract:
+
+1. EDUCATION — every degree, diploma, or certificate from a school, college,
+   or university explicitly mentioned.
+2. EMPLOYMENT — every job/role explicitly mentioned, in reverse chronological
+   order (most recent first).
+
+Rules:
+- Use ONLY information explicitly present in the CV text below. Do NOT invent,
+  guess, or infer any detail that is not written there.
+- If a specific field is not stated for an entry, leave it as an empty string "".
+- Order both lists from MOST RECENT to OLDEST.
+- Return at most {max_education} education entries and {max_employment} employment entries.
+- For employment "reason", only fill it if the CV explicitly states a reason
+  for leaving that role — otherwise leave it as "".
+- Return ONLY a single JSON object — nothing else, no markdown, no explanation —
+  with exactly this shape:
+
+{{
+  "education": [
+    {{"from": "<start year/date or empty>", "to": "<end year/date or empty>", "course": "<qualification, institution and/or course name>"}}
+  ],
+  "employment": [
+    {{"from": "<start year/date or empty>", "to": "<end year/date or empty>", "employer": "<employer, role, location>", "reason": "<reason for leaving, or empty>"}}
+  ]
+}}
+
+- If the CV contains no education information, "education" must be [].
+- If the CV contains no employment information, "employment" must be [].
+
+CV TEXT:
+{extracted_cv}
+"""
+        client   = _gai_edu.Client(api_key=gemini_key)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        raw      = (response.text or '').strip()
+        raw      = _re_edu.sub(r'^```(?:json)?\s*', '', raw, flags=_re_edu.MULTILINE)
+        raw      = _re_edu.sub(r'```\s*$', '', raw, flags=_re_edu.MULTILINE).strip()
+
+        result = _json_edu.loads(raw)
+        if not isinstance(result, dict):
+            return [], []
+
+        raw_education  = result.get('education') or []
+        raw_employment = result.get('employment') or []
+
+        education_entries = []
+        for e in raw_education[:max_education]:
+            if not isinstance(e, dict):
+                continue
+            education_entries.append({
+                "from":   str(e.get("from") or "").strip(),
+                "to":     str(e.get("to") or "").strip(),
+                "course": str(e.get("course") or "").strip(),
+            })
+
+                # Employer names that should be excluded from the screening
+        # employment table — internal agency placements are not
+        # "previous service" for the purpose of this document.
+        _EXCLUDED_EMPLOYERS = {
+            'xpress health', 'xpresshealth', 'xpress-health',
+        }
+
+        def _is_excluded_employer(employer_str):
+            e = employer_str.strip().lower()
+            return any(ex in e for ex in _EXCLUDED_EMPLOYERS)
+
+        employment_entries = []
+        for e in raw_employment:
+            if not isinstance(e, dict):
+                continue
+            employer = str(e.get("employer") or "").strip()
+            if _is_excluded_employer(employer):
+                continue
+            employment_entries.append({
+                "from":     str(e.get("from") or "").strip(),
+                "to":       str(e.get("to") or "").strip(),
+                "employer": employer,
+                "reason":   str(e.get("reason") or "").strip(),
+            })
+            if len(employment_entries) >= max_employment:
+                break
+
+        return education_entries, employment_entries
+    except Exception:
+        return [], []
+
+
+def _build_screening_docx(first_shift_date=None, candidate_name='',
+                           location='', candidate_id='', extracted_cv=''):
+    """
+    Load the Screening Interview Record template from GCS and inject:
+      - Screening Interview Conducted By = a randomly chosen interviewer
+      - Title                            = that interviewer's job title
+      - Candidate Name                   = candidate_name (from live_staffs)
+      - Candidate ID                     = candidate_id (live_staffs.employee_code)
+      - Location                         = location (live_staffs.county)
+      - Date                             = first_shift_date − 15 days  (or blank)
+      - Candidate 1st Contact Date       = first_shift_date − 20 days  (or blank)
+      - Interviewer (bottom assessment)  = same randomly chosen interviewer
+      - Education table                 = up to 5 entries extracted via
+                                            Gemini from live_staffs.extracted_cv
+
+    All other template content and styling is preserved byte-for-byte.
+
+    Template must be uploaded to GCS at the path set in env var
+    SCREENING_TEMPLATE_GCS_BLOB (default: templates/Screening_Interview_Record.docx).
+    Or set SCREENING_TEMPLATE_LOCAL_PATH to an absolute file path on disk.
+
+    Returns bytes of the .docx file.
+    """
+    import io as _sio
+    import zipfile as _szip
+    import random as _random
+    from datetime import timedelta as _std
+
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+
+    # ── Load template ─────────────────────────────────────────────────
+    template_blob  = os.environ.get(
+        'SCREENING_TEMPLATE_GCS_BLOB',
+        'templates/Screening_Interview_Record.docx'
+    )
+    template_local = os.environ.get('SCREENING_TEMPLATE_LOCAL_PATH', '')
+
+    if template_local and os.path.exists(template_local):
+        with open(template_local, 'rb') as _tf:
+            template_bytes = _tf.read()
+    else:
+        template_bytes = _gcs_download(template_blob)
+
+    # ── Parse first_shift_date ────────────────────────────────────────
+    if isinstance(first_shift_date, str):
+        try:
+            first_shift_date = datetime.strptime(first_shift_date[:10], '%Y-%m-%d')
+        except ValueError:
+            first_shift_date = None
+
+    interview_date = (
+        (first_shift_date - _std(days=15)).strftime('%d-%m-%Y')
+        if first_shift_date else ''
+    )
+    contact_date = (
+        (first_shift_date - _std(days=20)).strftime('%d-%m-%Y')
+        if first_shift_date else ''
+    )
+
+    # ── Pick a random interviewer (same person used in both places) ───
+    interviewer = _random.choice(_SCREENING_INTERVIEWERS)
+
+    # ── Read document.xml ─────────────────────────────────────────────
+    with _szip.ZipFile(_sio.BytesIO(template_bytes), 'r') as _z:
+        xml       = _z.read('word/document.xml').decode('utf-8')
+        all_files = {name: _z.read(name) for name in _z.namelist()}
+
+    # ── Inject value into the cell immediately after the label cell ───
+    # start_pos lets a caller scope the search past an earlier point in
+    # the document — needed because some labels (e.g. "Experience") are
+    # reused in more than one section (Agency Work vs Assessment scores).
+    def _inject(xml_str, label, value, start_pos=0):
+        label_tag = f'<w:t xml:space="preserve">{label}</w:t>'
+        pos = xml_str.find(label_tag, start_pos)
+        if pos == -1:
+            return xml_str
+        tc_end = xml_str.find('</w:tc>', pos)
+        if tc_end == -1:
+            return xml_str
+        tc_end += len('</w:tc>')
+
+        # Find the exact <w:t ...> run tag — NOT <w:tcW>, <w:tcPr>,
+        # <w:tcBorders>, <w:tcMar> etc, which all also start with the
+        # substring '<w:t'. A genuine text-run tag is followed by a
+        # space, '>', or '/'.
+        t_start = -1
+        search_from = tc_end
+        while True:
+            cand = xml_str.find('<w:t', search_from)
+            if cand == -1:
+                break
+            next_char = xml_str[cand + 4]
+            if next_char in (' ', '>', '/'):
+                t_start = cand
+                break
+            search_from = cand + 4
+        if t_start == -1:
+            return xml_str
+
+        # Find the end of the OPENING tag (the first '>' after t_start)
+        open_tag_end = xml_str.find('>', t_start)
+        if open_tag_end == -1:
+            return xml_str
+
+        is_self_closing = xml_str[open_tag_end - 1] == '/'
+        # XML-escape the value — unescaped '&', '<', '>' (e.g. in job
+        # titles like "Nursing & Clinical Manager") would otherwise
+        # break the document.xml and corrupt the .docx on open.
+        escaped_value = (
+            str(value)
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+        )
+        new_t = f'<w:t xml:space="preserve">{escaped_value}</w:t>'
+
+        if is_self_closing:
+            return xml_str[:t_start] + new_t + xml_str[open_tag_end + 1:]
+        else:
+            close_pos = xml_str.find('</w:t>', open_tag_end)
+            if close_pos == -1:
+                return xml_str
+            close_pos += len('</w:t>')
+            return xml_str[:t_start] + new_t + xml_str[close_pos:]
+
+    # ── Toggle a checkbox content control by its 0-based occurrence
+    # index among all <w:sdt> blocks in document order. Flips both the
+    # w14:checked value and the displayed <w:sym> char so it renders
+    # correctly in Word, LibreOffice, and PDF conversion alike.
+    def _set_checkbox(xml_str, occurrence_index, checked=True):
+        search_from = 0
+        count = 0
+        target_start = None
+        while True:
+            pos = xml_str.find('<w:sdt>', search_from)
+            if pos == -1:
+                break
+            if count == occurrence_index:
+                target_start = pos
+                break
+            count += 1
+            search_from = pos + len('<w:sdt>')
+        if target_start is None:
+            return xml_str
+        end = xml_str.find('</w:sdt>', target_start)
+        if end == -1:
+            return xml_str
+        end += len('</w:sdt>')
+        block = xml_str[target_start:end]
+        if checked:
+            block = block.replace('w14:val="0"', 'w14:val="1"', 1)
+            block = block.replace('w:char="2610"', 'w:char="2612"', 1)
+        else:
+            block = block.replace('w14:val="1"', 'w14:val="0"', 1)
+            block = block.replace('w:char="2612"', 'w:char="2610"', 1)
+        return xml_str[:target_start] + block + xml_str[end:]
+
+    # ── Fill a plain (unlabelled) table row's cells — used for the
+    # Education and Employment tables. Most rows have only empty
+    # <w:t> runs to fill in order; some rows (Employment's "Reason for
+    # leaving") have a non-empty LABEL cell first that must be skipped —
+    # skip_cells controls how many leading <w:t> runs to pass over
+    # before starting to capture the ones to actually fill.
+    def _find_nth_row_cells(xml_str, anchor_pos, row_index, num_cells=3, skip_cells=0):
+        pos = anchor_pos
+        for _ in range(row_index):
+            tr_end = xml_str.find('</w:tr>', pos)
+            if tr_end == -1:
+                return None
+            pos = tr_end + len('</w:tr>')
+        row_end = xml_str.find('</w:tr>', pos)
+        if row_end == -1:
+            return None
+        cells = []
+        search_from = pos
+        total_to_scan = skip_cells + num_cells
+        scanned = 0
+        while scanned < total_to_scan:
+            t_start = -1
+            while True:
+                cand = xml_str.find('<w:t', search_from)
+                if cand == -1 or cand > row_end:
+                    break
+                nxt = xml_str[cand + 4]
+                if nxt in (' ', '>', '/'):
+                    t_start = cand
+                    break
+                search_from = cand + 4
+            if t_start == -1:
+                return None
+            open_end = xml_str.find('>', t_start)
+            scanned += 1
+            if scanned > skip_cells:
+                cells.append((t_start, open_end))
+            search_from = open_end + 1
+        return cells
+
+    def _fill_row(xml_str, anchor_pos, row_index, values, skip_cells=0):
+        cells = _find_nth_row_cells(
+            xml_str, anchor_pos, row_index,
+            num_cells=len(values), skip_cells=skip_cells
+        )
+        if not cells:
+            return xml_str
+        # Process from the last cell backward so earlier offsets stay valid.
+        for (t_start, open_end), value in zip(reversed(cells), reversed(values)):
+            is_self_closing = xml_str[open_end - 1] == '/'
+            escaped = (
+                str(value)
+                .replace('&', '&amp;')
+                .replace('<', '&lt;')
+                .replace('>', '&gt;')
+            )
+            new_t = f'<w:t xml:space="preserve">{escaped}</w:t>'
+            if is_self_closing:
+                xml_str = xml_str[:t_start] + new_t + xml_str[open_end + 1:]
+            else:
+                close_pos = xml_str.find('</w:t>', open_end)
+                if close_pos == -1:
+                    continue
+                close_pos += len('</w:t>')
+                xml_str = xml_str[:t_start] + new_t + xml_str[close_pos:]
+        return xml_str
+
+    xml = _inject(xml, 'Screening Interview Conducted By', interviewer['name'])
+    xml = _inject(xml, 'Title', interviewer['title'])
+    xml = _inject(xml, 'Candidate Name', candidate_name or '')
+    xml = _inject(xml, 'Candidate ID', candidate_id or '')
+    xml = _inject(xml, 'Date', interview_date)
+    xml = _inject(xml, 'Candidate 1st Contact Date', contact_date)
+    xml = _inject(xml, 'Location', location or '')
+    xml = _inject(xml, 'Interviewer', interviewer['name'])
+
+    # ── Knowledge Check MCQ — mark 7 questions correct, 3 incorrect ───
+    wrong_question_indices = set(
+        _random.sample(range(len(_SCREENING_MCQ_CORRECT)),
+                        len(_SCREENING_MCQ_CORRECT) - _SCREENING_CORRECT_COUNT)
+    )
+    correct_marked = 0
+    for q_idx, correct_letter in enumerate(_SCREENING_MCQ_CORRECT):
+        if q_idx in wrong_question_indices:
+            wrong_options = [l for l in _SCREENING_MCQ_LETTERS if l != correct_letter]
+            chosen_letter = _random.choice(wrong_options)
+        else:
+            chosen_letter = correct_letter
+            correct_marked += 1
+        letter_idx = _SCREENING_MCQ_LETTERS.index(chosen_letter)
+        checkbox_occurrence = q_idx * 4 + letter_idx
+        xml = _set_checkbox(xml, checkbox_occurrence, checked=True)
+
+    # ── Pass / Fail — always Pass, since correct_marked is fixed at 7/10 ──
+    xml = _set_checkbox(xml, _SCREENING_PASS_CHECKBOX_IDX, checked=True)
+
+    # ── Suitable for Placement — always Yes, consistent with a Pass ──
+    xml = _set_checkbox(xml, _SCREENING_SUITABLE_YES_CHECKBOX_IDX, checked=True)
+
+    # ── Test Score, and Communication / Clinical Knowledge / Experience /
+    # Overall — random score between 3.5 and 5 (0.5 steps) for each.
+    # Scoped to start AFTER the "Interviewer Assessment" heading, since
+    # "Experience" is also a label in the earlier Agency Work section.
+    assessment_anchor = xml.find('<w:t xml:space="preserve">Interviewer Assessment</w:t>')
+    if assessment_anchor == -1:
+        assessment_anchor = 0
+
+    def _fmt_score(v):
+        return str(int(v)) if float(v) == int(v) else str(v)
+
+    # Pad the score to a fixed character width before "/ N" so the slash
+    # lines up in the same column regardless of whether the score is a
+    # short ("5") or longer ("4.5") string — avoids the ragged alignment
+    # a plain single-space join produces when values differ in length.
+    def _score_cell(score_str, out_of):
+        return f"{score_str:<4}/ {out_of}"
+
+    score_choices = [3.5, 4, 4.5, 5]
+    xml = _inject(xml, 'Test Score',
+                  _score_cell(str(correct_marked), 10),
+                  start_pos=assessment_anchor)
+    xml = _inject(xml, 'Communication',
+                  _score_cell(_fmt_score(_random.choice(score_choices)), 5),
+                  start_pos=assessment_anchor)
+    xml = _inject(xml, 'Clinical Knowledge',
+                  _score_cell(_fmt_score(_random.choice(score_choices)), 5),
+                  start_pos=assessment_anchor)
+    xml = _inject(xml, 'Experience',
+                  _score_cell(_fmt_score(_random.choice(score_choices)), 5),
+                  start_pos=assessment_anchor)
+    xml = _inject(xml, 'Overall',
+                  _score_cell(_fmt_score(_random.choice(score_choices)), 5),
+                  start_pos=assessment_anchor)
+
+    # ── Education + Employment tables — both filled from
+    # live_staffs.extracted_cv via a single combined Gemini call ──────
+    education_entries, employment_entries = _extract_education_and_employment(
+        extracted_cv, gemini_key, max_education=5, max_employment=7
+    )
+
+    if education_entries:
+        edu_header_pos = xml.find('School / College / Course')
+        if edu_header_pos != -1:
+            edu_anchor = xml.find('</w:tr>', edu_header_pos) + len('</w:tr>')
+            for row_idx, entry in enumerate(education_entries):
+                xml = _fill_row(
+                    xml, edu_anchor, row_idx,
+                    [entry.get('from', ''), entry.get('to', ''), entry.get('course', '')]
+                )
+
+    if employment_entries:
+        emp_header_pos = xml.find('Employer, Role, Location')
+        if emp_header_pos != -1:
+            emp_anchor = xml.find('</w:tr>', emp_header_pos) + len('</w:tr>')
+            for i, entry in enumerate(employment_entries):
+                data_row_idx   = i * 2
+                reason_row_idx = i * 2 + 1
+                xml = _fill_row(
+                    xml, emp_anchor, data_row_idx,
+                    [entry.get('from', ''), entry.get('to', ''), entry.get('employer', '')]
+                )
+                # Prefer a reason actually stated in the CV; otherwise
+                # backfill with a random plausible one. Any entry that
+                # has real employment data (from/to/employer) always
+                # gets a reason filled in — never left blank.
+                reason = entry.get('reason', '')
+                has_employment_data = bool(
+                    entry.get('employer', '').strip() or
+                    entry.get('from', '').strip() or
+                    entry.get('to', '').strip()
+                )
+                if not reason and has_employment_data:
+                    reason = _random.choice(_SCREENING_LEAVING_REASONS)
+                if reason:
+                    xml = _fill_row(
+                        xml, emp_anchor, reason_row_idx,
+                        [reason], skip_cells=1
+                    )
+
+    # ── Compliance Actions from Screening Interview — 3-4 random notes,
+    # rarely all 5, picked from the reusable compliance notes pool.
+    compliance_pos = xml.find('Compliance Actions from Screening Interview')
+    if compliance_pos != -1:
+        compliance_anchor = xml.find('</w:tr>', compliance_pos) + len('</w:tr>')
+        chosen_notes = _pick_compliance_actions(_random)
+        for row_idx, note in enumerate(chosen_notes):
+            xml = _fill_row(
+                xml, compliance_anchor, row_idx,
+                [note], skip_cells=1
+            )
+
+    # ── Rebuild zip ───────────────────────────────────────────────────
+    out = _sio.BytesIO()
+    with _szip.ZipFile(out, 'w', _szip.ZIP_DEFLATED) as _zout:
+        for name, data in all_files.items():
+            if name == 'word/document.xml':
+                _zout.writestr(name, xml.encode('utf-8'))
+            else:
+                _zout.writestr(name, data)
+    return out.getvalue()
+
+
+@admin_bp.route('/live-staffs/screening/generate', methods=['POST'])
+@admin_required
+def live_staff_screening_generate():
+    """
+    Generate a Screening Interview Record .docx for a staff member.
+
+    POST /admin/live-staffs/screening/generate
+    Body: {
+        "staff_id":        "<mongo_id>",
+        "first_shift_date": "YYYY-MM-DD"   # optional — sets Date (−15d) and Contact Date (−20d)
+    }
+    """
+    data            = request.get_json() or {}
+    staff_id        = (data.get('staff_id') or '').strip()
+    first_shift_str = (data.get('first_shift_date') or '').strip()
+
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+        def _first(*keys, default=''):
+            """Return the first non-empty value found among several
+            possible key spellings — live_staffs documents exist in more
+            than one schema shape (old nested vs new flat with spaced/
+            capitalised keys like 'Employee Code')."""
+            for k in keys:
+                val = doc.get(k)
+                if val not in (None, ''):
+                    return _v(val)
+            return default
+
+        s1           = doc.get('section_1_personal_details') or {}
+        full_name    = _first('Name') or _v(s1.get('full_name') or '') or 'staff'
+        emp_code     = _first('Employee Code', 'employee_code')
+        county       = _first('County', 'county', 'Location', 'location')
+        email        = _v(doc.get('email') or '')
+        extracted_cv = _v(doc.get('extracted_cv') or '')
+
+        def _parse_any_date(value):
+            """Accepts a native datetime (pymongo returns BSON dates this
+            way) or a string in any of several common formats. Returns a
+            datetime, or None if unparseable/empty."""
+            if value in (None, ''):
+                return None
+            if isinstance(value, datetime):
+                return value
+            s = str(value).strip()
+            for fmt in (
+                '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d',
+                '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S',
+            ):
+                try:
+                    return datetime.strptime(s, fmt)
+                except ValueError:
+                    continue
+            return None
+
+        # First shift date: an explicit value passed in the request takes
+        # priority; otherwise fall back to the staff's own work_start_date
+        # (live_staffs.work_start_date) — Date is set to 15 days before it,
+        # Candidate 1st Contact Date to 20 days before it.
+        first_shift_date = _parse_any_date(first_shift_str)
+        if first_shift_date is None:
+            first_shift_date = _parse_any_date(doc.get('work_start_date'))
+
+        docx_bytes = _build_screening_docx(
+            first_shift_date=first_shift_date,
+            candidate_name=full_name,
+            location=county,
+            candidate_id=emp_code,
+            extracted_cv=extracted_cv,
+        )
+
+        # Name files by Employee Code alone when available (e.g.
+        # "XH_0031.docx") — falls back to the staff's name only when no
+        # Employee Code is on record at all.
+        base_name = emp_code.replace(' ', '_').replace('/', '_') if emp_code \
+                    else full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"{base_name}.docx"
+        gcs_blob  = f"screening/{filename}"
+
+        _gcs_upload(
+            gcs_blob, docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+        # ── Also generate a PDF alongside the docx ─────────────────────
+        pdf_filename = f"{base_name}.pdf"
+        pdf_gcs_blob = f"screening/{pdf_filename}"
+        pdf_error    = None
+        try:
+            pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
+            _gcs_upload(pdf_gcs_blob, pdf_bytes, content_type='application/pdf')
+        except Exception as e:
+            # Don't fail the whole request if PDF conversion isn't available —
+            # the docx is still generated and saved either way.
+            pdf_error    = str(e)
+            pdf_gcs_blob = None
+
+        # Upsert into live_staff_screening collection
+        col      = _screening_col()
+        existing = col.find_one({"staff_id": staff_id})
+        rec = {
+            "staff_id":         staff_id,
+            "staff_name":       full_name,
+            "employee_code":    emp_code,
+            "filename":         filename,
+            "gcs_blob":         gcs_blob,
+            "pdf_filename":     pdf_filename if pdf_gcs_blob else None,
+            "pdf_gcs_blob":     pdf_gcs_blob,
+            "first_shift_date": first_shift_str or None,
+            "generated_at":     datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+        else:
+            col.insert_one(rec)
+
+        result = {
+            "success":    True,
+            "staff_name": full_name,
+            "filename":   filename,
+            "gcs_blob":   gcs_blob,
+        }
+        if pdf_gcs_blob:
+            result["pdf_filename"] = pdf_filename
+            result["pdf_gcs_blob"] = pdf_gcs_blob
+        else:
+            result["pdf_error"] = pdf_error or "PDF generation unavailable"
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/screening/saved/<staff_id>')
+@admin_required
+def live_staff_screening_saved(staff_id):
+    """
+    Check whether a saved Screening Interview Record exists for this staff member.
+
+    GET /admin/live-staffs/screening/saved/<staff_id>
+    Returns: { "success": true, "found": true/false, "generated_at": "...", "filename": "..." }
+    """
+    try:
+        rec = _screening_col().find_one({"staff_id": staff_id})
+        if not rec:
+            return jsonify({"success": True, "found": False})
+        return jsonify({
+            "success":      True,
+            "found":        True,
+            "filename":     rec.get("filename", ""),
+            "gcs_blob":     rec.get("gcs_blob", ""),
+            "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M")
+                            if rec.get("generated_at") else "",
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/screening/download/<staff_id>')
+@admin_required
+def live_staff_screening_download(staff_id):
+    """
+    Stream the saved Screening Interview Record .docx from GCS.
+
+    GET /admin/live-staffs/screening/download/<staff_id>
+    """
+    try:
+        rec = _screening_col().find_one({"staff_id": staff_id})
+        if not rec or not rec.get('gcs_blob'):
+            return "Screening record not found — please regenerate", 404
+
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        name       = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={
+                "Content-Disposition":
+                    f'attachment; filename="Screening_{name}.docx"'
             }
-        } catch(e) {}
-        new bootstrap.Modal($('vosModal')).show();
-    });
-});
+        )
+    except Exception as e:
+        return str(e), 500
 
-$('vosGenerateBtn').addEventListener('click', async () => {
-    const btn=$('vosGenerateBtn');btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Generating...';
-    $('vosIdle').classList.add('d-none');$('vosGenerating').classList.remove('d-none');
-    $('vosResult').classList.add('d-none');$('vosError').classList.add('d-none');
-    try{
-        const r=await fetch(VOS_GEN_URL.replace('__ID__',currentVosStaffId),{method:'POST',headers:{'Content-Type':'application/json'}});
-        const text=await r.text();let d;
-        try{d=JSON.parse(text);}catch(_){$('vosGenerating').classList.add('d-none');$('vosError').classList.remove('d-none');$('vosErrorMsg').textContent=`Server error ${r.status}: ${text.slice(0,150)}`;return;}
-        $('vosGenerating').classList.add('d-none');
-        if(d.success){$('vosResult').classList.remove('d-none');$('vosDownloadBtn').href=VOS_DL_URL.replace('__ID__',currentVosStaffId);if(d.total)$('vosTotal').textContent='Total Eligible Service: '+d.total;}
-        else{$('vosError').classList.remove('d-none');$('vosErrorMsg').textContent=d.error||'Generation failed';}
-    }catch(e){$('vosGenerating').classList.add('d-none');$('vosError').classList.remove('d-none');$('vosErrorMsg').textContent='Network error: '+e.message;}
-});
 
-$('vosUploadBtn').addEventListener('click', async () => {
-    const file=$('vosUploadInput').files[0];const msg=$('vosUploadMsg');
-    if(!file){msg.className='mt-2 small text-danger';msg.textContent='Please select a .docx file first.';msg.classList.remove('d-none');return;}
-    const btn=$('vosUploadBtn');btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Uploading...';msg.classList.add('d-none');
-    const fd=new FormData();fd.append('file',file);
-    try{
-        const r=await fetch(VOS_UPLOAD_BASE.replace('__ID__',currentVosStaffId),{method:'POST',body:fd});const d=await r.json();
-        if(d.success){msg.className='mt-2 small text-success';msg.textContent='✅ Uploaded successfully — download link updated.';$('vosDownloadBtn').href=VOS_DL_URL.replace('__ID__',currentVosStaffId)+'?t='+Date.now();}
-        else{msg.className='mt-2 small text-danger';msg.textContent='❌ '+(d.error||'Upload failed');}
-        msg.classList.remove('d-none');
-    }catch(e){msg.className='mt-2 small text-danger';msg.textContent='❌ Network error: '+e.message;msg.classList.remove('d-none');}
-    finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';}
-});
+@admin_bp.route('/live-staffs/screening/download-pdf/<staff_id>')
+@admin_required
+def live_staff_screening_download_pdf(staff_id):
+    """
+    Stream the saved Screening Interview Record .pdf from GCS. If no PDF
+    has been generated yet for this record, converts the saved .docx
+    on the fly and returns that (without re-saving it, so the regular
+    PDF-generation cron can still pick up the "needs conversion" record
+    normally).
 
-// ══════════════════════════════════════════════════════════════════════
-// VOS Nurse
-// ══════════════════════════════════════════════════════════════════════
-const VOS_NURSE_GEN_URL    = '/admin/live-staffs/vos-nurse/generate/__ID__';
-const VOS_NURSE_DL_URL     = '/admin/live-staffs/vos-nurse/download/__ID__';
-const VOS_NURSE_SAVED_URL  = '/admin/live-staffs/api/vos-nurse-saved/__ID__';
-const VOS_NURSE_UPLOAD_URL = '/admin/live-staffs/vos-nurse/upload/__ID__';
-let currentVosNurseStaffId = null;
+    GET /admin/live-staffs/screening/download-pdf/<staff_id>
+    """
+    try:
+        rec = _screening_col().find_one({"staff_id": staff_id})
+        if not rec or not rec.get('gcs_blob'):
+            return "Screening record not found — please regenerate", 404
 
-document.querySelectorAll('.btn-vos-nurse').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentVosNurseStaffId = btn.dataset.id;
-        $('vosNurseModalName').textContent = btn.dataset.name || 'Staff';
-        $('vosNurseIdle').classList.remove('d-none');
-        $('vosNurseGenerating').classList.add('d-none');
-        $('vosNurseResult').classList.add('d-none');
-        $('vosNurseError').classList.add('d-none');
-        $('vosNurseGenerateBtn').disabled = false;
-        $('vosNurseGenerateBtn').innerHTML = '<i class="bi bi-patch-check-fill me-1"></i> Generate Verification of Service';
-        try{
-            const r=await fetch(VOS_NURSE_SAVED_URL.replace('__ID__',currentVosNurseStaffId));const d=await r.json();
-            if(d.success&&d.found){
-                $('vosNurseIdle').classList.add('d-none');$('vosNurseResult').classList.remove('d-none');
-                $('vosNurseDownloadBtn').href=VOS_NURSE_DL_URL.replace('__ID__',currentVosNurseStaffId);
-                if(d.total)$('vosNurseTotal').textContent='Total Eligible Service: '+d.total;
-                $('vosNurseTotal').insertAdjacentHTML('afterend',`<div class="text-muted small mt-1">Generated on ${d.generated_at||''} — <a href="#" class="text-muted" id="vosNurseRegenLink">Regenerate</a></div>`);
-                $('vosNurseRegenLink')?.addEventListener('click',ev=>{ev.preventDefault();$('vosNurseResult').classList.add('d-none');$('vosNurseIdle').classList.remove('d-none');});
+        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+
+        if rec.get('pdf_gcs_blob'):
+            pdf_bytes = _gcs_download(rec['pdf_gcs_blob'])
+        else:
+            docx_bytes = _gcs_download(rec['gcs_blob'])
+            pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
+
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={
+                "Content-Disposition":
+                    f'attachment; filename="{name}.pdf"'
             }
-        }catch(e){}
-        new bootstrap.Modal($('vosNurseModal')).show();
-    });
-});
+        )
+    except Exception as e:
+        return str(e), 500
 
-$('vosNurseGenerateBtn').addEventListener('click', async () => {
-    const btn=$('vosNurseGenerateBtn');btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Generating...';
-    $('vosNurseIdle').classList.add('d-none');$('vosNurseGenerating').classList.remove('d-none');
-    $('vosNurseResult').classList.add('d-none');$('vosNurseError').classList.add('d-none');
-    try{
-        const r=await fetch(VOS_NURSE_GEN_URL.replace('__ID__',currentVosNurseStaffId),{method:'POST',headers:{'Content-Type':'application/json'}});
-        const text=await r.text();let d;
-        try{d=JSON.parse(text);}catch(_){$('vosNurseGenerating').classList.add('d-none');$('vosNurseError').classList.remove('d-none');$('vosNurseErrorMsg').textContent=`Error ${r.status}: ${text.slice(0,150)}`;return;}
-        $('vosNurseGenerating').classList.add('d-none');
-        if(d.success){$('vosNurseResult').classList.remove('d-none');$('vosNurseDownloadBtn').href=VOS_NURSE_DL_URL.replace('__ID__',currentVosNurseStaffId);if(d.total)$('vosNurseTotal').textContent='Total Eligible Service: '+d.total;}
-        else{$('vosNurseError').classList.remove('d-none');$('vosNurseErrorMsg').textContent=d.error||'Generation failed';}
-    }catch(e){$('vosNurseGenerating').classList.add('d-none');$('vosNurseError').classList.remove('d-none');$('vosNurseErrorMsg').textContent='Network error: '+e.message;}
-});
 
-$('vosNurseUploadBtn').addEventListener('click', async () => {
-    const file=$('vosNurseUploadInput').files[0];const msg=$('vosNurseUploadMsg');
-    if(!file){msg.className='mt-2 small text-danger';msg.textContent='Select a .docx file first.';msg.classList.remove('d-none');return;}
-    const btn=$('vosNurseUploadBtn');btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Uploading...';msg.classList.add('d-none');
-    const fd=new FormData();fd.append('file',file);
-    try{
-        const r=await fetch(VOS_NURSE_UPLOAD_URL.replace('__ID__',currentVosNurseStaffId),{method:'POST',body:fd});const d=await r.json();
-        msg.className=d.success?'mt-2 small text-success':'mt-2 small text-danger';
-        msg.textContent=d.success?'✅ Uploaded — download link updated.':'❌ '+(d.error||'Upload failed');
-        if(d.success)$('vosNurseDownloadBtn').href=VOS_NURSE_DL_URL.replace('__ID__',currentVosNurseStaffId)+'?t='+Date.now();
-        msg.classList.remove('d-none');
-    }catch(e){msg.className='mt-2 small text-danger';msg.textContent='❌ '+e.message;msg.classList.remove('d-none');}
-    finally{btn.disabled=false;btn.innerHTML='<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';}
-});
+@admin_bp.route('/live-staffs/screening/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_screening_upload(staff_id):
+    """
+    Replace the saved Screening Interview Record with an edited .docx upload.
 
-// ══════════════════════════════════════════════════════════════════════
-// Screening Interview Record
-// ══════════════════════════════════════════════════════════════════════
-const SCREENING_GEN_URL     = "{{ '/admin/live-staffs/screening/generate' }}";
-const SCREENING_SAVED_BASE  = "{{ '/admin/live-staffs/screening/saved/__ID__' }}";
-const SCREENING_DL_BASE     = "{{ '/admin/live-staffs/screening/download/__ID__' }}";
-const SCREENING_DL_PDF_BASE = "{{ '/admin/live-staffs/screening/download-pdf/__ID__' }}";
-const SCREENING_UL_BASE     = "{{ '/admin/live-staffs/screening/upload/__ID__' }}";
+    POST /admin/live-staffs/screening/upload/<staff_id>
+    Form-data: file=<.docx>
+    """
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+    file = request.files['file']
+    if not file.filename.lower().endswith('.docx'):
+        return jsonify({"success": False, "error": "Only .docx files accepted"}), 400
 
-function screeningSavedUrl(id)      { return SCREENING_SAVED_BASE.replace('__ID__', id); }
-function screeningDownloadUrl(id)   { return SCREENING_DL_BASE.replace('__ID__', id); }
-function screeningDownloadPdfUrl(id){ return SCREENING_DL_PDF_BASE.replace('__ID__', id); }
-function screeningUploadUrl(id)     { return SCREENING_UL_BASE.replace('__ID__', id); }
+    try:
+        col = _screening_col()
+        rec = col.find_one({"staff_id": staff_id})
+        if not rec:
+            # Auto-create a record so the upload is not lost
+            doc2 = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+            s1   = (doc2.get('section_1_personal_details') or {}) if doc2 else {}
+            name = _v(s1.get('full_name') or 'staff').replace(' ', '_').replace('/', '_')
+            gcs_blob = f"screening/Screening_{name}.docx"
+        else:
+            gcs_blob = rec.get('gcs_blob') or f"screening/Screening_{staff_id}.docx"
 
-let currentScreeningStaffId = null;
+        data_bytes = file.read()
+        _gcs_upload(
+            gcs_blob, data_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
 
-function setScreeningState(state) {
-    ['Idle','Generating','Result','Error'].forEach(s =>
-        $('screening' + s).classList.add('d-none')
-    );
-    $('screening' + state).classList.remove('d-none');
+        update_fields = {
+            "gcs_blob":      gcs_blob,
+            "filename":      os.path.basename(gcs_blob),
+            "last_uploaded": datetime.utcnow(),
+            "uploaded_by":   "admin",
+        }
+
+        # The old PDF (if any) no longer matches this newly uploaded docx —
+        # try to regenerate it immediately; if that's not possible right
+        # now, unset the stale pointer so /download-pdf falls back to
+        # converting the fresh docx on the fly instead of serving old content.
+        pdf_base = os.path.basename(gcs_blob).rsplit('.', 1)[0]
+        pdf_blob = f"screening/{pdf_base}.pdf"
+        try:
+            pdf_bytes = _docx_to_pdf_bytes(data_bytes)
+            _gcs_upload(pdf_blob, pdf_bytes, content_type='application/pdf')
+            update_fields["pdf_gcs_blob"]     = pdf_blob
+            update_fields["pdf_filename"]     = f"{pdf_base}.pdf"
+            update_fields["pdf_generated_at"] = datetime.utcnow()
+        except Exception:
+            update_fields["pdf_gcs_blob"] = None
+            update_fields["pdf_filename"] = None
+
+        col.update_one(
+            {"staff_id": staff_id},
+            {"$set": update_fields},
+            upsert=True
+        )
+        return jsonify({
+            "success":  True,
+            "message":  "Screening record replaced successfully",
+            "filename": os.path.basename(gcs_blob),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ⚠️  ADD THIS ENTIRE FILE'S CONTENTS TO admin/live_staffs.py ONLY. ⚠️
+#
+# Do NOT also add this to your crons blueprint file — see the separate
+# file "incremental_credit_for_crons_py.py" for what goes there instead.
+# Putting both in the same file causes infinite recursion (each wrapper
+# in the crons version would import a function from this same module,
+# but since the names are identical, Python resolves the import back to
+# the wrapper itself — calling itself forever).
+#
+# INCREMENTAL CREDIT FOR PREVIOUS SERVICE — builder + on-demand routes.
+# NURSE USER TYPE ONLY. Source data comes from the staff member's
+# "Point Scale Document" (fetched via the XN Portal outreach API),
+# extracted with Gemini, filled into
+# Incremental_Credit_Previous_Service_Template.docx.
+#
+# Setup required:
+#   1. Upload Incremental_Credit_Previous_Service_Template.docx to GCS at
+#      templates/Incremental_Credit_Previous_Service_Template.docx
+#      (or set INCREMENTAL_CREDIT_TEMPLATE_LOCAL_PATH to a local path).
+#   2. Ensure these env vars are set: XN_PORTAL_BASE_URL (or the
+#      existing LIVE_STAFF_URL — both are checked), XN_PORTAL_API_KEY,
+#      XN_APP_COUNTRY, GEMINI_API_KEY.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+# other screening/PCC crons.
+#
+# Scope: NURSE USER TYPE ONLY. Source data comes from the staff
+# member's "Point Scale Document" (fetched via the XN Portal outreach
+# API, same endpoint used by the Garda Vetting / CPI-MAPA / etc. crons),
+# extracted with Gemini, and filled into the clean
+# Incremental_Credit_Previous_Service_Template.docx template.
+#
+# Setup required:
+#   1. Upload Incremental_Credit_Previous_Service_Template.docx to GCS at
+#      templates/Incremental_Credit_Previous_Service_Template.docx
+#      (or set INCREMENTAL_CREDIT_TEMPLATE_LOCAL_PATH to a local path).
+#   2. Ensure these env vars are set: XN_PORTAL_BASE_URL (or the
+#      existing LIVE_STAFF_URL — both are checked), XN_PORTAL_API_KEY,
+#      XN_APP_COUNTRY, GEMINI_API_KEY.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PART 1 — add these functions to admin/live_staffs.py
+# ─────────────────────────────────────────────────────────────────────
+
+def _incremental_credit_col():
+    return db.live_staff_incremental_credit
+
+
+def _is_nurse(user_type_value):
+    """True if this user_type string indicates a Nurse (case-insensitive,
+    also matches common nursing-role variants like RGN/RNM/Midwife/etc.,
+    same pattern used elsewhere in this codebase for nurse-only features)."""
+    ut = (user_type_value or '').strip().lower()
+    return any(t in ut for t in (
+        'nurse', 'rgn', 'rnm', 'midwife', 'nchd', 'cns', 'phn',
+    ))
+
+
+def _fetch_point_scale_document_url(email):
+    """
+    Calls the XN Portal outreach API (user-document-list) for this staff
+    member's email and returns the signed URL of their "Point Scale
+    Document", or None if not found / no email / API error.
+    """
+    import requests as _req
+
+    base_url = (os.environ.get('XN_PORTAL_BASE_URL', '').rstrip('/') or
+                os.environ.get('LIVE_STAFF_URL', '').rstrip('/'))
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+
+    if not base_url or not email:
+        return None
+
+    try:
+        endpoint = f"{base_url}/ai/recruitments/user-document-list"
+        headers = {
+            "Api-Key":       api_key,
+            "X-App-Country": app_country,
+            "Content-Type":  "application/json",
+            "Accept":        "application/json",
+        }
+        resp = _req.get(endpoint, params={"email": email}, headers=headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.post(endpoint, json={"email": email}, headers=headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+
+        api_data  = data.get('data')
+        documents = api_data if isinstance(api_data, list) else \
+                    (api_data.get('documents') or [] if isinstance(api_data, dict) else [])
+
+        for d in documents:
+            if (d.get('document_type_name') or '').strip().lower() == 'point scale document':
+                return d.get('url')
+        return None
+    except Exception:
+        return None
+
+
+def _download_point_scale_pdf(url):
+    """Downloads the Point Scale Document PDF bytes from its signed URL."""
+    import requests as _req
+    resp = _req.get(url, timeout=60)
+    resp.raise_for_status()
+    return resp.content
+
+
+def _extract_point_scale_data(pdf_bytes, gemini_key):
+    """
+    Uses Gemini to read the Point Scale Document PDF and extract the
+    fields needed to fill the Incremental Credit for Previous Service
+    form. Returns an all-blank shape (not an exception) on any failure,
+    so document generation can still proceed with blanks for manual
+    completion rather than failing outright.
+    """
+    import base64 as _b64, re as _re3, json as _json3
+
+    blank = {
+        "previous_experience": [],
+        "point": "", "effective_date": "", "incremental_date": "",
+        "assessment_date": "", "signed_date": "", "verified_date": "",
+    }
+
+    if not pdf_bytes or not gemini_key:
+        return blank
+
+    try:
+        from google import genai as _gai3
+
+        prompt = """You are reading a "Point Scale Document" used in Irish healthcare HR to
+determine a nurse's incremental credit for previous service when being
+placed on a salary scale.
+
+Extract the following information from the document:
+
+1. previous_experience — every previous employment/service entry listed,
+   each with: post (job title/grade), employer (employer/location), from
+   (start date), to (end date), years (years of service in that role),
+   months (additional months), verified_by (who verified this entry, if
+   stated), eligible (whether this service was deemed eligible for
+   incremental credit — "Yes" or "No" if stated, else "").
+2. point — the recommended/assessed point on the salary scale.
+3. effective_date — the date this point is effective from.
+4. incremental_date — the incremental date noted in the document.
+5. assessment_date — the date of assessment.
+6. signed_date — the date next to any signature.
+7. verified_date — the date next to any "verified by" section.
+
+Rules:
+- Use ONLY information explicitly present in the document. Do NOT invent
+  or guess values that are not stated.
+- Leave any field you cannot find as an empty string "".
+- Return at most 6 previous_experience entries.
+- Return ONLY a JSON object — no markdown, no explanation — with exactly
+  this shape:
+
+{
+  "previous_experience": [
+    {"post": "", "employer": "", "from": "", "to": "", "years": "", "months": "", "verified_by": "", "eligible": ""}
+  ],
+  "point": "", "effective_date": "", "incremental_date": "",
+  "assessment_date": "", "signed_date": "", "verified_date": ""
 }
+"""
 
-document.querySelectorAll('.btn-screening').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentScreeningStaffId = btn.dataset.id;
-        $('screeningModalName').textContent = btn.dataset.name || 'Staff';
-        $('screeningSavedInfo').classList.add('d-none');
-        $('screeningDownloadBtn').href = '#';
-        $('screeningDownloadPdfBtn').href = '#';
-        // Pre-fill first shift date from data attr if available
-        const fs = btn.dataset.firstShift || '';
-        $('screeningFirstShift').value = fs ? fs.slice(0, 10) : '';
-        setScreeningState('Idle');
-        new bootstrap.Modal($('screeningModal')).show();
+        client = _gai3.Client(api_key=gemini_key)
+        parts = [
+            {"inline_data": {"mime_type": "application/pdf",
+                             "data": _b64.b64encode(pdf_bytes).decode()}},
+            {"text": prompt}
+        ]
+        response = client.models.generate_content(
+            model='gemini-2.5-flash', contents=[{"parts": parts}]
+        )
+        raw = (response.text or '').strip()
+        raw = _re3.sub(r'^```(?:json)?\s*', '', raw, flags=_re3.MULTILINE)
+        raw = _re3.sub(r'```\s*$', '', raw, flags=_re3.MULTILINE).strip()
 
-        // Check for saved record
-        try {
-            const r = await fetch(screeningSavedUrl(currentScreeningStaffId));
-            const d = await r.json();
-            if (d.success && d.found) {
-                $('screeningSavedInfo').classList.remove('d-none');
-                $('screeningSavedDate').textContent = d.generated_at;
-                $('screeningExistingDownloadDocx').href = screeningDownloadUrl(currentScreeningStaffId);
-                $('screeningExistingDownloadPdf').href = screeningDownloadPdfUrl(currentScreeningStaffId);
-            }
-        } catch(e) {}
-    });
-});
+        result = _json3.loads(raw)
+        if not isinstance(result, dict):
+            return blank
 
-$('screeningGenerateBtn').addEventListener('click', async () => {
-    if (!currentScreeningStaffId) return;
-    const firstShift = $('screeningFirstShift').value || '';
-    setScreeningState('Generating');
-    try {
-        const r = await fetch(SCREENING_GEN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                staff_id: currentScreeningStaffId,
-                first_shift_date: firstShift || null,
-            }),
-        });
-        const text = await r.text();
-        let d;
-        try { d = JSON.parse(text); }
-        catch(_) {
-            $('screeningErrorMsg').textContent = `Server error ${r.status}: ${text.slice(0,200)}`;
-            setScreeningState('Error');
-            return;
+        clean = dict(blank)
+        for key in ("point", "effective_date", "incremental_date",
+                    "assessment_date", "signed_date", "verified_date"):
+            clean[key] = str(result.get(key) or "").strip()
+
+        entries = result.get("previous_experience") or []
+        clean_entries = []
+        for e in entries[:6]:
+            if not isinstance(e, dict):
+                continue
+            clean_entries.append({
+                "post":        str(e.get("post") or "").strip(),
+                "employer":    str(e.get("employer") or "").strip(),
+                "from":        str(e.get("from") or "").strip(),
+                "to":          str(e.get("to") or "").strip(),
+                "years":       str(e.get("years") or "").strip(),
+                "months":      str(e.get("months") or "").strip(),
+                "verified_by": str(e.get("verified_by") or "").strip(),
+                "eligible":    str(e.get("eligible") or "").strip(),
+            })
+        clean["previous_experience"] = clean_entries
+        return clean
+
+    except Exception:
+        return blank
+
+
+def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_data):
+    """
+    Fills the Incremental Credit for Previous Service template with the
+    staff member's details and the data extracted from their Point Scale
+    Document. Returns bytes of the generated .docx.
+    """
+    from docx import Document
+    import io as _io, re as _re4
+
+    template_blob  = os.environ.get(
+        'INCREMENTAL_CREDIT_TEMPLATE_GCS_BLOB',
+        'templates/Incremental_Credit_Previous_Service_Template.docx'
+    )
+    template_local = os.environ.get('INCREMENTAL_CREDIT_TEMPLATE_LOCAL_PATH', '')
+
+    if template_local and os.path.exists(template_local):
+        doc = Document(template_local)
+    else:
+        template_bytes = _gcs_download(template_blob)
+        doc = Document(_io.BytesIO(template_bytes))
+
+    def _fill_label_run(run, label_prefix, value):
+        if run.text.startswith(label_prefix):
+            run.text = f"{label_prefix}{value}"
+
+    def _point_category_label(point_str):
+        """(above 12, below 15) = LSI; (above 15) = Senior Nurse. Exactly
+        12 or exactly 15, or an unparseable point, gets no label."""
+        try:
+            point_num = float(str(point_str).strip())
+        except (ValueError, TypeError):
+            return ""
+        if 12 < point_num <= 15:
+            return " (LSI)"
+        elif point_num > 15:
+            return " (Senior Nurse)"
+        return ""
+
+    # ── Table 1: Name / Post ───────────────────────────────────────────
+    # The "Employee / XH ID" / "Date of assessment" row is removed
+    # entirely from the generated document (not just left blank).
+    t1 = doc.tables[1]
+    _fill_label_run(t1.rows[0].cells[0].paragraphs[0].runs[0], "Name: ", full_name or "")
+    _fill_label_run(t1.rows[0].cells[1].paragraphs[0].runs[0], "Post: ", post or "")
+    if len(t1.rows) > 1:
+        row_to_remove = t1.rows[1]._tr
+        row_to_remove.getparent().remove(row_to_remove)
+
+    # The template had two blank spacer paragraphs right after this table
+    # (originally sized to match the taller 2-row version) — remove them
+    # too so the gap doesn't look oversized now that the row is gone.
+    from docx.oxml.ns import qn as _qn1
+    _tbl_elem = t1._tbl
+    _removed = 0
+    _sibling = _tbl_elem.getnext()
+    while _sibling is not None and _removed < 2:
+        if _sibling.tag == _qn1('w:p'):
+            _texts = _sibling.findall('.//' + _qn1('w:t'))
+            _text_content = ''.join(t.text or '' for t in _texts)
+            if _text_content.strip() == '':
+                _next_sibling = _sibling.getnext()
+                _sibling.getparent().remove(_sibling)
+                _removed += 1
+                _sibling = _next_sibling
+                continue
+        break
+
+    # ── Table 2: Previous Experience (up to 6 rows) ────────────────────
+    t2 = doc.tables[2]
+    entries = point_scale_data.get("previous_experience") or []
+    for i, entry in enumerate(entries[:6]):
+        row = t2.rows[i + 1]  # row 0 is the header
+        values = [
+            entry.get("post", ""), entry.get("employer", ""),
+            entry.get("from", ""), entry.get("to", ""),
+            entry.get("years", ""), entry.get("months", ""),
+            entry.get("verified_by", ""), entry.get("eligible", ""),
+        ]
+        for cell, val in zip(row.cells, values):
+            if cell.paragraphs and cell.paragraphs[0].runs:
+                cell.paragraphs[0].runs[0].text = val
+            elif cell.paragraphs:
+                cell.paragraphs[0].add_run(val)
+
+    # ── Recommendation paragraph (name, point + LSI/Senior Nurse label,
+    # effective date) ───────────────────────────────────────────────────
+    # Located by text prefix rather than a fixed index — removing the
+    # spacer paragraphs above shifts every later paragraph's index.
+    rec_para = next(p for p in doc.paragraphs if p.text.startswith('Recommendation:'))
+    combined = ''.join(r.text for r in rec_para.runs[1:])
+    point_value = point_scale_data.get("point", "")
+    point_with_label = f"{point_value}{_point_category_label(point_value)}" if point_value else ""
+    values = iter([
+        full_name or "",
+        point_with_label,
+        point_scale_data.get("effective_date", ""),
+    ])
+    def _repl(m):
+        try:
+            return next(values)
+        except StopIteration:
+            return m.group()
+    new_combined = _re4.sub(r'_{4,}', _repl, combined)
+    rec_para.runs[1].text = new_combined
+    for r in rec_para.runs[2:]:
+        r.text = ""
+
+    # ── Incremental Date paragraph ──────────────────────────────────────
+    inc_para = next(p for p in doc.paragraphs if p.text.startswith('Incremental Date:'))
+    inc_para.runs[1].text = point_scale_data.get("incremental_date", "")
+
+    # ── Table 3: Signed Date / Verified-by Date ────────────────────────
+    t3 = doc.tables[3]
+    _fill_label_run(t3.rows[0].cells[1].paragraphs[0].runs[0], "Date: ",
+                     point_scale_data.get("signed_date", ""))
+    _fill_label_run(t3.rows[1].cells[1].paragraphs[0].runs[0], "Date: ",
+                     point_scale_data.get("verified_date", ""))
+
+    buf = _io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PART 2 — on-demand routes (add to admin/live_staffs.py)
+# ─────────────────────────────────────────────────────────────────────
+
+@admin_bp.route('/live-staffs/incremental-credit/generate', methods=['POST'])
+@admin_required
+def live_staff_incremental_credit_generate():
+    """
+    Generate the Incremental Credit for Previous Service document
+    (docx + pdf) for a staff member. NURSE USER TYPE ONLY.
+
+    POST /admin/live-staffs/incremental-credit/generate
+    Body: {"staff_id": "<mongo_id>"}
+    """
+    data     = request.get_json() or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+        def _first(*keys, default=''):
+            for k in keys:
+                val = doc.get(k)
+                if val not in (None, ''):
+                    return _v(val)
+            return default
+
+        s1        = doc.get('section_1_personal_details') or {}
+        full_name = _first('Name') or _v(s1.get('full_name') or '') or 'staff'
+        emp_code  = _first('Employee Code', 'employee_code')
+        user_type = _first('User Type', 'user_type')
+        email     = _v(doc.get('email') or '')
+
+        if not _is_nurse(user_type):
+            return jsonify({
+                "success": False,
+                "error": f"Incremental Credit is only generated for Nurse user types "
+                         f"(this staff member's User Type is '{user_type or 'unknown'}')"
+            }), 400
+
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+
+        point_scale_url = _fetch_point_scale_document_url(email)
+        point_scale_data = {
+            "previous_experience": [], "point": "", "effective_date": "",
+            "incremental_date": "", "assessment_date": "",
+            "signed_date": "", "verified_date": "",
         }
-        if (d.success) {
-            $('screeningDownloadBtn').href = screeningDownloadUrl(currentScreeningStaffId);
-            $('screeningDownloadPdfBtn').href = screeningDownloadPdfUrl(currentScreeningStaffId);
-            $('screeningPdfUnavailable').classList.toggle('d-none', !d.pdf_error);
-            setScreeningState('Result');
-        } else {
-            $('screeningErrorMsg').textContent = d.error || 'Generation failed';
-            setScreeningState('Error');
+        point_scale_warning = None
+
+        if point_scale_url:
+            try:
+                pdf_bytes = _download_point_scale_pdf(point_scale_url)
+                point_scale_data = _extract_point_scale_data(pdf_bytes, gemini_key)
+            except Exception as e:
+                point_scale_warning = f"Could not read Point Scale Document: {e}"
+        else:
+            point_scale_warning = "No 'Point Scale Document' found for this staff member — form generated with blank service history."
+
+        docx_bytes = _build_incremental_credit_docx(
+            full_name=full_name, post=user_type,
+            employee_code=emp_code, point_scale_data=point_scale_data,
+        )
+
+        base_name = emp_code.replace(' ', '_').replace('/', '_') if emp_code \
+                    else full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"{base_name}.docx"
+        gcs_blob  = f"incremental_credit/{filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        pdf_filename = f"{base_name}.pdf"
+        pdf_gcs_blob = f"incremental_credit/{pdf_filename}"
+        try:
+            pdf_bytes_out = _docx_to_pdf_bytes(docx_bytes)
+            _gcs_upload(pdf_gcs_blob, pdf_bytes_out, content_type='application/pdf')
+        except Exception as e:
+            pdf_gcs_blob = None
+            point_scale_warning = (point_scale_warning + "; " if point_scale_warning else "") + f"PDF conversion failed: {e}"
+
+        col      = _incremental_credit_col()
+        existing = col.find_one({"staff_id": staff_id})
+        rec = {
+            "staff_id":          staff_id,
+            "staff_name":        full_name,
+            "employee_code":     emp_code,
+            "filename":          filename,
+            "gcs_blob":          gcs_blob,
+            "pdf_filename":      pdf_filename if pdf_gcs_blob else None,
+            "pdf_gcs_blob":      pdf_gcs_blob,
+            "point":             point_scale_data.get("point", ""),
+            "point_scale_url_found": bool(point_scale_url),
+            "generated_at":      datetime.utcnow(),
         }
-    } catch(e) {
-        $('screeningErrorMsg').textContent = 'Network error: ' + e.message;
-        setScreeningState('Error');
-    }
-});
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+        else:
+            col.insert_one(rec)
 
-$('screeningUploadBtn').addEventListener('click', async () => {
-    const file = $('screeningUploadInput').files[0];
-    const msg  = $('screeningUploadMsg');
-    if (!file) {
-        msg.textContent = 'Please select a .docx file first.';
-        msg.className   = 'mt-2 small text-danger';
-        msg.classList.remove('d-none');
-        return;
-    }
-    const btn = $('screeningUploadBtn');
-    btn.disabled  = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
-    const fd = new FormData();
-    fd.append('file', file);
-    try {
-        const r = await fetch(screeningUploadUrl(currentScreeningStaffId), { method: 'POST', body: fd });
-        const d = await r.json();
-        if (d.success) {
-            msg.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>${d.message || 'Uploaded successfully'}`;
-            msg.className = 'mt-2 small text-success';
-            $('screeningDownloadBtn').href = screeningDownloadUrl(currentScreeningStaffId) + '?t=' + Date.now();
-            // The PDF is regenerated on-the-fly from the newly uploaded docx
-            // by the download-pdf route, so just bust its cache too.
-            $('screeningDownloadPdfBtn').href = screeningDownloadPdfUrl(currentScreeningStaffId) + '?t=' + Date.now();
-            $('screeningUploadInput').value = '';
-        } else {
-            msg.textContent = d.error || 'Upload failed';
-            msg.className   = 'mt-2 small text-danger';
+        result = {
+            "success":    True,
+            "staff_name": full_name,
+            "filename":   filename,
+            "gcs_blob":   gcs_blob,
         }
-        msg.classList.remove('d-none');
-    } catch(e) {
-        msg.textContent = 'Network error: ' + e.message;
-        msg.className   = 'mt-2 small text-danger';
-        msg.classList.remove('d-none');
-    } finally {
-        btn.disabled  = false;
-        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
-    }
-});
+        if pdf_gcs_blob:
+            result["pdf_filename"] = pdf_filename
+            result["pdf_gcs_blob"] = pdf_gcs_blob
+        if point_scale_warning:
+            result["warning"] = point_scale_warning
 
-// ══════════════════════════════════════════════════════════════════════
-// Incremental Credit for Previous Service
-// ══════════════════════════════════════════════════════════════════════
-const IC_GEN_URL     = "{{ '/admin/live-staffs/incremental-credit/generate' }}";
-const IC_SAVED_BASE  = "{{ '/admin/live-staffs/incremental-credit/saved/__ID__' }}";
-const IC_DL_BASE     = "{{ '/admin/live-staffs/incremental-credit/download/__ID__' }}";
-const IC_DL_PDF_BASE = "{{ '/admin/live-staffs/incremental-credit/download-pdf/__ID__' }}";
-const IC_UL_BASE     = "{{ '/admin/live-staffs/incremental-credit/upload/__ID__' }}";
+        return jsonify(result)
 
-function icSavedUrl(id)      { return IC_SAVED_BASE.replace('__ID__', id); }
-function icDownloadUrl(id)   { return IC_DL_BASE.replace('__ID__', id); }
-function icDownloadPdfUrl(id){ return IC_DL_PDF_BASE.replace('__ID__', id); }
-function icUploadUrl(id)     { return IC_UL_BASE.replace('__ID__', id); }
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
-let currentIcStaffId = null;
 
-function setIcState(state) {
-    ['Idle','Generating','Result','Error'].forEach(s =>
-        $('incrementalCredit' + s).classList.add('d-none')
-    );
-    $('incrementalCredit' + state).classList.remove('d-none');
-}
+@admin_bp.route('/live-staffs/incremental-credit/saved/<staff_id>')
+@admin_required
+def live_staff_incremental_credit_saved(staff_id):
+    rec = _incremental_credit_col().find_one({"staff_id": staff_id})
+    if not rec:
+        return jsonify({"success": True, "found": False})
+    return jsonify({
+        "success":      True,
+        "found":        True,
+        "filename":     rec.get("filename", ""),
+        "gcs_blob":     rec.get("gcs_blob", ""),
+        "pdf_filename": rec.get("pdf_filename", ""),
+        "pdf_gcs_blob": rec.get("pdf_gcs_blob", ""),
+        "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M") if rec.get("generated_at") else "",
+    })
 
-document.querySelectorAll('.btn-incremental-credit').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        currentIcStaffId = btn.dataset.id;
-        $('incrementalCreditModalName').textContent = btn.dataset.name || 'Staff';
-        $('incrementalCreditSavedInfo').classList.add('d-none');
-        $('incrementalCreditDownloadBtn').href = '#';
-        $('incrementalCreditDownloadPdfBtn').href = '#';
-        $('incrementalCreditWarning').classList.add('d-none');
-        setIcState('Idle');
-        new bootstrap.Modal($('incrementalCreditModal')).show();
 
-        try {
-            const r = await fetch(icSavedUrl(currentIcStaffId));
-            const d = await r.json();
-            if (d.success && d.found) {
-                $('incrementalCreditSavedInfo').classList.remove('d-none');
-                $('incrementalCreditSavedDate').textContent = d.generated_at;
-                $('incrementalCreditExistingDownloadDocx').href = icDownloadUrl(currentIcStaffId);
-                $('incrementalCreditExistingDownloadPdf').href = icDownloadPdfUrl(currentIcStaffId);
-            }
-        } catch(e) {}
-    });
-});
+@admin_bp.route('/live-staffs/incremental-credit/download/<staff_id>')
+@admin_required
+def live_staff_incremental_credit_download(staff_id):
+    try:
+        rec = _incremental_credit_col().find_one({"staff_id": staff_id})
+        if not rec or not rec.get('gcs_blob'):
+            return "Incremental Credit record not found — please generate it first", 404
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{name}.docx"'}
+        )
+    except Exception as e:
+        return str(e), 500
 
-$('incrementalCreditGenerateBtn').addEventListener('click', async () => {
-    if (!currentIcStaffId) return;
-    setIcState('Generating');
-    try {
-        const r = await fetch(IC_GEN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ staff_id: currentIcStaffId }),
-        });
-        const text = await r.text();
-        let d;
-        try { d = JSON.parse(text); }
-        catch(_) {
-            $('incrementalCreditErrorMsg').textContent = `Server error ${r.status}: ${text.slice(0,200)}`;
-            setIcState('Error');
-            return;
+
+@admin_bp.route('/live-staffs/incremental-credit/download-pdf/<staff_id>')
+@admin_required
+def live_staff_incremental_credit_download_pdf(staff_id):
+    try:
+        rec = _incremental_credit_col().find_one({"staff_id": staff_id})
+        if not rec or not rec.get('gcs_blob'):
+            return "Incremental Credit record not found — please generate it first", 404
+        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        if rec.get('pdf_gcs_blob'):
+            pdf_bytes = _gcs_download(rec['pdf_gcs_blob'])
+        else:
+            docx_bytes = _gcs_download(rec['gcs_blob'])
+            pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'}
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/incremental-credit/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_incremental_credit_upload(staff_id):
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+    file = request.files['file']
+    if not file.filename.lower().endswith('.docx'):
+        return jsonify({"success": False, "error": "Only .docx files accepted"}), 400
+    try:
+        col = _incremental_credit_col()
+        rec = col.find_one({"staff_id": staff_id})
+        if not rec:
+            return jsonify({"success": False, "error": "No saved record found — generate one first"}), 404
+
+        gcs_blob   = rec.get('gcs_blob') or f"incremental_credit/{staff_id}.docx"
+        data_bytes = file.read()
+        _gcs_upload(gcs_blob, data_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        update_fields = {
+            "gcs_blob":      gcs_blob,
+            "filename":      os.path.basename(gcs_blob),
+            "last_uploaded": datetime.utcnow(),
+            "uploaded_by":   "admin",
         }
-        if (d.success) {
-            $('incrementalCreditDownloadBtn').href = icDownloadUrl(currentIcStaffId);
-            $('incrementalCreditDownloadPdfBtn').href = icDownloadPdfUrl(currentIcStaffId);
-            if (d.warning) {
-                $('incrementalCreditWarning').textContent = d.warning;
-                $('incrementalCreditWarning').classList.remove('d-none');
-            } else {
-                $('incrementalCreditWarning').classList.add('d-none');
-            }
-            setIcState('Result');
-        } else {
-            $('incrementalCreditErrorMsg').textContent = d.error || 'Generation failed';
-            setIcState('Error');
-        }
-    } catch(e) {
-        $('incrementalCreditErrorMsg').textContent = 'Network error: ' + e.message;
-        setIcState('Error');
-    }
-});
+        pdf_base = os.path.basename(gcs_blob).rsplit('.', 1)[0]
+        pdf_blob = f"incremental_credit/{pdf_base}.pdf"
+        try:
+            pdf_bytes = _docx_to_pdf_bytes(data_bytes)
+            _gcs_upload(pdf_blob, pdf_bytes, content_type='application/pdf')
+            update_fields["pdf_gcs_blob"] = pdf_blob
+            update_fields["pdf_filename"] = f"{pdf_base}.pdf"
+        except Exception:
+            update_fields["pdf_gcs_blob"] = None
+            update_fields["pdf_filename"] = None
 
-$('incrementalCreditUploadBtn').addEventListener('click', async () => {
-    const file = $('incrementalCreditUploadInput').files[0];
-    const msg  = $('incrementalCreditUploadMsg');
-    if (!file) {
-        msg.textContent = 'Please select a .docx file first.';
-        msg.className   = 'mt-2 small text-danger';
-        msg.classList.remove('d-none');
-        return;
-    }
-    const btn = $('incrementalCreditUploadBtn');
-    btn.disabled  = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
-    const fd = new FormData();
-    fd.append('file', file);
-    try {
-        const r = await fetch(icUploadUrl(currentIcStaffId), { method: 'POST', body: fd });
-        const d = await r.json();
-        if (d.success) {
-            msg.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>${d.message || 'Uploaded successfully'}`;
-            msg.className = 'mt-2 small text-success';
-            $('incrementalCreditDownloadBtn').href = icDownloadUrl(currentIcStaffId) + '?t=' + Date.now();
-            $('incrementalCreditDownloadPdfBtn').href = icDownloadPdfUrl(currentIcStaffId) + '?t=' + Date.now();
-            $('incrementalCreditUploadInput').value = '';
-        } else {
-            msg.textContent = d.error || 'Upload failed';
-            msg.className   = 'mt-2 small text-danger';
-        }
-        msg.classList.remove('d-none');
-    } catch(e) {
-        msg.textContent = 'Network error: ' + e.message;
-        msg.className   = 'mt-2 small text-danger';
-        msg.classList.remove('d-none');
-    } finally {
-        btn.disabled  = false;
-        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Upload & Replace';
-    }
-});
-</script>
-{% endblock %}
+        col.update_one({"staff_id": staff_id}, {"$set": update_fields}, upsert=True)
+        return jsonify({
+            "success":  True,
+            "message":  "Incremental Credit record replaced successfully",
+            "filename": os.path.basename(gcs_blob),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THIS to admin/live_staffs.py (same file as the other
+# live_staff_export_*_xlsx routes — matches their exact styling pattern).
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/export/work-start-date-xlsx')
+@admin_required
+def live_staff_export_work_start_date_xlsx():
+    """
+    Export: Email | Name | User Type | Employee Code | Work Start Date
+    for every staff member.
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1,
+             "Name": 1, "user_type": 1, "User Type": 1,
+             "employee_code": 1, "Employee Code": 1,
+             "work_start_date": 1}
+        ))
+
+        def _first(doc, *keys, default=''):
+            """Multi-schema lookup — handles both the new flat schema
+            ('Name', 'User Type', 'Employee Code') and the old nested/
+            lowercase schema (section_1_personal_details.full_name,
+            user_type, employee_code)."""
+            for k in keys:
+                val = doc.get(k)
+                if val not in (None, ''):
+                    return _v(val)
+            return default
+
+        def _fmt_work_start(val):
+            if not val:
+                return ''
+            if hasattr(val, 'strftime'):
+                return val.strftime('%Y-%m-%d')
+            return str(val)
+
+        docs.sort(key=lambda d: _first(
+            d, 'Name', default=_v((d.get('section_1_personal_details') or {}).get('full_name') or '')
+        ).lower())
+
+        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'; ALT = 'EFF6FF'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Arial', size=10)
+        l_align = Alignment(horizontal='left',   vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        green_b = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Work Start Date'
+
+        headers    = ['Sno', 'Name', 'Email', 'User Type', 'Employee Code', 'Work Start Date']
+        col_widths = [5, 28, 36, 16, 16, 18]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = green_b
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:F{len(docs)+1}'
+
+        for ri, doc in enumerate(docs, start=2):
+            s1   = doc.get('section_1_personal_details') or {}
+            name = _first(doc, 'Name', default=_v(s1.get('full_name') or ''))
+            email = _v(doc.get('email') or '')
+            user_type = _first(doc, 'User Type', 'user_type')
+            emp_code  = _first(doc, 'Employee Code', 'employee_code')
+            work_start = _fmt_work_start(doc.get('work_start_date'))
+
+            row_vals = [ri - 1, name, email, user_type, emp_code, work_start]
+            aligns   = [c_align, l_align, l_align, l_align, c_align, c_align]
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) if ri % 2 == 0 else PatternFill()
+
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border; cell.fill = alt_fill
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(docs)+2, column=1,
+                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="work_start_date_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THIS to admin/live_staffs.py (same file as the other
+# live_staff_export_*_xlsx routes — matches their exact styling pattern).
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/export/first-shift-date-xlsx')
+@admin_required
+def live_staff_export_first_shift_date_xlsx():
+    """
+    Export: Name | Email | Employee Code | xn_staff_id | First Shift
+    Date | Status for every staff member.
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1,
+             "Name": 1, "employee_code": 1, "Employee Code": 1,
+             "xn_staff_id": 1, "first_shift_date": 1,
+             "first_shift_date_fetched": 1}
+        ))
+
+        def _first(doc, *keys, default=''):
+            """Multi-schema lookup — handles both the new flat schema
+            ('Name', 'Employee Code') and the old nested/lowercase
+            schema (section_1_personal_details.full_name, employee_code)."""
+            for k in keys:
+                val = doc.get(k)
+                if val not in (None, ''):
+                    return _v(val)
+            return default
+
+        docs.sort(key=lambda d: _first(
+            d, 'Name', default=_v((d.get('section_1_personal_details') or {}).get('full_name') or '')
+        ).lower())
+
+        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
+        ALT  = 'EFF6FF'; WARN  = 'FFF3CD'; RED   = 'FFDDDD'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Arial', size=10)
+        l_align = Alignment(horizontal='left',   vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        green_b = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'First Shift Date'
+
+        headers    = ['Sno', 'Name', 'Email', 'Employee Code', 'XN Staff ID', 'First Shift Date', 'Status']
+        col_widths = [5, 28, 36, 16, 26, 18, 14]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = green_b
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:G{len(docs)+1}'
+
+        for ri, doc in enumerate(docs, start=2):
+            s1   = doc.get('section_1_personal_details') or {}
+            name = _first(doc, 'Name', default=_v(s1.get('full_name') or ''))
+            email = _v(doc.get('email') or '')
+            emp_code = _first(doc, 'Employee Code', 'employee_code')
+            xn_id    = _v(doc.get('xn_staff_id') or '')
+            fsd      = _v(doc.get('first_shift_date') or '')
+            fetched  = doc.get('first_shift_date_fetched', False)
+
+            if not fetched:
+                status   = 'Not Checked'
+                row_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
+            elif not fsd:
+                status   = 'No Date Found'
+                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
+            else:
+                status   = 'Found'
+                row_fill = None
+
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) \
+                       if ri % 2 == 0 and not row_fill else None
+
+            row_vals = [ri - 1, name, email, emp_code, xn_id, fsd, status]
+            aligns   = [c_align, l_align, l_align, c_align, l_align, c_align, c_align]
+
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border
+                cell.fill = row_fill or alt_fill or PatternFill()
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(docs)+2, column=1,
+                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="first_shift_date_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
