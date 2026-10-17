@@ -7837,3 +7837,182 @@ def live_staff_cron_generate_incremental_credit_all():
         response["warning"] = error_detail
 
     return jsonify(response)
+
+    # ═══════════════════════════════════════════════════════════════════════
+# ADD THESE TWO ROUTES to your crons blueprint file
+# (same file as live_staff_cron_screening_list,
+#  live_staff_cron_screening_download_one, etc.)
+#
+# Two routes:
+#   1. /live-staffs/cron/incremental-credit-all-list
+#      Returns ALL records from live_staff_incremental_credit,
+#      with the authoritative Point Scale read live from live_staffs
+#      so the download script can filter by point >= N accurately.
+#
+#   2. /live-staffs/cron/incremental-credit-all-download-one
+#      Streams one PDF from GCS by its gcs_blob path.
+#      Falls back to converting the docx on-the-fly if no PDF exists.
+#
+# Auth: CRON_SECRET env var checked against ?cron_key= param or
+#       X-Cron-Key header (same as every other cron route).
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/cron/incremental-credit-all-list', methods=['GET'])
+def live_staff_cron_incremental_credit_all_list():
+    """
+    Returns every record in live_staff_incremental_credit, joining
+    back to live_staffs for the authoritative Point Scale value so
+    the download script can filter by point >= N.
+
+    Response:
+    {
+      "success": true,
+      "count": 123,
+      "items": [
+        {
+          "staff_id":      "...",
+          "staff_name":    "...",
+          "employee_code": "...",
+          "user_type":     "...",
+          "point":         "14",      <- live from live_staffs['Point Scale']
+          "gcs_blob":      "incremental_credit/XH_0001.docx",
+          "pdf_gcs_blob":  "incremental_credit/XH_0001.pdf",
+          "pdf_filename":  "XH_0001.pdf",
+          "filename":      "XH_0001.docx",
+          "generated_at":  "2026-10-17T10:00:00"
+        },
+        ...
+      ]
+    }
+
+    Auth: ?cron_key=<CRON_SECRET> or X-Cron-Key header.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    try:
+        ic_col    = _incremental_credit_col()
+        staff_col = _staffs_col()
+
+        records = list(ic_col.find({}))
+        items   = []
+
+        for rec in records:
+            staff_id = rec.get("staff_id", "")
+
+            # ── Join live_staffs for the authoritative Point Scale ─────
+            staff_point = rec.get("point", "")   # fallback: stored value
+            try:
+                staff_doc = staff_col.find_one(
+                    {"_id": ObjectId(staff_id)},
+                    {"Point Scale": 1, "point_scale": 1, "User Type": 1, "user_type": 1}
+                )
+                if staff_doc:
+                    raw_point = (
+                        staff_doc.get("Point Scale") or
+                        staff_doc.get("point_scale")
+                    )
+                    if raw_point not in (None, ""):
+                        staff_point = str(raw_point).strip()
+
+                    # Also pick up user_type if missing from ic record
+                    user_type = (
+                        rec.get("user_type") or
+                        staff_doc.get("User Type") or
+                        staff_doc.get("user_type") or
+                        ""
+                    )
+                else:
+                    user_type = rec.get("user_type", "")
+            except Exception:
+                user_type = rec.get("user_type", "")
+
+            generated_at = rec.get("generated_at")
+            items.append({
+                "staff_id":      staff_id,
+                "staff_name":    rec.get("staff_name", ""),
+                "employee_code": rec.get("employee_code", ""),
+                "user_type":     user_type,
+                "point":         staff_point,
+                "filename":      rec.get("filename", ""),
+                "gcs_blob":      rec.get("gcs_blob", ""),
+                "pdf_filename":  rec.get("pdf_filename", "") or "",
+                "pdf_gcs_blob":  rec.get("pdf_gcs_blob", "") or "",
+                "generated_at":  generated_at.isoformat() if hasattr(generated_at, "isoformat") else str(generated_at or ""),
+            })
+
+        return jsonify({
+            "success": True,
+            "count":   len(items),
+            "items":   items,
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/cron/incremental-credit-all-download-one', methods=['GET'])
+def live_staff_cron_incremental_credit_all_download_one():
+    """
+    Stream one Incremental Credit PDF (or docx fallback) from GCS.
+
+    Query params:
+      blob      – GCS blob path of the PDF (pdf_gcs_blob from the list route)
+                  Falls back to the docx blob if the PDF doesn't exist,
+                  converting it on-the-fly.
+      docx_blob – GCS blob path of the docx (gcs_blob), used as fallback.
+      filename  – suggested download filename (optional)
+      cron_key  – auth key
+
+    Auth: ?cron_key=<CRON_SECRET> or X-Cron-Key header.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    pdf_blob  = (request.args.get('blob')      or '').strip()
+    docx_blob = (request.args.get('docx_blob') or '').strip()
+    filename  = (request.args.get('filename')  or 'incremental_credit.pdf').strip()
+
+    if not pdf_blob and not docx_blob:
+        return jsonify({"success": False, "error": "blob or docx_blob param required"}), 400
+
+    try:
+        # ── Try PDF blob first ─────────────────────────────────────────
+        if pdf_blob:
+            try:
+                pdf_bytes = _gcs_download(pdf_blob)
+                if not filename.endswith('.pdf'):
+                    filename = filename.rsplit('.', 1)[0] + '.pdf'
+                return Response(
+                    pdf_bytes,
+                    mimetype='application/pdf',
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                )
+            except Exception:
+                pass   # PDF not found in GCS — fall through to docx
+
+        # ── Fallback: convert docx → PDF on the fly ───────────────────
+        if docx_blob:
+            docx_bytes = _gcs_download(docx_blob)
+            pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
+            if not filename.endswith('.pdf'):
+                filename = filename.rsplit('.', 1)[0] + '.pdf'
+            return Response(
+                pdf_bytes,
+                mimetype='application/pdf',
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+
+        return jsonify({"success": False, "error": "File not found in GCS"}), 404
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
