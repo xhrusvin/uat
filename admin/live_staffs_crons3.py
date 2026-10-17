@@ -6806,9 +6806,14 @@ def live_staff_cron_generate_screening_pdf():
 def live_staff_cron_screening_list():
     """
     Returns every generated Screening Interview Record's metadata in one
-    call: staff_id, staff_name, employee_code, filename, gcs_blob, plus
-    the PDF equivalents (pdf_filename, pdf_gcs_blob — empty strings if
-    no PDF has been generated for that record yet).
+    call: staff_id, staff_name, employee_code, xn_staff_id, filename,
+    gcs_blob, plus the PDF equivalents (pdf_filename, pdf_gcs_blob —
+    empty strings if no PDF has been generated for that record yet).
+
+    xn_staff_id is looked up from the live_staffs collection itself
+    (it's not stored on the live_staff_screening record) — returned as
+    an empty string for any staff member where it's missing or still
+    showing the placeholder '[no id returned]'.
 
     Protect with ?cron_key=<CRON_SECRET> env var.
     """
@@ -6820,6 +6825,8 @@ def live_staff_cron_screening_list():
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
     screening_col = db.live_staff_screening
+    staffs_col    = _staffs_col()
+
     recs = list(screening_col.find(
         {},
         {"staff_id": 1, "staff_name": 1, "employee_code": 1,
@@ -6827,12 +6834,33 @@ def live_staff_cron_screening_list():
          "pdf_filename": 1, "pdf_gcs_blob": 1}
     ))
 
+    # Batch-fetch xn_staff_id for every referenced staff member in one
+    # query, rather than one lookup per record.
+    staff_object_ids = []
+    for r in recs:
+        try:
+            staff_object_ids.append(ObjectId(r.get("staff_id", "")))
+        except Exception:
+            pass
+
+    xn_id_by_staff_id = {}
+    if staff_object_ids:
+        for s in staffs_col.find(
+            {"_id": {"$in": staff_object_ids}},
+            {"xn_staff_id": 1}
+        ):
+            xn_val = _v(s.get("xn_staff_id") or "")
+            if xn_val and xn_val != '[no id returned]':
+                xn_id_by_staff_id[str(s["_id"])] = xn_val
+
     items = []
     for r in recs:
+        sid = str(r.get("staff_id", ""))
         items.append({
-            "staff_id":      str(r.get("staff_id", "")),
+            "staff_id":      sid,
             "staff_name":    r.get("staff_name", "") or "",
             "employee_code": r.get("employee_code", "") or "",
+            "xn_staff_id":   xn_id_by_staff_id.get(sid, ""),
             "filename":      r.get("filename", "") or "",
             "gcs_blob":      r.get("gcs_blob", "") or "",
             "pdf_filename":  r.get("pdf_filename", "") or "",
@@ -6850,6 +6878,46 @@ _DOWNLOAD_MIMETYPES = {
     '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     '.pdf':  'application/pdf',
 }
+
+
+@admin_bp.route('/live-staffs/cron/screening-download-one', methods=['GET'])
+def live_staff_cron_screening_download_one():
+    """
+    Streams the bytes of ONE generated Screening Interview Record file
+    (docx OR pdf), identified by its gcs_blob (as returned by
+    /screening-list in either gcs_blob or pdf_gcs_blob). The response
+    mimetype is set from the blob's own file extension, so this one
+    route correctly serves both formats.
+
+    GET /live-staffs/cron/screening-download-one?cron_key=...&gcs_blob=screening/XH_33307.docx
+    GET /live-staffs/cron/screening-download-one?cron_key=...&gcs_blob=screening/XH_33307.pdf
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    gcs_blob = (request.args.get('gcs_blob') or '').strip()
+    if not gcs_blob:
+        return jsonify({"success": False, "error": "Missing gcs_blob"}), 400
+
+    try:
+        file_bytes = _gcs_download(gcs_blob)
+        filename   = gcs_blob.rsplit('/', 1)[-1]
+        ext        = '.' + filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        mimetype   = _DOWNLOAD_MIMETYPES.get(ext, 'application/octet-stream')
+        return Response(
+            file_bytes,
+            mimetype=mimetype,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 
 @admin_bp.route('/live-staffs/cron/screening-download-one', methods=['GET'])
