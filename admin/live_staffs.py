@@ -451,10 +451,13 @@ def _get_all(search, page, per_page):
         pattern = re.compile(re.escape(search), re.IGNORECASE)
         match = {"$or": [
             {"section_1_personal_details.full_name": pattern},
+            {"Name": pattern},
             {"email": pattern},
             {"employee_code": pattern},
+            {"Employee Code": pattern},
             {"section_1_personal_details.nationality": pattern},
             {"user_type": pattern},
+            {"User Type": pattern},
         ]}
     col   = _staffs_col()
     total = col.count_documents(match)
@@ -769,7 +772,7 @@ def live_staff_experience():
         })
 
     # ── Determine text to analyse ─────────────────────────────────────
-    extracted_cv = _v(doc.get('hsecv_extracted') or doc.get('extracted_cv') or '')
+    extracted_cv = _v(doc.get('extracted_cv') or '')
     has_cv_text  = (
         extracted_cv and
         not extracted_cv.startswith('[') and
@@ -3666,32 +3669,16 @@ CV TEXT:
                 "course": str(e.get("course") or "").strip(),
             })
 
-                # Employer names that should be excluded from the screening
-        # employment table — internal agency placements are not
-        # "previous service" for the purpose of this document.
-        _EXCLUDED_EMPLOYERS = {
-            'xpress health', 'xpresshealth', 'xpress-health',
-        }
-
-        def _is_excluded_employer(employer_str):
-            e = employer_str.strip().lower()
-            return any(ex in e for ex in _EXCLUDED_EMPLOYERS)
-
         employment_entries = []
-        for e in raw_employment:
+        for e in raw_employment[:max_employment]:
             if not isinstance(e, dict):
-                continue
-            employer = str(e.get("employer") or "").strip()
-            if _is_excluded_employer(employer):
                 continue
             employment_entries.append({
                 "from":     str(e.get("from") or "").strip(),
                 "to":       str(e.get("to") or "").strip(),
-                "employer": employer,
+                "employer": str(e.get("employer") or "").strip(),
                 "reason":   str(e.get("reason") or "").strip(),
             })
-            if len(employment_entries) >= max_employment:
-                break
 
         return education_entries, employment_entries
     except Exception:
@@ -3715,8 +3702,8 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
                                             Gemini from live_staffs.extracted_cv
       - Agency Work — Where              = same value as Location
       - Agency Work — Why                = random motivation sentence,
-                                            Nurse or HCA pool depending on
-                                            user_type (blank otherwise)
+                                            Nurse user types only (blank
+                                            for other user types)
       - Agency Work — Experience         = experience_keywords (already
                                             comma-joined by the caller
                                             from live_staffs.keyword1 /
@@ -4046,9 +4033,15 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
             for i, entry in enumerate(employment_entries):
                 data_row_idx   = i * 2
                 reason_row_idx = i * 2 + 1
+                # "To" shows blank rather than the literal word for an
+                # ongoing role (Present/Current/Ongoing/etc.) — same
+                # "is this role ongoing" check already used below to
+                # decide whether to fabricate a leaving reason.
+                to_raw     = entry.get('to', '')
+                to_display = '' if _ongoing_role(to_raw) else to_raw
                 xml = _fill_row(
                     xml, emp_anchor, data_row_idx,
-                    [entry.get('from', ''), entry.get('to', ''), entry.get('employer', '')]
+                    [entry.get('from', ''), to_display, entry.get('employer', '')]
                 )
                 # Prefer a reason actually stated in the CV; otherwise
                 # backfill with a random plausible one. Any entry that
@@ -4645,7 +4638,7 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
             point_num = float(str(point_str).strip())
         except (ValueError, TypeError):
             return ""
-        if 12 < point_num <= 15:
+        if 12 < point_num < 15:
             return " (LSI)"
         elif point_num > 15:
             return " (Senior Nurse)"
@@ -4799,6 +4792,15 @@ def live_staff_incremental_credit_generate():
         else:
             point_scale_warning = "No 'Point Scale Document' found for this staff member — form generated with blank service history."
 
+        # Point value: prefer live_staffs.'Point Scale' (already on the
+        # staff record directly) over whatever the Point Scale Document
+        # PDF extraction found — more reliable, doesn't depend on the
+        # outreach API having that document at all, or Gemini
+        # successfully reading it.
+        direct_point_scale = _first('Point Scale', 'point_scale')
+        if direct_point_scale:
+            point_scale_data['point'] = direct_point_scale
+
         docx_bytes = _build_incremental_credit_docx(
             full_name=full_name, post=user_type,
             employee_code=emp_code, point_scale_data=point_scale_data,
@@ -4830,7 +4832,6 @@ def live_staff_incremental_credit_generate():
             "gcs_blob":          gcs_blob,
             "pdf_filename":      pdf_filename if pdf_gcs_blob else None,
             "pdf_gcs_blob":      pdf_gcs_blob,
-            "point":             point_scale_data.get("point", ""),
             "point_scale_url_found": bool(point_scale_url),
             "generated_at":      datetime.utcnow(),
         }
@@ -4956,231 +4957,5 @@ def live_staff_incremental_credit_upload(staff_id):
             "message":  "Incremental Credit record replaced successfully",
             "filename": os.path.basename(gcs_blob),
         })
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# ADD THIS to admin/live_staffs.py (same file as the other
-# live_staff_export_*_xlsx routes — matches their exact styling pattern).
-# ═══════════════════════════════════════════════════════════════════════
-
-
-@admin_bp.route('/live-staffs/export/work-start-date-xlsx')
-@admin_required
-def live_staff_export_work_start_date_xlsx():
-    """
-    Export: Email | Name | User Type | Employee Code | Work Start Date
-    for every staff member.
-    """
-    try:
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-        import io as _io
-
-        docs = list(_staffs_col().find(
-            {},
-            {"section_1_personal_details": 1, "email": 1,
-             "Name": 1, "user_type": 1, "User Type": 1,
-             "employee_code": 1, "Employee Code": 1,
-             "work_start_date": 1}
-        ))
-
-        def _first(doc, *keys, default=''):
-            """Multi-schema lookup — handles both the new flat schema
-            ('Name', 'User Type', 'Employee Code') and the old nested/
-            lowercase schema (section_1_personal_details.full_name,
-            user_type, employee_code)."""
-            for k in keys:
-                val = doc.get(k)
-                if val not in (None, ''):
-                    return _v(val)
-            return default
-
-        def _fmt_work_start(val):
-            if not val:
-                return ''
-            if hasattr(val, 'strftime'):
-                return val.strftime('%Y-%m-%d')
-            return str(val)
-
-        docs.sort(key=lambda d: _first(
-            d, 'Name', default=_v((d.get('section_1_personal_details') or {}).get('full_name') or '')
-        ).lower())
-
-        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'; ALT = 'EFF6FF'
-
-        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
-        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
-        h_align = Alignment(horizontal='center', vertical='center')
-        b_font  = Font(name='Arial', size=10)
-        l_align = Alignment(horizontal='left',   vertical='center')
-        c_align = Alignment(horizontal='center', vertical='center')
-        thin    = Side(style='thin', color='CCCCCC')
-        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
-        green_b = Border(left=thin, right=thin, top=thin,
-                         bottom=Side(style='medium', color=GREEN))
-
-        wb = Workbook()
-        ws = wb.active
-        ws.title = 'Work Start Date'
-
-        headers    = ['Sno', 'Name', 'Email', 'User Type', 'Employee Code', 'Work Start Date']
-        col_widths = [5, 28, 36, 16, 16, 18]
-
-        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
-            cell = ws.cell(row=1, column=ci, value=hdr)
-            cell.font = h_font; cell.fill = h_fill
-            cell.alignment = h_align; cell.border = green_b
-            ws.column_dimensions[cell.column_letter].width = width
-        ws.row_dimensions[1].height = 24
-        ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = f'A1:F{len(docs)+1}'
-
-        for ri, doc in enumerate(docs, start=2):
-            s1   = doc.get('section_1_personal_details') or {}
-            name = _first(doc, 'Name', default=_v(s1.get('full_name') or ''))
-            email = _v(doc.get('email') or '')
-            user_type = _first(doc, 'User Type', 'user_type')
-            emp_code  = _first(doc, 'Employee Code', 'employee_code')
-            work_start = _fmt_work_start(doc.get('work_start_date'))
-
-            row_vals = [ri - 1, name, email, user_type, emp_code, work_start]
-            aligns   = [c_align, l_align, l_align, l_align, c_align, c_align]
-            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) if ri % 2 == 0 else PatternFill()
-
-            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
-                cell = ws.cell(row=ri, column=ci, value=val)
-                cell.font = b_font; cell.alignment = align
-                cell.border = border; cell.fill = alt_fill
-            ws.row_dimensions[ri].height = 17
-
-        ws.cell(row=len(docs)+2, column=1,
-                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
-
-        buf = _io.BytesIO()
-        wb.save(buf)
-        return Response(
-            buf.getvalue(),
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            headers={"Content-Disposition":
-                     f'attachment; filename="work_start_date_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
-        )
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-# ═══════════════════════════════════════════════════════════════════════
-# ADD THIS to admin/live_staffs.py (same file as the other
-# live_staff_export_*_xlsx routes — matches their exact styling pattern).
-# ═══════════════════════════════════════════════════════════════════════
-
-
-@admin_bp.route('/live-staffs/export/first-shift-date-xlsx')
-@admin_required
-def live_staff_export_first_shift_date_xlsx():
-    """
-    Export: Name | Email | Employee Code | xn_staff_id | First Shift
-    Date | Status for every staff member.
-    """
-    try:
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-        import io as _io
-
-        docs = list(_staffs_col().find(
-            {},
-            {"section_1_personal_details": 1, "email": 1,
-             "Name": 1, "employee_code": 1, "Employee Code": 1,
-             "xn_staff_id": 1, "first_shift_date": 1,
-             "first_shift_date_fetched": 1}
-        ))
-
-        def _first(doc, *keys, default=''):
-            """Multi-schema lookup — handles both the new flat schema
-            ('Name', 'Employee Code') and the old nested/lowercase
-            schema (section_1_personal_details.full_name, employee_code)."""
-            for k in keys:
-                val = doc.get(k)
-                if val not in (None, ''):
-                    return _v(val)
-            return default
-
-        docs.sort(key=lambda d: _first(
-            d, 'Name', default=_v((d.get('section_1_personal_details') or {}).get('full_name') or '')
-        ).lower())
-
-        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'
-        ALT  = 'EFF6FF'; WARN  = 'FFF3CD'; RED   = 'FFDDDD'
-
-        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
-        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
-        h_align = Alignment(horizontal='center', vertical='center')
-        b_font  = Font(name='Arial', size=10)
-        l_align = Alignment(horizontal='left',   vertical='center')
-        c_align = Alignment(horizontal='center', vertical='center')
-        thin    = Side(style='thin', color='CCCCCC')
-        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
-        green_b = Border(left=thin, right=thin, top=thin,
-                         bottom=Side(style='medium', color=GREEN))
-
-        wb = Workbook()
-        ws = wb.active
-        ws.title = 'First Shift Date'
-
-        headers    = ['Sno', 'Name', 'Email', 'Employee Code', 'XN Staff ID', 'First Shift Date', 'Status']
-        col_widths = [5, 28, 36, 16, 26, 18, 14]
-
-        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
-            cell = ws.cell(row=1, column=ci, value=hdr)
-            cell.font = h_font; cell.fill = h_fill
-            cell.alignment = h_align; cell.border = green_b
-            ws.column_dimensions[cell.column_letter].width = width
-        ws.row_dimensions[1].height = 24
-        ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = f'A1:G{len(docs)+1}'
-
-        for ri, doc in enumerate(docs, start=2):
-            s1   = doc.get('section_1_personal_details') or {}
-            name = _first(doc, 'Name', default=_v(s1.get('full_name') or ''))
-            email = _v(doc.get('email') or '')
-            emp_code = _first(doc, 'Employee Code', 'employee_code')
-            xn_id    = _v(doc.get('xn_staff_id') or '')
-            fsd      = _v(doc.get('first_shift_date') or '')
-            fetched  = doc.get('first_shift_date_fetched', False)
-
-            if not fetched:
-                status   = 'Not Checked'
-                row_fill = PatternFill('solid', start_color=WARN, end_color=WARN)
-            elif not fsd:
-                status   = 'No Date Found'
-                row_fill = PatternFill('solid', start_color=RED, end_color=RED)
-            else:
-                status   = 'Found'
-                row_fill = None
-
-            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) \
-                       if ri % 2 == 0 and not row_fill else None
-
-            row_vals = [ri - 1, name, email, emp_code, xn_id, fsd, status]
-            aligns   = [c_align, l_align, l_align, c_align, l_align, c_align, c_align]
-
-            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
-                cell = ws.cell(row=ri, column=ci, value=val)
-                cell.font = b_font; cell.alignment = align
-                cell.border = border
-                cell.fill = row_fill or alt_fill or PatternFill()
-            ws.row_dimensions[ri].height = 17
-
-        ws.cell(row=len(docs)+2, column=1,
-                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
-
-        buf = _io.BytesIO()
-        wb.save(buf)
-        return Response(
-            buf.getvalue(),
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            headers={"Content-Disposition":
-                     f'attachment; filename="first_shift_date_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
-        )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
