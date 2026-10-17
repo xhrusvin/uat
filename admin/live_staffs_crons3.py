@@ -7254,3 +7254,87 @@ def live_staff_cron_screening_pdf_xnid_download():
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THIS to the same crons blueprint file as the other screening/
+# incremental-credit crons.
+#
+# Fixes the 502 at its root cause: instead of listing all 700+ records
+# with a live xn_staff_id join in ONE request (which times out), this
+# returns ONE record at a time via cursor-based pagination — same
+# "process one per call" pattern as every other cron in this file. No
+# GCS renaming involved at all — the local download script just saves
+# the file under the Name_xn_staff_id name directly; the original PDF
+# in GCS is read as-is and left untouched.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/cron/screening-pdf-list-one', methods=['GET'])
+def live_staff_cron_screening_pdf_list_one():
+    """
+    Returns ONE Screening Interview Record's download info per call —
+    staff_name, xn_staff_id (looked up live from live_staffs for just
+    this one record), and pdf_gcs_blob — plus a cursor to fetch the
+    next one.
+
+    GET /live-staffs/cron/screening-pdf-list-one?cron_key=...&after=<_id or empty for first>
+
+    Response:
+      {"success": true, "done": false, "cursor": "<_id>", "item": {...}}
+      {"success": true, "done": true}   <- no more records
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    screening_col = db.live_staff_screening
+    staffs_col    = _staffs_col()
+
+    after = (request.args.get('after') or '').strip()
+    query = {}
+    if after:
+        try:
+            query = {"_id": {"$gt": ObjectId(after)}}
+        except Exception:
+            query = {}
+
+    rec = screening_col.find_one(
+        query,
+        {"staff_id": 1, "staff_name": 1, "employee_code": 1,
+         "pdf_gcs_blob": 1, "pdf_filename": 1},
+        sort=[("_id", 1)]
+    )
+
+    if not rec:
+        return jsonify({"success": True, "done": True})
+
+    # Live xn_staff_id lookup — but only for this ONE staff member, so
+    # it's always fast regardless of how many total records exist.
+    xn_staff_id = ''
+    staff_id    = rec.get('staff_id', '')
+    try:
+        staff = staffs_col.find_one({"_id": ObjectId(staff_id)}, {"xn_staff_id": 1})
+        if staff:
+            xn_val = _v(staff.get('xn_staff_id') or '')
+            if xn_val and xn_val != '[no id returned]':
+                xn_staff_id = xn_val
+    except Exception:
+        pass
+
+    return jsonify({
+        "success": True,
+        "done":    False,
+        "cursor":  str(rec['_id']),
+        "item": {
+            "staff_id":      staff_id,
+            "staff_name":    rec.get("staff_name", "") or "",
+            "employee_code": rec.get("employee_code", "") or "",
+            "xn_staff_id":   xn_staff_id,
+            "pdf_gcs_blob":  rec.get("pdf_gcs_blob", "") or "",
+            "pdf_filename":  rec.get("pdf_filename", "") or "",
+        }
+    })
