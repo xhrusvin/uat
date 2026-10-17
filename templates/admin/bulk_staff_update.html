@@ -1,0 +1,598 @@
+{% extends "admin/base.html" %}
+{% block title %}Bulk Staff Document Update • Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">Bulk Staff Document Update</h2>
+        <a href="{{ '/admin/live-staffs' }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Live Staffs
+        </a>
+    </div>
+
+    <p class="text-muted">
+        Upload, replace or update documents for many staff members in one request.
+        Add one or more staff members below, then add one or more document entries
+        for each. Always run a <strong>dry run</strong> first to preview exactly what
+        would change before submitting for real.
+    </p>
+
+    <!-- ── Request-level fields ─────────────────────────────────────── -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <h6 class="text-uppercase text-muted fw-bold mb-3">Request Details</h6>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">Country</label>
+                    <select class="form-select" id="appCountry">
+                        {% for c in app_countries %}
+                        <option value="{{ c }}" {% if c == 'ie' %}selected{% endif %}>{{ c | upper }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">Request ID</label>
+                    <input type="text" class="form-control" id="requestId" value="{{ default_request_id }}" maxlength="100">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">User ID (admin)</label>
+                    <input type="text" class="form-control font-monospace" id="userId" value="{{ default_user_id }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">Requested By</label>
+                    <input type="text" class="form-control" id="requestedBy" value="{{ default_requested_by }}" maxlength="255">
+                </div>
+            </div>
+            <div class="form-check form-switch mt-3">
+                <input class="form-check-input" type="checkbox" id="dryRun" checked>
+                <label class="form-check-label fw-semibold" for="dryRun">
+                    Dry run — preview only, nothing will be changed
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Staff list ───────────────────────────────────────────────── -->
+    <div id="staffList"></div>
+
+    <button class="btn btn-outline-primary fw-bold mb-4" id="addStaffBtn">
+        <i class="bi bi-person-plus me-1"></i> Add Staff Member
+    </button>
+
+    <!-- ── Submit bar ───────────────────────────────────────────────── -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4 d-flex align-items-center gap-3 flex-wrap">
+            <button class="btn btn-primary btn-lg fw-bold px-4" id="submitBtn">
+                <i class="bi bi-send me-1"></i> <span id="submitBtnLabel">Run Dry Run Preview</span>
+            </button>
+            <div id="submitSpinner" class="spinner-border text-primary d-none" role="status"></div>
+            <div class="text-muted small" id="submitHint">
+                No staff members added yet.
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Result area ──────────────────────────────────────────────── -->
+    <div id="resultArea"></div>
+
+    <!-- ── Batch status checker ─────────────────────────────────────── -->
+    <div class="card border-0 shadow-sm rounded-4 mb-5">
+        <div class="card-body p-4">
+            <h6 class="text-uppercase text-muted fw-bold mb-3">Check Batch Status</h6>
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <input type="text" class="form-control font-monospace" id="statusBatchId"
+                       placeholder="Paste a batch_id here" style="max-width:360px;">
+                <button class="btn btn-outline-dark fw-bold" id="checkStatusBtn">
+                    <i class="bi bi-search me-1"></i> Check Status
+                </button>
+            </div>
+            <div id="statusArea" class="mt-3"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     Document entry row template (cloned via JS)
+═══════════════════════════════════════════════════════════════════ -->
+<template id="documentRowTemplate">
+    <div class="document-row border rounded-3 p-3 mb-2 bg-light">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <span class="badge bg-secondary">Document</span>
+            <button type="button" class="btn btn-sm btn-outline-danger remove-document-btn">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+        <div class="row g-2">
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold">Document Type</label>
+                <select class="form-select form-select-sm document-key-select">
+                    <option value="">— select —</option>
+                    {% for dk in document_keys %}
+                    <option value="{{ dk.key }}" data-needs-id="{{ dk.needs_id | lower }}" data-id-source="{{ dk.id_source or '' }}">{{ dk.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 document-id-wrap d-none">
+                <label class="form-label small fw-semibold">Document</label>
+                <select class="form-select form-select-sm document-id-select"></select>
+            </div>
+            <div class="col-md-4 general-doc-id-wrap d-none">
+                <label class="form-label small fw-semibold">
+                    Document ID <span class="text-muted fw-normal">(from Staff List API)</span>
+                </label>
+                <input type="text" class="form-control form-control-sm general-doc-id-input"
+                       placeholder="e.g. 680f4c2a9b1e2d3f4a5b6c7d">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold">File <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="file" class="form-control form-control-sm document-file-input" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold">Status <span class="text-muted fw-normal">(optional)</span></label>
+                <select class="form-select form-select-sm document-status-select">
+                    <option value="">— unchanged / default —</option>
+                    {% for s in statuses %}
+                    <option value="{{ s.id }}">{{ s.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold">Expiry Date <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="date" class="form-control form-control-sm document-expiry-input">
+            </div>
+            <div class="col-md-4 ai-check-wrap d-none">
+                <label class="form-label small fw-semibold">AI Check <span class="text-muted fw-normal">(HSE only, optional)</span></label>
+                <select class="form-select form-select-sm document-ai-check-select">
+                    <option value="">— not set —</option>
+                    <option value="1">Yes</option>
+                    <option value="0">No</option>
+                </select>
+            </div>
+            <div class="col-12 vaccinations-wrap d-none">
+                <span class="form-label small fw-semibold d-block">Vaccinations <span class="text-muted fw-normal">(optional)</span></span>
+                {% for v in vaccinations %}
+                <label class="form-check form-check-inline">
+                    <input class="form-check-input vaccination-checkbox" type="checkbox" value="{{ v.id }}">
+                    <span class="form-check-label small">{{ v.label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     Staff card template (cloned via JS)
+═══════════════════════════════════════════════════════════════════ -->
+<template id="staffCardTemplate">
+    <div class="card border-0 shadow-sm rounded-4 mb-3 staff-card">
+        <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div class="flex-grow-1">
+                    <label class="form-label fw-semibold small">Staff Member</label>
+                    <div class="position-relative">
+                        <input type="text" class="form-control staff-search-input"
+                               placeholder="Search by name, email or employee code…" autocomplete="off">
+                        <div class="staff-search-results list-group position-absolute w-100 shadow-sm d-none"
+                             style="z-index:20;max-height:240px;overflow-y:auto;"></div>
+                    </div>
+                    <div class="staff-selected-info small text-success mt-1 d-none">
+                        <i class="bi bi-check-circle-fill me-1"></i><span class="staff-selected-text"></span>
+                    </div>
+                    <input type="hidden" class="staff-id-value">
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger ms-3 remove-staff-btn">
+                    <i class="bi bi-trash"></i> Remove
+                </button>
+            </div>
+            <div class="documents-container"></div>
+            <button type="button" class="btn btn-sm btn-outline-primary add-document-btn">
+                <i class="bi bi-plus-lg me-1"></i> Add Document
+            </button>
+        </div>
+    </div>
+</template>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const SUBMIT_URL        = "{{ '/admin/bulk-staff-update/submit' }}";
+const STAFF_SEARCH_URL  = "{{ '/admin/bulk-staff-update/staff-search' }}";
+const STATUS_URL        = "{{ '/admin/bulk-staff-update/status' }}";
+
+const HSE_DOCUMENTS      = {{ hse_documents | tojson }};
+const OCC_HEALTH_SLOTS   = {{ occ_health_slots | tojson }};
+
+let staffCounter = 0;
+
+// ── Staff card management ──────────────────────────────────────────────
+function addStaffCard() {
+    const tpl  = $('staffCardTemplate').content.cloneNode(true);
+    const card = tpl.querySelector('.staff-card');
+    card.dataset.staffIndex = staffCounter++;
+    $('staffList').appendChild(tpl);
+    // `card` is the same node that just got moved into the live DOM by
+    // appendChild (fragments transfer their children, not re-clone them),
+    // so it's already a valid, attached reference — no need to re-query.
+    wireStaffCard(card);
+    updateSubmitHint();
+}
+
+function wireStaffCard(card) {
+    const searchInput = card.querySelector('.staff-search-input');
+    const resultsBox  = card.querySelector('.staff-search-results');
+    const selectedInfo = card.querySelector('.staff-selected-info');
+    const selectedText = card.querySelector('.staff-selected-text');
+    const staffIdInput = card.querySelector('.staff-id-value');
+
+    let debounceTimer = null;
+    searchInput.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        const q = searchInput.value.trim();
+        if (q.length < 2) { resultsBox.classList.add('d-none'); resultsBox.innerHTML=''; return; }
+        debounceTimer = setTimeout(async () => {
+            try {
+                const r = await fetch(`${STAFF_SEARCH_URL}?q=${encodeURIComponent(q)}`);
+                const d = await r.json();
+                if (!d.success || !d.items.length) { resultsBox.classList.add('d-none'); resultsBox.innerHTML=''; return; }
+                resultsBox.innerHTML = d.items.map(it =>
+                    `<a href="#" class="list-group-item list-group-item-action py-2 staff-result-item"
+                        data-id="${it.staff_id}" data-label="${(it.name||it.email).replace(/"/g,'&quot;')}">
+                        <div class="fw-semibold small">${it.name || '(no name)'}</div>
+                        <div class="text-muted" style="font-size:11px;">${it.email || ''} ${it.employee_code ? '· '+it.employee_code : ''}</div>
+                     </a>`
+                ).join('');
+                resultsBox.classList.remove('d-none');
+            } catch(e) { resultsBox.classList.add('d-none'); }
+        }, 300);
+    });
+
+    resultsBox.addEventListener('click', (e) => {
+        const item = e.target.closest('.staff-result-item');
+        if (!item) return;
+        e.preventDefault();
+        staffIdInput.value = item.dataset.id;
+        selectedText.textContent = item.dataset.label + ' (' + item.dataset.id + ')';
+        selectedInfo.classList.remove('d-none');
+        searchInput.value = '';
+        resultsBox.classList.add('d-none');
+        resultsBox.innerHTML = '';
+        updateSubmitHint();
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!card.contains(e.target)) resultsBox.classList.add('d-none');
+    });
+
+    card.querySelector('.remove-staff-btn').addEventListener('click', () => {
+        card.remove();
+        updateSubmitHint();
+    });
+
+    card.querySelector('.add-document-btn').addEventListener('click', () => {
+        addDocumentRow(card.querySelector('.documents-container'));
+    });
+}
+
+// ── Document row management ────────────────────────────────────────────
+function addDocumentRow(container) {
+    const tpl = $('documentRowTemplate').content.cloneNode(true);
+    const row = tpl.querySelector('.document-row');
+    container.appendChild(tpl);
+    wireDocumentRow(row);
+}
+
+function wireDocumentRow(row) {
+    const keySelect        = row.querySelector('.document-key-select');
+    const idWrap           = row.querySelector('.document-id-wrap');
+    const idSelect         = row.querySelector('.document-id-select');
+    const generalIdWrap    = row.querySelector('.general-doc-id-wrap');
+    const vaccWrap         = row.querySelector('.vaccinations-wrap');
+    const aiCheckWrap      = row.querySelector('.ai-check-wrap');
+
+    keySelect.addEventListener('change', () => {
+        const opt = keySelect.options[keySelect.selectedIndex];
+        const needsId  = opt.dataset.needsId === 'true';
+        const idSource = opt.dataset.idSource || '';
+
+        idWrap.classList.add('d-none');
+        generalIdWrap.classList.add('d-none');
+        vaccWrap.classList.add('d-none');
+        aiCheckWrap.classList.add('d-none');
+        idSelect.innerHTML = '';
+
+        if (!needsId) return;
+
+        if (idSource === 'general') {
+            generalIdWrap.classList.remove('d-none');
+        } else if (idSource === 'hse') {
+            idWrap.classList.remove('d-none');
+            aiCheckWrap.classList.remove('d-none');
+            idSelect.innerHTML = '<option value="">— select —</option>' +
+                HSE_DOCUMENTS.map(h => `<option value="${h.id}">${h.label}</option>`).join('');
+        } else if (idSource === 'occ_health') {
+            idWrap.classList.remove('d-none');
+            idSelect.innerHTML = '<option value="">— select —</option>' +
+                OCC_HEALTH_SLOTS.map(o => `<option value="${o.id}" data-vacc="${o.vaccinations}">${o.label}</option>`).join('');
+        }
+    });
+
+    idSelect.addEventListener('change', () => {
+        const opt = idSelect.options[idSelect.selectedIndex];
+        if (opt && opt.dataset.vacc === 'true') {
+            vaccWrap.classList.remove('d-none');
+        } else {
+            vaccWrap.classList.add('d-none');
+        }
+    });
+
+    row.querySelector('.remove-document-btn').addEventListener('click', () => row.remove());
+}
+
+$('addStaffBtn').addEventListener('click', addStaffCard);
+
+// Start with one staff card
+addStaffCard();
+
+function updateSubmitHint() {
+    const cards = document.querySelectorAll('.staff-card');
+    const withId = Array.from(cards).filter(c => c.querySelector('.staff-id-value').value);
+    $('submitHint').textContent = cards.length === 0
+        ? 'No staff members added yet.'
+        : `${withId.length} of ${cards.length} staff member(s) selected.`;
+}
+
+$('dryRun').addEventListener('change', () => {
+    $('submitBtnLabel').textContent = $('dryRun').checked ? 'Run Dry Run Preview' : 'Submit Bulk Update';
+});
+
+// ── Build and submit the form ───────────────────────────────────────────
+$('submitBtn').addEventListener('click', async () => {
+    const cards = Array.from(document.querySelectorAll('.staff-card'));
+    const validCards = cards.filter(c => c.querySelector('.staff-id-value').value);
+
+    if (!validCards.length) {
+        alert('Add at least one staff member with a selected staff ID.');
+        return;
+    }
+
+    const fd = new FormData();
+    fd.append('dry_run', $('dryRun').checked ? 'true' : 'false');
+    fd.append('request_id', $('requestId').value.trim());
+    fd.append('user_id', $('userId').value.trim());
+    fd.append('requested_by', $('requestedBy').value.trim());
+    fd.append('x_app_country', $('appCountry').value);
+
+    let anyDocuments = false;
+
+    validCards.forEach((card, si) => {
+        const staffId = card.querySelector('.staff-id-value').value;
+        fd.append(`staff[${si}][staff_id]`, staffId);
+
+        const docRows = card.querySelectorAll('.document-row');
+        Array.from(docRows).forEach((row, di) => {
+            const key = row.querySelector('.document-key-select').value;
+            if (!key) return;
+
+            const idWrap        = row.querySelector('.document-id-wrap');
+            const idSelect      = row.querySelector('.document-id-select');
+            const generalIdWrap = row.querySelector('.general-doc-id-wrap');
+            const generalIdInput= row.querySelector('.general-doc-id-input');
+            const fileInput     = row.querySelector('.document-file-input');
+            const statusSelect  = row.querySelector('.document-status-select');
+            const expiryInput   = row.querySelector('.document-expiry-input');
+            const aiCheckSelect = row.querySelector('.document-ai-check-select');
+            const vaccChecks    = row.querySelectorAll('.vaccination-checkbox:checked');
+
+            const prefix = `staff[${si}][documents][${di}]`;
+            fd.append(`${prefix}[document_key]`, key);
+
+            if (!idWrap.classList.contains('d-none') && idSelect.value) {
+                fd.append(`${prefix}[document_id]`, idSelect.value);
+            } else if (!generalIdWrap.classList.contains('d-none') && generalIdInput.value.trim()) {
+                fd.append(`${prefix}[document_id]`, generalIdInput.value.trim());
+            }
+
+            if (fileInput.files[0]) fd.append(`${prefix}[file]`, fileInput.files[0]);
+            if (statusSelect.value !== '') fd.append(`${prefix}[status]`, statusSelect.value);
+            if (expiryInput.value) fd.append(`${prefix}[expiry_date]`, expiryInput.value);
+            if (aiCheckSelect.value !== '') fd.append(`${prefix}[ai_check]`, aiCheckSelect.value);
+            vaccChecks.forEach(cb => fd.append(`${prefix}[vaccinations][]`, cb.value));
+
+            anyDocuments = true;
+        });
+    });
+
+    if (!anyDocuments) {
+        alert('Add at least one document entry with a document type selected.');
+        return;
+    }
+
+    const btn = $('submitBtn');
+    btn.disabled = true;
+    $('submitSpinner').classList.remove('d-none');
+    $('resultArea').innerHTML = '';
+
+    try {
+        const r = await fetch(SUBMIT_URL, { method: 'POST', body: fd });
+        const text = await r.text();
+        let d;
+        try { d = JSON.parse(text); }
+        catch(_) {
+            renderError(`Server returned non-JSON (HTTP ${r.status}): ${text.slice(0,300)}`);
+            return;
+        }
+        if ($('dryRun').checked) {
+            renderDryRunResult(d);
+        } else {
+            renderSubmitResult(d);
+        }
+    } catch(e) {
+        renderError('Network error: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        $('submitSpinner').classList.add('d-none');
+    }
+});
+
+function renderError(msg) {
+    $('resultArea').innerHTML = `<div class="alert alert-danger rounded-3">${msg}</div>`;
+}
+
+function renderDryRunResult(d) {
+    if (!d.success) {
+        renderError(d.message || 'Dry run failed.');
+        if (d.errors) {
+            $('resultArea').innerHTML += `<pre class="small bg-light p-3 rounded-3 border">${JSON.stringify(d.errors, null, 2)}</pre>`;
+        }
+        return;
+    }
+    const data = d.data || {};
+    const summary = data.summary || {};
+    let html = `<div class="card border-0 shadow-sm rounded-4 mb-3">
+        <div class="card-body p-4">
+            <h6 class="text-uppercase text-muted fw-bold mb-3">Dry Run Preview</h6>
+            <div class="row g-2 mb-3">
+                ${badgeStat('Staff', summary.total_staff)}
+                ${badgeStat('Documents', summary.total_documents)}
+                ${badgeStat('Valid', summary.valid, 'success')}
+                ${badgeStat('Invalid', summary.invalid, 'danger')}
+                ${badgeStat('Skipped', summary.skipped, 'secondary')}
+                ${badgeStat('Uploads', summary.uploads)}
+                ${badgeStat('Replacements', summary.replacements)}
+                ${badgeStat('Updates', summary.updates)}
+            </div>`;
+
+    (data.staff || []).forEach(s => {
+        html += `<div class="border rounded-3 p-3 mb-2">
+            <div class="fw-semibold mb-2">${s.staff_name || '(unknown)'} <span class="text-muted small font-monospace">${s.staff_id}</span></div>`;
+        (s.documents || []).forEach(doc => {
+            const resultColor = doc.result === 'valid' ? 'success' : doc.result === 'invalid' ? 'danger' : 'secondary';
+            html += `<div class="d-flex justify-content-between align-items-start border-top pt-2 mt-2">
+                <div>
+                    <span class="badge bg-${resultColor} me-2">${doc.result}</span>
+                    <strong>${doc.document_name || doc.document_key}</strong>
+                    <span class="text-muted small">(${doc.operation})</span>
+                    ${doc.message ? `<div class="text-danger small mt-1">${doc.message}</div>` : ''}
+                    ${renderChanges(doc.changes)}
+                </div>
+            </div>`;
+        });
+        html += `</div>`;
+    });
+
+    html += `</div></div>`;
+    $('resultArea').innerHTML = html;
+}
+
+function renderChanges(changes) {
+    if (!changes || !Object.keys(changes).length) return '';
+    let rows = Object.entries(changes).map(([field, c]) =>
+        `<tr><td class="text-muted small">${field}</td>
+             <td class="small">${c.from === null || c.from === undefined ? '<em>—</em>' : escapeHtml(String(c.from))}</td>
+             <td class="small">→</td>
+             <td class="small fw-semibold">${escapeHtml(String(c.to))}</td></tr>`
+    ).join('');
+    return `<table class="table table-sm mt-2 mb-0"><tbody>${rows}</tbody></table>`;
+}
+
+function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function badgeStat(label, val, color) {
+    color = color || 'primary';
+    return `<div class="col-auto"><span class="badge bg-${color}-subtle text-${color}-emphasis border border-${color}-subtle px-3 py-2">${label}: <strong>${val ?? 0}</strong></span></div>`;
+}
+
+function renderSubmitResult(d) {
+    if (!d.success) {
+        renderError(d.message || 'Submission failed.');
+        if (d.errors) {
+            $('resultArea').innerHTML += `<pre class="small bg-light p-3 rounded-3 border">${JSON.stringify(d.errors, null, 2)}</pre>`;
+        }
+        if (d.data && d.data.rejected && d.data.rejected.length) {
+            $('resultArea').innerHTML += `<div class="alert alert-warning rounded-3 mt-2">
+                <strong>Rejected documents:</strong>
+                <ul class="mb-0 small">${d.data.rejected.map(r => `<li>${r.staff_id} — ${r.document_key}: ${r.message}</li>`).join('')}</ul>
+            </div>`;
+        }
+        return;
+    }
+    const batch = (d.data || {}).batch || {};
+    const rejected = (d.data || {}).rejected || [];
+    let html = `<div class="alert alert-success rounded-3">
+        <i class="bi bi-check-circle-fill me-2"></i>${d.message || 'Batch accepted for processing.'}
+    </div>
+    <div class="card border-0 shadow-sm rounded-4 mb-3">
+        <div class="card-body p-4">
+            <h6 class="text-uppercase text-muted fw-bold mb-3">Batch Accepted</h6>
+            <table class="table table-sm">
+                <tr><th class="text-muted small" style="width:200px;">Batch ID</th><td class="font-monospace">${batch.batch_id || ''}</td></tr>
+                <tr><th class="text-muted small">Status</th><td>${batch.status || ''}</td></tr>
+                <tr><th class="text-muted small">Total Staff</th><td>${batch.total_staff ?? ''}</td></tr>
+                <tr><th class="text-muted small">Total Operations</th><td>${batch.total_operations ?? ''}</td></tr>
+                <tr><th class="text-muted small">Submitted At</th><td>${batch.submitted_at || ''}</td></tr>
+            </table>
+            <button class="btn btn-outline-dark btn-sm fw-bold" onclick="document.getElementById('statusBatchId').value='${batch.batch_id}'; document.getElementById('checkStatusBtn').click();">
+                <i class="bi bi-search me-1"></i> Check this batch's status now
+            </button>
+        </div>
+    </div>`;
+    if (rejected.length) {
+        html += `<div class="alert alert-warning rounded-3"><strong>Rejected at submission:</strong>
+            <ul class="mb-0 small">${rejected.map(r => `<li>${r.staff_id} — ${r.document_key}: ${r.message}</li>`).join('')}</ul>
+        </div>`;
+    }
+    $('resultArea').innerHTML = html;
+}
+
+// ── Batch status checker ────────────────────────────────────────────────
+$('checkStatusBtn').addEventListener('click', async () => {
+    const batchId = $('statusBatchId').value.trim();
+    if (!batchId) { alert('Paste a batch_id first.'); return; }
+    $('statusArea').innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div> Checking…';
+    try {
+        const r = await fetch(`${STATUS_URL}?batch_id=${encodeURIComponent(batchId)}&app_country=${$('appCountry').value}`);
+        const d = await r.json();
+        if (!d.success) {
+            $('statusArea').innerHTML = `<div class="alert alert-danger rounded-3 small">${d.message || 'Could not fetch status.'}</div>`;
+            return;
+        }
+        const batch = (d.data || {}).batch || {};
+        const summary = (d.data || {}).summary || {};
+        const items = ((d.data || {}).items || {}).data || [];
+
+        let html = `<div class="row g-2 mb-3">
+            ${badgeStat('Status', batch.status, batch.status === 'completed' ? 'success' : batch.status === 'failed' ? 'danger' : 'warning')}
+            ${badgeStat('Total Staff', summary.total_staff)}
+            ${badgeStat('Succeeded Ops', summary.succeeded_operations, 'success')}
+            ${badgeStat('Failed Ops', summary.failed_operations, 'danger')}
+            ${badgeStat('Skipped Ops', summary.skipped_operations, 'secondary')}
+        </div>`;
+
+        if (items.length) {
+            html += `<table class="table table-sm"><thead><tr>
+                <th>Staff</th><th>Document</th><th>Operation</th><th>Status</th><th>Error</th>
+            </tr></thead><tbody>`;
+            items.forEach(it => {
+                const color = it.status === 'succeeded' ? 'success' : it.status === 'failed' ? 'danger' : 'secondary';
+                html += `<tr>
+                    <td class="small">${it.staff_name || ''}<br><span class="text-muted font-monospace" style="font-size:10px;">${it.staff_id}</span></td>
+                    <td class="small">${it.document_name || it.document_key}</td>
+                    <td class="small">${it.operation || ''}</td>
+                    <td><span class="badge bg-${color}">${it.status}</span></td>
+                    <td class="small text-danger">${it.error ? it.error.message : ''}</td>
+                </tr>`;
+            });
+            html += `</tbody></table>`;
+        }
+        $('statusArea').innerHTML = html;
+    } catch(e) {
+        $('statusArea').innerHTML = `<div class="alert alert-danger rounded-3 small">Network error: ${e.message}</div>`;
+    }
+});
+</script>
+{% endblock %}

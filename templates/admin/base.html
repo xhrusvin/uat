@@ -353,6 +353,11 @@ select.parsley-success {
         <span>Live Staffs</span>
     </a>
 
+     <a class="nav-link {% if request.path == '/admin/bulk-staff-update' or request.path == '/admin/bulk-staff-update/' %}active{% endif %}" href="/admin/bulk-staff-update">
+        <i class="bi bi-list"></i>
+        <span>Bulk Staff Update</span>
+    </a>
+
 
     <a class="nav-link {% if request.path.startswith('/admin/campaigns') %}active{% endif %}"
     href="{{ url_for('admin.campaigns') }}">
@@ -445,6 +450,8 @@ select.parsley-success {
         <span>Live Shifts</span>
     </a>
 
+   
+
     <a class="nav-link {% if request.path == '/booking/auto-outreach-clients' or request.path == '/booking/auto-outreach-clients/' %}active{% endif %}" href="/booking/auto-outreach-clients">
         <i class="bi bi-list"></i>
         <span>Auto Outreach Clients</span>
@@ -505,6 +512,7 @@ select.parsley-success {
         <i class="bi bi-envelope"></i>
         <span>Zoho mail</span>
     </a>
+    
 
 
     <!-- System -->
