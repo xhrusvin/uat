@@ -6806,14 +6806,9 @@ def live_staff_cron_generate_screening_pdf():
 def live_staff_cron_screening_list():
     """
     Returns every generated Screening Interview Record's metadata in one
-    call: staff_id, staff_name, employee_code, xn_staff_id, filename,
-    gcs_blob, plus the PDF equivalents (pdf_filename, pdf_gcs_blob —
-    empty strings if no PDF has been generated for that record yet).
-
-    xn_staff_id is looked up from the live_staffs collection itself
-    (it's not stored on the live_staff_screening record) — returned as
-    an empty string for any staff member where it's missing or still
-    showing the placeholder '[no id returned]'.
+    call: staff_id, staff_name, employee_code, filename, gcs_blob, plus
+    the PDF equivalents (pdf_filename, pdf_gcs_blob — empty strings if
+    no PDF has been generated for that record yet).
 
     Protect with ?cron_key=<CRON_SECRET> env var.
     """
@@ -6825,8 +6820,6 @@ def live_staff_cron_screening_list():
             return jsonify({"success": False, "error": "Unauthorised"}), 401
 
     screening_col = db.live_staff_screening
-    staffs_col    = _staffs_col()
-
     recs = list(screening_col.find(
         {},
         {"staff_id": 1, "staff_name": 1, "employee_code": 1,
@@ -6834,33 +6827,12 @@ def live_staff_cron_screening_list():
          "pdf_filename": 1, "pdf_gcs_blob": 1}
     ))
 
-    # Batch-fetch xn_staff_id for every referenced staff member in one
-    # query, rather than one lookup per record.
-    staff_object_ids = []
-    for r in recs:
-        try:
-            staff_object_ids.append(ObjectId(r.get("staff_id", "")))
-        except Exception:
-            pass
-
-    xn_id_by_staff_id = {}
-    if staff_object_ids:
-        for s in staffs_col.find(
-            {"_id": {"$in": staff_object_ids}},
-            {"xn_staff_id": 1}
-        ):
-            xn_val = _v(s.get("xn_staff_id") or "")
-            if xn_val and xn_val != '[no id returned]':
-                xn_id_by_staff_id[str(s["_id"])] = xn_val
-
     items = []
     for r in recs:
-        sid = str(r.get("staff_id", ""))
         items.append({
-            "staff_id":      sid,
+            "staff_id":      str(r.get("staff_id", "")),
             "staff_name":    r.get("staff_name", "") or "",
             "employee_code": r.get("employee_code", "") or "",
-            "xn_staff_id":   xn_id_by_staff_id.get(sid, ""),
             "filename":      r.get("filename", "") or "",
             "gcs_blob":      r.get("gcs_blob", "") or "",
             "pdf_filename":  r.get("pdf_filename", "") or "",
@@ -6879,44 +6851,6 @@ _DOWNLOAD_MIMETYPES = {
     '.pdf':  'application/pdf',
 }
 
-
-@admin_bp.route('/live-staffs/cron/screening-download-one', methods=['GET'])
-def live_staff_cron_screening_download_one():
-    """
-    Streams the bytes of ONE generated Screening Interview Record file
-    (docx OR pdf), identified by its gcs_blob (as returned by
-    /screening-list in either gcs_blob or pdf_gcs_blob). The response
-    mimetype is set from the blob's own file extension, so this one
-    route correctly serves both formats.
-
-    GET /live-staffs/cron/screening-download-one?cron_key=...&gcs_blob=screening/XH_33307.docx
-    GET /live-staffs/cron/screening-download-one?cron_key=...&gcs_blob=screening/XH_33307.pdf
-
-    Protect with ?cron_key=<CRON_SECRET> env var.
-    """
-    cron_secret = os.environ.get('CRON_SECRET', '')
-    if cron_secret:
-        provided = (request.args.get('cron_key') or
-                    request.headers.get('X-Cron-Key', ''))
-        if provided != cron_secret:
-            return jsonify({"success": False, "error": "Unauthorised"}), 401
-
-    gcs_blob = (request.args.get('gcs_blob') or '').strip()
-    if not gcs_blob:
-        return jsonify({"success": False, "error": "Missing gcs_blob"}), 400
-
-    try:
-        file_bytes = _gcs_download(gcs_blob)
-        filename   = gcs_blob.rsplit('/', 1)[-1]
-        ext        = '.' + filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
-        mimetype   = _DOWNLOAD_MIMETYPES.get(ext, 'application/octet-stream')
-        return Response(
-            file_bytes,
-            mimetype=mimetype,
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-        )
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
 
 
 
@@ -7227,3 +7161,96 @@ def live_staff_cron_incremental_credit_list():
         })
 
     return jsonify({"success": True, "items": items})
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THESE TWO ROUTES to the same crons blueprint file as
+# live_staff_cron_rename_screening_pdf_by_xnid.
+#
+# Fully independent of /screening-list and /screening-download-one —
+# dedicated list + download routes just for the Name_xn_staff_id PDFs.
+#
+# Lighter than the original /screening-list: since the rename cron
+# already stores xn_staff_id directly on the live_staff_screening
+# record (no live join against live_staffs needed here), this just
+# reads one collection with a simple filter — avoids the 502/timeout
+# risk the original route had entirely, rather than just working
+# around it.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/cron/screening-pdf-xnid-list', methods=['GET'])
+def live_staff_cron_screening_pdf_xnid_list():
+    """
+    Returns metadata for every Screening PDF that has already been
+    renamed to the Name_xn_staff_id format (pdf_renamed_xnid == True).
+    No live join against live_staffs — xn_staff_id is read straight off
+    the live_staff_screening record, where the rename cron already
+    stored it.
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    screening_col = db.live_staff_screening
+
+    recs = list(screening_col.find(
+        {"pdf_renamed_xnid": True},
+        {"staff_id": 1, "staff_name": 1, "xn_staff_id": 1,
+         "pdf_filename": 1, "pdf_gcs_blob": 1}
+    ))
+
+    items = []
+    for r in recs:
+        items.append({
+            "staff_id":     str(r.get("staff_id", "")),
+            "staff_name":   r.get("staff_name", "") or "",
+            "xn_staff_id":  r.get("xn_staff_id", "") or "",
+            "pdf_filename": r.get("pdf_filename", "") or "",
+            "pdf_gcs_blob": r.get("pdf_gcs_blob", "") or "",
+        })
+
+    return jsonify({
+        "success": True,
+        "count":   len(items),
+        "items":   items,
+    })
+
+
+@admin_bp.route('/live-staffs/cron/screening-pdf-xnid-download', methods=['GET'])
+def live_staff_cron_screening_pdf_xnid_download():
+    """
+    Streams the bytes of ONE renamed Screening PDF, identified by its
+    gcs_blob (as returned by /screening-pdf-xnid-list). Independent of
+    the generic /screening-download-one route.
+
+    GET /live-staffs/cron/screening-pdf-xnid-download?cron_key=...&gcs_blob=screening/Abdul_Koyan_488291.pdf
+
+    Protect with ?cron_key=<CRON_SECRET> env var.
+    """
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    gcs_blob = (request.args.get('gcs_blob') or '').strip()
+    if not gcs_blob:
+        return jsonify({"success": False, "error": "Missing gcs_blob"}), 400
+
+    try:
+        pdf_bytes = _gcs_download(gcs_blob)
+        filename  = gcs_blob.rsplit('/', 1)[-1]
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
