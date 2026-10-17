@@ -7339,3 +7339,148 @@ def live_staff_cron_screening_pdf_list_one():
         }
     })
 
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THIS to the same crons blueprint file as live_staff_cron_sync_hsecv,
+# live_staff_cron_sync_garda_vetting, etc.
+#
+# Cron: Fetch "first_shift_date" from the outreach API's recruitment
+# detail endpoint (GET {{XN_PORTAL_BASE_URL}}/ai/recruitments/detail),
+# one staff at a time, and save it to live_staffs.first_shift_date.
+#
+# Stored exactly as returned by the API (e.g. "29 Jan 2026") — existing
+# code elsewhere in this codebase (e.g. _build_pcc_docx) already tries
+# parsing first_shift_date against several formats including "%d %b %Y",
+# so no reformatting is done here.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/cron/sync-first-shift-date', methods=['GET', 'POST'])
+def live_staff_cron_sync_first_shift_date():
+    """
+    Cron job — processes ONE staff member per call.
+    Calls the outreach API's recruitment detail endpoint and saves
+    data.first_shift_date to live_staffs.first_shift_date.
+    Saves: first_shift_date, first_shift_date_fetched = True
+    """
+    import requests as _req
+
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if cron_secret:
+        provided = (request.args.get('cron_key') or
+                    request.headers.get('X-Cron-Key', ''))
+        if provided != cron_secret:
+            return jsonify({"success": False, "error": "Unauthorised"}), 401
+
+    base_url    = (os.environ.get('XN_PORTAL_BASE_URL', '').rstrip('/') or
+                   os.environ.get('LIVE_STAFF_URL', '').rstrip('/'))
+    api_key     = os.environ.get('XN_PORTAL_API_KEY', '')
+    app_country = os.environ.get('XN_APP_COUNTRY', '')
+
+    if not base_url:
+        return jsonify({"success": False, "error": "XN_PORTAL_BASE_URL / LIVE_STAFF_URL not set"}), 500
+
+    col = _staffs_col()
+
+    pending_query = {
+        "$or": [
+            {"first_shift_date_fetched": {"$exists": False}},
+            {"first_shift_date_fetched": False},
+            {"first_shift_date_fetched": None},
+        ]
+    }
+    remaining_total = col.count_documents(pending_query)
+    staff           = col.find_one(pending_query)
+
+    if not staff:
+        return jsonify({
+            "success":         True,
+            "message":         "All staff first_shift_date already fetched.",
+            "remaining_count": 0,
+        })
+
+    def _first(*keys, default=''):
+        """Multi-schema lookup — handles both the new flat schema
+        ('Name', with capitals/spaces) and the old nested schema
+        (section_1_personal_details.full_name)."""
+        for k in keys:
+            val = staff.get(k)
+            if val not in (None, ''):
+                return _v(val)
+        return default
+
+    s1        = staff.get('section_1_personal_details') or {}
+    full_name = _first('Name') or _v(s1.get('full_name') or '')
+    email     = _v(staff.get('email') or s1.get('email_address') or '')
+
+    def _mark_done(fields):
+        fields["first_shift_date_fetched"]    = True
+        fields["first_shift_date_fetched_at"] = datetime.utcnow()
+        col.update_one({"_id": staff['_id']}, {"$set": fields})
+
+    if not email:
+        _mark_done({"first_shift_date_note": "skipped — no email"})
+        return jsonify({
+            "success":         True,
+            "message":         "Skipped — no email",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    endpoint    = f"{base_url}/ai/recruitments/detail"
+    api_headers = {
+        "Api-Key":       api_key,
+        "X-App-Country": app_country,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
+    try:
+        resp = _req.get(endpoint, params={"email": email}, headers=api_headers, timeout=30)
+        if resp.status_code == 405:
+            resp = _req.post(endpoint, json={"email": email}, headers=api_headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        _mark_done({"first_shift_date_note": f"API error: {e}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": f"API error: {e}",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    if not data.get('success'):
+        _mark_done({"first_shift_date_note": f"API error: {data.get('message')}"})
+        return jsonify({
+            "success": False, "email": email,
+            "error": data.get('message', 'API error'),
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    detail = data.get('data') or {}
+    first_shift_date = _v(detail.get('first_shift_date') or '')
+
+    if not first_shift_date:
+        _mark_done({"first_shift_date_note": "no first_shift_date in API response"})
+        return jsonify({
+            "success": True, "email": email, "staff_name": full_name,
+            "found": False,
+            "message": f"No first_shift_date returned for {full_name} ({email})",
+            "remaining_count": max(0, remaining_total - 1),
+        })
+
+    _mark_done({
+        "first_shift_date": first_shift_date,
+        "first_shift_date_note": "fetched successfully",
+    })
+
+    return jsonify({
+        "success":          True,
+        "email":            email,
+        "staff_name":       full_name,
+        "found":            True,
+        "first_shift_date": first_shift_date,
+        "remaining_count":  max(0, remaining_total - 1),
+        "message": (
+            f"first_shift_date set to '{first_shift_date}' for {full_name} ({email}) "
+            f"— {max(0, remaining_total - 1)} remaining."
+        ),
+    })
