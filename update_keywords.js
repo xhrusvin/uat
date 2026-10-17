@@ -3607,7 +3607,7 @@ const ops = [
   }},
 ];
 
-const result = db.staffs.bulkWrite(ops, { ordered: false });
+const result = db.live_staffs.bulkWrite(ops, { ordered: false });
 print("Matched  : " + result.matchedCount);
 print("Modified : " + result.modifiedCount);
 print("Unmatched: " + (ops.length - result.matchedCount));
