@@ -7338,3 +7338,113 @@ def live_staff_cron_screening_pdf_list_one():
             "pdf_filename":  rec.get("pdf_filename", "") or "",
         }
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THIS to admin/live_staffs.py (same file as the other
+# live_staff_export_*_xlsx routes — matches their exact styling pattern).
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@admin_bp.route('/live-staffs/export/work-start-date-xlsx')
+@admin_required
+def live_staff_export_work_start_date_xlsx():
+    """
+    Export: Email | Name | User Type | Employee Code | Work Start Date
+    for every staff member.
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io as _io
+
+        docs = list(_staffs_col().find(
+            {},
+            {"section_1_personal_details": 1, "email": 1,
+             "Name": 1, "user_type": 1, "User Type": 1,
+             "employee_code": 1, "Employee Code": 1,
+             "work_start_date": 1}
+        ))
+
+        def _first(doc, *keys, default=''):
+            """Multi-schema lookup — handles both the new flat schema
+            ('Name', 'User Type', 'Employee Code') and the old nested/
+            lowercase schema (section_1_personal_details.full_name,
+            user_type, employee_code)."""
+            for k in keys:
+                val = doc.get(k)
+                if val not in (None, ''):
+                    return _v(val)
+            return default
+
+        def _fmt_work_start(val):
+            if not val:
+                return ''
+            if hasattr(val, 'strftime'):
+                return val.strftime('%Y-%m-%d')
+            return str(val)
+
+        docs.sort(key=lambda d: _first(
+            d, 'Name', default=_v((d.get('section_1_personal_details') or {}).get('full_name') or '')
+        ).lower())
+
+        NAVY = '1B3A6B'; GREEN = '2E9E44'; WHITE = 'FFFFFF'; ALT = 'EFF6FF'
+
+        h_font  = Font(name='Arial', bold=True, color=WHITE, size=10)
+        h_fill  = PatternFill('solid', start_color=NAVY, end_color=NAVY)
+        h_align = Alignment(horizontal='center', vertical='center')
+        b_font  = Font(name='Arial', size=10)
+        l_align = Alignment(horizontal='left',   vertical='center')
+        c_align = Alignment(horizontal='center', vertical='center')
+        thin    = Side(style='thin', color='CCCCCC')
+        border  = Border(left=thin, right=thin, top=thin, bottom=thin)
+        green_b = Border(left=thin, right=thin, top=thin,
+                         bottom=Side(style='medium', color=GREEN))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Work Start Date'
+
+        headers    = ['Sno', 'Name', 'Email', 'User Type', 'Employee Code', 'Work Start Date']
+        col_widths = [5, 28, 36, 16, 16, 18]
+
+        for ci, (hdr, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=ci, value=hdr)
+            cell.font = h_font; cell.fill = h_fill
+            cell.alignment = h_align; cell.border = green_b
+            ws.column_dimensions[cell.column_letter].width = width
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:F{len(docs)+1}'
+
+        for ri, doc in enumerate(docs, start=2):
+            s1   = doc.get('section_1_personal_details') or {}
+            name = _first(doc, 'Name', default=_v(s1.get('full_name') or ''))
+            email = _v(doc.get('email') or '')
+            user_type = _first(doc, 'User Type', 'user_type')
+            emp_code  = _first(doc, 'Employee Code', 'employee_code')
+            work_start = _fmt_work_start(doc.get('work_start_date'))
+
+            row_vals = [ri - 1, name, email, user_type, emp_code, work_start]
+            aligns   = [c_align, l_align, l_align, l_align, c_align, c_align]
+            alt_fill = PatternFill('solid', start_color=ALT, end_color=ALT) if ri % 2 == 0 else PatternFill()
+
+            for ci, (val, align) in enumerate(zip(row_vals, aligns), start=1):
+                cell = ws.cell(row=ri, column=ci, value=val)
+                cell.font = b_font; cell.alignment = align
+                cell.border = border; cell.fill = alt_fill
+            ws.row_dimensions[ri].height = 17
+
+        ws.cell(row=len(docs)+2, column=1,
+                value=f'Total: {len(docs)}').font = Font(name='Arial', bold=True, size=9)
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition":
+                     f'attachment; filename="work_start_date_{datetime.utcnow().strftime("%Y%m%d")}.xlsx"'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
