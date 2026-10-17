@@ -7344,8 +7344,15 @@ def live_staff_cron_screening_pdf_list_one():
 # live_staff_cron_sync_garda_vetting, etc.
 #
 # Cron: Fetch "first_shift_date" from the outreach API's recruitment
-# detail endpoint (GET {{XN_PORTAL_BASE_URL}}/ai/recruitments/detail),
-# one staff at a time, and save it to live_staffs.first_shift_date.
+# detail endpoint (POST {{XN_PORTAL_BASE_URL}}/ai/recruitments/detail,
+# body: {"_id": <xn_staff_id>}), one staff at a time, and save it to
+# live_staffs.first_shift_date.
+#
+# Uses live_staffs.xn_staff_id as the identifier — NOT email, NOT
+# Employee Code, NOT the Mongo _id. Staff whose xn_staff_id hasn't
+# synced yet (still the portal's own "[no id returned]" placeholder,
+# or missing) are skipped and marked done so they don't retry forever
+# — re-run this cron after xn_staff_id has been populated for them.
 #
 # Stored exactly as returned by the API (e.g. "29 Jan 2026") — existing
 # code elsewhere in this codebase (e.g. _build_pcc_docx) already tries
@@ -7358,8 +7365,9 @@ def live_staff_cron_screening_pdf_list_one():
 def live_staff_cron_sync_first_shift_date():
     """
     Cron job — processes ONE staff member per call.
-    Calls the outreach API's recruitment detail endpoint and saves
-    data.first_shift_date to live_staffs.first_shift_date.
+    Calls the outreach API's recruitment detail endpoint with
+    {"_id": xn_staff_id} and saves data.first_shift_date to
+    live_staffs.first_shift_date.
     Saves: first_shift_date, first_shift_date_fetched = True
     """
     import requests as _req
@@ -7417,11 +7425,16 @@ def live_staff_cron_sync_first_shift_date():
         fields["first_shift_date_fetched_at"] = datetime.utcnow()
         col.update_one({"_id": staff['_id']}, {"$set": fields})
 
-    if not email:
-        _mark_done({"first_shift_date_note": "skipped — no email"})
+    # ── xn_staff_id is the identifier this endpoint needs — NOT email ──
+    xn_staff_id = _v(staff.get('xn_staff_id') or '')
+    if not xn_staff_id or xn_staff_id == '[no id returned]':
+        _mark_done({"first_shift_date_note": "skipped — no xn_staff_id synced yet"})
         return jsonify({
             "success":         True,
-            "message":         "Skipped — no email",
+            "staff_name":      full_name,
+            "email":           email,
+            "skipped":         True,
+            "message":         f"Skipped {full_name or email} — no xn_staff_id synced yet",
             "remaining_count": max(0, remaining_total - 1),
         })
 
@@ -7434,15 +7447,13 @@ def live_staff_cron_sync_first_shift_date():
     }
 
     try:
-        resp = _req.get(endpoint, params={"email": email}, headers=api_headers, timeout=30)
-        if resp.status_code == 405:
-            resp = _req.post(endpoint, json={"email": email}, headers=api_headers, timeout=30)
+        resp = _req.post(endpoint, json={"_id": xn_staff_id}, headers=api_headers, timeout=30)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
         _mark_done({"first_shift_date_note": f"API error: {e}"})
         return jsonify({
-            "success": False, "email": email,
+            "success": False, "email": email, "staff_name": full_name,
             "error": f"API error: {e}",
             "remaining_count": max(0, remaining_total - 1),
         })
@@ -7450,7 +7461,7 @@ def live_staff_cron_sync_first_shift_date():
     if not data.get('success'):
         _mark_done({"first_shift_date_note": f"API error: {data.get('message')}"})
         return jsonify({
-            "success": False, "email": email,
+            "success": False, "email": email, "staff_name": full_name,
             "error": data.get('message', 'API error'),
             "remaining_count": max(0, remaining_total - 1),
         })
@@ -7476,6 +7487,7 @@ def live_staff_cron_sync_first_shift_date():
         "success":          True,
         "email":            email,
         "staff_name":       full_name,
+        "xn_staff_id":      xn_staff_id,
         "found":            True,
         "first_shift_date": first_shift_date,
         "remaining_count":  max(0, remaining_total - 1),
