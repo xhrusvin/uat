@@ -3583,20 +3583,37 @@ def _pick_compliance_actions(_random_mod):
     return _random_mod.sample(_SCREENING_COMPLIANCE_NOTES, count)
 
 
-def _extract_education_and_employment(extracted_cv, gemini_key,
-                                       max_education=5, max_employment=7):
+def _gemini_json_call(prompt, gemini_key, model='gemini-2.5-flash'):
+    """Shared helper: call Gemini with a prompt that must return a single
+    JSON value, strip any markdown fences, and parse it. Returns None on
+    any failure (bad JSON, API error, etc.) rather than raising."""
+    try:
+        from google import genai as _gai_shared
+        import re as _re_shared
+        import json as _json_shared
+
+        client   = _gai_shared.Client(api_key=gemini_key)
+        response = client.models.generate_content(model=model, contents=prompt)
+        raw      = (response.text or '').strip()
+        raw      = _re_shared.sub(r'^```(?:json)?\s*', '', raw, flags=_re_shared.MULTILINE)
+        raw      = _re_shared.sub(r'```\s*$', '', raw, flags=_re_shared.MULTILINE).strip()
+        return _json_shared.loads(raw)
+    except Exception:
+        return None
+
+
+def _extract_education_only(extracted_cv, gemini_key, max_education=5):
     """
-    Single Gemini call that pulls BOTH education and employment history
-    out of a staff member's extracted_cv text — strictly from what's
-    written there, no invented details.
+    Single-purpose Gemini call: extract ONLY education/qualification
+    history from a CV. Kept separate from employment extraction because
+    a combined call was found to confuse the two — e.g. treating a CV's
+    "QQI modules: ..." sub-list (the individual course modules that make
+    up ONE qualification) as several separate bogus education entries,
+    which then crowded out genuine entries like a Bachelor's degree.
 
-    Returns a tuple (education_entries, employment_entries):
-      education_entries: list of up to max_education dicts
-        {"from": "...", "to": "...", "course": "..."}
-      employment_entries: list of up to max_employment dicts
-        {"from": "...", "to": "...", "employer": "...", "reason": "..."}
-
-    Returns ([], []) if there's no usable CV text, no API key, or on error.
+    Returns a list of up to max_education dicts:
+      {"from": "...", "to": "...", "course": "..."}
+    Returns [] if there's no usable CV text, no API key, or on error.
     """
     has_cv_text = bool(
         extracted_cv and
@@ -3604,125 +3621,187 @@ def _extract_education_and_employment(extracted_cv, gemini_key,
         extracted_cv not in ('No doc found', '')
     )
     if not has_cv_text or not gemini_key:
-        return [], []
+        return []
 
-    try:
-        from google import genai as _gai_edu
-        import re as _re_edu
-        import json as _json_edu
+    prompt = f"""You are analysing a candidate's CV text to extract ONLY their
+EDUCATION / QUALIFICATION history. Do not extract employment history.
 
-        prompt = f"""You are analysing a candidate's CV text to extract their EDUCATION and EMPLOYMENT history.
+Extract EVERY degree, diploma, certificate or qualification from a school,
+college or university explicitly mentioned. Each one is ONE entry — do not
+extract anything else as a separate entry.
 
-Read the CV text below and extract:
-
-1. EDUCATION — EVERY degree, diploma, certificate or qualification from a
-   school, college, or university explicitly mentioned. CVs list these in
-   many different layouts — a bulleted list, a table, or plain lines — and
-   the dates are often written INLINE within the same line as the
-   qualification itself (e.g. "* Bachelor of Science in Health Science -
-   University in Nigeria (Sep 2011 – Dec 2015)", or "QQI Level 5 ... (Jun
-   2023)"). In every such case, still pull the start/end dates out into
-   "from"/"to" — do not leave them blank just because they're embedded in
-   the same line rather than in separate columns. If only a YEAR is given
-   for a start or end date (e.g. "2015" with no month), still put that
-   year into "from"/"to" — a year-only date is still a date, never leave
-   the field blank just because it isn't a full month+year. Count EVERY
-   bullet or line under an education/qualifications heading as its own
-   entry, even if some only have one date, or no date at all.
-2. EMPLOYMENT — EVERY job/role explicitly mentioned, in reverse
-   chronological order (most recent first). Healthcare Assistants and
-   Nurses who work through staffing agencies very commonly work for
-   TWO OR MORE agencies during the same or overlapping period — e.g.
-   registered with two agencies at once and picking up shifts from
-   each, or starting a new agency before finishing with the last. This
-   is normal and expected, NOT an inconsistency to resolve — list every
-   such role as its own separate entry with its own dates exactly as
-   written, even when several entries share or overlap in their date
-   ranges. List every single role exactly once; overlapping dates are
-   never a reason to merge, skip, or omit an entry. A CV with 6 listed
-   roles must produce 6 (or 5, after the Xpress Health exclusion below)
-   entries in your output, not fewer.
+Formatting traps to watch for:
+- CVs list qualifications in many layouts — a bulleted list, a table, or
+  plain lines — and dates are often written INLINE within the same line as
+  the qualification itself, e.g. "* Bachelor of Science in Health Science -
+  University in Nigeria (Sep 2011 – Dec 2015)", or "QQI Level 5 ... (Jun
+  2023)". In every such case, still pull the start/end dates out into
+  "from"/"to" — do not leave them blank just because they're embedded in
+  the same line rather than in separate columns.
+- If only a YEAR is given for a start or end date (e.g. "2015" with no
+  month), still put that year into "from"/"to" — a year-only date is
+  still a date; never leave the field blank just because it isn't a full
+  month+year.
+- A qualification is sometimes followed by a line listing its individual
+  modules or subjects, e.g. "QQI modules: Care of the Older Person; Care
+  Skills; Communications; ...". That module list belongs to the ONE
+  qualification named just above it — it is supplementary detail, NOT a
+  list of separate qualifications. Do NOT create a separate education
+  entry for each module. Only genuine standalone degrees, diplomas,
+  certificates or school-leaving qualifications count as entries.
+- Count every genuine qualification bullet/line, even if some only have
+  one date, or no date at all — do not stop early or skip any of them.
 
 Rules:
-- Use ONLY information explicitly present in the CV text below. Do NOT invent,
-  guess, or infer any detail that is not written there.
-- Re-read the full EMPLOYMENT and EDUCATION sections of the CV text at least
-  twice before producing your answer, specifically checking you have not
-  skipped any entry and have not dropped any date that is present in the text.
-- If a specific field is not stated for an entry, leave it as an empty string "".
-- Order both lists from MOST RECENT to OLDEST.
-- Return at most {max_education} education entries and {max_employment} employment entries.
-- EXCLUDE any employment entry where the employer is "Xpress Health" (the
-  recruiting agency itself, not prior work experience) — do not include it
-  in the employment list at all. This is the ONLY reason to exclude an
-  entry — never exclude or merge any other entry.
-- For employment "reason", only fill it if the CV explicitly states a reason
-  for leaving that role — otherwise leave it as "".
-- Return ONLY a single JSON object — nothing else, no markdown, no explanation —
+- Use ONLY information explicitly present in the CV text below. Do NOT
+  invent, guess, or infer any detail that is not written there.
+- Re-read the full education/qualifications section of the CV text at
+  least twice before answering, specifically checking you have not
+  skipped any genuine qualification and have not invented any module-list
+  entries that aren't actually separate qualifications.
+- Order from MOST RECENT to OLDEST.
+- Return at most {max_education} entries.
+- Return ONLY a JSON array — nothing else, no markdown, no explanation —
   with exactly this shape:
 
-{{
-  "education": [
-    {{"from": "<start year/date or empty>", "to": "<end year/date or empty>", "course": "<qualification, institution and/or course name>"}}
-  ],
-  "employment": [
-    {{"from": "<start year/date or empty>", "to": "<end year/date or empty>", "employer": "<employer, role, location>", "reason": "<reason for leaving, or empty>"}}
-  ]
-}}
+[
+  {{"from": "<start year/date or empty>", "to": "<end year/date or empty>", "course": "<qualification, institution and/or course name>"}}
+]
 
-- If the CV contains no education information, "education" must be [].
-- If the CV contains no employment information, "employment" must be [].
+- If the CV contains no education information at all, return an empty array: []
 
 CV TEXT:
 {extracted_cv}
 """
-        client   = _gai_edu.Client(api_key=gemini_key)
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-        raw      = (response.text or '').strip()
-        raw      = _re_edu.sub(r'^```(?:json)?\s*', '', raw, flags=_re_edu.MULTILINE)
-        raw      = _re_edu.sub(r'```\s*$', '', raw, flags=_re_edu.MULTILINE).strip()
+    result = _gemini_json_call(prompt, gemini_key)
+    if not isinstance(result, list):
+        return []
 
-        result = _json_edu.loads(raw)
-        if not isinstance(result, dict):
-            return [], []
+    education_entries = []
+    for e in result[:max_education]:
+        if not isinstance(e, dict):
+            continue
+        education_entries.append({
+            "from":   str(e.get("from") or "").strip(),
+            "to":     str(e.get("to") or "").strip(),
+            "course": str(e.get("course") or "").strip(),
+        })
+    return education_entries
 
-        raw_education  = result.get('education') or []
-        raw_employment = result.get('employment') or []
 
-        # Deterministic filter (independent of whether Gemini honoured
-        # the prompt instruction) — never list Xpress Health itself as
-        # the candidate's own prior employment. Applied BEFORE the
-        # max_employment slice below, so excluding it doesn't bump a
-        # legitimate older entry off the list.
-        raw_employment = [
-            e for e in raw_employment
-            if isinstance(e, dict) and 'xpress health' not in str(e.get('employer') or '').strip().lower()
-        ]
+def _extract_employment_only(extracted_cv, gemini_key, max_employment=7):
+    """
+    Single-purpose Gemini call: extract ONLY employment history from a
+    CV. Kept separate from education extraction — see
+    _extract_education_only's docstring for why a combined call proved
+    unreliable.
 
-        education_entries = []
-        for e in raw_education[:max_education]:
-            if not isinstance(e, dict):
-                continue
-            education_entries.append({
-                "from":   str(e.get("from") or "").strip(),
-                "to":     str(e.get("to") or "").strip(),
-                "course": str(e.get("course") or "").strip(),
-            })
+    Returns a list of up to max_employment dicts:
+      {"from": "...", "to": "...", "employer": "...", "reason": "..."}
+    Returns [] if there's no usable CV text, no API key, or on error.
+    """
+    has_cv_text = bool(
+        extracted_cv and
+        not str(extracted_cv).startswith('[') and
+        extracted_cv not in ('No doc found', '')
+    )
+    if not has_cv_text or not gemini_key:
+        return []
 
-        employment_entries = []
-        for e in raw_employment[:max_employment]:
-            if not isinstance(e, dict):
-                continue
-            employment_entries.append({
-                "from":     str(e.get("from") or "").strip(),
-                "to":       str(e.get("to") or "").strip(),
-                "employer": str(e.get("employer") or "").strip(),
-                "reason":   str(e.get("reason") or "").strip(),
-            })
+    prompt = f"""You are analysing a candidate's CV text to extract ONLY their
+EMPLOYMENT history. Do not extract education history.
 
-        return education_entries, employment_entries
-    except Exception:
-        return [], []
+Extract EVERY job/role explicitly mentioned, in reverse chronological order
+(most recent first). Each one is ONE entry.
+
+Formatting traps to watch for:
+- Healthcare Assistants and Nurses who work through staffing agencies very
+  commonly work for TWO OR MORE agencies during the same or overlapping
+  period — e.g. registered with two agencies at once and picking up shifts
+  from each, or starting a new agency before finishing with the last. This
+  is normal and expected, NOT an inconsistency to resolve. List every such
+  role as its own separate entry with its own dates exactly as written,
+  even when several entries share or overlap in their date ranges.
+  Overlapping dates between two entries are never a reason to merge, skip,
+  or treat one of them as a mistake.
+- A CV listing N roles must produce N entries in your output (minus any
+  Xpress Health entry, per the exclusion rule below) — never fewer. Before
+  answering, count the roles listed in the CV text and confirm your output
+  list has the same count (after the Xpress Health exclusion).
+- Extract the end date exactly as written for every role that has one —
+  do not drop an end date just because a nearby role's dates look unusual
+  or overlapping.
+
+Rules:
+- Use ONLY information explicitly present in the CV text below. Do NOT
+  invent, guess, or infer any detail that is not written there.
+- Re-read the full employment section of the CV text at least twice
+  before answering, specifically checking you have not skipped any role
+  and have not dropped any date that is present in the text.
+- Order from MOST RECENT to OLDEST.
+- Return at most {max_employment} entries.
+- EXCLUDE any entry where the employer is "Xpress Health" (the recruiting
+  agency itself, not prior work experience) — do not include it at all.
+  This is the ONLY reason to exclude an entry — never exclude or merge
+  any other entry for any other reason.
+- For "reason", only fill it if the CV explicitly states a reason for
+  leaving that role — otherwise leave it as "".
+- Return ONLY a JSON array — nothing else, no markdown, no explanation —
+  with exactly this shape:
+
+[
+  {{"from": "<start year/date or empty>", "to": "<end year/date or empty>", "employer": "<employer, role, location>", "reason": "<reason for leaving, or empty>"}}
+]
+
+- If the CV contains no employment information at all, return an empty array: []
+
+CV TEXT:
+{extracted_cv}
+"""
+    result = _gemini_json_call(prompt, gemini_key)
+    if not isinstance(result, list):
+        return []
+
+    # Deterministic filter (independent of whether Gemini honoured the
+    # prompt instruction) — never list Xpress Health itself as the
+    # candidate's own prior employment. Applied BEFORE the max_employment
+    # slice, so excluding it doesn't bump a legitimate older entry off.
+    result = [
+        e for e in result
+        if isinstance(e, dict) and 'xpress health' not in str(e.get('employer') or '').strip().lower()
+    ]
+
+    employment_entries = []
+    for e in result[:max_employment]:
+        if not isinstance(e, dict):
+            continue
+        employment_entries.append({
+            "from":     str(e.get("from") or "").strip(),
+            "to":       str(e.get("to") or "").strip(),
+            "employer": str(e.get("employer") or "").strip(),
+            "reason":   str(e.get("reason") or "").strip(),
+        })
+    return employment_entries
+
+
+def _extract_education_and_employment(extracted_cv, gemini_key,
+                                       max_education=5, max_employment=7):
+    """
+    Two separate, focused Gemini calls — one for education, one for
+    employment (see _extract_education_only / _extract_employment_only)
+    — kept behind this same combined function name/signature so existing
+    callers don't need to change. Previously this was a single combined
+    call, which proved unreliable (it could misread a qualification's
+    module sub-list as several bogus separate education entries, or drop
+    a genuine employment entry when another nearby entry's dates
+    overlapped it).
+
+    Returns a tuple (education_entries, employment_entries) — same shape
+    as before.
+    """
+    education_entries  = _extract_education_only(extracted_cv, gemini_key, max_education=max_education)
+    employment_entries = _extract_employment_only(extracted_cv, gemini_key, max_employment=max_employment)
+    return education_entries, employment_entries
 
 
 def _build_screening_docx(first_shift_date=None, candidate_name='',
