@@ -3615,20 +3615,38 @@ def _extract_education_and_employment(extracted_cv, gemini_key,
 
 Read the CV text below and extract:
 
-1. EDUCATION — every degree, diploma, or certificate from a school, college,
-   or university explicitly mentioned.
-2. EMPLOYMENT — every job/role explicitly mentioned, in reverse chronological
-   order (most recent first).
+1. EDUCATION — EVERY degree, diploma, certificate or qualification from a
+   school, college, or university explicitly mentioned. CVs list these in
+   many different layouts — a bulleted list, a table, or plain lines — and
+   the dates are often written INLINE within the same line as the
+   qualification itself (e.g. "* Bachelor of Science in Health Science -
+   University in Nigeria (Sep 2011 – Dec 2015)", or "QQI Level 5 ... (Jun
+   2023)"). In every such case, still pull the start/end dates out into
+   "from"/"to" — do not leave them blank just because they're embedded in
+   the same line rather than in separate columns. Count EVERY bullet or
+   line under an education/qualifications heading as its own entry, even
+   if some only have one date, or no date at all.
+2. EMPLOYMENT — EVERY job/role explicitly mentioned, in reverse
+   chronological order (most recent first). List every single role
+   exactly once, even if two roles' date ranges overlap, look unusual, or
+   seem inconsistent with each other — that is a fact of the source CV,
+   not a reason to merge, skip, or omit an entry. A CV with 6 listed roles
+   must produce 6 (or 5, after the Xpress Health exclusion below) entries
+   in your output, not fewer.
 
 Rules:
 - Use ONLY information explicitly present in the CV text below. Do NOT invent,
   guess, or infer any detail that is not written there.
+- Re-read the full EMPLOYMENT and EDUCATION sections of the CV text at least
+  twice before producing your answer, specifically checking you have not
+  skipped any entry and have not dropped any date that is present in the text.
 - If a specific field is not stated for an entry, leave it as an empty string "".
 - Order both lists from MOST RECENT to OLDEST.
 - Return at most {max_education} education entries and {max_employment} employment entries.
 - EXCLUDE any employment entry where the employer is "Xpress Health" (the
   recruiting agency itself, not prior work experience) — do not include it
-  in the employment list at all.
+  in the employment list at all. This is the ONLY reason to exclude an
+  entry — never exclude or merge any other entry.
 - For employment "reason", only fill it if the CV explicitly states a reason
   for leaving that role — otherwise leave it as "".
 - Return ONLY a single JSON object — nothing else, no markdown, no explanation —
