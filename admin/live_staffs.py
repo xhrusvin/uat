@@ -67,7 +67,7 @@ def _extract_missing_fields(nationality, total_exp, extracted_cv, entries):
                     except Exception:
                         pass
             if _earliest:
-                _months = (_now.year - _earliest.year) * 12 +                           (_now.month - _earliest.month)
+                _months = (_now.year - _earliest.year) * 12 + (_now.month - _earliest.month)
                 _yrs    = _months // 12
                 _mos    = _months % 12
                 total_exp = (
@@ -3967,8 +3967,8 @@ def _build_screening_docx(first_shift_date=None, candidate_name='',
                                             Gemini from live_staffs.extracted_cv
       - Agency Work — Where              = same value as Location
       - Agency Work — Why                = random motivation sentence,
-                                            Nurse user types only (blank
-                                            for other user types)
+                                            Nurse or HCA pool depending on
+                                            user_type (blank otherwise)
       - Agency Work — Experience         = experience_keywords (already
                                             comma-joined by the caller
                                             from live_staffs.keyword1 /
