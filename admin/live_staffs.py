@@ -3602,6 +3602,125 @@ def _gemini_json_call(prompt, gemini_key, model='gemini-2.5-flash'):
         return None
 
 
+# Section headings used by the HSE CV builder's own output format
+# (see _build_ai_cv_docx / the HSE CV sync cron) — used here to reliably
+# bound the EDUCATION & QUALIFICATIONS and PROFESSIONAL EXPERIENCE
+# sections when deterministically parsing extracted_cv text, instead of
+# relying solely on an AI call to find the right content. Keeping
+# "EMPLOYMENT GAP" in this list matters: without it, a gap note like
+# "Dec 2015 - Jan 2019: Period between..." would itself match the
+# employment-entry pattern below and get wrongly parsed as a real job.
+_CV_SECTION_HEADINGS = [
+    'EMPLOYMENT ELIGIBILITY', 'PROFESSIONAL PROFILE',
+    'EDUCATION & QUALIFICATIONS', 'PROFESSIONAL EXPERIENCE',
+    'EMPLOYMENT GAP', 'TRAINING & CERTIFICATIONS', 'KEY SKILLS',
+    'ADDITIONAL INFORMATION', 'REFERENCES',
+]
+
+
+def _cv_extract_section(cv_text, heading):
+    """
+    Returns the text between `heading` and whichever of
+    _CV_SECTION_HEADINGS comes next (or end of text) — isolates one
+    section of the structured CV format our own HSE CV builder produces.
+    Returns '' if the heading isn't found.
+    """
+    import re as _re_sec
+    other_headings = [h for h in _CV_SECTION_HEADINGS if h != heading]
+    pattern = (
+        _re_sec.escape(heading) + r'\s*\n(.*?)(?=\n(?:' +
+        '|'.join(_re_sec.escape(h) for h in other_headings) +
+        r')|\Z)'
+    )
+    m = _re_sec.search(pattern, cv_text, _re_sec.DOTALL)
+    return m.group(1).strip() if m else ''
+
+
+def _regex_extract_education(extracted_cv):
+    """
+    Deterministic (non-AI) education parser for the structured CV format
+    our own HSE CV builder produces: bulleted lines ("* Qualification -
+    Institution (Mon YYYY – Mon YYYY)" or "... (Mon YYYY)"), with dates
+    embedded inline in a trailing parenthetical. A line that does NOT
+    start with "*" (e.g. a "QQI modules: ..." sentence listing a
+    qualification's components) is correctly skipped, never mistaken
+    for a separate entry.
+
+    Returns a list of {"from", "to", "course"} dicts, or [] if the
+    EDUCATION & QUALIFICATIONS section isn't found or has no bullets —
+    the caller should fall back to the AI-based extractor in that case.
+    """
+    import re as _re_edu2
+
+    section = _cv_extract_section(extracted_cv, 'EDUCATION & QUALIFICATIONS')
+    if not section:
+        return []
+
+    entries = []
+    for line in section.split('\n'):
+        line = line.strip()
+        if not line.startswith('*'):
+            continue
+        line = line.lstrip('*').strip()
+        if not line:
+            continue
+        # Trailing date(s) in parentheses at the end of the line.
+        m = _re_edu2.search(r'\(([^()]*\d{4}[^()]*)\)\s*$', line)
+        from_date, to_date, course = '', '', line
+        if m:
+            date_part = m.group(1)
+            course    = line[:m.start()].strip()
+            range_m   = _re_edu2.match(r'^(.+?)\s*[–—-]\s*(.+)$', date_part)
+            if range_m:
+                from_date, to_date = range_m.group(1).strip(), range_m.group(2).strip()
+            else:
+                from_date = to_date = date_part.strip()
+        entries.append({"from": from_date, "to": to_date, "course": course})
+    return entries
+
+
+def _regex_extract_employment(extracted_cv):
+    """
+    Deterministic (non-AI) employment parser for the structured CV
+    format our own HSE CV builder produces: each role starts a new line
+    with "Mon YYYY - Mon YYYY: Role, Employer, Location" (or
+    "... - Present: ..."), followed by bullet points of duties (which
+    this parser skips). Correctly handles overlapping date ranges
+    between roles (e.g. two concurrent agencies) since each header line
+    is parsed independently — there is no merging logic at all.
+
+    Returns a list of {"from", "to", "employer", "reason"} dicts
+    (reason always "" — this format has no stated leaving-reason line),
+    or [] if the PROFESSIONAL EXPERIENCE section isn't found or has no
+    matching lines — the caller should fall back to the AI-based
+    extractor in that case.
+    """
+    import re as _re_emp2
+
+    section = _cv_extract_section(extracted_cv, 'PROFESSIONAL EXPERIENCE')
+    if not section:
+        return []
+
+    header_re = _re_emp2.compile(
+        r'^([A-Za-z]+\.?\s+\d{4})\s*[-–]\s*'
+        r'([A-Za-z]+\.?\s+\d{4}|Present|Current|Ongoing)\s*:\s*(.+)$'
+    )
+    entries = []
+    for line in section.split('\n'):
+        line = line.strip()
+        if not line or line.startswith('*'):
+            continue
+        m = header_re.match(line)
+        if m:
+            entries.append({
+                "from":     m.group(1).strip(),
+                "to":       m.group(2).strip(),
+                "employer": m.group(3).strip(),
+                "reason":   "",
+            })
+    return entries
+
+
 def _extract_education_only(extracted_cv, gemini_key, max_education=5):
     """
     Single-purpose Gemini call: extract ONLY education/qualification
@@ -3620,7 +3739,18 @@ def _extract_education_only(extracted_cv, gemini_key, max_education=5):
         not str(extracted_cv).startswith('[') and
         extracted_cv not in ('No doc found', '')
     )
-    if not has_cv_text or not gemini_key:
+    if not has_cv_text:
+        return []
+
+    # Try the deterministic regex parser first — reliable, no AI
+    # involved, for the structured format our own HSE CV builder
+    # produces. Only fall back to Gemini if that format isn't found
+    # (e.g. an older/differently-structured CV text) or yields nothing.
+    regex_result = _regex_extract_education(extracted_cv)
+    if regex_result:
+        return regex_result[:max_education]
+
+    if not gemini_key:
         return []
 
     prompt = f"""You are analysing a candidate's CV text to extract ONLY their
@@ -3705,7 +3835,28 @@ def _extract_employment_only(extracted_cv, gemini_key, max_employment=7):
         not str(extracted_cv).startswith('[') and
         extracted_cv not in ('No doc found', '')
     )
-    if not has_cv_text or not gemini_key:
+    if not has_cv_text:
+        return []
+
+    def _exclude_xpress_health(entries):
+        """Never list Xpress Health itself as the candidate's own prior
+        employment — applied to whichever path (regex or Gemini)
+        produced the raw entries, before the max_employment slice, so
+        excluding it doesn't bump a legitimate older entry off."""
+        return [
+            e for e in entries
+            if isinstance(e, dict) and 'xpress health' not in str(e.get('employer') or '').strip().lower()
+        ]
+
+    # Try the deterministic regex parser first — reliable, no AI
+    # involved, for the structured format our own HSE CV builder
+    # produces. Only fall back to Gemini if that format isn't found
+    # (e.g. an older/differently-structured CV text) or yields nothing.
+    regex_result = _exclude_xpress_health(_regex_extract_employment(extracted_cv))
+    if regex_result:
+        return regex_result[:max_employment]
+
+    if not gemini_key:
         return []
 
     prompt = f"""You are analysing a candidate's CV text to extract ONLY their
@@ -3762,14 +3913,9 @@ CV TEXT:
     if not isinstance(result, list):
         return []
 
-    # Deterministic filter (independent of whether Gemini honoured the
-    # prompt instruction) — never list Xpress Health itself as the
-    # candidate's own prior employment. Applied BEFORE the max_employment
-    # slice, so excluding it doesn't bump a legitimate older entry off.
-    result = [
-        e for e in result
-        if isinstance(e, dict) and 'xpress health' not in str(e.get('employer') or '').strip().lower()
-    ]
+    # Same Xpress Health exclusion as the regex path above (independent
+    # of whether Gemini itself honoured the prompt instruction).
+    result = _exclude_xpress_health(result)
 
     employment_entries = []
     for e in result[:max_employment]:
