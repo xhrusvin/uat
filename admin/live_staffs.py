@@ -3623,16 +3623,25 @@ Read the CV text below and extract:
    University in Nigeria (Sep 2011 – Dec 2015)", or "QQI Level 5 ... (Jun
    2023)"). In every such case, still pull the start/end dates out into
    "from"/"to" — do not leave them blank just because they're embedded in
-   the same line rather than in separate columns. Count EVERY bullet or
-   line under an education/qualifications heading as its own entry, even
-   if some only have one date, or no date at all.
+   the same line rather than in separate columns. If only a YEAR is given
+   for a start or end date (e.g. "2015" with no month), still put that
+   year into "from"/"to" — a year-only date is still a date, never leave
+   the field blank just because it isn't a full month+year. Count EVERY
+   bullet or line under an education/qualifications heading as its own
+   entry, even if some only have one date, or no date at all.
 2. EMPLOYMENT — EVERY job/role explicitly mentioned, in reverse
-   chronological order (most recent first). List every single role
-   exactly once, even if two roles' date ranges overlap, look unusual, or
-   seem inconsistent with each other — that is a fact of the source CV,
-   not a reason to merge, skip, or omit an entry. A CV with 6 listed roles
-   must produce 6 (or 5, after the Xpress Health exclusion below) entries
-   in your output, not fewer.
+   chronological order (most recent first). Healthcare Assistants and
+   Nurses who work through staffing agencies very commonly work for
+   TWO OR MORE agencies during the same or overlapping period — e.g.
+   registered with two agencies at once and picking up shifts from
+   each, or starting a new agency before finishing with the last. This
+   is normal and expected, NOT an inconsistency to resolve — list every
+   such role as its own separate entry with its own dates exactly as
+   written, even when several entries share or overlap in their date
+   ranges. List every single role exactly once; overlapping dates are
+   never a reason to merge, skip, or omit an entry. A CV with 6 listed
+   roles must produce 6 (or 5, after the Xpress Health exclusion below)
+   entries in your output, not fewer.
 
 Rules:
 - Use ONLY information explicitly present in the CV text below. Do NOT invent,
