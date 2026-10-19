@@ -4769,7 +4769,7 @@ def _download_point_scale_pdf(url):
     return resp.content
 
 
-def _extract_point_scale_data(pdf_bytes, gemini_key, max_entries=6):
+def _extract_point_scale_data(pdf_bytes, gemini_key):
     """
     Uses Gemini to read the Point Scale Document PDF and extract the
     fields needed to fill the Incremental Credit for Previous Service
