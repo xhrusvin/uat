@@ -6926,9 +6926,9 @@ def _download_point_scale_pdf(url):
     from admin.live_staffs import _download_point_scale_pdf as _f
     return _f(url)
 
-def _extract_point_scale_data(pdf_bytes, gemini_key):
+def _extract_point_scale_data(pdf_bytes, gemini_key, max_entries=6):
     from admin.live_staffs import _extract_point_scale_data as _f
-    return _f(pdf_bytes, gemini_key)
+    return _f(pdf_bytes, gemini_key, max_entries=max_entries)
 
 def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_data):
     from admin.live_staffs import _build_incremental_credit_docx as _f
