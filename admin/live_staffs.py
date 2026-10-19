@@ -4769,13 +4769,15 @@ def _download_point_scale_pdf(url):
     return resp.content
 
 
-def _extract_point_scale_data(pdf_bytes, gemini_key):
+def _extract_point_scale_data(pdf_bytes, gemini_key, max_entries=6):
     """
     Uses Gemini to read the Point Scale Document PDF and extract the
     fields needed to fill the Incremental Credit for Previous Service
-    form. Returns an all-blank shape (not an exception) on any failure,
-    so document generation can still proceed with blanks for manual
-    completion rather than failing outright.
+    form (or, with a higher max_entries, the Verification of Service /
+    Point of Scale form, which has 15 rows instead of 6). Returns an
+    all-blank shape (not an exception) on any failure, so document
+    generation can still proceed with blanks for manual completion
+    rather than failing outright.
     """
     import base64 as _b64, re as _re3, json as _json3
 
@@ -4791,7 +4793,7 @@ def _extract_point_scale_data(pdf_bytes, gemini_key):
     try:
         from google import genai as _gai3
 
-        prompt = """You are reading a "Point Scale Document" used in Irish healthcare HR to
+        prompt = f"""You are reading a "Point Scale Document" used in Irish healthcare HR to
 determine a nurse's incremental credit for previous service when being
 placed on a salary scale.
 
@@ -4814,17 +4816,17 @@ Rules:
 - Use ONLY information explicitly present in the document. Do NOT invent
   or guess values that are not stated.
 - Leave any field you cannot find as an empty string "".
-- Return at most 6 previous_experience entries.
+- Return at most {max_entries} previous_experience entries.
 - Return ONLY a JSON object — no markdown, no explanation — with exactly
   this shape:
 
-{
+{{
   "previous_experience": [
-    {"post": "", "employer": "", "from": "", "to": "", "years": "", "months": "", "verified_by": "", "eligible": ""}
+    {{"post": "", "employer": "", "from": "", "to": "", "years": "", "months": "", "verified_by": "", "eligible": ""}}
   ],
   "point": "", "effective_date": "", "incremental_date": "",
   "assessment_date": "", "signed_date": "", "verified_date": ""
-}
+}}
 """
 
         client = _gai3.Client(api_key=gemini_key)
@@ -4851,7 +4853,7 @@ Rules:
 
         entries = result.get("previous_experience") or []
         clean_entries = []
-        for e in entries[:6]:
+        for e in entries[:max_entries]:
             if not isinstance(e, dict):
                 continue
             clean_entries.append({
