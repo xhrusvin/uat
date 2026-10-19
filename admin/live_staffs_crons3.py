@@ -8274,7 +8274,7 @@ def _build_vos_point_scale_docx(candidate_name, reference_number, point_scale_da
             entry.get('to', ''),
             entry.get('years', ''),
             entry.get('months', ''),
-            entry.get('verified_by', ''),
+            '',
         ]
         for ci, val in enumerate(values):
             cell = row.cells[ci]
@@ -8301,7 +8301,7 @@ def _build_vos_point_scale_docx(candidate_name, reference_number, point_scale_da
     # "Verified by (name)" left blank — no whole-form verifier name is
     # present in the extracted Point Scale Document data (only a
     # per-row "Verification source"), so this is for manual completion.
-    _fill_field_cell(vc1, 'Verified by (name)', '', width_cm=8.5)
+    _fill_field_cell(vc1, 'Verified by (name)', 'Betsy Daniel', width_cm=8.5)
     _fill_field_cell(vc2, 'Date of verification',
                       point_scale_data.get('verified_date', ''), width_cm=6.5)
 
