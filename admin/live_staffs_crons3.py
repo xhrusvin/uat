@@ -8400,13 +8400,28 @@ def _build_vos_point_scale_docx(candidate_name, reference_number, point_scale_da
     for ci in (5, 6):
         _cell_borders(svc.cell(1, ci), HDR_BG, sz=4, sides=('top',))
 
+    def _fit(text, col_tw, first_part=False):
+        """Keep text on ONE line inside its box: optionally keep only the
+        part before the first comma (drops the address), then truncate
+        to what fits the column width with an ellipsis."""
+        t = ' '.join(str(text or '').split())
+        if first_part and ',' in t:
+            t = t.split(',')[0].strip()
+        max_chars = max(3, int((col_tw - 260) / 92))   # ~92 twips per char at 8pt Arial
+        return t if len(t) <= max_chars else t[:max_chars - 1].rstrip() + '…'
+
     for i in range(15):
         row = svc.rows[i + 2]
         _row_h(row, 355)
         e = entries[i] if i < len(entries) else {}
-        vals = [str(i + 1), e.get('post', ''), e.get('employer', ''),
-                e.get('from', ''), e.get('to', ''),
-                e.get('years', ''), e.get('months', ''), '']
+        vals = [str(i + 1),
+                _fit(e.get('post', ''),     cols[1]),
+                _fit(e.get('employer', ''), cols[2], first_part=True),
+                _fit(e.get('from', ''),     cols[3]),
+                _fit(e.get('to', ''),       cols[4]),
+                _fit(e.get('years', ''),    cols[5]),
+                _fit(e.get('months', ''),   cols[6]),
+                '']
         for ci, v in enumerate(vals):
             c = row.cells[ci]
             c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
