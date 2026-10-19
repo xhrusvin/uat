@@ -8072,249 +8072,380 @@ def _vos_point_scale_col():
     return db.live_staff_vos_point_scale
 
 
+import os
+import io as _io
+
+
 def _build_vos_point_scale_docx(candidate_name, reference_number, point_scale_data):
     """
-    Builds the "Verification of Service / Point of Scale placement"
-    document from scratch (no uploaded template — this one didn't have
-    one provided), matching the layout: a title block, a blue "A
-    Candidate details" section, a 15-row "1 Service record" table, and
-    a blue "2 Final verification" section.
+    Builds the "Verification of Service / Point of Scale placement" document
+    (A4 landscape) matching Xpress_Verification_of_Service_Point_of_Scale_Landscape
+    exactly: logo + blue title, blue rule, blue section bars, light-blue grid
+    with inner input boxes, Length/Yrs/Mths header, final verification row
+    and footer.
 
-    Service record rows are filled from point_scale_data's
-    previous_experience list — "Verification source" uses each entry's
-    "verified_by" field.
-
-    "Verified by (name)" is left blank for manual completion — there's
-    no whole-form verifier name in the extracted data (only a per-row
-    source). "Date of verification" uses point_scale_data's
-    verified_date. "Position in organisation" is a fixed label on this
-    form, not a per-document value, same as the template shows it.
-
-    Returns bytes of the generated .docx.
+    Verified by (name) is always "Betsy Daniel"; Verification source is
+    always left blank. Returns .docx bytes.
     """
     from docx import Document
-    from docx.shared import Pt, Cm, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.enum.table import WD_ALIGN_VERTICAL
+    from docx.shared import Pt, Twips, RGBColor, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+    from docx.enum.table import WD_ALIGN_VERTICAL, WD_ROW_HEIGHT_RULE, WD_TABLE_ALIGNMENT
     from docx.enum.section import WD_ORIENT
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
-    import io as _io
 
-    NAVY  = RGBColor(0x1B, 0x3A, 0x6B)
-    GREEN = RGBColor(0x2E, 0x9E, 0x44)
-    GRAY  = RGBColor(0x55, 0x55, 0x55)
-    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-    BLACK = RGBColor(0x00, 0x00, 0x00)
+    BLUE     = '0069B3'
+    HDR_BG   = 'F4F8FC'
+    GRID     = 'DFECF5'
+    BOX      = '9FB0C2'
+    LABEL    = '5A6676'
+    NUM      = '6A7483'
+    POS_BG   = 'F1F6FB'
+    FONT     = 'Arial'
+
+    entries       = (point_scale_data.get('previous_experience') or [])[:15]
+    verified_date = point_scale_data.get('verified_date', '') or ''
 
     d = Document()
-    for sec in d.sections:
-        sec.top_margin    = Cm(1.3)
-        sec.bottom_margin = Cm(1.3)
-        sec.left_margin   = Cm(1.5)
-        sec.right_margin  = Cm(1.5)
-        # Landscape, per the template's own filename — orientation flag
-        # plus manually swapping width/height (python-docx doesn't do
-        # this automatically when you only set .orientation).
-        new_width, new_height = sec.page_height, sec.page_width
-        sec.orientation  = WD_ORIENT.LANDSCAPE
-        sec.page_width   = new_width
-        sec.page_height  = new_height
+    sec = d.sections[0]
+    sec.orientation   = WD_ORIENT.LANDSCAPE
+    sec.page_width    = Twips(16838)
+    sec.page_height   = Twips(11906)
+    sec.left_margin = sec.right_margin = Twips(720)
+    sec.top_margin    = Twips(480)
+    sec.bottom_margin = Twips(300)
+    sec.header_distance = sec.footer_distance = Twips(300)
+    CONTENT_W = 16838 - 720 * 2   # 15398 twips
 
-    normal = d.styles['Normal']
-    normal.font.name = 'Calibri'
-    normal.font.size = Pt(10)
+    st = d.styles['Normal']
+    st.font.name = FONT
+    st.element.rPr.rFonts.set(qn('w:eastAsia'), FONT)
+    st.font.size = Pt(9)
+    st.paragraph_format.space_before = Pt(0)
+    st.paragraph_format.space_after  = Pt(0)
 
-    def _cell_bg(cell, hex_color):
-        tcPr = cell._tc.get_or_add_tcPr()
-        shd  = OxmlElement('w:shd')
-        shd.set(qn('w:val'), 'clear')
-        shd.set(qn('w:fill'), hex_color)
-        tcPr.append(shd)
+    # ── low-level helpers ────────────────────────────────────────────
+    def _el(tag, **attrs):
+        e = OxmlElement(tag)
+        for k, v in attrs.items():
+            e.set(qn(k), str(v))
+        return e
 
-    def _set_cell_borders(cell, color='999999', sz='4'):
-        tcPr = cell._tc.get_or_add_tcPr()
-        borders = OxmlElement('w:tcBorders')
-        for edge in ('top', 'left', 'bottom', 'right'):
-            el = OxmlElement(f'w:{edge}')
-            el.set(qn('w:val'), 'single')
-            el.set(qn('w:sz'), sz)
-            el.set(qn('w:color'), color)
-            borders.append(el)
-        tcPr.append(borders)
+    def _borders(parent_tag, sides, color, sz=4, val='single'):
+        b = OxmlElement(parent_tag)
+        for s in sides:
+            b.append(_el(f'w:{s}', **{'w:val': val, 'w:sz': sz, 'w:space': 0, 'w:color': color}))
+        return b
 
-    def _section_bar(left_text, right_text=''):
-        """Full-width single-cell 'table' used as a solid navy bar with
-        white bold text — matches the blue section headers in the
-        reference layout (e.g. 'A Candidate details')."""
-        t = d.add_table(rows=1, cols=2)
-        t.autofit = False
-        t.columns[0].width = Cm(20)
-        t.columns[1].width = Cm(6)
-        left_cell, right_cell = t.rows[0].cells
-        _cell_bg(left_cell, '1B3A6B')
-        _cell_bg(right_cell, '1B3A6B')
-        left_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        right_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        p1 = left_cell.paragraphs[0]
-        r1 = p1.add_run(left_text)
-        r1.bold = True; r1.font.color.rgb = WHITE; r1.font.size = Pt(11)
-        p2 = right_cell.paragraphs[0]
-        p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        r2 = p2.add_run(right_text)
-        r2.bold = True; r2.font.color.rgb = WHITE; r2.font.size = Pt(10)
-        for row in t.rows:
-            row.height = Cm(0.8)
-        return t
+    def _no_tbl_borders(tbl):
+        _set_tblpr(tbl, _borders('w:tblBorders',
+                                 ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'],
+                                 'FFFFFF', sz=0, val='nil'))
 
-    def _labelled_box(label, value, width_cm=9):
-        """One label-above-bordered-box field, used in a row of fields
-        (Candidate name / Reference number, Verified by / Date /
-        Position)."""
-        p_lbl = d.add_paragraph()
-        p_lbl.paragraph_format.space_before = Pt(6)
-        p_lbl.paragraph_format.space_after  = Pt(2)
-        r_lbl = p_lbl.add_run(label)
-        r_lbl.font.size = Pt(9); r_lbl.font.color.rgb = GRAY
+    _TBLPR_ORDER = ['tblStyle', 'tblpPr', 'tblOverlap', 'bidiVisual', 'tblStyleRowBandSize',
+                    'tblStyleColBandSize', 'tblW', 'jc', 'tblCellSpacing', 'tblInd',
+                    'tblBorders', 'shd', 'tblLayout', 'tblCellMar', 'tblLook']
 
-        t = d.add_table(rows=1, cols=1)
-        t.autofit = False
-        t.columns[0].width = Cm(width_cm)
-        cell = t.rows[0].cells[0]
-        _set_cell_borders(cell)
-        cell.width = Cm(width_cm)
-        p_val = cell.paragraphs[0]
-        r_val = p_val.add_run(value or '')
-        r_val.font.size = Pt(10); r_val.font.color.rgb = BLACK
-        return t
+    def _set_tblpr(tbl, el):
+        """Insert/replace a tblPr child in schema order (Word ignores out-of-order ones)."""
+        tblPr = tbl._tbl.tblPr
+        name = el.tag.split('}')[1]
+        for old in tblPr.findall(qn('w:' + name)):
+            tblPr.remove(old)
+        idx = _TBLPR_ORDER.index(name)
+        for i, child in enumerate(list(tblPr)):
+            cn = child.tag.split('}')[1]
+            if cn in _TBLPR_ORDER and _TBLPR_ORDER.index(cn) > idx:
+                child.addprevious(el)
+                return
+        tblPr.append(el)
 
-    # ── Header: logo text + title block ─────────────────────────────────
-    hdr = d.add_table(rows=1, cols=2)
-    hdr.autofit = False
-    hdr.columns[0].width = Cm(13)
-    hdr.columns[1].width = Cm(13)
-    logo_cell, title_cell = hdr.rows[0].cells
+    def _fixed(tbl, widths, indent=0):
+        tbl.autofit = False
+        _set_tblpr(tbl, _el('w:tblW', **{'w:w': sum(widths), 'w:type': 'dxa'}))
+        _set_tblpr(tbl, _el('w:tblInd', **{'w:w': indent, 'w:type': 'dxa'}))
+        _set_tblpr(tbl, _el('w:tblLayout', **{'w:type': 'fixed'}))
+        grid = tbl._tbl.tblGrid
+        for gc, w in zip(grid.findall(qn('w:gridCol')), widths):
+            gc.set(qn('w:w'), str(w))
+        for row in tbl.rows:
+            for c, w in zip(row.cells, widths):
+                c.width = Twips(w)
 
-    p_logo = logo_cell.paragraphs[0]
-    r_logo1 = p_logo.add_run('XPRESS ')
-    r_logo1.bold = True; r_logo1.font.size = Pt(16); r_logo1.font.color.rgb = NAVY
-    r_logo2 = p_logo.add_run('HEALTH')
-    r_logo2.bold = True; r_logo2.font.size = Pt(16); r_logo2.font.color.rgb = GREEN
+    def _cell_margins(tbl, top=0, left=0, bottom=0, right=0):
+        m = OxmlElement('w:tblCellMar')
+        for side, v in (('top', top), ('left', left), ('bottom', bottom), ('right', right)):
+            m.append(_el(f'w:{side}', **{'w:w': v, 'w:type': 'dxa'}))
+        _set_tblpr(tbl, m)
+        if not getattr(tbl, '_nested', False):
+            _set_tblpr(tbl, _el('w:tblInd', **{'w:w': left, 'w:type': 'dxa'}))
 
-    p_t1 = title_cell.paragraphs[0]
-    p_t1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    r_t1 = p_t1.add_run('Verification of Service')
-    r_t1.bold = True; r_t1.font.size = Pt(16); r_t1.font.color.rgb = NAVY
-    p_t2 = title_cell.add_paragraph()
-    p_t2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    r_t2 = p_t2.add_run('Point of Scale placement · Ireland')
-    r_t2.font.size = Pt(9); r_t2.font.color.rgb = GRAY
+    def _shade(cell, fill):
+        cell._tc.get_or_add_tcPr().append(_el('w:shd', **{'w:val': 'clear', 'w:color': 'auto', 'w:fill': fill}))
 
-    d.add_paragraph().paragraph_format.space_after = Pt(4)
+    def _cell_borders(cell, color, sz=4, sides=('top', 'left', 'bottom', 'right')):
+        cell._tc.get_or_add_tcPr().append(_borders('w:tcBorders', sides, color, sz))
 
-    # ── A Candidate details ──────────────────────────────────────────────
-    _section_bar('A  Candidate details')
+    def _row_h(row, tw, exact=True):
+        row.height = Twips(tw)
+        row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY if exact else WD_ROW_HEIGHT_RULE.AT_LEAST
 
-    fields_t = d.add_table(rows=1, cols=2)
-    fields_t.autofit = False
-    fields_t.columns[0].width = Cm(13)
-    fields_t.columns[1].width = Cm(13)
-    c1, c2 = fields_t.rows[0].cells
-    c1.text = ''; c2.text = ''
+    def _run(p, text, size=9, bold=False, color='000000'):
+        r = p.add_run(text or '')
+        r.font.name = FONT
+        r._element.rPr.rFonts.set(qn('w:eastAsia'), FONT)
+        r.font.size = Pt(size)
+        r.bold = bold
+        r.font.color.rgb = RGBColor.from_string(color)
+        return r
 
-    def _fill_field_cell(cell, label, value, width_cm=12):
-        cell.paragraphs[0].text = ''
-        p_lbl = cell.paragraphs[0]
-        r_lbl = p_lbl.add_run(label)
-        r_lbl.font.size = Pt(9); r_lbl.font.color.rgb = GRAY
+    def _box_cell(cell, text, center=False, h=290):
+        """Nested 1x1 table inside a grid cell = the template's inner input box."""
         inner = cell.add_table(rows=1, cols=1)
-        inner.autofit = False
-        inner.columns[0].width = Cm(width_cm)
-        ic = inner.rows[0].cells[0]
-        _set_cell_borders(ic)
-        ic.width = Cm(width_cm)
-        r_val = ic.paragraphs[0].add_run(value or '')
-        r_val.font.size = Pt(10)
+        inner._nested = True
+        w = int(cell.width.twips) - 120 if cell.width else 1000
+        _fixed(inner, [w])
+        _cell_margins(inner, left=70, right=70)
+        _set_tblpr(inner, _borders('w:tblBorders', ['top', 'left', 'bottom', 'right'], BOX, sz=6))
+        _row_h(inner.rows[0], h)
+        ic = inner.cell(0, 0)
+        ic.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        ip = ic.paragraphs[0]
+        if center:
+            ip.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _run(ip, text, size=8, color='1F2937')
+        # the cell's own first paragraph is kept tiny so the box sits centred
+        fp = cell.paragraphs[0]
+        fp.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        fp.paragraph_format.line_spacing = Twips(20)
+        # trailing paragraph Word requires after a nested table — keep tiny too
+        tail = cell.add_paragraph()
+        tail.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        tail.paragraph_format.line_spacing = Twips(20)
 
-    _fill_field_cell(c1, 'Candidate name', candidate_name, width_cm=12)
-    _fill_field_cell(c2, 'Reference number', reference_number, width_cm=12)
+    def _box_para(p, color=BOX, line_tw=300):
+        """Draws the inner 'input box' look as a bordered paragraph."""
+        pPr = p._p.get_or_add_pPr()
+        bdr = OxmlElement('w:pBdr')
+        for s in ('top', 'left', 'bottom', 'right'):
+            bdr.append(_el(f'w:{s}', **{'w:val': 'single', 'w:sz': 6,
+                                         'w:space': 1 if s in ('top', 'bottom') else 3,
+                                         'w:color': color}))
+        pPr.append(bdr)
+        pf = p.paragraph_format
+        pf.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        pf.line_spacing = Twips(line_tw)
+        pf.left_indent = Twips(60)
+        pf.right_indent = Twips(60)
 
-    d.add_paragraph().paragraph_format.space_after = Pt(4)
+    def _spacer(tw):
+        p = d.add_paragraph()
+        pf = p.paragraph_format
+        pf.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        pf.line_spacing = Twips(tw)
+        _run(p, '', size=2)
 
-    # ── 1 Service record ──────────────────────────────────────────────────
+    def _section_bar(left, right=''):
+        from docx.enum.text import WD_TAB_ALIGNMENT
+        t = d.add_table(rows=1, cols=1)
+        _no_tbl_borders(t)
+        _fixed(t, [CONTENT_W])
+        _cell_margins(t, left=230, right=230)
+        _row_h(t.rows[0], 430)
+        c = t.cell(0, 0)
+        _shade(c, BLUE)
+        c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        p = c.paragraphs[0]
+        p.paragraph_format.tab_stops.add_tab_stop(Twips(CONTENT_W - 460), WD_TAB_ALIGNMENT.RIGHT)
+        _run(p, left, size=11, bold=True, color='FFFFFF')
+        if right:
+            _run(p, '\t', size=11, color='FFFFFF')
+            _run(p, right, size=8, bold=True, color='FFFFFF')
+
+    def _field_row(fields):
+        """fields: list of (label, value, width_tw, style) with gaps between.
+        style: 'box' (bordered input) or 'pos' (shaded static value)."""
+        widths, gap = [], 260
+        for i, f in enumerate(fields):
+            widths.append(f[2])
+            if i < len(fields) - 1:
+                widths.append(gap)
+        t = d.add_table(rows=2, cols=len(widths))
+        _no_tbl_borders(t)
+        _fixed(t, widths)
+        _cell_margins(t)
+        _row_h(t.rows[0], 260)
+        _row_h(t.rows[1], 420)
+        for i, (label, value, _w, style) in enumerate(fields):
+            ci = i * 2
+            _run(t.cell(0, ci).paragraphs[0], label, size=8, bold=True, color=LABEL)
+            vc = t.cell(1, ci)
+            vc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            if style == 'pos':
+                _shade(vc, POS_BG)
+                _cell_borders(vc, GRID, sz=4)
+                p = vc.paragraphs[0]
+                p.paragraph_format.left_indent = Twips(170)
+                _run(p, value, size=10, bold=True, color=BLUE)
+            else:
+                _cell_borders(vc, BOX, sz=6)
+                p = vc.paragraphs[0]
+                p.paragraph_format.left_indent = Twips(100)
+                _run(p, value, size=10, color='1F2937')
+
+    # ── Header: logo + title ─────────────────────────────────────────
+    hdr = d.add_table(rows=1, cols=2)
+    _no_tbl_borders(hdr)
+    _fixed(hdr, [5000, CONTENT_W - 5000])
+    _cell_margins(hdr)
+    lc, rc = hdr.rows[0].cells
+    lc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+
+    logo_bytes = None
+    logo_local = os.environ.get('XPRESS_LOGO_LOCAL_PATH', '')
+    if logo_local and os.path.exists(logo_local):
+        with open(logo_local, 'rb') as f:
+            logo_bytes = f.read()
+    else:
+        try:
+            logo_bytes = _gcs_download(os.environ.get(
+                'XPRESS_LOGO_GCS_BLOB', 'templates/xpress_health_logo.png'))
+        except Exception:
+            logo_bytes = None
+
+    lp = lc.paragraphs[0]
+    if logo_bytes:
+        lp.add_run().add_picture(_io.BytesIO(logo_bytes), width=Inches(1.57))
+    else:
+        _run(lp, 'XPRESS ', size=18, bold=True, color=BLUE)
+        _run(lp, 'HEALTH', size=18, bold=True, color='019440')
+
+    p1 = rc.paragraphs[0]
+    p1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    _run(p1, 'Verification of Service', size=18, bold=True, color=BLUE)
+    p2 = rc.add_paragraph()
+    p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p2.paragraph_format.space_before = Pt(2)
+    _run(p2, 'Point of Scale placement · Ireland', size=9.5, color=LABEL)
+
+    # blue rule
+    rule = d.add_paragraph()
+    rpPr = rule._p.get_or_add_pPr()
+    rb = OxmlElement('w:pBdr')
+    rb.append(_el('w:bottom', **{'w:val': 'single', 'w:sz': 18, 'w:space': 1, 'w:color': BLUE}))
+    rpPr.append(rb)
+    rule.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    rule.paragraph_format.line_spacing = Twips(120)
+    _spacer(130)
+
+    # ── A Candidate details ──────────────────────────────────────────
+    _section_bar('A  Candidate details')
+    _spacer(100)
+    ref_w = 5070
+    _field_row([
+        ('Candidate name',   candidate_name,   CONTENT_W - ref_w - 260, 'box'),
+        ('Reference number', reference_number, ref_w,                   'box'),
+    ])
+    _spacer(160)
+
+    # ── 1 Service record ─────────────────────────────────────────────
     _section_bar('1  Service record')
+    _spacer(130)
 
-    headers = ['#', 'Title / Grade', 'Name of employer', 'Date from',
-               'Date to', 'Yrs', 'Mths', 'Verification source']
-    widths  = [0.8, 4.0, 6.5, 3.0, 3.0, 1.3, 1.3, 6.1]
+    # column widths scaled from the template (px → twips)
+    px = [32, 193, 273, 106, 106, 43, 43, 396]
+    scale = CONTENT_W / sum(px)
+    cols = [int(w * scale) for w in px]
+    cols[-1] += CONTENT_W - sum(cols)
 
-    svc = d.add_table(rows=16, cols=len(headers))
-    svc.autofit = False
-    for ci, w in enumerate(widths):
-        svc.columns[ci].width = Cm(w)
+    svc = d.add_table(rows=17, cols=8)
+    _fixed(svc, cols)
+    _cell_margins(svc, left=60, right=60)
+    _set_tblpr(svc, _borders('w:tblBorders',
+                             ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'],
+                             GRID, sz=6))
 
-    for ci, h in enumerate(headers):
-        cell = svc.rows[0].cells[ci]
-        cell.width = Cm(widths[ci])
-        _cell_bg(cell, 'EFF3FB')
-        _set_cell_borders(cell)
-        p = cell.paragraphs[0]
-        r = p.add_run(h)
-        r.bold = True; r.font.size = Pt(8.5); r.font.color.rgb = NAVY
+    # two header rows: row0 = labels (Length spans Yrs/Mths), row1 = Yrs/Mths
+    h0, h1 = svc.rows[0], svc.rows[1]
+    _row_h(h0, 250)
+    _row_h(h1, 250)
+    labels = ['#', 'Title / Grade', 'Name of employer', 'Date from', 'Date to', None, None, 'Verification source']
+    for ci in range(8):
+        for r in (h0, h1):
+            _shade(r.cells[ci], HDR_BG)
+    # vertical merges for all non-length columns
+    for ci, lab in enumerate(labels):
+        if lab is None:
+            continue
+        top = svc.cell(0, ci).merge(svc.cell(1, ci))
+        top.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
+        p = top.paragraphs[0]
+        p.paragraph_format.space_after = Pt(4)
+        if ci == 0:
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _run(p, lab, size=8, bold=True, color=BLUE)
+    length = svc.cell(0, 5).merge(svc.cell(0, 6))
+    length.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
+    lp = length.paragraphs[0]
+    lp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _run(lp, 'Length', size=8, bold=True, color=BLUE)
+    for ci, lab in ((5, 'Yrs'), (6, 'Mths')):
+        c = svc.cell(1, ci)
+        c.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+        p = c.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _run(p, lab, size=8, bold=True, color=BLUE)
+    # remove inner border between Yrs/Mths header & Length so it reads as one block
+    for ci in (5, 6):
+        _cell_borders(svc.cell(1, ci), HDR_BG, sz=4, sides=('top',))
 
-    entries = (point_scale_data.get('previous_experience') or [])[:15]
-    for row_idx in range(15):
-        row = svc.rows[row_idx + 1]
-        entry = entries[row_idx] if row_idx < len(entries) else {}
-        values = [
-            str(row_idx + 1),
-            entry.get('post', ''),
-            entry.get('employer', ''),
-            entry.get('from', ''),
-            entry.get('to', ''),
-            entry.get('years', ''),
-            entry.get('months', ''),
-            '',
-        ]
-        for ci, val in enumerate(values):
-            cell = row.cells[ci]
-            cell.width = Cm(widths[ci])
-            _set_cell_borders(cell)
-            p = cell.paragraphs[0]
+    for i in range(15):
+        row = svc.rows[i + 2]
+        _row_h(row, 355)
+        e = entries[i] if i < len(entries) else {}
+        vals = [str(i + 1), e.get('post', ''), e.get('employer', ''),
+                e.get('from', ''), e.get('to', ''),
+                e.get('years', ''), e.get('months', ''), '']
+        for ci, v in enumerate(vals):
+            c = row.cells[ci]
+            c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
             if ci == 0:
+                p = c.paragraphs[0]
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            r = p.add_run(val)
-            r.font.size = Pt(9)
+                _run(p, v, size=8, color=NUM)
+            else:
+                _box_cell(c, v, center=ci in (5, 6))
 
-    d.add_paragraph().paragraph_format.space_after = Pt(4)
+    _spacer(170)
 
-    # ── 2 Final verification ─────────────────────────────────────────────
+    # ── 2 Final verification ─────────────────────────────────────────
     _section_bar('2  Final verification', 'Compliance Team, Xpress Health')
+    _spacer(100)
+    w1, w2 = 5730, 3530
+    _field_row([
+        ('Verified by (name)',       'Betsy Daniel',                    w1, 'box'),
+        ('Date of verification',     verified_date,                     w2, 'box'),
+        ('Position in organisation', 'Compliance Team, Xpress Health',  CONTENT_W - w1 - w2 - 520, 'pos'),
+    ])
+    _spacer(150)
 
-    verif_t = d.add_table(rows=1, cols=3)
-    verif_t.autofit = False
-    verif_t.columns[0].width = Cm(9)
-    verif_t.columns[1].width = Cm(7)
-    verif_t.columns[2].width = Cm(10)
-    vc1, vc2, vc3 = verif_t.rows[0].cells
+    # ── Footer line ──────────────────────────────────────────────────
+    ft = d.add_table(rows=1, cols=2)
+    _no_tbl_borders(ft)
+    _fixed(ft, [CONTENT_W // 2, CONTENT_W - CONTENT_W // 2])
+    _cell_margins(ft, top=90)
+    for c in ft.rows[0].cells:
+        _cell_borders(c, GRID, sz=6, sides=('top',))
+    _run(ft.cell(0, 0).paragraphs[0], 'Xpress Health · Verification of Service, Point of Scale', size=8, color=LABEL)
+    fp = ft.cell(0, 1).paragraphs[0]
+    fp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    _run(fp, 'Page 1 of 1', size=8, color=LABEL)
 
-    # "Verified by (name)" left blank — no whole-form verifier name is
-    # present in the extracted Point Scale Document data (only a
-    # per-row "Verification source"), so this is for manual completion.
-    _fill_field_cell(vc1, 'Verified by (name)', 'Betsy Daniel', width_cm=8.5)
-    _fill_field_cell(vc2, 'Date of verification',
-                      point_scale_data.get('verified_date', ''), width_cm=6.5)
-
-    # "Position in organisation" is a fixed label on this form, not a
-    # per-document value — reproduced as static text, same as shown in
-    # the reference layout, not inside a bordered input box.
-    vc3.paragraphs[0].text = ''
-    p_pos_lbl = vc3.paragraphs[0]
-    r_pos_lbl = p_pos_lbl.add_run('Position in organisation')
-    r_pos_lbl.font.size = Pt(9); r_pos_lbl.font.color.rgb = GRAY
-    p_pos_val = vc3.add_paragraph()
-    r_pos_val = p_pos_val.add_run('Compliance Team, Xpress Health')
-    r_pos_val.bold = True; r_pos_val.font.size = Pt(10); r_pos_val.font.color.rgb = NAVY
+    last = d.paragraphs[-1] if d.paragraphs else None
+    tail = d.add_paragraph()
+    tail.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    tail.paragraph_format.line_spacing = Twips(20)
 
     buf = _io.BytesIO()
     d.save(buf)
