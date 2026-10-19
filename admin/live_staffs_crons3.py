@@ -8048,3 +8048,495 @@ def live_staff_cron_incremental_credit_all_download_one():
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADD THIS to admin/live_staffs.py — "Verification of Service / Point of
+# Scale placement" document. NURSE USER TYPE ONLY (same scope as
+# Incremental Credit). Reuses the EXACT SAME Point Scale Document data
+# pipeline already built for Incremental Credit
+# (_fetch_point_scale_document_url, _download_point_scale_pdf,
+# _extract_point_scale_data) — just a different output document, with
+# 15 service-record rows instead of 6, built from scratch with
+# python-docx (no uploaded template file provided for this one).
+#
+# NOTE: _extract_point_scale_data now accepts a max_entries parameter
+# (defaults to 6, unchanged for Incremental Credit's existing call) —
+# this file calls it with max_entries=15 to match this new template's
+# row count. Make sure that small change to _extract_point_scale_data's
+# signature/prompt/slicing is also present in your live_staffs.py.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _vos_point_scale_col():
+    return db.live_staff_vos_point_scale
+
+
+def _build_vos_point_scale_docx(candidate_name, reference_number, point_scale_data):
+    """
+    Builds the "Verification of Service / Point of Scale placement"
+    document from scratch (no uploaded template — this one didn't have
+    one provided), matching the layout: a title block, a blue "A
+    Candidate details" section, a 15-row "1 Service record" table, and
+    a blue "2 Final verification" section.
+
+    Service record rows are filled from point_scale_data's
+    previous_experience list — "Verification source" uses each entry's
+    "verified_by" field.
+
+    "Verified by (name)" is left blank for manual completion — there's
+    no whole-form verifier name in the extracted data (only a per-row
+    source). "Date of verification" uses point_scale_data's
+    verified_date. "Position in organisation" is a fixed label on this
+    form, not a per-document value, same as the template shows it.
+
+    Returns bytes of the generated .docx.
+    """
+    from docx import Document
+    from docx.shared import Pt, Cm, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_ALIGN_VERTICAL
+    from docx.enum.section import WD_ORIENT
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    import io as _io
+
+    NAVY  = RGBColor(0x1B, 0x3A, 0x6B)
+    GREEN = RGBColor(0x2E, 0x9E, 0x44)
+    GRAY  = RGBColor(0x55, 0x55, 0x55)
+    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+    BLACK = RGBColor(0x00, 0x00, 0x00)
+
+    d = Document()
+    for sec in d.sections:
+        sec.top_margin    = Cm(1.3)
+        sec.bottom_margin = Cm(1.3)
+        sec.left_margin   = Cm(1.5)
+        sec.right_margin  = Cm(1.5)
+        # Landscape, per the template's own filename — orientation flag
+        # plus manually swapping width/height (python-docx doesn't do
+        # this automatically when you only set .orientation).
+        new_width, new_height = sec.page_height, sec.page_width
+        sec.orientation  = WD_ORIENT.LANDSCAPE
+        sec.page_width   = new_width
+        sec.page_height  = new_height
+
+    normal = d.styles['Normal']
+    normal.font.name = 'Calibri'
+    normal.font.size = Pt(10)
+
+    def _cell_bg(cell, hex_color):
+        tcPr = cell._tc.get_or_add_tcPr()
+        shd  = OxmlElement('w:shd')
+        shd.set(qn('w:val'), 'clear')
+        shd.set(qn('w:fill'), hex_color)
+        tcPr.append(shd)
+
+    def _set_cell_borders(cell, color='999999', sz='4'):
+        tcPr = cell._tc.get_or_add_tcPr()
+        borders = OxmlElement('w:tcBorders')
+        for edge in ('top', 'left', 'bottom', 'right'):
+            el = OxmlElement(f'w:{edge}')
+            el.set(qn('w:val'), 'single')
+            el.set(qn('w:sz'), sz)
+            el.set(qn('w:color'), color)
+            borders.append(el)
+        tcPr.append(borders)
+
+    def _section_bar(left_text, right_text=''):
+        """Full-width single-cell 'table' used as a solid navy bar with
+        white bold text — matches the blue section headers in the
+        reference layout (e.g. 'A Candidate details')."""
+        t = d.add_table(rows=1, cols=2)
+        t.autofit = False
+        t.columns[0].width = Cm(20)
+        t.columns[1].width = Cm(6)
+        left_cell, right_cell = t.rows[0].cells
+        _cell_bg(left_cell, '1B3A6B')
+        _cell_bg(right_cell, '1B3A6B')
+        left_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        right_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        p1 = left_cell.paragraphs[0]
+        r1 = p1.add_run(left_text)
+        r1.bold = True; r1.font.color.rgb = WHITE; r1.font.size = Pt(11)
+        p2 = right_cell.paragraphs[0]
+        p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        r2 = p2.add_run(right_text)
+        r2.bold = True; r2.font.color.rgb = WHITE; r2.font.size = Pt(10)
+        for row in t.rows:
+            row.height = Cm(0.8)
+        return t
+
+    def _labelled_box(label, value, width_cm=9):
+        """One label-above-bordered-box field, used in a row of fields
+        (Candidate name / Reference number, Verified by / Date /
+        Position)."""
+        p_lbl = d.add_paragraph()
+        p_lbl.paragraph_format.space_before = Pt(6)
+        p_lbl.paragraph_format.space_after  = Pt(2)
+        r_lbl = p_lbl.add_run(label)
+        r_lbl.font.size = Pt(9); r_lbl.font.color.rgb = GRAY
+
+        t = d.add_table(rows=1, cols=1)
+        t.autofit = False
+        t.columns[0].width = Cm(width_cm)
+        cell = t.rows[0].cells[0]
+        _set_cell_borders(cell)
+        cell.width = Cm(width_cm)
+        p_val = cell.paragraphs[0]
+        r_val = p_val.add_run(value or '')
+        r_val.font.size = Pt(10); r_val.font.color.rgb = BLACK
+        return t
+
+    # ── Header: logo text + title block ─────────────────────────────────
+    hdr = d.add_table(rows=1, cols=2)
+    hdr.autofit = False
+    hdr.columns[0].width = Cm(13)
+    hdr.columns[1].width = Cm(13)
+    logo_cell, title_cell = hdr.rows[0].cells
+
+    p_logo = logo_cell.paragraphs[0]
+    r_logo1 = p_logo.add_run('XPRESS ')
+    r_logo1.bold = True; r_logo1.font.size = Pt(16); r_logo1.font.color.rgb = NAVY
+    r_logo2 = p_logo.add_run('HEALTH')
+    r_logo2.bold = True; r_logo2.font.size = Pt(16); r_logo2.font.color.rgb = GREEN
+
+    p_t1 = title_cell.paragraphs[0]
+    p_t1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_t1 = p_t1.add_run('Verification of Service')
+    r_t1.bold = True; r_t1.font.size = Pt(16); r_t1.font.color.rgb = NAVY
+    p_t2 = title_cell.add_paragraph()
+    p_t2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_t2 = p_t2.add_run('Point of Scale placement · Ireland')
+    r_t2.font.size = Pt(9); r_t2.font.color.rgb = GRAY
+
+    d.add_paragraph().paragraph_format.space_after = Pt(4)
+
+    # ── A Candidate details ──────────────────────────────────────────────
+    _section_bar('A  Candidate details')
+
+    fields_t = d.add_table(rows=1, cols=2)
+    fields_t.autofit = False
+    fields_t.columns[0].width = Cm(13)
+    fields_t.columns[1].width = Cm(13)
+    c1, c2 = fields_t.rows[0].cells
+    c1.text = ''; c2.text = ''
+
+    def _fill_field_cell(cell, label, value, width_cm=12):
+        cell.paragraphs[0].text = ''
+        p_lbl = cell.paragraphs[0]
+        r_lbl = p_lbl.add_run(label)
+        r_lbl.font.size = Pt(9); r_lbl.font.color.rgb = GRAY
+        inner = cell.add_table(rows=1, cols=1)
+        inner.autofit = False
+        inner.columns[0].width = Cm(width_cm)
+        ic = inner.rows[0].cells[0]
+        _set_cell_borders(ic)
+        ic.width = Cm(width_cm)
+        r_val = ic.paragraphs[0].add_run(value or '')
+        r_val.font.size = Pt(10)
+
+    _fill_field_cell(c1, 'Candidate name', candidate_name, width_cm=12)
+    _fill_field_cell(c2, 'Reference number', reference_number, width_cm=12)
+
+    d.add_paragraph().paragraph_format.space_after = Pt(4)
+
+    # ── 1 Service record ──────────────────────────────────────────────────
+    _section_bar('1  Service record')
+
+    headers = ['#', 'Title / Grade', 'Name of employer', 'Date from',
+               'Date to', 'Yrs', 'Mths', 'Verification source']
+    widths  = [0.8, 4.0, 6.5, 3.0, 3.0, 1.3, 1.3, 6.1]
+
+    svc = d.add_table(rows=16, cols=len(headers))
+    svc.autofit = False
+    for ci, w in enumerate(widths):
+        svc.columns[ci].width = Cm(w)
+
+    for ci, h in enumerate(headers):
+        cell = svc.rows[0].cells[ci]
+        cell.width = Cm(widths[ci])
+        _cell_bg(cell, 'EFF3FB')
+        _set_cell_borders(cell)
+        p = cell.paragraphs[0]
+        r = p.add_run(h)
+        r.bold = True; r.font.size = Pt(8.5); r.font.color.rgb = NAVY
+
+    entries = (point_scale_data.get('previous_experience') or [])[:15]
+    for row_idx in range(15):
+        row = svc.rows[row_idx + 1]
+        entry = entries[row_idx] if row_idx < len(entries) else {}
+        values = [
+            str(row_idx + 1),
+            entry.get('post', ''),
+            entry.get('employer', ''),
+            entry.get('from', ''),
+            entry.get('to', ''),
+            entry.get('years', ''),
+            entry.get('months', ''),
+            entry.get('verified_by', ''),
+        ]
+        for ci, val in enumerate(values):
+            cell = row.cells[ci]
+            cell.width = Cm(widths[ci])
+            _set_cell_borders(cell)
+            p = cell.paragraphs[0]
+            if ci == 0:
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            r = p.add_run(val)
+            r.font.size = Pt(9)
+
+    d.add_paragraph().paragraph_format.space_after = Pt(4)
+
+    # ── 2 Final verification ─────────────────────────────────────────────
+    _section_bar('2  Final verification', 'Compliance Team, Xpress Health')
+
+    verif_t = d.add_table(rows=1, cols=3)
+    verif_t.autofit = False
+    verif_t.columns[0].width = Cm(9)
+    verif_t.columns[1].width = Cm(7)
+    verif_t.columns[2].width = Cm(10)
+    vc1, vc2, vc3 = verif_t.rows[0].cells
+
+    # "Verified by (name)" left blank — no whole-form verifier name is
+    # present in the extracted Point Scale Document data (only a
+    # per-row "Verification source"), so this is for manual completion.
+    _fill_field_cell(vc1, 'Verified by (name)', '', width_cm=8.5)
+    _fill_field_cell(vc2, 'Date of verification',
+                      point_scale_data.get('verified_date', ''), width_cm=6.5)
+
+    # "Position in organisation" is a fixed label on this form, not a
+    # per-document value — reproduced as static text, same as shown in
+    # the reference layout, not inside a bordered input box.
+    vc3.paragraphs[0].text = ''
+    p_pos_lbl = vc3.paragraphs[0]
+    r_pos_lbl = p_pos_lbl.add_run('Position in organisation')
+    r_pos_lbl.font.size = Pt(9); r_pos_lbl.font.color.rgb = GRAY
+    p_pos_val = vc3.add_paragraph()
+    r_pos_val = p_pos_val.add_run('Compliance Team, Xpress Health')
+    r_pos_val.bold = True; r_pos_val.font.size = Pt(10); r_pos_val.font.color.rgb = NAVY
+
+    buf = _io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+@admin_bp.route('/live-staffs/vos-point-scale/generate', methods=['POST'])
+@admin_required
+def live_staff_vos_point_scale_generate():
+    """
+    Generate the Verification of Service / Point of Scale placement
+    document (docx + pdf) for a staff member. NURSE USER TYPE ONLY —
+    same scope and same Point Scale Document source as Incremental
+    Credit.
+
+    POST /admin/live-staffs/vos-point-scale/generate
+    Body: {"staff_id": "<mongo_id>"}
+    """
+    data     = request.get_json() or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+
+    try:
+        doc = _staffs_col().find_one({"_id": ObjectId(staff_id)})
+        if not doc:
+            return jsonify({"success": False, "error": "Staff record not found"}), 404
+
+        def _first(*keys, default=''):
+            for k in keys:
+                val = doc.get(k)
+                if val not in (None, ''):
+                    return _v(val)
+            return default
+
+        full_name = _first('Name') or _v((doc.get('section_1_personal_details') or {}).get('full_name') or '') or 'staff'
+        emp_code  = _first('Employee Code', 'employee_code')
+        user_type = _first('User Type', 'user_type')
+        email     = _v(doc.get('email') or '')
+
+        if not _is_nurse(user_type):
+            return jsonify({
+                "success": False,
+                "error": f"Verification of Service (Point of Scale) is only generated for Nurse user types "
+                         f"(this staff member's User Type is '{user_type or 'unknown'}')"
+            }), 400
+
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+
+        point_scale_url = _fetch_point_scale_document_url(email)
+        point_scale_data = {
+            "previous_experience": [], "point": "", "effective_date": "",
+            "incremental_date": "", "assessment_date": "",
+            "signed_date": "", "verified_date": "",
+        }
+        point_scale_warning = None
+
+        if point_scale_url:
+            try:
+                pdf_bytes = _download_point_scale_pdf(point_scale_url)
+                point_scale_data = _extract_point_scale_data(pdf_bytes, gemini_key, max_entries=15)
+            except Exception as e:
+                point_scale_warning = f"Could not read Point Scale Document: {e}"
+        else:
+            point_scale_warning = "No 'Point Scale Document' found for this staff member — form generated with blank service record."
+
+        docx_bytes = _build_vos_point_scale_docx(
+            candidate_name=full_name,
+            reference_number=emp_code,
+            point_scale_data=point_scale_data,
+        )
+
+        base_name = emp_code.replace(' ', '_').replace('/', '_') if emp_code \
+                    else full_name.replace(' ', '_').replace('/', '_')
+        filename  = f"{base_name}.docx"
+        gcs_blob  = f"vos_point_scale/{filename}"
+        _gcs_upload(gcs_blob, docx_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        pdf_filename = f"{base_name}.pdf"
+        pdf_gcs_blob = f"vos_point_scale/{pdf_filename}"
+        try:
+            pdf_bytes_out = _docx_to_pdf_bytes(docx_bytes)
+            _gcs_upload(pdf_gcs_blob, pdf_bytes_out, content_type='application/pdf')
+        except Exception as e:
+            pdf_gcs_blob = None
+            point_scale_warning = (point_scale_warning + "; " if point_scale_warning else "") + f"PDF conversion failed: {e}"
+
+        col      = _vos_point_scale_col()
+        existing = col.find_one({"staff_id": staff_id})
+        rec = {
+            "staff_id":          staff_id,
+            "staff_name":        full_name,
+            "employee_code":     emp_code,
+            "filename":          filename,
+            "gcs_blob":          gcs_blob,
+            "pdf_filename":      pdf_filename if pdf_gcs_blob else None,
+            "pdf_gcs_blob":      pdf_gcs_blob,
+            "point_scale_url_found": bool(point_scale_url),
+            "generated_at":      datetime.utcnow(),
+        }
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": rec})
+        else:
+            col.insert_one(rec)
+
+        result = {
+            "success":    True,
+            "staff_name": full_name,
+            "filename":   filename,
+            "gcs_blob":   gcs_blob,
+        }
+        if pdf_gcs_blob:
+            result["pdf_filename"] = pdf_filename
+            result["pdf_gcs_blob"] = pdf_gcs_blob
+        if point_scale_warning:
+            result["warning"] = point_scale_warning
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@admin_bp.route('/live-staffs/vos-point-scale/saved/<staff_id>')
+@admin_required
+def live_staff_vos_point_scale_saved(staff_id):
+    rec = _vos_point_scale_col().find_one({"staff_id": staff_id})
+    if not rec:
+        return jsonify({"success": True, "found": False})
+    return jsonify({
+        "success":      True,
+        "found":        True,
+        "filename":     rec.get("filename", ""),
+        "gcs_blob":     rec.get("gcs_blob", ""),
+        "pdf_filename": rec.get("pdf_filename", ""),
+        "pdf_gcs_blob": rec.get("pdf_gcs_blob", ""),
+        "generated_at": rec["generated_at"].strftime("%d %b %Y %H:%M") if rec.get("generated_at") else "",
+    })
+
+
+@admin_bp.route('/live-staffs/vos-point-scale/download/<staff_id>')
+@admin_required
+def live_staff_vos_point_scale_download(staff_id):
+    try:
+        rec = _vos_point_scale_col().find_one({"staff_id": staff_id})
+        if not rec or not rec.get('gcs_blob'):
+            return "Verification of Service record not found — please generate it first", 404
+        docx_bytes = _gcs_download(rec['gcs_blob'])
+        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        return Response(
+            docx_bytes,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f'attachment; filename="{name}.docx"'}
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/vos-point-scale/download-pdf/<staff_id>')
+@admin_required
+def live_staff_vos_point_scale_download_pdf(staff_id):
+    try:
+        rec = _vos_point_scale_col().find_one({"staff_id": staff_id})
+        if not rec or not rec.get('gcs_blob'):
+            return "Verification of Service record not found — please generate it first", 404
+        name = (rec.get('staff_name') or 'staff').replace(' ', '_')
+        if rec.get('pdf_gcs_blob'):
+            pdf_bytes = _gcs_download(rec['pdf_gcs_blob'])
+        else:
+            docx_bytes = _gcs_download(rec['gcs_blob'])
+            pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'}
+        )
+    except Exception as e:
+        return str(e), 500
+
+
+@admin_bp.route('/live-staffs/vos-point-scale/upload/<staff_id>', methods=['POST'])
+@admin_required
+def live_staff_vos_point_scale_upload(staff_id):
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+    file = request.files['file']
+    if not file.filename.lower().endswith('.docx'):
+        return jsonify({"success": False, "error": "Only .docx files accepted"}), 400
+    try:
+        col = _vos_point_scale_col()
+        rec = col.find_one({"staff_id": staff_id})
+        if not rec:
+            return jsonify({"success": False, "error": "No saved record found — generate one first"}), 404
+
+        gcs_blob   = rec.get('gcs_blob') or f"vos_point_scale/{staff_id}.docx"
+        data_bytes = file.read()
+        _gcs_upload(gcs_blob, data_bytes,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        update_fields = {
+            "gcs_blob":      gcs_blob,
+            "filename":      os.path.basename(gcs_blob),
+            "last_uploaded": datetime.utcnow(),
+            "uploaded_by":   "admin",
+        }
+        pdf_base = os.path.basename(gcs_blob).rsplit('.', 1)[0]
+        pdf_blob = f"vos_point_scale/{pdf_base}.pdf"
+        try:
+            pdf_bytes = _docx_to_pdf_bytes(data_bytes)
+            _gcs_upload(pdf_blob, pdf_bytes, content_type='application/pdf')
+            update_fields["pdf_gcs_blob"] = pdf_blob
+            update_fields["pdf_filename"] = f"{pdf_base}.pdf"
+        except Exception:
+            update_fields["pdf_gcs_blob"] = None
+            update_fields["pdf_filename"] = None
+
+        col.update_one({"staff_id": staff_id}, {"$set": update_fields}, upsert=True)
+        return jsonify({
+            "success":  True,
+            "message":  "Verification of Service record replaced successfully",
+            "filename": os.path.basename(gcs_blob),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
