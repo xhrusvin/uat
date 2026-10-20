@@ -628,40 +628,6 @@ def live_staff_edit_extracted_cv():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-
-@admin_bp.route('/live-staffs/edit-hsecv', methods=['POST'])
-@admin_required
-def live_staff_edit_hsecv():
-    """
-    Save edited hsecv_extarcted text for a staff member.
-
-    POST /admin/live-staffs/edit-hsecv
-    Body: {"staff_id": "...", "hsecv_extarcted": "..."}
-    """
-    data     = request.get_json() or {}
-    staff_id = (data.get('staff_id') or '').strip()
-    new_text = data.get('hsecv_extarcted', '')
-
-    if not staff_id:
-        return jsonify({"success": False, "error": "Missing staff_id"}), 400
-    try:
-        update_fields = {
-            "hsecv_extarcted":      new_text,
-            "hsecv_extarcted_at":   datetime.utcnow(),
-            "hsecv_edited":         True,
-            "hsecv_fetched":        True,
-        }
-        result = _staffs_col().update_one(
-            {"_id": ObjectId(staff_id)},
-            {"$set": update_fields}
-        )
-        if result.matched_count == 0:
-            return jsonify({"success": False, "error": "Staff not found"}), 404
-        return jsonify({"success": True, "message": "HSE CV text saved successfully"})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
 @admin_bp.route('/live-staffs/points')
 @admin_required
 def live_staff_points():
@@ -4910,10 +4876,12 @@ Rules:
 def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_data):
     """
     Fills the Incremental Credit for Previous Service template with the
-    staff member's details and the data extracted from their Point Scale
-    Document. Returns bytes of the generated .docx.
+    staff member's details and the FULL previous-experience list extracted
+    from their Point Scale Document (not limited to 6 rows — extra table
+    rows are cloned as needed). Returns bytes of the generated .docx.
     """
     from docx import Document
+    from copy import deepcopy
     import io as _io, re as _re4
 
     template_blob  = os.environ.get(
@@ -4974,10 +4942,27 @@ def _build_incremental_credit_docx(full_name, post, employee_code, point_scale_d
                 continue
         break
 
-    # ── Table 2: Previous Experience (up to 6 rows) ────────────────────
+    # ── Table 2: Previous Experience (full list from Point Scale Document)
+    # Template ships with a fixed number of data rows; clone the last data
+    # row as many times as needed so every extracted entry is written.
     t2 = doc.tables[2]
     entries = point_scale_data.get("previous_experience") or []
-    for i, entry in enumerate(entries[:6]):
+    data_row_count = max(0, len(t2.rows) - 1)  # exclude header
+    if entries and data_row_count > 0:
+        needed = len(entries) - data_row_count
+        if needed > 0:
+            # Clone the last data row's XML for each extra entry
+            tpl_tr = t2.rows[-1]._tr
+            for _ in range(needed):
+                new_tr = deepcopy(tpl_tr)
+                # Clear cell text in the clone so we don't duplicate values
+                from docx.oxml.ns import qn as _qn_clr
+                for tc in new_tr.findall(_qn_clr('w:tc')):
+                    for t_el in tc.findall('.//' + _qn_clr('w:t')):
+                        t_el.text = ''
+                t2._tbl.append(new_tr)
+
+    for i, entry in enumerate(entries):
         row = t2.rows[i + 1]  # row 0 is the header
         values = [
             entry.get("post", ""), entry.get("employer", ""),
@@ -5087,7 +5072,10 @@ def live_staff_incremental_credit_generate():
         if point_scale_url:
             try:
                 pdf_bytes = _download_point_scale_pdf(point_scale_url)
-                point_scale_data = _extract_point_scale_data(pdf_bytes, gemini_key)
+                # Full service history from Point Scale Document (not capped at 6)
+                point_scale_data = _extract_point_scale_data(
+                    pdf_bytes, gemini_key, max_entries=20
+                )
             except Exception as e:
                 point_scale_warning = f"Could not read Point Scale Document: {e}"
         else:

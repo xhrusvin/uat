@@ -7020,7 +7020,10 @@ def live_staff_cron_generate_incremental_credit():
         if point_scale_url:
             try:
                 pdf_bytes        = _download_point_scale_pdf(point_scale_url)
-                point_scale_data = _extract_point_scale_data(pdf_bytes, gemini_key)
+                # Full service history from Point Scale Document (not capped at 6)
+                point_scale_data = _extract_point_scale_data(
+                    pdf_bytes, gemini_key, max_entries=20
+                )
             except Exception as e:
                 warning = f"Could not read Point Scale Document: {e}"
         else:
@@ -7608,8 +7611,10 @@ def live_staff_incremental_credit_generate_all():
             try:
                 # Step 3 — download PDF
                 pdf_bytes = _download_point_scale_pdf(point_scale_url)
-                # Step 4 — extract via Gemini
-                point_scale_data = _extract_point_scale_data(pdf_bytes, gemini_key)
+                # Step 4 — extract via Gemini (full list, not capped at 6)
+                point_scale_data = _extract_point_scale_data(
+                    pdf_bytes, gemini_key, max_entries=20
+                )
             except Exception as e:
                 point_scale_warning = f"Could not read Point Scale Document: {e}"
         else:
