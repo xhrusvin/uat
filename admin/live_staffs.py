@@ -628,6 +628,40 @@ def live_staff_edit_extracted_cv():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+@admin_bp.route('/live-staffs/edit-hsecv', methods=['POST'])
+@admin_required
+def live_staff_edit_hsecv():
+    """
+    Save edited hsecv_extarcted text for a staff member.
+
+    POST /admin/live-staffs/edit-hsecv
+    Body: {"staff_id": "...", "hsecv_extarcted": "..."}
+    """
+    data     = request.get_json() or {}
+    staff_id = (data.get('staff_id') or '').strip()
+    new_text = data.get('hsecv_extarcted', '')
+
+    if not staff_id:
+        return jsonify({"success": False, "error": "Missing staff_id"}), 400
+    try:
+        update_fields = {
+            "hsecv_extarcted":      new_text,
+            "hsecv_extarcted_at":   datetime.utcnow(),
+            "hsecv_edited":         True,
+            "hsecv_fetched":        True,
+        }
+        result = _staffs_col().update_one(
+            {"_id": ObjectId(staff_id)},
+            {"$set": update_fields}
+        )
+        if result.matched_count == 0:
+            return jsonify({"success": False, "error": "Staff not found"}), 404
+        return jsonify({"success": True, "message": "HSE CV text saved successfully"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @admin_bp.route('/live-staffs/points')
 @admin_required
 def live_staff_points():

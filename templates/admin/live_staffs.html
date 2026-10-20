@@ -185,6 +185,7 @@
                                     <button class="btn-view"      data-id="{{ s._id }}"></button>
                                     <button class="btn-edit"      data-id="{{ s._id }}"></button>
                                     <button class="btn-edit-cv"   data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
+                                    <button class="btn-edit-hsecv" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
                                     <button class="btn-ai-cv"     data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
                                     <button class="btn-ai-interview" data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
                                     <button class="btn-ai-appform"   data-id="{{ s._id }}" data-name="{{ p.full_name | default('Staff') | e }}"></button>
@@ -296,6 +297,15 @@
                             <div>
                                 <div class="am-label">Edit extracted CV</div>
                                 <div class="am-desc">Fix CV text manually</div>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="col-6">
+                        <button class="am-action-btn am-edit-hsecv w-100">
+                            <i class="bi bi-hospital text-primary am-icon"></i>
+                            <div>
+                                <div class="am-label">Edit HSE CV</div>
+                                <div class="am-desc">View / fix HSE CV text</div>
                             </div>
                         </button>
                     </div>
@@ -733,6 +743,41 @@
             <div class="modal-footer border-0 pt-0">
                 <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button class="btn btn-primary fw-bold px-4" id="editCvSaveBtn">
+                    <i class="bi bi-check-lg me-1"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Edit HSE CV Modal ─────────────────────────────────────────── -->
+<div class="modal fade" id="editHsecvModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header text-white rounded-top-4"
+                 style="background: linear-gradient(135deg,#0f766e 0%,#14b8a6 100%);">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-hospital me-2"></i>Edit HSE CV — <span id="editHsecvStaffName"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-2">
+                    <label class="form-label fw-semibold text-navy small mb-1">
+                        <i class="bi bi-file-text me-1"></i>HSE CV Text
+                        <span class="text-muted fw-normal">(hsecv_extarcted)</span>
+                    </label>
+                    <p class="text-muted" style="font-size:11px;margin-top:-4px;">
+                        Extracted from the HSE CV document. Editing updates the stored text used for screening dates and related workflows.
+                    </p>
+                    <textarea id="editHsecvTextarea" class="form-control font-monospace" rows="16"
+                              style="font-size:12px;resize:vertical;"></textarea>
+                </div>
+                <div id="editHsecvMsg" class="mt-2 small d-none"></div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary fw-bold px-4" id="editHsecvSaveBtn">
                     <i class="bi bi-check-lg me-1"></i> Save Changes
                 </button>
             </div>
@@ -1691,6 +1736,27 @@ document.querySelectorAll('.btn-delete').forEach(btn => {
             return;
         }
 
+        // ── Edit HSE CV ───────────────────────────────────────────────
+        if (btn.classList.contains('am-edit-hsecv')) {
+            _closeAndThen(() => {
+                currentEditHsecvStaffId = _id;
+                $('editHsecvStaffName').textContent = _name;
+                $('editHsecvTextarea').value = 'Loading...';
+                $('editHsecvMsg').classList.add('d-none');
+                new bootstrap.Modal($('editHsecvModal')).show();
+                fetch(`${FETCH_URL}?id=${_id}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            $('editHsecvTextarea').value = data.record.hsecv_extarcted || '';
+                        } else {
+                            $('editHsecvTextarea').value = '';
+                        }
+                    }).catch(() => { $('editHsecvTextarea').value = ''; });
+            });
+            return;
+        }
+
         // ── AI CV ─────────────────────────────────────────────────────
         if (btn.classList.contains('am-ai-cv')) {
             _closeAndThen(() => {
@@ -2111,6 +2177,69 @@ $('editCvSaveBtn').addEventListener('click', async () => {
         } else { msgEl.textContent = result.error || 'Save failed'; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); }
     } catch(e) { msgEl.textContent='Network error: '+e.message; msgEl.className='mt-2 small text-danger'; msgEl.classList.remove('d-none'); }
     finally { btn.disabled=false; btn.innerHTML='<i class="bi bi-check-lg me-1"></i> Save Changes'; }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// Edit HSE CV (hsecv_extarcted)
+// ══════════════════════════════════════════════════════════════════════
+const EDIT_HSECV_SAVE_URL = "{{ '/admin/live-staffs/edit-hsecv' }}";
+let currentEditHsecvStaffId = null;
+
+document.querySelectorAll('.btn-edit-hsecv').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        currentEditHsecvStaffId = btn.dataset.id;
+        $('editHsecvStaffName').textContent = btn.dataset.name || '';
+        $('editHsecvTextarea').value = 'Loading...';
+        $('editHsecvMsg').classList.add('d-none');
+        new bootstrap.Modal($('editHsecvModal')).show();
+        try {
+            const res  = await fetch(`${FETCH_URL}?id=${currentEditHsecvStaffId}`);
+            const data = await res.json();
+            if (data.success) {
+                $('editHsecvTextarea').value = data.record.hsecv_extarcted || '';
+            } else {
+                $('editHsecvTextarea').value = '';
+            }
+        } catch(e) {
+            $('editHsecvTextarea').value = '';
+        }
+    });
+});
+
+$('editHsecvSaveBtn').addEventListener('click', async () => {
+    const text  = $('editHsecvTextarea').value;
+    const msgEl = $('editHsecvMsg');
+    const btn   = $('editHsecvSaveBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
+    try {
+        const res = await fetch(EDIT_HSECV_SAVE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                staff_id: currentEditHsecvStaffId,
+                hsecv_extarcted: text,
+            }),
+        });
+        const result = await res.json();
+        if (result.success) {
+            msgEl.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i> Saved successfully.';
+            msgEl.className = 'mt-2 small text-success';
+            msgEl.classList.remove('d-none');
+            setTimeout(() => bootstrap.Modal.getInstance($('editHsecvModal')).hide(), 1200);
+        } else {
+            msgEl.textContent = result.error || 'Save failed';
+            msgEl.className = 'mt-2 small text-danger';
+            msgEl.classList.remove('d-none');
+        }
+    } catch(e) {
+        msgEl.textContent = 'Network error: ' + e.message;
+        msgEl.className = 'mt-2 small text-danger';
+        msgEl.classList.remove('d-none');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Save Changes';
+    }
 });
 
 // ══════════════════════════════════════════════════════════════════════
