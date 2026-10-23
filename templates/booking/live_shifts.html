@@ -105,6 +105,28 @@
 td:has(.text-bg-success) {
     max-width: 200px;
 }
+
+/* ── Skeleton loading animation ──────────────────────────────── */
+@keyframes shimmer {
+    0%   { background-position: -800px 0; }
+    100% { background-position:  800px 0; }
+}
+.skeleton-row td {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+.skeleton-cell {
+    height: 16px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #e9ecef 25%, #f8f9fa 50%, #e9ecef 75%);
+    background-size: 800px 100%;
+    animation: shimmer 1.4s infinite linear;
+    display: inline-block;
+    width: 100%;
+}
+
+/* ── Error / empty state ─────────────────────────────────────── */
+#table-error { display: none; }
 </style>
 {% endblock %}
 
@@ -119,36 +141,28 @@ td:has(.text-bg-success) {
                 <i class="bi bi-broadcast me-2"></i>Live Shifts
             </h2>
             <p class="text-muted small mb-0 mt-1">
-                Real-time view of all shifts · auto-refreshes every 60 s
-                <span id="refresh-indicator" class="ms-2" title="Live"></span>
+                Real-time view of all shifts
             </p>
         </div>
         <div class="d-flex align-items-center gap-3 flex-wrap">
-            <span class="badge bg-primary fs-6 px-3 py-2" id="total-badge"
-                  data-total="{{ total }}">
-                {{ total }} shift{{ 's' if total != 1 }}
+            <span class="badge bg-primary fs-6 px-3 py-2" id="total-badge">
+                <span class="skeleton-cell" style="width:60px;height:14px;"></span>
             </span>
             <a id="btn-export-csv"
-               href="{{ url_for('booking.live_shifts_export_csv',
-                                search=search,
-                                shift_date_from=shift_date_from,
-                                shift_date_to=shift_date_to,
-                                outreach_date_from=outreach_date_from,
-                                outreach_date_to=outreach_date_to,
-                                status_filter=status_filter,
-                                availability_filter=availability_filter) }}"
+               href="{{ url_for('booking.live_shifts_export_csv') }}"
                class="btn btn-success btn-sm">
                 <i class="bi bi-download me-1"></i>Export CSV
             </a>
-            <a href="{{ url_for('booking.live_shifts') }}" class="btn btn-outline-secondary btn-sm">
+            <button id="btn-refresh" class="btn btn-outline-secondary btn-sm"
+                    onclick="loadData(currentPage)">
                 <i class="bi bi-arrow-clockwise me-1"></i>Refresh
-            </a>
+            </button>
         </div>
     </div>
 
     {# ── Filter bar ──────────────────────────────────────────────── #}
     <div class="filter-card">
-        <form method="get" id="filter-form">
+        <form id="filter-form">
 
             {# ── Row 1: Search · Status · Availability · Buttons ───── #}
             <div class="row g-3 align-items-end mb-3">
@@ -160,7 +174,8 @@ td:has(.text-bg-success) {
                         <span class="input-group-text bg-white border-end-0">
                             <i class="bi bi-search text-muted"></i>
                         </span>
-                        <input type="text" name="search" class="form-control border-start-0"
+                        <input type="text" name="search" id="inp-search"
+                               class="form-control border-start-0"
                                placeholder="Name, location, shift ID…"
                                value="{{ search }}">
                     </div>
@@ -169,7 +184,7 @@ td:has(.text-bg-success) {
                 {# Status #}
                 <div class="col-12 col-md-3">
                     <label class="form-label small fw-semibold text-muted mb-1">Status</label>
-                    <select name="status_filter" class="form-select">
+                    <select name="status_filter" id="inp-status" class="form-select">
                         <option value="">All statuses</option>
                         {%- set statuses = [
                             ('To Be Filled',        '🟣'),
@@ -224,12 +239,11 @@ td:has(.text-bg-success) {
                     <button type="submit" class="btn btn-primary px-4">
                         <i class="bi bi-funnel me-1"></i>Filter
                     </button>
-                    {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter or availability_filter %}
-                    <a href="{{ url_for('booking.live_shifts') }}"
-                       class="btn btn-outline-secondary" title="Clear all filters">
+                    <button type="button" id="btn-clear"
+                            class="btn btn-outline-secondary {% if not (search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter or availability_filter) %}d-none{% endif %}"
+                            title="Clear all filters">
                         <i class="bi bi-x-lg me-1"></i>Clear
-                    </a>
-                    {% endif %}
+                    </button>
                 </div>
             </div>
 
@@ -274,7 +288,7 @@ td:has(.text-bg-success) {
     </div>
 
     {# ── Status quick-filter pills ────────────────────────────────── #}
-    <div class="d-flex flex-wrap gap-2 mb-4">
+    <div class="d-flex flex-wrap gap-2 mb-4" id="quick-pills">
         {%- set status_pills = [
             ('To Be Filled',        'badge-to-be-filled',   '🟣'),
             ('To be assigned',      'badge-to-be-assigned', '🔵'),
@@ -286,62 +300,26 @@ td:has(.text-bg-success) {
             ('Completed',           'badge-completed',       '✅'),
         ] -%}
         {% for label, cls, icon in status_pills %}
-        <a href="{{ url_for('booking.live_shifts',
-                            search=search,
-                            shift_date_from=shift_date_from,
-                            shift_date_to=shift_date_to,
-                            outreach_date_from=outreach_date_from,
-                            outreach_date_to=outreach_date_to,
-                            status_filter=label,
-                            availability_filter=availability_filter) }}"
-           class="badge {{ cls }} text-decoration-none px-3 py-2"
-           style="font-size:0.85rem;{% if status_filter == label %}outline: 2px solid currentColor; outline-offset: 2px;{% endif %}">
+        <a href="#" class="badge {{ cls }} text-decoration-none px-3 py-2 quick-pill"
+           style="font-size:0.85rem;{% if status_filter == label %}outline:2px solid currentColor;outline-offset:2px;{% endif %}"
+           data-status="{{ label }}">
             {{ icon }} {{ label }}
         </a>
         {% endfor %}
 
-        {# Availability quick-pills #}
-        <a href="{{ url_for('booking.live_shifts',
-                            search=search,
-                            shift_date_from=shift_date_from,
-                            shift_date_to=shift_date_to,
-                            outreach_date_from=outreach_date_from,
-                            outreach_date_to=outreach_date_to,
-                            status_filter=status_filter,
-                            availability_filter='yes') }}"
-           class="badge text-decoration-none px-3 py-2"
-           style="font-size:0.85rem;
-                  background-color:#d1e7dd;color:#0a3622;
-                  {% if availability_filter == 'yes' %}outline:2px solid currentColor;outline-offset:2px;{% endif %}">
-            ✔ Available
-        </a>
-        <a href="{{ url_for('booking.live_shifts',
-                            search=search,
-                            shift_date_from=shift_date_from,
-                            shift_date_to=shift_date_to,
-                            outreach_date_from=outreach_date_from,
-                            outreach_date_to=outreach_date_to,
-                            status_filter=status_filter,
-                            availability_filter='no') }}"
-           class="badge text-decoration-none px-3 py-2"
-           style="font-size:0.85rem;
-                  background-color:#f8d7da;color:#842029;
-                  {% if availability_filter == 'no' %}outline:2px solid currentColor;outline-offset:2px;{% endif %}">
-            ✘ Not Available
-        </a>
+        <a href="#" class="badge text-decoration-none px-3 py-2 quick-pill"
+           style="font-size:0.85rem;background-color:#d1e7dd;color:#0a3622;
+                  {% if availability_filter == 'yes' %}outline:2px solid currentColor;outline-offset:2px;{% endif %}"
+           data-avail="yes">✔ Available</a>
 
-        {% if status_filter or availability_filter %}
-        <a href="{{ url_for('booking.live_shifts',
-                            search=search,
-                            shift_date_from=shift_date_from,
-                            shift_date_to=shift_date_to,
-                            outreach_date_from=outreach_date_from,
-                            outreach_date_to=outreach_date_to) }}"
-           class="badge bg-light text-dark text-decoration-none px-3 py-2 border"
-           style="font-size:0.85rem;">
-            Show all
-        </a>
-        {% endif %}
+        <a href="#" class="badge text-decoration-none px-3 py-2 quick-pill"
+           style="font-size:0.85rem;background-color:#f8d7da;color:#842029;
+                  {% if availability_filter == 'no' %}outline:2px solid currentColor;outline-offset:2px;{% endif %}"
+           data-avail="no">✘ Not Available</a>
+
+        <a href="#" id="pill-show-all"
+           class="badge bg-light text-dark text-decoration-none px-3 py-2 border {% if not (status_filter or availability_filter) %}d-none{% endif %}"
+           style="font-size:0.85rem;">Show all</a>
     </div>
 
     {# ── Table ───────────────────────────────────────────────────── #}
@@ -366,223 +344,36 @@ td:has(.text-bg-success) {
                             <th class="text-nowrap">Staff Assigned</th>
                         </tr>
                     </thead>
-                    <tbody>
-
-                    {% if shifts %}
-                        {% for s in shifts %}
-                            {% set slots_list = s.slots_normalised
-                               if s.slots_normalised is defined and s.slots_normalised | length > 0
-                               else [{'shift_xn_id':  s.shift_xn_id,
-                                      'date_display': s.date_formatted,
-                                      'start_time':   s.start_time_formatted,
-                                      'end_time':     s.end_time_formatted,
-                                      'shift_type':   ''}] %}
-
-                            {% for slot in slots_list %}
-                                {% set is_first = loop.first %}
-                                <tr class="{{ 'shift-group-first' if is_first else 'shift-group' }}">
-
-                                    <td class="ps-4 font-monospace small">
-                                        {{ slot.shift_xn_id or '—' }}
-                                    </td>
-                                    <td class="text-nowrap">
-                                        {{ slot.date_display or s.date_formatted or '—' }}
-                                    </td>
-                                    <td>{{ slot.start_time or '—' }}</td>
-                                    <td>{{ slot.end_time   or '—' }}</td>
-
-                                    <td>
-                                        {% if slot.shift_type %}
-                                        {%- set icons = {
-                                            'Morning':   '🌅',
-                                            'Day':       '☀️',
-                                            'Afternoon': '🌤️',
-                                            'Night':     '🌙',
-                                            'Sleepover': '🛏️',
-                                            'Escort':    '🚗',
-                                        } -%}
-                                        <span class="shift-type-badge">
-                                            {{ icons.get(slot.shift_type, '') }}
-                                            {{ slot.shift_type }}
-                                        </span>
-                                        {% else %}
-                                        <span class="text-muted">—</span>
-                                        {% endif %}
-                                    </td>
-
-                                    <td>
-                                        {% if is_first %}{{ s.location or '—' }}{% endif %}
-                                    </td>
-
-                                    <td>
-                                        {% if is_first %}
-                                        {%- set status = s.status or 'To be assigned' -%}
-                                        {%- set status_css = {
-                                            'To be assigned': 'badge-to-be-assigned',
-                                            'Assigned':        'badge-assigned',
-                                            'Completed':       'badge-completed',
-                                            'Cancelled':       'badge-cancelled',
-                                        } -%}
-                                        <span class="badge {{ status_css.get(status, 'bg-secondary') }}
-                                                     rounded-pill px-3 py-2">
-                                            {{ status }}
-                                        </span>
-                                        {% endif %}
-                                    </td>
-
-                                    <td class="text-center">
-                                        {% if is_first %}
-                                            {% if s.is_premium %}
-                                                <span class="badge bg-warning text-dark rounded-pill">
-                                                    ⭐ Premium
-                                                </span>
-                                            {% else %}
-                                                <span class="text-muted">—</span>
-                                            {% endif %}
-                                        {% endif %}
-                                    </td>
-
-                                    <td class="text-center">
-                                        {% if is_first %}
-                                            {% if s.has_availability %}
-                                                <i class="bi bi-check-circle-fill avail-tick"
-                                                   title="At least one assigned staff member is available"></i>
-                                            {% else %}
-                                                <i class="bi bi-dash-circle avail-none"
-                                                   title="No staff confirmed available yet"></i>
-                                            {% endif %}
-                                        {% endif %}
-                                    </td>
-
-                                    {# Available Staff — only first row #}
-                                    <td>
-                                        {% if is_first %}
-                                            {% if s.available_staff_list %}
-                                                <div class="d-flex flex-column gap-1">
-                                                {% for name in s.available_staff_list %}
-                                                    <span class="badge rounded-pill text-bg-success fw-normal"
-                                                          style="font-size:0.75rem;">
-                                                        <i class="bi bi-person-check me-1"></i>{{ name }}
-                                                    </span>
-                                                {% endfor %}
-                                                </div>
-                                            {% else %}
-                                                <span class="text-muted">—</span>
-                                            {% endif %}
-                                        {% endif %}
-                                    </td>
-
-                                    <td class="text-nowrap small">
-                                        {% if is_first %}
-                                            {% if s.outreach_date_formatted %}
-                                                <span class="text-body">
-                                                    <i class="bi bi-send text-secondary me-1"
-                                                       title="Latest outreach date"></i>{{ s.outreach_date_formatted }}
-                                                </span>
-                                            {% else %}
-                                                <span class="text-muted">—</span>
-                                            {% endif %}
-                                        {% endif %}
-                                    </td>
-
-                                    <td>
-                                        {% if is_first %}
-                                            {% if s.assigned_staff_display %}
-                                                <span class="staff-assigned">
-                                                    <i class="bi bi-person-fill text-secondary me-1"></i>{{ s.assigned_staff_display }}
-                                                </span>
-                                            {% else %}
-                                                <span class="text-muted">—</span>
-                                            {% endif %}
-                                        {% endif %}
-                                    </td>
-
-                                </tr>
-                            {% endfor %}{# slots #}
-                        {% endfor %}{# shifts #}
-
-                    {% else %}
-                        <tr>
-                            <td colspan="12" class="text-center py-5">
-                                <i class="bi bi-calendar-x display-1 text-muted opacity-25 d-block mb-3"></i>
-                                <h5 class="text-muted">No shifts found</h5>
-                                {% if search or shift_date_from or shift_date_to or outreach_date_from or outreach_date_to or status_filter or availability_filter %}
-                                <p class="text-muted small">
-                                    Try adjusting your filters or
-                                    <a href="{{ url_for('booking.live_shifts') }}">clear all</a>.
-                                </p>
-                                {% endif %}
-                            </td>
+                    <tbody id="shifts-tbody">
+                        {# Skeleton rows — replaced by JS once data arrives #}
+                        {% for _ in range(10) %}
+                        <tr class="skeleton-row shift-group-first">
+                            {% for w in ['40px','80px','45px','45px','60px','120px','90px','55px','55px','100px','90px','110px'] %}
+                            <td><span class="skeleton-cell" style="width:{{ w }}"></span></td>
+                            {% endfor %}
                         </tr>
-                    {% endif %}
-
+                        {% endfor %}
                     </tbody>
                 </table>
+
+                {# Error banner — shown only on fetch failure #}
+                <div id="table-error" class="text-center py-5">
+                    <i class="bi bi-exclamation-triangle display-1 text-warning opacity-50 d-block mb-3"></i>
+                    <h5 class="text-muted">Could not load shifts</h5>
+                    <p class="text-muted small mb-3" id="error-detail"></p>
+                    <button class="btn btn-outline-primary btn-sm" onclick="loadData(currentPage)">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Try again
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    {# ── Pagination ──────────────────────────────────────────────── #}
-    {% set pg_args = {
-        'search':               search,
-        'shift_date_from':      shift_date_from,
-        'shift_date_to':        shift_date_to,
-        'outreach_date_from':   outreach_date_from,
-        'outreach_date_to':     outreach_date_to,
-        'status_filter':        status_filter,
-        'availability_filter':  availability_filter,
-    } %}
-
-    {% if pages > 1 %}
-    <nav class="mt-4" aria-label="Shifts pagination">
-        <ul class="pagination justify-content-center pagination-lg">
-
-            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
-                <a class="page-link" href="{{ url_for('booking.live_shifts', page=page-1, **pg_args) }}">
-                    <i class="bi bi-chevron-left"></i>
-                </a>
-            </li>
-
-            {% set start_p = [page - 2, 1] | max %}
-            {% set end_p   = [start_p + 4, pages] | min %}
-
-            {% if start_p > 1 %}
-            <li class="page-item">
-                <a class="page-link" href="{{ url_for('booking.live_shifts', page=1, **pg_args) }}">1</a>
-            </li>
-            {% if start_p > 2 %}
-            <li class="page-item disabled"><span class="page-link">…</span></li>
-            {% endif %}
-            {% endif %}
-
-            {% for p in range(start_p, end_p + 1) %}
-            <li class="page-item {% if p == page %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('booking.live_shifts', page=p, **pg_args) }}">{{ p }}</a>
-            </li>
-            {% endfor %}
-
-            {% if end_p < pages %}
-            {% if end_p < pages - 1 %}
-            <li class="page-item disabled"><span class="page-link">…</span></li>
-            {% endif %}
-            <li class="page-item">
-                <a class="page-link" href="{{ url_for('booking.live_shifts', page=pages, **pg_args) }}">{{ pages }}</a>
-            </li>
-            {% endif %}
-
-            <li class="page-item {% if page >= pages %}disabled{% endif %}">
-                <a class="page-link" href="{{ url_for('booking.live_shifts', page=page+1, **pg_args) }}">
-                    <i class="bi bi-chevron-right"></i>
-                </a>
-            </li>
-
-        </ul>
-        <p class="text-center text-muted small mt-1">
-            Showing page {{ page }} of {{ pages }}
-            ({{ total }} shift{{ 's' if total != 1 }})
-        </p>
+    {# ── Pagination (rendered by JS) ─────────────────────────────── #}
+    <nav id="pagination-nav" class="mt-4" aria-label="Shifts pagination" style="display:none;">
+        <ul class="pagination justify-content-center pagination-lg" id="pagination-list"></ul>
+        <p class="text-center text-muted small mt-1" id="pagination-info"></p>
     </nav>
-    {% endif %}
 
 </div>{# /container-fluid #}
 {% endblock %}
@@ -591,7 +382,69 @@ td:has(.text-bg-success) {
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script>
-/* ── Date pickers ──────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════
+   Live Shifts — skeleton screen + AJAX loader
+   ═══════════════════════════════════════════════════════════════════════
+
+   Flow:
+     1. Page renders instantly (zero DB work in Flask).
+     2. loadData(page) is called immediately on DOMContentLoaded.
+     3. /booking/live-shifts/data returns JSON; renderTable() builds rows.
+     4. Filter form submit / pagination clicks call loadData() without
+        a full page reload.
+     5. Auto-refresh calls loadData() every 60 s.
+     6. URL bar is updated via history.pushState so deep links still work.
+*/
+
+"use strict";
+
+/* ── Constants ──────────────────────────────────────────────────────── */
+const DATA_URL    = "{{ url_for('booking.live_shifts_data') }}";
+const EXPORT_URL  = "{{ url_for('booking.live_shifts_export_csv') }}";
+
+const STATUS_CSS = {
+    "To Be Filled":        "badge-to-be-filled",
+    "To be assigned":      "badge-to-be-assigned",
+    "Upcoming":            "badge-upcoming",
+    "Un Filled":           "badge-unfilled",
+    "Ongoing":             "badge-ongoing",
+    "Under Review":        "badge-review",
+    "Cancelled By Client": "badge-cancelled",
+    "Failed":              "badge-cancelled",
+    "Cancelled By Staff":  "badge-cancelled",
+    "Cancelled":           "badge-cancelled",
+    "Completed":           "badge-completed",
+    "Assigned":            "badge-assigned",
+};
+
+const SHIFT_TYPE_ICONS = {
+    "Morning":   "🌅",
+    "Day":       "☀️",
+    "Afternoon": "🌤️",
+    "Night":     "🌙",
+    "Sleepover": "🛏️",
+    "Escort":    "🚗",
+};
+
+/* ── State ──────────────────────────────────────────────────────────── */
+let currentPage    = {{ page }};
+let currentTotal   = 0;
+let isLoading      = false;
+
+/* ── DOM refs ───────────────────────────────────────────────────────── */
+const tbody       = document.getElementById("shifts-tbody");
+const errorBox    = document.getElementById("table-error");
+const errorDetail = document.getElementById("error-detail");
+const totalBadge  = document.getElementById("total-badge");
+const exportBtn   = document.getElementById("btn-export-csv");
+const paginationNav  = document.getElementById("pagination-nav");
+const paginationList = document.getElementById("pagination-list");
+const paginationInfo = document.getElementById("pagination-info");
+const filterForm  = document.getElementById("filter-form");
+const btnClear    = document.getElementById("btn-clear");
+const pillShowAll = document.getElementById("pill-show-all");
+
+/* ── Date pickers ───────────────────────────────────────────────────── */
 const fpConfig = {
     dateFormat: "Y-m-d",
     altInput:   true,
@@ -603,65 +456,329 @@ flatpickr("#shift_date_to",      { ...fpConfig, onReady(_, __, fp) { fp.altInput
 flatpickr("#outreach_date_from", {
     ...fpConfig,
     defaultDate: document.getElementById("outreach_date_from").value || "today",
-    onReady(_, __, fp) { fp.altInput.placeholder = "From (default: today)"; }
+    onReady(_, __, fp) { fp.altInput.placeholder = "From (default: today)"; },
 });
-flatpickr("#outreach_date_to",   { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "To";   } });
+flatpickr("#outreach_date_to",   { ...fpConfig, onReady(_, __, fp) { fp.altInput.placeholder = "To"; } });
 
-/* ── Keep Export CSV link in sync with current form state ──────── */
-(function () {
-    const exportBtn  = document.getElementById("btn-export-csv");
-    const filterForm = document.getElementById("filter-form");
-    if (!exportBtn || !filterForm) return;
+/* ── Helpers ────────────────────────────────────────────────────────── */
+function collectParams(page) {
+    const fd     = new FormData(filterForm);
+    const params = new URLSearchParams();
+    params.set("page", page || 1);
+    for (const [k, v] of fd.entries()) {
+        // Flatpickr hides the real input; read it directly
+        const realEl = filterForm.querySelector(`[name="${k}"]`);
+        const val    = (realEl ? realEl.value : v) || v;
+        if (val) params.set(k, val);
+    }
+    return params;
+}
 
-    const EXPORT_BASE = "{{ url_for('booking.live_shifts_export_csv') }}";
+function escHtml(str) {
+    if (!str) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
 
-    function syncExportLink() {
-        const fd     = new FormData(filterForm);
-        const params = new URLSearchParams();
-        for (const [k, v] of fd.entries()) {
-            const realInput = filterForm.querySelector(`[name="${k}"]`);
-            if (realInput && realInput.value) {
-                params.set(k, realInput.value);
-            } else if (v) {
-                params.set(k, v);
-            }
-        }
-        exportBtn.href = EXPORT_BASE + "?" + params.toString();
+function showSkeleton(n = 10) {
+    const widths = ["40px","80px","45px","45px","60px","120px","90px","55px","55px","100px","90px","110px"];
+    tbody.innerHTML = Array.from({ length: n }, () => `
+        <tr class="skeleton-row shift-group-first">
+            ${widths.map(w => `<td><span class="skeleton-cell" style="width:${w}"></span></td>`).join("")}
+        </tr>
+    `).join("");
+    errorBox.style.display = "none";
+}
+
+/* ── Row renderer ───────────────────────────────────────────────────── */
+function buildRows(shifts) {
+    if (!shifts.length) {
+        return `<tr>
+            <td colspan="12" class="text-center py-5">
+                <i class="bi bi-calendar-x display-1 text-muted opacity-25 d-block mb-3"></i>
+                <h5 class="text-muted">No shifts found</h5>
+                <p class="text-muted small">Try adjusting your filters or
+                    <a href="#" id="inline-clear">clear all</a>.</p>
+            </td>
+        </tr>`;
     }
 
-    filterForm.addEventListener("change", syncExportLink);
-    filterForm.addEventListener("input",  syncExportLink);
-    syncExportLink();
-})();
+    return shifts.flatMap(s => {
+        // Normalise slots — mirror Python logic
+        let slots = (s.slots_normalised && s.slots_normalised.length)
+            ? s.slots_normalised
+            : [{
+                shift_xn_id:  s.shift_xn_id  || "—",
+                date_display: s.date_formatted || "—",
+                start_time:   s.start_time_formatted || "—",
+                end_time:     s.end_time_formatted   || "—",
+                shift_type:   "",
+              }];
 
-/* ── Auto-refresh (count-only, full reload on change) ──────────── */
-(function () {
-    const INTERVAL_MS = 60_000;
+        return slots.map((slot, idx) => {
+            const isFirst = idx === 0;
+            const rowCls  = isFirst ? "shift-group-first" : "shift-group";
 
-    async function refresh() {
-        const params = new URLSearchParams(window.location.search);
-        const url    = "{{ url_for('booking.live_shifts_data') }}?" + params.toString();
-        try {
-            const res  = await fetch(url);
-            const data = await res.json();
-            if (!data.success) return;
+            // Shift-type badge
+            const typeIcon  = SHIFT_TYPE_ICONS[slot.shift_type] || "";
+            const typeBadge = slot.shift_type
+                ? `<span class="shift-type-badge">${typeIcon} ${escHtml(slot.shift_type)}</span>`
+                : `<span class="text-muted">—</span>`;
 
-            const badge = document.getElementById("total-badge");
-            if (!badge) return;
+            // Status badge (first row only)
+            const status    = s.status || "To be assigned";
+            const statusCls = STATUS_CSS[status] || "bg-secondary";
+            const statusCell = isFirst
+                ? `<span class="badge ${statusCls} rounded-pill px-3 py-2">${escHtml(status)}</span>`
+                : "";
 
-            const prevTotal = parseInt(badge.dataset.total ?? "-1");
-            badge.textContent   = data.total + (data.total === 1 ? " shift" : " shifts");
-            badge.dataset.total = data.total;
+            // Premium (first row only)
+            const premiumCell = isFirst
+                ? (s.is_premium
+                    ? `<span class="badge bg-warning text-dark rounded-pill">⭐ Premium</span>`
+                    : `<span class="text-muted">—</span>`)
+                : "";
 
-            if (prevTotal !== -1 && prevTotal !== data.total) {
-                window.location.reload();
+            // Availability (first row only)
+            const availCell = isFirst
+                ? (s.has_availability
+                    ? `<i class="bi bi-check-circle-fill avail-tick"
+                           title="At least one assigned staff member is available"></i>`
+                    : `<i class="bi bi-dash-circle avail-none"
+                           title="No staff confirmed available yet"></i>`)
+                : "";
+
+            // Available staff names (first row only)
+            let staffNamesCell = "";
+            if (isFirst) {
+                if (s.available_staff_list && s.available_staff_list.length) {
+                    const pills = s.available_staff_list.map(n =>
+                        `<span class="badge rounded-pill text-bg-success fw-normal"
+                               style="font-size:0.75rem;">
+                            <i class="bi bi-person-check me-1"></i>${escHtml(n)}
+                        </span>`
+                    ).join("");
+                    staffNamesCell = `<div class="d-flex flex-column gap-1">${pills}</div>`;
+                } else {
+                    staffNamesCell = `<span class="text-muted">—</span>`;
+                }
             }
-        } catch (err) {
-            console.warn("[live_shifts] Auto-refresh failed:", err);
-        }
+
+            // Outreach date (first row only)
+            const odCell = isFirst
+                ? (s.outreach_date_formatted
+                    ? `<span class="text-body">
+                           <i class="bi bi-send text-secondary me-1" title="Latest outreach date"></i>
+                           ${escHtml(s.outreach_date_formatted)}
+                       </span>`
+                    : `<span class="text-muted">—</span>`)
+                : "";
+
+            // Assigned staff (first row only)
+            const assignedCell = isFirst
+                ? (s.assigned_staff_display
+                    ? `<span class="staff-assigned">
+                           <i class="bi bi-person-fill text-secondary me-1"></i>
+                           ${escHtml(s.assigned_staff_display)}
+                       </span>`
+                    : `<span class="text-muted">—</span>`)
+                : "";
+
+            return `
+            <tr class="${rowCls}">
+                <td class="ps-4 font-monospace small">${escHtml(slot.shift_xn_id || "—")}</td>
+                <td class="text-nowrap">${escHtml(slot.date_display || s.date_formatted || "—")}</td>
+                <td>${escHtml(slot.start_time || "—")}</td>
+                <td>${escHtml(slot.end_time   || "—")}</td>
+                <td>${typeBadge}</td>
+                <td>${isFirst ? escHtml(s.location || "—") : ""}</td>
+                <td>${statusCell}</td>
+                <td class="text-center">${premiumCell}</td>
+                <td class="text-center">${availCell}</td>
+                <td>${staffNamesCell}</td>
+                <td class="text-nowrap small">${odCell}</td>
+                <td>${assignedCell}</td>
+            </tr>`;
+        });
+    }).join("");
+}
+
+/* ── Pagination renderer ────────────────────────────────────────────── */
+function renderPagination(page, pages, total) {
+    if (pages <= 1) {
+        paginationNav.style.display = "none";
+        return;
+    }
+    paginationNav.style.display = "";
+
+    const startP = Math.max(page - 2, 1);
+    const endP   = Math.min(startP + 4, pages);
+    let html = "";
+
+    // Prev
+    html += `<li class="page-item ${page <= 1 ? "disabled" : ""}">
+        <a class="page-link" href="#" data-page="${page - 1}"><i class="bi bi-chevron-left"></i></a>
+    </li>`;
+
+    if (startP > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" data-page="1">1</a></li>`;
+        if (startP > 2) html += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
     }
 
-    setInterval(refresh, INTERVAL_MS);
-})();
+    for (let p = startP; p <= endP; p++) {
+        html += `<li class="page-item ${p === page ? "active" : ""}">
+            <a class="page-link" href="#" data-page="${p}">${p}</a>
+        </li>`;
+    }
+
+    if (endP < pages) {
+        if (endP < pages - 1) html += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
+        html += `<li class="page-item"><a class="page-link" href="#" data-page="${pages}">${pages}</a></li>`;
+    }
+
+    // Next
+    html += `<li class="page-item ${page >= pages ? "disabled" : ""}">
+        <a class="page-link" href="#" data-page="${page + 1}"><i class="bi bi-chevron-right"></i></a>
+    </li>`;
+
+    paginationList.innerHTML = html;
+    paginationInfo.textContent =
+        `Showing page ${page} of ${pages} (${total} shift${total !== 1 ? "s" : ""})`;
+}
+
+/* ── Core loader ────────────────────────────────────────────────────── */
+async function loadData(page, pushState = true) {
+    if (isLoading) return;
+    isLoading = true;
+
+    showSkeleton();
+    currentPage = page || 1;
+
+    const params = collectParams(currentPage);
+    const url    = DATA_URL + "?" + params.toString();
+
+    // Keep URL bar in sync so back/forward and bookmarks work
+    if (pushState) {
+        const pageUrl = window.location.pathname + "?" + params.toString();
+        history.pushState({ page: currentPage }, "", pageUrl);
+    }
+
+    // Update Export CSV link to match current filters
+    exportBtn.href = EXPORT_URL + "?" + params.toString();
+
+    // Show / hide Clear button
+    const hasFilters = [...params.entries()]
+        .some(([k, v]) => k !== "page" && v);
+    btnClear.classList.toggle("d-none", !hasFilters);
+    if (pillShowAll) pillShowAll.classList.toggle("d-none", !hasFilters);
+
+    try {
+        const res  = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (!data.success) throw new Error("Server returned success=false");
+
+        currentTotal        = data.total;
+        totalBadge.textContent = `${data.total} shift${data.total !== 1 ? "s" : ""}`;
+
+        tbody.innerHTML = buildRows(data.shifts);
+        errorBox.style.display = "none";
+
+        // Wire up inline-clear link if no-results row rendered it
+        const inlineClear = document.getElementById("inline-clear");
+        if (inlineClear) inlineClear.addEventListener("click", e => { e.preventDefault(); clearFilters(); });
+
+        renderPagination(data.page, data.pages, data.total);
+
+       
+
+    } catch (err) {
+        tbody.innerHTML = "";
+        errorBox.style.display = "";
+        errorDetail.textContent = err.message || "Unknown error";
+        paginationNav.style.display = "none";
+        console.error("[live_shifts] loadData failed:", err);
+    } finally {
+        isLoading = false;
+    }
+}
+
+
+/* ── Clear filters ──────────────────────────────────────────────────── */
+function clearFilters() {
+    filterForm.reset();
+    // Reset flatpickr instances
+    document.querySelectorAll("._flatpickr").forEach(fp => fp._flatpickr && fp._flatpickr.clear());
+    // Make sure hidden real inputs are cleared too
+    ["shift_date_from","shift_date_to","outreach_date_from","outreach_date_to"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+    });
+    loadData(1);
+}
+
+/* ── Event wiring ───────────────────────────────────────────────────── */
+
+// Filter form submit
+filterForm.addEventListener("submit", e => {
+    e.preventDefault();
+    loadData(1);
+});
+
+// Clear button
+btnClear.addEventListener("click", e => {
+    e.preventDefault();
+    clearFilters();
+});
+
+// Pagination clicks (delegated)
+paginationList.addEventListener("click", e => {
+    const link = e.target.closest("[data-page]");
+    if (!link) return;
+    e.preventDefault();
+    const p = parseInt(link.dataset.page);
+    if (!isNaN(p)) loadData(p);
+});
+
+// Quick-pill clicks
+document.querySelectorAll(".quick-pill").forEach(pill => {
+    pill.addEventListener("click", e => {
+        e.preventDefault();
+        if (pill.dataset.status !== undefined) {
+            document.getElementById("inp-status").value = pill.dataset.status;
+        }
+        if (pill.dataset.avail !== undefined) {
+            const radio = filterForm.querySelector(`[name="availability_filter"][value="${pill.dataset.avail}"]`);
+            if (radio) radio.checked = true;
+        }
+        loadData(1);
+    });
+});
+
+// Show-all pill
+if (pillShowAll) {
+    pillShowAll.addEventListener("click", e => {
+        e.preventDefault();
+        document.getElementById("inp-status").value = "";
+        const radioAll = filterForm.querySelector('[name="availability_filter"][value=""]');
+        if (radioAll) radioAll.checked = true;
+        loadData(1);
+    });
+}
+
+// Browser back/forward
+window.addEventListener("popstate", e => {
+    const p = e.state?.page || 1;
+    loadData(p, false);
+});
+
+/* ── Bootstrap: load data immediately on page ready ────────────────── */
+document.addEventListener("DOMContentLoaded", () => {
+    loadData(currentPage, false);   // false = don't double-push initial state
+});
 </script>
 {% endblock %}
