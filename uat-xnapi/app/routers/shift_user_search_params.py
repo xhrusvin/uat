@@ -63,6 +63,30 @@ def _resolve_session_user(raw: str) -> str:
     return val
 
 
+def _serialize_doc(doc: dict) -> dict:
+    """Convert ObjectId / datetime fields to JSON-safe strings."""
+    if not doc:
+        return {}
+    out = {}
+    for k, v in doc.items():
+        if isinstance(v, ObjectId):
+            out[k] = str(v)
+        elif hasattr(v, "isoformat"):
+            out[k] = v.isoformat()
+        elif isinstance(v, dict):
+            out[k] = _serialize_doc(v)
+        elif isinstance(v, list):
+            out[k] = [_serialize_doc(i) if isinstance(i, dict) else i for i in v]
+        else:
+            out[k] = v
+    return out
+
+
+# ── IMPORTANT: literal routes MUST be registered before /{session_user_id} ────
+# FastAPI matches routes in declaration order. /save and /all are literals and
+# must appear first, otherwise the /{session_user_id} wildcard swallows them.
+
+
 # ── SAVE (upsert) ──────────────────────────────────────────────────────────────
 
 @router.post(
@@ -76,7 +100,7 @@ async def save_search_params(request: Request, payload: SaveSearchParamsRequest)
     Upserts a `shift_user_search_params` document keyed on `session_user_id`.
 
     One document is kept per session user — calling this again overwrites the
-    previous saved state for that user.  Pass `label` to give the preset a
+    previous saved state for that user. Pass `label` to give the preset a
     human-readable name (e.g. "Day nurses – Cork").
 
     Body example:
@@ -107,16 +131,19 @@ async def save_search_params(request: Request, payload: SaveSearchParamsRequest)
     # Verify the session user exists (non-blocking: warn only, don't reject)
     su_doc = await db["session_users"].find_one({"id": session_user_id}, {"id": 1, "name": 1})
     if not su_doc:
-        logger.warning(f"[search-params/save] session_user_id={session_user_id} not found in session_users — saving anyway")
+        logger.warning(
+            f"[search-params/save] session_user_id={session_user_id} "
+            f"not found in session_users — saving anyway"
+        )
 
     params_dict = payload.params.model_dump(exclude_none=False)
 
     doc_update = {
-        "session_user_id": session_user_id,
+        "session_user_id":   session_user_id,
         "session_user_name": su_doc.get("name") if su_doc else None,
-        "label":           payload.label,
-        "params":          params_dict,
-        "updated_at":      now,
+        "label":             payload.label,
+        "params":            params_dict,
+        "updated_at":        now,
     }
 
     result = await db["shift_user_search_params"].update_one(
@@ -128,7 +155,7 @@ async def save_search_params(request: Request, payload: SaveSearchParamsRequest)
         upsert=True,
     )
 
-    action = "created" if result.upserted_id else "updated"
+    action    = "created" if result.upserted_id else "updated"
     record_id = str(result.upserted_id) if result.upserted_id else None
 
     # Fetch the full saved doc to return it
@@ -141,15 +168,57 @@ async def save_search_params(request: Request, payload: SaveSearchParamsRequest)
     logger.info(f"[search-params/save] {action} session_user_id={session_user_id}")
 
     return {
-        "success":    True,
-        "action":     action,
-        "message":    f"Search parameters {action} for session user {session_user_id}",
-        "id":         record_id or (str(saved["_id"]) if saved else None),
-        "data":       _serialize_doc(saved) if saved else doc_update,
+        "success": True,
+        "action":  action,
+        "message": f"Search parameters {action} for session user {session_user_id}",
+        "id":      record_id or (str(saved["_id"]) if saved else None),
+        "data":    _serialize_doc(saved) if saved else doc_update,
     }
 
 
-# ── GET ────────────────────────────────────────────────────────────────────────
+# ── LIST all presets (admin / debug) ──────────────────────────────────────────
+# Path is /all — a literal segment that must sit above /{session_user_id}.
+
+@router.get(
+    "/all",
+    summary="List all saved shift-users search parameter presets (admin)",
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit("30/minute")
+async def list_search_params(request: Request, page: int = 1, per_page: int = 20):
+    """
+    Returns a paginated list of all saved presets across all session users,
+    sorted by most-recently updated first. Useful for admin inspection.
+
+    Query params: ?page=1&per_page=20
+    """
+    db    = _get_db()
+    skip  = max(0, (page - 1) * per_page)
+    total = await db["shift_user_search_params"].count_documents({})
+
+    cursor = (
+        db["shift_user_search_params"]
+        .find(
+            {},
+            {"_id": 1, "session_user_id": 1, "session_user_name": 1,
+             "label": 1, "params": 1, "created_at": 1, "updated_at": 1},
+        )
+        .sort("updated_at", -1)
+        .skip(skip)
+        .limit(per_page)
+    )
+    docs = [_serialize_doc(d) async for d in cursor]
+
+    return {
+        "success":  True,
+        "total":    total,
+        "page":     page,
+        "per_page": per_page,
+        "data":     docs,
+    }
+
+
+# ── GET by session_user_id ─────────────────────────────────────────────────────
 
 @router.get(
     "/{session_user_id}",
@@ -162,8 +231,8 @@ async def get_search_params(request: Request, session_user_id: str):
     Returns the saved search parameters for `session_user_id`, or 404 if none
     have been saved yet.
 
-    The `params` object is ready to be spread directly into a
-    `POST /shift-users/list` request body (just add `page` and `per_page`).
+    The `params` object can be spread directly into a
+    `POST /shift-users/list` body — just add `page` and `per_page`.
     """
     db = _get_db()
     session_user_id = _resolve_session_user(session_user_id)
@@ -186,7 +255,7 @@ async def get_search_params(request: Request, session_user_id: str):
     }
 
 
-# ── DELETE ─────────────────────────────────────────────────────────────────────
+# ── DELETE by session_user_id ──────────────────────────────────────────────────
 
 @router.delete(
     "/{session_user_id}",
@@ -219,62 +288,3 @@ async def delete_search_params(request: Request, session_user_id: str):
         "message":         f"Search parameters deleted for session user {session_user_id}",
         "session_user_id": session_user_id,
     }
-
-
-# ── LIST (all saved presets — admin / debug) ───────────────────────────────────
-
-@router.get(
-    "/",
-    summary="List all saved shift-users search parameter presets (admin)",
-    dependencies=[Depends(verify_api_key)],
-)
-@limiter.limit("30/minute")
-async def list_search_params(request: Request, page: int = 1, per_page: int = 20):
-    """
-    Returns a paginated list of all saved presets across all session users.
-    Useful for admin inspection or debugging.
-    """
-    db     = _get_db()
-    skip   = max(0, (page - 1) * per_page)
-    total  = await db["shift_user_search_params"].count_documents({})
-    cursor = (
-        db["shift_user_search_params"]
-        .find(
-            {},
-            {"_id": 1, "session_user_id": 1, "session_user_name": 1,
-             "label": 1, "params": 1, "created_at": 1, "updated_at": 1},
-        )
-        .sort("updated_at", -1)
-        .skip(skip)
-        .limit(per_page)
-    )
-    docs = [_serialize_doc(d) async for d in cursor]
-
-    return {
-        "success":  True,
-        "total":    total,
-        "page":     page,
-        "per_page": per_page,
-        "data":     docs,
-    }
-
-
-# ── Serialiser ─────────────────────────────────────────────────────────────────
-
-def _serialize_doc(doc: dict) -> dict:
-    """Convert ObjectId / datetime fields to JSON-safe strings."""
-    if not doc:
-        return {}
-    out = {}
-    for k, v in doc.items():
-        if isinstance(v, ObjectId):
-            out[k] = str(v)
-        elif hasattr(v, "isoformat"):
-            out[k] = v.isoformat()
-        elif isinstance(v, dict):
-            out[k] = _serialize_doc(v)
-        elif isinstance(v, list):
-            out[k] = [_serialize_doc(i) if isinstance(i, dict) else i for i in v]
-        else:
-            out[k] = v
-    return out
