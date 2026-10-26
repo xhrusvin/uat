@@ -13,7 +13,12 @@ from app.core.security import verify_api_key
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
-router = APIRouter(prefix="/shift-users/search-params", tags=["Shift User Search Params"])
+
+# ── Prefix is intentionally NOT nested under /shift-users ─────────────────────
+# shift_users.py already owns /shift-users/*. Nesting under that prefix causes
+# FastAPI to match the wrong router depending on include order. A sibling
+# prefix avoids the conflict entirely.
+router = APIRouter(prefix="/shift-user-search-params", tags=["Shift User Search Params"])
 
 
 def _get_db():
@@ -48,15 +53,14 @@ class ShiftUserSearchParams(BaseModel):
 
 
 class SaveSearchParamsRequest(BaseModel):
-    session_user_id: str                    # session_users.id  (upstream string ID)
+    session_user_id: str                    # session_users.id (upstream string ID)
     params:          ShiftUserSearchParams  # the filter state to persist
-    label:           Optional[str] = None   # optional human-readable name, e.g. "Day nurses – Cork"
+    label:           Optional[str] = None   # e.g. "Day nurses – Cork"
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _resolve_session_user(raw: str) -> str:
-    """Strip and validate that session_user_id is a non-empty string."""
     val = (raw or "").strip()
     if not val:
         raise HTTPException(status_code=422, detail="session_user_id must not be empty")
@@ -82,11 +86,6 @@ def _serialize_doc(doc: dict) -> dict:
     return out
 
 
-# ── IMPORTANT: literal routes MUST be registered before /{session_user_id} ────
-# FastAPI matches routes in declaration order. /save and /all are literals and
-# must appear first, otherwise the /{session_user_id} wildcard swallows them.
-
-
 # ── SAVE (upsert) ──────────────────────────────────────────────────────────────
 
 @router.post(
@@ -98,28 +97,20 @@ def _serialize_doc(doc: dict) -> dict:
 async def save_search_params(request: Request, payload: SaveSearchParamsRequest):
     """
     Upserts a `shift_user_search_params` document keyed on `session_user_id`.
+    One document per session user — calling again overwrites the previous state.
 
-    One document is kept per session user — calling this again overwrites the
-    previous saved state for that user. Pass `label` to give the preset a
-    human-readable name (e.g. "Day nurses – Cork").
-
-    Body example:
+    POST /shift-user-search-params/save
     ```json
     {
       "session_user_id": "67ee949503d9854bfb0e3b93",
       "label": "Night RNs within 30 km",
       "params": {
-        "shift_id":           "664abc123def456789012345",
-        "radius":             30,
-        "order_by":           "distance_km",
-        "sort":               "asc",
-        "county_multiple":    ["664ccc000aaa111222333444"],
-        "user_type_multiple": [],
-        "excluded":           0,
-        "in_pool":            null,
-        "gender_id":          null,
-        "visa_type_id":       null,
-        "qqi_status_number":  null
+        "shift_id":        "664abc123def456789012345",
+        "radius":          30,
+        "order_by":        "distance_km",
+        "sort":            "asc",
+        "county_multiple": ["664ccc000aaa111222333444"],
+        "excluded":        0
       }
     }
     ```
@@ -128,7 +119,6 @@ async def save_search_params(request: Request, payload: SaveSearchParamsRequest)
     session_user_id = _resolve_session_user(payload.session_user_id)
     now = datetime.now(timezone.utc)
 
-    # Verify the session user exists (non-blocking: warn only, don't reject)
     su_doc = await db["session_users"].find_one({"id": session_user_id}, {"id": 1, "name": 1})
     if not su_doc:
         logger.warning(
@@ -158,7 +148,6 @@ async def save_search_params(request: Request, payload: SaveSearchParamsRequest)
     action    = "created" if result.upserted_id else "updated"
     record_id = str(result.upserted_id) if result.upserted_id else None
 
-    # Fetch the full saved doc to return it
     saved = await db["shift_user_search_params"].find_one(
         {"session_user_id": session_user_id},
         {"_id": 1, "session_user_id": 1, "session_user_name": 1,
@@ -176,21 +165,20 @@ async def save_search_params(request: Request, payload: SaveSearchParamsRequest)
     }
 
 
-# ── LIST all presets (admin / debug) ──────────────────────────────────────────
-# Path is /all — a literal segment that must sit above /{session_user_id}.
+# ── LIST all presets (admin) ───────────────────────────────────────────────────
+# Declared before /{session_user_id} so the literal path wins.
 
 @router.get(
     "/all",
-    summary="List all saved shift-users search parameter presets (admin)",
+    summary="List all saved search parameter presets (admin)",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("30/minute")
 async def list_search_params(request: Request, page: int = 1, per_page: int = 20):
     """
-    Returns a paginated list of all saved presets across all session users,
-    sorted by most-recently updated first. Useful for admin inspection.
+    GET /shift-user-search-params/all?page=1&per_page=20
 
-    Query params: ?page=1&per_page=20
+    Paginated list of all saved presets, newest first.
     """
     db    = _get_db()
     skip  = max(0, (page - 1) * per_page)
@@ -222,17 +210,17 @@ async def list_search_params(request: Request, page: int = 1, per_page: int = 20
 
 @router.get(
     "/{session_user_id}",
-    summary="Retrieve saved shift-users list search parameters for a session user",
+    summary="Retrieve saved search parameters for a session user",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("120/minute")
 async def get_search_params(request: Request, session_user_id: str):
     """
-    Returns the saved search parameters for `session_user_id`, or 404 if none
-    have been saved yet.
+    GET /shift-user-search-params/{session_user_id}
 
-    The `params` object can be spread directly into a
-    `POST /shift-users/list` body — just add `page` and `per_page`.
+    Returns 404 if no params have been saved yet for this user.
+    The `params` object can be spread directly into POST /shift-users/list
+    (just add page and per_page).
     """
     db = _get_db()
     session_user_id = _resolve_session_user(session_user_id)
@@ -259,13 +247,14 @@ async def get_search_params(request: Request, session_user_id: str):
 
 @router.delete(
     "/{session_user_id}",
-    summary="Delete saved shift-users list search parameters for a session user",
+    summary="Delete saved search parameters for a session user",
     dependencies=[Depends(verify_api_key)],
 )
 @limiter.limit("30/minute")
 async def delete_search_params(request: Request, session_user_id: str):
     """
-    Removes the saved search parameters for `session_user_id`.
+    DELETE /shift-user-search-params/{session_user_id}
+
     Returns 404 if no record exists.
     """
     db = _get_db()
