@@ -45,6 +45,7 @@
                             <th>Doc Type Code</th>
                             <th>Prompt Preview</th>
                             <th class="text-center">Version</th>
+                            <th class="text-center">Level</th>
                             <th>Status</th>
                             <th class="text-center">Actions</th>
                         </tr>
@@ -71,6 +72,11 @@
                                     v{{ p.version }}
                                 </span>
                             </td>
+                            <td class="text-center">
+                                <span class="badge bg-warning text-dark rounded-pill px-3">
+                                    L{{ p.level | default(3) }}
+                                </span>
+                            </td>
                             <td>
                                 {% if p.is_active %}
                                 <span class="badge bg-success rounded-pill px-3">Active</span>
@@ -83,6 +89,7 @@
                                         data-id="{{ p._id }}"
                                         data-code="{{ p.document_type_code | e }}"
                                         data-text="{{ p.prompt_text | e }}"
+                                        data-level="{{ p.level | default(3) }}"
                                         data-active="{{ p.is_active | tojson }}">
                                     <i class="bi bi-pencil"></i>
                                 </button>
@@ -95,7 +102,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="6" class="text-center py-5 text-muted">
+                            <td colspan="7" class="text-center py-5 text-muted">
                                 <i class="bi bi-file-text display-1 opacity-25 d-block mb-3"></i>
                                 <h5>No prompts found</h5>
                                 {% if search %}<p class="mb-0">Try a different search term</p>{% endif %}
@@ -160,6 +167,20 @@
 
                     <div class="mb-3">
                         <label class="form-label fw-bold">
+                            Level <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="prompt_level" name="level">
+                            <option value="1">Level 1</option>
+                            <option value="2">Level 2</option>
+                            <option value="3" selected>Level 3</option>
+                            <option value="4">Level 4</option>
+                            <option value="5">Level 5</option>
+                        </select>
+                        <div class="form-text">Priority / severity level for this document type.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
                             Prompt Text <span class="text-danger">*</span>
                         </label>
                         <textarea class="form-control font-monospace"
@@ -201,6 +222,7 @@ function prepareAddModal() {
     document.getElementById('prompt_code').value             = '';
     document.getElementById('prompt_text').value             = '';
     document.getElementById('prompt_is_active').checked      = true;
+    document.getElementById('prompt_level').value            = '3';
     document.getElementById('prompt_code').removeAttribute('readonly');
 }
 
@@ -213,6 +235,7 @@ document.querySelectorAll('.btn-edit').forEach(btn => {
         document.getElementById('prompt_code').value             = btn.dataset.code;
         document.getElementById('prompt_text').value             = btn.dataset.text;
         document.getElementById('prompt_is_active').checked      = btn.dataset.active === 'true';
+        document.getElementById('prompt_level').value            = btn.dataset.level || '3';
         // allow code editing on edit too; backend guards uniqueness
         document.getElementById('prompt_code').removeAttribute('readonly');
         new bootstrap.Modal(document.getElementById('promptModal')).show();
@@ -233,10 +256,11 @@ document.getElementById('promptForm').addEventListener('submit', async function 
     btn.textContent = isEdit ? 'Saving...' : 'Creating...';
 
     const payload = {
-        prompt_id:            document.getElementById('prompt_id').value,
+        prompt_id:          document.getElementById('prompt_id').value,
         document_type_code: document.getElementById('prompt_code').value.trim(),
-        prompt_text:          document.getElementById('prompt_text').value.trim(),
-        is_active:            document.getElementById('prompt_is_active').checked,
+        prompt_text:        document.getElementById('prompt_text').value.trim(),
+        level:              parseInt(document.getElementById('prompt_level').value, 10),
+        is_active:          document.getElementById('prompt_is_active').checked,
     };
 
     try {

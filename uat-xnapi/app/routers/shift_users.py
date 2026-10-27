@@ -125,9 +125,8 @@ async def add_user_to_shift(request: Request, payload: AddUserToShiftRequest):
             detail=f"{full_name} is already in the pool for shift {shift_code}")
 
     channel = (payload.channel or "Phone").strip()
-    #if channel not in ("Phone", "WhatsApp", "Email", "SMS"):
-    if channel not in ("Phone", "Email", "SMS"):
-         raise HTTPException(status_code=422, detail="channel must be Phone, WhatsApp (Disabled), Email or SMS")
+    if channel not in ("Phone", "WhatsApp", "Email", "SMS"):
+         raise HTTPException(status_code=422, detail="channel must be Phone, WhatsApp, Email or SMS")
 
     doc = {
         "user_id":  user_oid,

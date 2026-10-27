@@ -40,6 +40,15 @@ def _is_code_unique(code, exclude_id=None):
     return _prompts_col().count_documents(query) == 0
 
 
+def _clean_level(value, default=3):
+    """Coerce an incoming level value to an int in the range 1–5."""
+    try:
+        level = int(value)
+    except (TypeError, ValueError):
+        return default
+    return level if 1 <= level <= 5 else default
+
+
 # ── Routes ───────────────────────────────────────────────────────────
 
 @admin_bp.route('/prompts')
@@ -67,6 +76,7 @@ def prompt_add():
     data = request.get_json()
     code = (data.get('document_type_code') or '').strip()
     text = (data.get('prompt_text') or '').strip()
+    level = _clean_level(data.get('level'))
 
     if not code:
         return jsonify({"success": False, "error": "Document type code is required"}), 400
@@ -78,6 +88,7 @@ def prompt_add():
     doc = {
         "document_type_code": code,
         "prompt_text":        text,
+        "level":              level,
         "is_active":          data.get('is_active') is True,
         "version":            1,
         "created_at":         datetime.utcnow(),
@@ -96,6 +107,7 @@ def prompt_edit():
     prompt_id = (data.get('prompt_id') or '').strip()
     code = (data.get('document_type_code') or '').strip()
     text      = (data.get('prompt_text') or '').strip()
+    level     = _clean_level(data.get('level'))
 
     if not prompt_id:
         return jsonify({"success": False, "error": "Missing prompt_id"}), 400
@@ -122,6 +134,7 @@ def prompt_edit():
             {"$set": {
                 "document_type_code": code,
                 "prompt_text":        text,
+                "level":              level,
                 "is_active":          data.get('is_active') is True,
                 "version":            new_version,
             }}
@@ -157,6 +170,7 @@ def prompts_active_api():
                 "_id":                str(p["_id"]),
                 "document_type_code": p["document_type_code"],
                 "prompt_text":        p["prompt_text"],
+                "level":              p.get("level", 3),
                 "version":            p.get("version", 1),
             }
             for p in items
