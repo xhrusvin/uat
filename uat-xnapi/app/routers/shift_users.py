@@ -2,9 +2,11 @@ import asyncio
 import logging
 import math
 import re
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
+import httpx
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -533,6 +535,10 @@ def _shift_type(timing: str) -> str:
 #     same or adjacent day as the comment claims.
 #   * The threshold is 120 minutes, the tag is named `under_6h_gap`, and
 #     /assign's message says "Less than 5 hours". Three different numbers.
+#
+# /list-multi no longer calls this per-user function — it uses
+# _batch_exclusion() further down, which produces the same verdicts with
+# 2 queries per batch instead of 2 per user. /list and /assign still use this.
 
 async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, banned_clients: list = None, user_tags: list = None, user_oid=None) -> list:
     """
@@ -609,12 +615,10 @@ async def _get_user_exclusion_tags(db, user_email: str, target_shift: dict, bann
     # ±1 day window — catches overnight shifts whose date field is the
     # previous calendar day, while excluding all unrelated days
     try:
-        from datetime import timedelta
         if hasattr(target_date, "date"):
             td = target_date
         else:
-            from datetime import datetime as _dt
-            td = _dt.strptime(str(target_date)[:10], "%Y-%m-%d")
+            td = datetime.strptime(str(target_date)[:10], "%Y-%m-%d")
 
         date_filter = {
             "date": {
@@ -1667,7 +1671,22 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
     }
 
 
-# ── POST /shift-users/list-multi ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  POST /shift-users/list-multi   (OPTIMIZED)
+#
+#  What changed vs. the previous version
+#    1. Exclusion is BATCHED: 2 Mongo queries per batch of users instead of 2
+#       per user (_batch_exclusion).
+#    2. Exclusion is LAZY: radius / in_pool filters run first (cheap), and
+#       exclusion is computed only for survivors — or only for the final page
+#       when `excluded` is not a filter.
+#    3. No skip(offset) chunk walk: one bounded query for the slow path.
+#    4. Independent awaits run concurrently (asyncio.gather).
+#    5. last-contacted uses $group instead of streaming every row.
+#    6. Upstream available-staff-list is cached 60s on a pooled httpx client.
+#    7. Shifts fetched once (was twice); county lookups merged.
+#    8. Cache / backfill writes happen in a background task.
+# ══════════════════════════════════════════════════════════════════════════════
 
 class ListMultiShiftUsersRequest(BaseModel):
     shift_ids:          list                    # shifts._id strings
@@ -1688,6 +1707,480 @@ class ListMultiShiftUsersRequest(BaseModel):
     user_sub_type_multiple: Optional[list]  = None
     visa_type_id:           Optional[str]   = None
     search:                 Optional[str]   = None
+
+
+# ── Shared HTTP client + upstream cache ──────────────────────────────────────
+
+_UPSTREAM_TTL = 60  # seconds
+_upstream_cache: dict = {}  # xn_shift_id -> (monotonic_ts, rows)
+_http: Optional[httpx.AsyncClient] = None
+
+
+def _http_client() -> httpx.AsyncClient:
+    global _http
+    if _http is None:
+        _http = httpx.AsyncClient(
+            timeout=30.0,
+            limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+        )
+    return _http
+
+
+async def _fetch_available_staff(xn_shift_id: str) -> list:
+    hit = _upstream_cache.get(xn_shift_id)
+    if hit and time.monotonic() - hit[0] < _UPSTREAM_TTL:
+        return hit[1]
+    try:
+        resp = await _http_client().post(
+            f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list",
+            json={"shift_id": xn_shift_id},
+            headers={
+                "Api-Key":      settings.SHIFT_INTERNAL_API_KEY,
+                "Content-Type": "application/json",
+                "Accept":       "application/json",
+            },
+        )
+        if resp.status_code == 200:
+            rows = resp.json().get("data") or []
+            if len(_upstream_cache) > 500:
+                _upstream_cache.clear()
+            _upstream_cache[xn_shift_id] = (time.monotonic(), rows)
+            return rows
+    except Exception as e:
+        logger.warning(f"[list-multi] upstream {xn_shift_id}: {e}")
+    return []
+
+
+# ── Batched exclusion ────────────────────────────────────────────────────────
+
+_EXCLUDED_TAG_NAMES = frozenset({
+    "last-resort booking", "avoid booking", "temporarily unavailable",
+    "no calls or emails", "no bulk emails", "no calls",
+    "direct bookings only", "contact on request only",
+})
+_BAD_DOC_STATUSES = ["expired", "pending", "not_approved"]
+
+
+def _static_exclusion(u: dict, target_shift: dict) -> list:
+    """Steps 0 and 0b of _get_user_exclusion_tags — pure in-memory, no DB."""
+    tags: list = []
+    for tag in (u.get("tags") or []):
+        raw = tag.get("name", "") if isinstance(tag, dict) else str(tag)
+        low = raw.lower().strip()
+        if low in _EXCLUDED_TAG_NAMES:
+            tags.append(f"tag:{raw if isinstance(tag, dict) else low}")
+        if low == "premium shifts only" and not target_shift.get("is_premium"):
+            tags.append("tag:Premium Shifts Only")
+
+    shift_client_id = str(target_shift.get("client_id", ""))
+    for bc in (u.get("banned_clients") or []):
+        bc_id = str(bc.get("id", "")) if isinstance(bc, dict) else str(bc)
+        if bc_id and bc_id == shift_client_id:
+            tags.insert(0, "Client Banned Staff")
+            break
+    return tags
+
+
+def _has_gap_conflict(existing_shifts: list, target_shift: dict) -> bool:
+    target_date = target_shift.get("date")
+    t_start = target_shift.get("start_time", "")
+    t_end   = target_shift.get("end_time", "")
+    tgt_day = target_date.date() if hasattr(target_date, "date") else None
+    if not tgt_day:
+        return False
+
+    for es in existing_shifts:
+        slots = es.get("slots") or []
+        ranges = (
+            [(sl.get("date"), sl.get("start_time", ""), sl.get("end_time", "")) for sl in slots]
+            if slots else
+            [(es.get("date"), es.get("start_time", ""), es.get("end_time", ""))]
+        )
+        for r_date, r_start, r_end in ranges:
+            if not r_date or not hasattr(r_date, "date") or r_date.date() != tgt_day:
+                continue
+            if not r_start or not r_end:
+                continue
+            gap1 = _gap_minutes(r_end, t_start)
+            gap2 = _gap_minutes(t_end, r_start)
+            if (0 < gap1 < 120) or (0 < gap2 < 120):
+                return True
+    return False
+
+
+async def _batch_exclusion(db, users: list, target_shift: dict) -> dict:
+    """
+    Same verdicts as _get_user_exclusion_tags, but 2 queries for the whole batch
+    instead of 2 per user. Returns {str(user._id): tags}.
+    """
+    out: dict = {}
+    if not target_shift:
+        return {str(u["_id"]): [] for u in users}
+
+    pending = []
+    for u in users:
+        uid = str(u["_id"])
+        if not u.get("email"):
+            out[uid] = []
+            continue
+        tags = _static_exclusion(u, target_shift)
+        if tags:
+            out[uid] = tags
+        else:
+            pending.append(u)
+    if not pending:
+        return out
+
+    # Level-1 documents — one query
+    bad_docs: dict = {}
+    async for d in db["documents_new"].find(
+        {"user_id": {"$in": [u["_id"] for u in pending]},
+         "level": 1, "status": {"$in": _BAD_DOC_STATUSES}},
+        {"user_id": 1, "status": 1},
+    ):
+        bad_docs.setdefault(d["user_id"], d.get("status", "invalid"))
+
+    still = []
+    for u in pending:
+        if u["_id"] in bad_docs:
+            out[str(u["_id"])] = [f"level1_doc_{bad_docs[u['_id']]}"]
+        else:
+            still.append(u)
+    if not still:
+        return out
+
+    # Gap check — one query
+    td = target_shift.get("date")
+    if not td or not target_shift.get("start_time") or not target_shift.get("end_time"):
+        for u in still:
+            out[str(u["_id"])] = []
+        return out
+    try:
+        if not hasattr(td, "date"):
+            td = datetime.strptime(str(td)[:10], "%Y-%m-%d")
+        date_filter = {"$gte": td - timedelta(days=1), "$lte": td + timedelta(days=1)}
+    except Exception:
+        for u in still:
+            out[str(u["_id"])] = []
+        return out
+
+    by_email: dict = {}
+    async for s in db["shifts"].find(
+        {"staff_email": {"$in": [u["email"] for u in still]},
+         "date": date_filter, "upstream_status": "Upcoming"},
+        {"staff_email": 1, "date": 1, "start_time": 1, "end_time": 1, "slots": 1},
+    ):
+        by_email.setdefault(s["staff_email"], []).append(s)
+
+    for u in still:
+        conflict = _has_gap_conflict(by_email.get(u["email"], []), target_shift)
+        out[str(u["_id"])] = ["under_6h_gap"] if conflict else []
+    return out
+
+
+# ── Other batched lookups ────────────────────────────────────────────────────
+
+async def _last_contacted(db, oids: list, shift_oids: list, group_oids: list) -> dict:
+    """{uid: (datetime, channel)} — newest of shifts_users / shifts_group_users."""
+    def _pipe(match):
+        return [
+            {"$match": match},
+            {"$sort": {"call_processed_at": -1}},
+            {"$group": {"_id": "$user_id",
+                        "at": {"$first": "$call_processed_at"},
+                        "channel": {"$first": "$channel"}}},
+        ]
+
+    su_match = {"user_id": {"$in": oids}, "shift_id": {"$in": shift_oids},
+                "call_processed_at": {"$ne": None}}
+    gu_match = {"user_id": {"$in": oids}, "call_processed_at": {"$ne": None}}
+    if group_oids:
+        gu_match["group_id"] = {"$in": group_oids}
+
+    async def _run(coll, match):
+        return [r async for r in db[coll].aggregate(_pipe(match))]
+
+    su_rows, gu_rows = await asyncio.gather(
+        _run("shifts_users", su_match), _run("shifts_group_users", gu_match)
+    )
+
+    lc: dict = {str(r["_id"]): (r["at"], r.get("channel") or "") for r in su_rows}
+    for r in gu_rows:
+        uid, dt = str(r["_id"]), r["at"]
+        cur = lc.get(uid)
+        if cur is None or (dt and cur[0] and dt > cur[0]):
+            lc[uid] = (dt, r.get("channel") or "")
+    return lc
+
+
+async def _pool_ids(db, oids: list, shift_oids: list, group_oids: list) -> set:
+    async def _a():
+        return {str(p["user_id"]) async for p in db["shifts_pool"].find(
+            {"shift_id": {"$in": shift_oids}, "user_id": {"$in": oids}}, {"user_id": 1})}
+
+    async def _b():
+        if not group_oids:
+            return set()
+        return {str(p["user_id"]) async for p in db["shifts_group_pool"].find(
+            {"group_id": {"$in": group_oids}, "user_id": {"$in": oids}}, {"user_id": 1})}
+
+    a, b = await asyncio.gather(_a(), _b())
+    return a | b
+
+
+async def _names(db, coll: str, oids) -> dict:
+    oids = list(oids)
+    if not oids:
+        return {}
+    return {str(d["_id"]): d.get("name", "")
+            async for d in db[coll].find({"_id": {"$in": oids}}, {"name": 1})}
+
+
+async def _name_maps(db, users: list) -> dict:
+    sub_oids, visa_oids, county_oids, type_oids = set(), set(), set(), set()
+    need_type_designations = set()
+    for u in users:
+        for o in (u.get("user_sub_type_oids") or []):
+            if o and ObjectId.is_valid(str(o)):
+                sub_oids.add(ObjectId(str(o)))
+        if u.get("visa_type_id") and ObjectId.is_valid(str(u["visa_type_id"])):
+            visa_oids.add(ObjectId(str(u["visa_type_id"])))
+        for k in ("county_id", "country_id"):          # country_id is the legacy fallback
+            if u.get(k) and ObjectId.is_valid(str(u[k])):
+                county_oids.add(ObjectId(str(u[k])))
+        if u.get("user_type_id") and ObjectId.is_valid(str(u["user_type_id"])):
+            type_oids.add(ObjectId(str(u["user_type_id"])))
+        elif u.get("designation"):
+            need_type_designations.add(u["designation"])
+
+    async def _desig():
+        if not need_type_designations:
+            return {}
+        return {ut["name"]: str(ut["_id"]) async for ut in db["user_types"].find(
+            {"name": {"$in": list(need_type_designations)}}, {"_id": 1, "name": 1})}
+
+    sub, visa, county, types, desig = await asyncio.gather(
+        _names(db, "user_sub_types", sub_oids),
+        _names(db, "visa_types", visa_oids),
+        _names(db, "county", county_oids),
+        _names(db, "user_types", type_oids),
+        _desig(),
+    )
+    return {"sub": sub, "visa": visa, "county": county,
+            "type_by_id": types, "designation_to_type_id": desig}
+
+
+async def _client_coords_for(db, shift: dict):
+    if not shift or not shift.get("client_id"):
+        return None
+    client = await db["clients"].find_one(
+        {"xn_client_id": shift["client_id"]},
+        {"latitude": 1, "longitude": 1, "location": 1},
+    )
+    if not client:
+        return None
+    lat, lng = client.get("latitude"), client.get("longitude")
+    if lat is None or lng is None:
+        loc = client.get("location") or {}
+        lat = loc.get("latitude") or loc.get("lat")
+        lng = loc.get("longitude") or loc.get("lng") or loc.get("lon")
+    if lat is None or lng is None:
+        return None
+    return (float(lat), float(lng))
+
+
+async def _resolve_group_oids(db, payload, shift_oids: list) -> list:
+    if payload.group_id and ObjectId.is_valid(str(payload.group_id)):
+        return [ObjectId(str(payload.group_id))]
+    return [g["_id"] async for g in db["shifts_group"].find(
+        {"shift_ids": {"$in": shift_oids}}, {"_id": 1})]
+
+
+async def _designation_breakdown(db, shift_user_types: list, upstream_ids: set):
+    clauses: list = [{"status": "Enabled"}]
+    if shift_user_types:
+        clauses.append({"designation": {"$in": shift_user_types}})
+    if upstream_ids:
+        clauses.append({"xn_user_id": {"$in": list(upstream_ids)}})
+    flt = clauses[0] if len(clauses) == 1 else {"$and": clauses}
+
+    rows, total = [], 0
+    async for row in db["users"].aggregate([
+        {"$match": flt},
+        {"$group": {"_id": {"$ifNull": ["$designation", "Unknown"]},
+                    "user_type_id": {"$first": "$user_type_id"},
+                    "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]):
+        rows.append({"designation": row["_id"],
+                     "user_type_id": str(row["user_type_id"]) if row.get("user_type_id") else None,
+                     "count": row["count"]})
+        total += row["count"]
+    return rows, total
+
+
+async def _build_user_filter(db, payload, shift_user_types: list, upstream_ids: set) -> dict:
+    clauses: list = [{"status": "Enabled"}]
+
+    # shifts.user_type == users.designation (exact, case-insensitive)
+    if not payload.user_type_multiple and shift_user_types:
+        clauses.append({"$or": [
+            {"designation": {"$regex": f"^{re.escape(str(t).strip())}$", "$options": "i"}}
+            for t in shift_user_types
+        ]})
+    if upstream_ids:
+        clauses.append({"xn_user_id": {"$in": list(upstream_ids)}})
+
+    if payload.gender_multiple:
+        g = [str(x).strip() for x in payload.gender_multiple if x]
+        if g:
+            clauses.append({"gender_id": {"$in": g}})
+    elif payload.gender_id:
+        clauses.append({"gender_id": payload.gender_id.strip()})
+
+    if payload.visa_type_id:
+        clauses.append({"visa_type_id": payload.visa_type_id.strip()})
+    if payload.qqi_status_number is not None:
+        clauses.append({"qqi_status_number": payload.qqi_status_number})
+
+    if payload.user_sub_type_multiple:
+        subs = [ObjectId(str(i)) for i in payload.user_sub_type_multiple if ObjectId.is_valid(str(i))]
+        if subs:
+            clauses.append({"user_sub_type_oids": {"$in": subs}})
+
+    # County — stored as string or ObjectId
+    if payload.county_multiple:
+        vals = []
+        for c in payload.county_multiple:
+            vals.append(str(c))
+            if ObjectId.is_valid(str(c)):
+                vals.append(ObjectId(str(c)))
+        if vals:
+            clauses.append({"county_id": {"$in": vals}})
+
+    # Explicit user types
+    if payload.user_type_multiple:
+        type_oids = [ObjectId(str(t)) for t in payload.user_type_multiple if ObjectId.is_valid(str(t))]
+        if type_oids:
+            type_names = [ut["name"] async for ut in db["user_types"].find(
+                {"_id": {"$in": type_oids}}, {"name": 1}) if ut.get("name")]
+            clauses.append({"$or": [{"user_type_id": {"$in": type_oids}},
+                                    {"designation": {"$in": type_names}}]})
+
+    # Search
+    if payload.search and payload.search.strip():
+        s = payload.search.strip()
+        rx = re.escape(s)
+        parts = s.split()
+        conds = [{f: {"$regex": rx, "$options": "i"}} for f in ("first_name", "last_name", "email", "phone")]
+        if len(parts) >= 2:
+            conds.append({"$and": [
+                {"first_name": {"$regex": re.escape(parts[0]), "$options": "i"}},
+                {"last_name": {"$regex": re.escape(parts[-1]), "$options": "i"}},
+            ]})
+        clauses.append({"$or": conds})
+
+    return clauses[0] if len(clauses) == 1 else {"$and": clauses}
+
+
+def _build_row_multi(u: dict, maps: dict, requested_ids: set, prior_map: dict, backfill: list) -> dict:
+    uid = str(u["_id"])
+    coords = u.get("_coords")
+
+    staff_tags = [
+        {"id": str(t.get("id", "")), "name": t.get("name", "")} if isinstance(t, dict)
+        else {"id": "", "name": str(t)}
+        for t in (u.get("tags") or [])
+    ]
+
+    last_contacted = None
+    if u.get("_lc"):
+        dt, ch = u["_lc"]
+        last_contacted = _format_time_ago(dt)
+        if last_contacted and ch:
+            last_contacted = f"{last_contacted} · {ch}"
+
+    # county
+    county_id = county_name = None
+    if u.get("county_id"):
+        county_id = str(u["county_id"])
+        county_name = maps["county"].get(county_id)
+    elif u.get("country_id"):
+        cid = str(u["country_id"])
+        if cid in maps["county"]:
+            county_id, county_name = cid, maps["county"][cid]
+            backfill.append(UpdateOne({"_id": u["_id"]}, {"$set": {"county_id": ObjectId(cid)}}))
+
+    # user type — designation decides the name
+    user_type_id = user_type_name = None
+    if u.get("designation"):
+        user_type_name = u["designation"]
+        resolved = maps["designation_to_type_id"].get(u["designation"])
+        if resolved:
+            user_type_id = resolved
+            if not u.get("user_type_id") or str(u["user_type_id"]) != resolved:
+                backfill.append(UpdateOne({"_id": u["_id"]}, {"$set": {"user_type_id": ObjectId(resolved)}}))
+        elif u.get("user_type_id"):
+            user_type_id = str(u["user_type_id"])
+    elif u.get("user_type_id"):
+        user_type_id = str(u["user_type_id"])
+        user_type_name = maps["type_by_id"].get(user_type_id)
+
+    visa_used, visa_total, consumed = u.get("visa_hours_used"), u.get("visa_hours_total"), u.get("consumed_hours")
+    visa_hours_remaining = consumed if consumed is not None else (
+        f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None)
+
+    prior = prior_map.get(uid, 0)
+    plural = "s" if prior != 1 else ""
+    if prior > 0 and last_contacted:
+        work_history = f"{prior} Shift{plural} · {last_contacted}"
+    elif prior > 0:
+        work_history = f"{prior} Shift{plural}"
+    else:
+        work_history = last_contacted  # None when never contacted
+
+    sub_oids = u.get("user_sub_type_oids") or []
+    return {
+        "id":                    uid,
+        "xn_user_id":            u.get("xn_user_id"),
+        "name":                  " ".join(filter(None, [u.get("first_name", ""),
+                                                        u.get("last_name", "")])).strip() or "—",
+        "email":                 u.get("email"),
+        "phone":                 u.get("phone"),
+        "designation":           u.get("designation"),
+        "rating":                u.get("rating"),
+        "channel":               "Phone",
+        "staff_tags":            staff_tags,
+        "last_contacted":        last_contacted,
+        "visa_hours_remaining":  visa_hours_remaining,
+        "work_permit_exemption": u.get("work_permit_exemption"),
+        "consumed_hours":        consumed,
+        "qqi_status_number":     u.get("qqi_status_number"),
+        "gender_id":             str(u["gender_id"]) if u.get("gender_id") else None,
+        "user_sub_type_ids":     u.get("user_sub_type_ids") or [],
+        "user_sub_type_oids":    [str(o) for o in sub_oids],
+        "user_sub_types":        ([{"id": str(o), "name": maps["sub"].get(str(o), "")}
+                                   for o in sub_oids if ObjectId.is_valid(str(o))]
+                                  or [{"id": None, "name": n}
+                                      for n in (u.get("user_sub_type_ids") or []) if n]),
+        "visa_type_id":          u.get("visa_type_id"),
+        "visa_type_name":        maps["visa"].get(str(u.get("visa_type_id", "")))
+                                 if u.get("visa_type_id") else None,
+        "prior_shifts":          prior,
+        "work_history":          work_history,
+        "status":                u.get("status"),
+        "county_id":             county_id,
+        "county":                county_name,
+        "user_type_id":          user_type_id,
+        "user_type":             user_type_name,
+        "user_latitude":         coords[0] if coords else None,
+        "user_longitude":        coords[1] if coords else None,
+        "distance_km":           u.get("_distance_km"),
+        "excluded":              u.get("_excluded", 0),
+        "exclusion_tags":        u.get("_excl_tags") or [],
+        "requested":             1 if uid in requested_ids else 0,
+        "in_pool":               u.get("_in_pool", 0),
+    }
 
 
 @router.post(
@@ -1753,10 +2246,10 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     user_type values (exact, case-insensitive), narrowed to the union of the
     upstream available-staff-lists.
 
-    Exclusion is evaluated against the FIRST shift_id (the primary) and is
-    computed only for the users on the requested page. When
-    excluded / in_pool / radius is active the candidate set is walked in
-    chunks and the walk stops as soon as the page is full.
+    Exclusion is evaluated against the FIRST shift_id (the primary). It is
+    computed lazily: cheap filters (radius, pool) run first, and exclusion is
+    computed only for the survivors — or only for the requested page when
+    `excluded` is not a filter.
     """
     db = _get_db()
 
@@ -1776,174 +2269,69 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     order_by = payload.order_by or "name"
     reverse  = (payload.sort or "asc").lower() == "desc"
 
-    # ── Shifts ───────────────────────────────────────────────────────────────
+    # ── Shifts: ONE query (was two) ──────────────────────────────────────────
     shift_docs = await db["shifts"].find(
         {"_id": {"$in": shift_oids}},
-        {"user_type": 1, "requested_staff_list": 1, "shift_id": 1}
+        {"user_type": 1, "requested_staff_list": 1, "shift_id": 1, "date": 1,
+         "start_time": 1, "end_time": 1, "client_id": 1, "is_premium": 1},
     ).to_list(length=100)
-
     if not shift_docs:
         raise HTTPException(status_code=404, detail="No shifts found for the given shift_ids")
 
     shift_user_types = list({s["user_type"] for s in shift_docs if s.get("user_type")})
 
     # Primary shift — exclusion + distance are measured against this one
-    target_shift = await db["shifts"].find_one(
-        {"_id": primary_oid},
-        {"date": 1, "start_time": 1, "end_time": 1, "shift_timing": 1,
-         "shift_type": 1, "slots": 1, "client_id": 1, "is_premium": 1}
-    ) or {}
+    target_shift = next((s for s in shift_docs if s["_id"] == primary_oid), {})
 
-    # ── Upstream available-staff-list, union across all shifts ───────────────
+    # ── Upstream available-staff-list (parallel + cached) ────────────────────
+    xn_ids = [s["shift_id"] for s in shift_docs if s.get("shift_id")]
     upstream_xn_ids:       set  = set()
     upstream_distance_map: dict = {}
-    try:
-        import httpx as _httpx_m
-        _upstream_url     = f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list"
-        _upstream_headers = {
-            "Api-Key":      settings.SHIFT_INTERNAL_API_KEY,
-            "Content-Type": "application/json",
-            "Accept":       "application/json",
-        }
-        _xn_ids = [s.get("shift_id") for s in shift_docs if s.get("shift_id")]
+    for batch in await asyncio.gather(*[_fetch_available_staff(x) for x in xn_ids]):
+        for s in batch:
+            uid = str(s.get("id", ""))
+            if uid:
+                upstream_xn_ids.add(uid)
+                if s.get("staff_shift_distance") is not None:
+                    upstream_distance_map[uid] = s["staff_shift_distance"]
 
-        async with _httpx_m.AsyncClient(timeout=30.0) as _uc:
+    user_filter = await _build_user_filter(db, payload, shift_user_types, upstream_xn_ids)
 
-            async def _one(_xn_id):
-                try:
-                    _resp = await _uc.post(
-                        _upstream_url,
-                        json={"shift_id": _xn_id},
-                        headers=_upstream_headers,
-                    )
-                    if _resp.status_code == 200:
-                        return _resp.json().get("data") or []
-                except Exception as _ie:
-                    logger.warning(f"[list-multi] upstream {_xn_id}: {_ie}")
-                return []
+    # ── Independent lookups, concurrently ────────────────────────────────────
+    db_total, client_coords, group_oids, (designation_list, designation_total) = await asyncio.gather(
+        db["users"].count_documents(user_filter),
+        _client_coords_for(db, target_shift),
+        _resolve_group_oids(db, payload, shift_oids),
+        _designation_breakdown(db, shift_user_types, upstream_xn_ids),
+    )
+    client_location = ({"latitude": client_coords[0], "longitude": client_coords[1]}
+                       if client_coords else None)
 
-            for _batch in await asyncio.gather(*[_one(x) for x in _xn_ids]):
-                for _s in _batch:
-                    _uid = str(_s.get("id", ""))
-                    if _uid:
-                        upstream_xn_ids.add(_uid)
-                        if _s.get("staff_shift_distance") is not None:
-                            upstream_distance_map[_uid] = _s.get("staff_shift_distance")
-    except Exception as _e:
-        logger.warning(f"[list-multi] upstream available-staff-list failed: {_e}")
+    # ── Per-user helpers ─────────────────────────────────────────────────────
+    _shift_key   = str(primary_oid)
+    _now         = datetime.now(timezone.utc)
+    cache_writes: list = []
 
-    # ── Build the Mongo filter as $and clauses ───────────────────────────────
-    clauses: list = [{"status": "Enabled"}]
+    def _prep(u: dict) -> None:
+        """Cheap, DB-free: coords + distance."""
+        coords = _user_location_coords(u)
+        dist = None
+        if client_coords and coords:
+            dist = _haversine_km(client_coords[0], client_coords[1], coords[0], coords[1])
+        xn = str(u.get("xn_user_id", ""))
+        if xn and upstream_distance_map.get(xn) is not None:
+            dist = upstream_distance_map[xn]
+        u["_coords"], u["_distance_km"] = coords, dist
 
-    # shifts.user_type == users.designation (exact, case-insensitive)
-    if not payload.user_type_multiple and shift_user_types:
-        clauses.append({"$or": [
-            {"designation": {"$regex": f"^{re.escape(str(t).strip())}$", "$options": "i"}}
-            for t in shift_user_types
-        ]})
-
-    if upstream_xn_ids:
-        clauses.append({"xn_user_id": {"$in": list(upstream_xn_ids)}})
-
-    # Gender
-    if payload.gender_multiple:
-        _gids = [str(g).strip() for g in payload.gender_multiple if g]
-        if _gids:
-            clauses.append({"gender_id": {"$in": _gids}})
-    elif payload.gender_id:
-        clauses.append({"gender_id": payload.gender_id.strip()})
-
-    # Visa type
-    if payload.visa_type_id:
-        clauses.append({"visa_type_id": payload.visa_type_id.strip()})
-
-    # QQI status
-    if payload.qqi_status_number is not None:
-        clauses.append({"qqi_status_number": payload.qqi_status_number})
-
-    # User sub type
-    if payload.user_sub_type_multiple:
-        sub_oids_m = [ObjectId(str(i)) for i in payload.user_sub_type_multiple
-                      if ObjectId.is_valid(str(i))]
-        if sub_oids_m:
-            clauses.append({"user_sub_type_oids": {"$in": sub_oids_m}})
-
-    # County — stored as string or ObjectId
-    if payload.county_multiple:
-        county_values = []
-        for c in payload.county_multiple:
-            c_str = str(c)
-            county_values.append(c_str)
-            if ObjectId.is_valid(c_str):
-                county_values.append(ObjectId(c_str))
-        if county_values:
-            clauses.append({"county_id": {"$in": county_values}})
-
-    # Explicit user types
-    if payload.user_type_multiple:
-        valid_type_oids = [ObjectId(str(t)) for t in payload.user_type_multiple
-                           if ObjectId.is_valid(str(t))]
-        if valid_type_oids:
-            type_names = []
-            async for ut in db["user_types"].find({"_id": {"$in": valid_type_oids}}, {"name": 1}):
-                if ut.get("name"):
-                    type_names.append(ut["name"])
-            clauses.append({"$or": [
-                {"user_type_id": {"$in": valid_type_oids}},
-                {"designation":  {"$in": type_names}},
-            ]})
-
-    # Search
-    if payload.search and payload.search.strip():
-        _s    = payload.search.strip()
-        _rx   = re.escape(_s)
-        parts = _s.split()
-        conds = [
-            {"first_name": {"$regex": _rx, "$options": "i"}},
-            {"last_name":  {"$regex": _rx, "$options": "i"}},
-            {"email":      {"$regex": _rx, "$options": "i"}},
-            {"phone":      {"$regex": _rx, "$options": "i"}},
-        ]
-        if len(parts) >= 2:
-            conds.append({"$and": [
-                {"first_name": {"$regex": re.escape(parts[0]),  "$options": "i"}},
-                {"last_name":  {"$regex": re.escape(parts[-1]), "$options": "i"}},
-            ]})
-        clauses.append({"$or": conds})
-
-    user_filter = clauses[0] if len(clauses) == 1 else {"$and": clauses}
-
-    db_total = await db["users"].count_documents(user_filter)
-
-    # ── Client coords — from the primary shift ───────────────────────────────
-    client_data   = await _get_shift_client_coords(db, primary_oid)
-    client_coords = (client_data["latitude"], client_data["longitude"]) if client_data else None
-    client_location = {
-        "latitude":  client_coords[0],
-        "longitude": client_coords[1],
-    } if client_coords else None
-
-    # ── Group ids — explicit, else derived from the shift_ids ────────────────
-    group_oids: list = []
-    if payload.group_id and ObjectId.is_valid(str(payload.group_id)):
-        group_oids.append(ObjectId(str(payload.group_id)))
-    else:
-        async for g in db["shifts_group"].find({"shift_ids": {"$in": shift_oids}}, {"_id": 1}):
-            group_oids.append(g["_id"])
-
-    # ── Exclusion: per-(user, primary shift) cache, bounded concurrency ──────
-    _sem          = asyncio.Semaphore(_EXCLUSION_CONCURRENCY)
-    _cache_writes: list = []
-    _shift_key    = str(primary_oid)
-    _now          = datetime.now(timezone.utc)
+    def _radius_ok(u: dict) -> bool:
+        d = u.get("_distance_km")
+        return d is None or d <= payload.radius
 
     def _cached_tags(u: dict):
         entry = (u.get("exclusion_cache_by_shift") or {}).get(_shift_key)
-        if not isinstance(entry, dict):
+        if not isinstance(entry, dict) or entry.get("at") is None:
             return None
-        at = entry.get("at")
-        if at is None:
-            return None
+        at = entry["at"]
         if getattr(at, "tzinfo", None) is None:
             at = at.replace(tzinfo=timezone.utc)
         if (_now - at).total_seconds() > _EXCLUSION_CACHE_TTL_SECONDS:
@@ -1951,102 +2339,43 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         tags = entry.get("tags")
         return tags if isinstance(tags, list) else None
 
-    async def _exclusion_for(u: dict) -> list:
-        cached = _cached_tags(u)
-        if cached is not None:
-            return cached
-        if not (u.get("email") and target_shift):
-            return []
-        async with _sem:
-            tags = await _get_user_exclusion_tags(
-                db,
-                u.get("email"),
-                target_shift,
-                u.get("banned_clients") or [],
-                u.get("tags") or [],
-                u["_id"],
-            )
-        _cache_writes.append(UpdateOne(
-            {"_id": u["_id"]},
-            {"$set": {f"exclusion_cache_by_shift.{_shift_key}": {"tags": tags, "at": _now}}},
-        ))
-        return tags
-
-    async def _annotate(chunk: list) -> None:
-        """Exclusion, pool membership, distance and last-contacted for one chunk."""
-        if not chunk:
+    async def _attach_exclusion(us: list) -> None:
+        fresh = []
+        for u in us:
+            if "_excl_tags" in u:
+                continue
+            c = _cached_tags(u)
+            if c is not None:
+                u["_excl_tags"], u["_excluded"] = c, 1 if c else 0
+            else:
+                fresh.append(u)
+        if not fresh:
             return
-        oids = [u["_id"] for u in chunk]
+        res = await _batch_exclusion(db, fresh, target_shift)
+        for u in fresh:
+            tags = res.get(str(u["_id"]), [])
+            u["_excl_tags"], u["_excluded"] = tags, 1 if tags else 0
+            if u.get("email") and target_shift:
+                cache_writes.append(UpdateOne(
+                    {"_id": u["_id"]},
+                    {"$set": {f"exclusion_cache_by_shift.{_shift_key}": {"tags": tags, "at": _now}}},
+                ))
 
-        # pool — shifts_pool for any of the shifts, plus shifts_group_pool
-        pool_ids = {
-            str(p["user_id"])
-            async for p in db["shifts_pool"].find(
-                {"shift_id": {"$in": shift_oids}, "user_id": {"$in": oids}},
-                {"user_id": 1}
-            )
-        }
-        if group_oids:
-            async for gp in db["shifts_group_pool"].find(
-                {"group_id": {"$in": group_oids}, "user_id": {"$in": oids}},
-                {"user_id": 1}
-            ):
-                pool_ids.add(str(gp["user_id"]))
+    async def _attach_pool(us: list) -> None:
+        todo = [u for u in us if "_in_pool" not in u]
+        if not todo:
+            return
+        ids = await _pool_ids(db, [u["_id"] for u in todo], shift_oids, group_oids)
+        for u in todo:
+            u["_in_pool"] = 1 if str(u["_id"]) in ids else 0
 
-        # last contacted — scoped to these shifts, then group users if newer
-        lc_map: dict = {}
-        async for su in db["shifts_users"].find(
-            {"user_id": {"$in": oids},
-             "shift_id": {"$in": shift_oids},
-             "call_processed_at": {"$ne": None}},
-            {"user_id": 1, "call_processed_at": 1, "channel": 1}
-        ).sort("call_processed_at", -1):
-            uid = str(su.get("user_id", ""))
-            if uid not in lc_map:
-                lc_map[uid] = (su.get("call_processed_at"), su.get("channel") or "")
-
-        _gu_filter = {"user_id": {"$in": oids}, "call_processed_at": {"$ne": None}}
-        if group_oids:
-            _gu_filter["group_id"] = {"$in": group_oids}
-        async for gu in db["shifts_group_users"].find(
-            _gu_filter, {"user_id": 1, "call_processed_at": 1, "channel": 1}
-        ).sort("call_processed_at", -1):
-            uid = str(gu.get("user_id", ""))
-            dt  = gu.get("call_processed_at")
-            cur = lc_map.get(uid)
-            if cur is None or (dt and cur[0] and dt > cur[0]):
-                lc_map[uid] = (dt, gu.get("channel") or "")
-
-        all_tags = await asyncio.gather(*[_exclusion_for(u) for u in chunk])
-
-        for u, tags in zip(chunk, all_tags):
-            uid_str = str(u["_id"])
-            u["_excl_tags"] = tags
-            u["_excluded"]  = 1 if tags else 0
-            u["_in_pool"]   = 1 if uid_str in pool_ids else 0
-            u["_lc"]        = lc_map.get(uid_str)
-
-            ucoords = _user_location_coords(u)
-            dist = None
-            if client_coords and ucoords:
-                dist = _haversine_km(client_coords[0], client_coords[1],
-                                     ucoords[0], ucoords[1])
-            xn = str(u.get("xn_user_id", ""))
-            if xn and upstream_distance_map.get(xn) is not None:
-                dist = upstream_distance_map[xn]
-            u["_coords"]      = ucoords
-            u["_distance_km"] = dist
-
-    def _keep(u: dict) -> bool:
-        if payload.excluded is not None and u.get("_excluded", 0) != payload.excluded:
-            return False
-        if payload.in_pool is not None and u.get("_in_pool", 0) != payload.in_pool:
-            return False
-        if payload.radius is not None and client_coords:
-            d = u.get("_distance_km")
-            if d is not None and d > payload.radius:
-                return False
-        return True
+    async def _attach_lc(us: list) -> None:
+        todo = [u for u in us if "_lc" not in u]
+        if not todo:
+            return
+        lc = await _last_contacted(db, [u["_id"] for u in todo], shift_oids, group_oids)
+        for u in todo:
+            u["_lc"] = lc.get(str(u["_id"]))
 
     # ── Selection ────────────────────────────────────────────────────────────
     _has_local_filter = (payload.excluded is not None
@@ -2058,46 +2387,59 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     scan_truncated = False
 
     if not _has_local_filter and not _local_sort:
-        # DB pagination is exact — annotate exactly this page.
+        # Fast path: exact DB pagination
         users = await db["users"].find(user_filter, _LIST_PROJECTION) \
             .sort(db_sort).skip(skip).limit(limit).to_list(length=limit)
-        await _annotate(users)
+        for u in users:
+            _prep(u)
         filtered_total = db_total
         scanned        = len(users)
     else:
-        need       = skip + limit
-        chunk_size = max(min(limit, 200) * 5, 100)
-        scan_cap   = min(_MAX_SCAN, 3000 if _local_sort else max(need * 20, 500))
+        need     = skip + limit
+        scan_cap = min(_MAX_SCAN, 3000 if _local_sort else max(need * 20, 500))
 
-        matched: list = []
-        scanned = offset = 0
-
-        while scanned < scan_cap:
-            chunk = await db["users"].find(user_filter, _LIST_PROJECTION) \
-                .sort(db_sort).skip(offset).limit(chunk_size) \
-                .to_list(length=chunk_size)
-            if not chunk:
-                break
-            offset  += len(chunk)
-            scanned += len(chunk)
-
-            await _annotate(chunk)
-            matched.extend([u for u in chunk if _keep(u)])
-
-            if not _local_sort and len(matched) >= need:
-                break
-
+        # ONE bounded query instead of a skip(offset) chunk walk
+        cands = await db["users"].find(user_filter, _LIST_PROJECTION) \
+            .sort(db_sort).limit(scan_cap).to_list(length=scan_cap)
+        scanned        = len(cands)
         scan_truncated = scanned >= scan_cap and scanned < db_total
+        for u in cands:
+            _prep(u)
+
+        # cheapest filters first
+        if payload.radius is not None and client_coords:
+            cands = [u for u in cands if _radius_ok(u)]
+
+        if payload.in_pool is not None:
+            await _attach_pool(cands)
+            cands = [u for u in cands if u["_in_pool"] == payload.in_pool]
+
+        # most expensive filter last, only on survivors
+        if payload.excluded is not None:
+            if _local_sort:
+                await _attach_exclusion(cands)
+                matched = [u for u in cands if u["_excluded"] == payload.excluded]
+            else:
+                matched, step = [], 200
+                for i in range(0, len(cands), step):
+                    part = cands[i:i + step]
+                    await _attach_exclusion(part)
+                    matched.extend(u for u in part if u["_excluded"] == payload.excluded)
+                    if len(matched) >= need:
+                        break
+        else:
+            matched = cands
 
         if order_by == "distance_km":
             matched.sort(
-                key=lambda u: u.get("_distance_km") if u.get("_distance_km") is not None
+                key=lambda u: u["_distance_km"] if u.get("_distance_km") is not None
                 else float("inf"),
                 reverse=reverse,
             )
         elif order_by == "rating":
             matched.sort(key=lambda u: u.get("rating") or 0, reverse=reverse)
         elif order_by == "last_contacted":
+            await _attach_lc(matched)
             _epoch = datetime.min.replace(tzinfo=timezone.utc)
 
             def _lc_key(u):
@@ -2105,263 +2447,61 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
                 if not lc or not lc[0]:
                     return _epoch
                 dt = lc[0]
-                if getattr(dt, "tzinfo", None) is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt
+                return dt if getattr(dt, "tzinfo", None) else dt.replace(tzinfo=timezone.utc)
 
             matched.sort(key=_lc_key, reverse=reverse)
 
         filtered_total = len(matched)
         users          = matched[skip: skip + limit]
 
+    # ── Page-only enrichment, all concurrent ─────────────────────────────────
+    user_oids_page = [u["_id"] for u in users]
+
+    async def _prior_shifts() -> dict:
+        if not user_oids_page:
+            return {}
+        return {str(r["_id"]): r["count"] async for r in db["shifts_users"].aggregate([
+            {"$match": {"user_id": {"$in": user_oids_page}, "availability": 1}},
+            {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
+        ])}
+
+    maps, prior_map, _, _, _ = await asyncio.gather(
+        _name_maps(db, users),
+        _prior_shifts(),
+        _attach_exclusion(users),
+        _attach_pool(users),
+        _attach_lc(users),
+    )
+
     logger.info(
         f"[list-multi] shifts={len(shift_oids)} types={shift_user_types} "
         f"db_total={db_total} scanned={scanned} matched={filtered_total} page={len(users)}"
     )
 
-    # ══════════════════════════════════════════════════════════════════════════
-    #  Everything below touches the current page only.
-    # ══════════════════════════════════════════════════════════════════════════
-    user_oids_page = [u["_id"] for u in users]
-
-    # ── Requested staff, union across all shifts ─────────────────────────────
-    requested_user_ids: set = {
+    # Requested staff, union across all shifts
+    requested_ids: set = {
         str(rs.get("staff_id", ""))
         for s in shift_docs
         for rs in (s.get("requested_staff_list") or [])
         if rs.get("staff_id")
     }
 
-    # ── Sub type names ───────────────────────────────────────────────────────
-    all_sub_oids = [
-        ObjectId(str(oid))
-        for u in users
-        for oid in (u.get("user_sub_type_oids") or [])
-        if oid and ObjectId.is_valid(str(oid))
-    ]
-    sub_type_name_map: dict = {}
-    if all_sub_oids:
-        async for st in db["user_sub_types"].find({"_id": {"$in": all_sub_oids}}, {"name": 1}):
-            sub_type_name_map[str(st["_id"])] = st.get("name", "")
-
-    # ── Visa type names ──────────────────────────────────────────────────────
-    visa_type_name_map: dict = {}
-    _vt_oids = [ObjectId(str(u["visa_type_id"])) for u in users
-                if u.get("visa_type_id") and ObjectId.is_valid(str(u["visa_type_id"]))]
-    if _vt_oids:
-        async for vt in db["visa_types"].find({"_id": {"$in": _vt_oids}}, {"name": 1}):
-            visa_type_name_map[str(vt["_id"])] = vt.get("name", "")
-
-    # ── County / user_type name maps ─────────────────────────────────────────
-    county_name_to_id:        dict = {}
-    county_oid_to_name:       dict = {}
-    designation_to_type_id:   dict = {}
-    designation_to_type_name: dict = {}
-    type_id_to_name:          dict = {}
-
-    users_needing_county = [u for u in users if not u.get("county_id") and u.get("country_id")]
-    users_needing_type   = [u for u in users if not u.get("user_type_id") and u.get("designation")]
-
-    if users_needing_county:
-        raw_cids   = list({str(u["country_id"]) for u in users_needing_county})
-        valid_oids = [ObjectId(c) for c in raw_cids if ObjectId.is_valid(c)]
-        if valid_oids:
-            async for co in db["county"].find({"_id": {"$in": valid_oids}}, {"_id": 1, "name": 1}):
-                county_name_to_id[str(co["_id"])]  = str(co["_id"])
-                county_oid_to_name[str(co["_id"])] = co.get("name", "")
-
-    existing_county_oids = list({
-        ObjectId(str(u["county_id"])) for u in users
-        if u.get("county_id") and ObjectId.is_valid(str(u["county_id"]))
-    })
-    if existing_county_oids:
-        async for co in db["county"].find({"_id": {"$in": existing_county_oids}}, {"_id": 1, "name": 1}):
-            county_oid_to_name[str(co["_id"])] = co.get("name", "")
-
-    if users_needing_type:
-        designations = list({u["designation"] for u in users_needing_type if u.get("designation")})
-        async for ut in db["user_types"].find({"name": {"$in": designations}}, {"_id": 1, "name": 1}):
-            designation_to_type_id[ut["name"]]   = str(ut["_id"])
-            designation_to_type_name[ut["name"]] = ut["name"]
-
-    existing_type_oids = list({
-        ObjectId(str(u["user_type_id"])) for u in users
-        if u.get("user_type_id") and ObjectId.is_valid(str(u["user_type_id"]))
-    })
-    if existing_type_oids:
-        async for ut in db["user_types"].find({"_id": {"$in": existing_type_oids}}, {"_id": 1, "name": 1}):
-            type_id_to_name[str(ut["_id"])] = ut.get("name", "")
-
-    # ── Prior shifts — page users only ───────────────────────────────────────
-    prior_shifts_map: dict = {}
-    if user_oids_page:
-        async for ps in db["shifts_users"].aggregate([
-            {"$match": {"user_id": {"$in": user_oids_page}, "availability": 1}},
-            {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
-        ]):
-            prior_shifts_map[str(ps["_id"])] = ps["count"]
-
-    # ── Build response rows ──────────────────────────────────────────────────
-    results = []
-    _backfill: list = []
-
-    for u in users:
-        uid_str = str(u["_id"])
-        ucoords = u.get("_coords")
-
-        staff_tags = [
-            {"id": str(t.get("id", "")), "name": t.get("name", "")} if isinstance(t, dict)
-            else {"id": "", "name": str(t)}
-            for t in (u.get("tags") or [])
-        ]
-
-        last_contacted = None
-        lc_entry = u.get("_lc")
-        if lc_entry:
-            lc_dt, lc_channel = lc_entry
-            last_contacted = _format_time_ago(lc_dt)
-            if last_contacted and lc_channel:
-                last_contacted = f"{last_contacted} · {lc_channel}"
-
-        # county
-        county_id = county_name = None
-        if u.get("county_id"):
-            county_id   = str(u["county_id"])
-            county_name = county_oid_to_name.get(county_id)
-        elif u.get("country_id"):
-            cid_str = str(u["country_id"])
-            if cid_str in county_name_to_id:
-                county_id   = county_name_to_id[cid_str]
-                county_name = county_oid_to_name.get(county_id)
-                _backfill.append(UpdateOne(
-                    {"_id": u["_id"]}, {"$set": {"county_id": ObjectId(county_id)}}
-                ))
-
-        # user type — designation is the source of truth for the display name;
-        # user_type_id is only used to attach an id, never to override the name.
-        # (A user's stored user_type_id can disagree with their designation, so
-        #  we never let it decide the name.)
-        user_type_id = user_type_name = None
-        if u.get("designation"):
-            user_type_name = u["designation"]
-            if u["designation"] in designation_to_type_id:
-                # Correct id resolved from the designation → backfill it.
-                user_type_id = designation_to_type_id[u["designation"]]
-                if not u.get("user_type_id") or str(u["user_type_id"]) != user_type_id:
-                    _backfill.append(UpdateOne(
-                        {"_id": u["_id"]}, {"$set": {"user_type_id": ObjectId(user_type_id)}}
-                    ))
-            elif u.get("user_type_id"):
-                # No matching user_types doc — keep whatever id is stored.
-                user_type_id = str(u["user_type_id"])
-        elif u.get("user_type_id"):
-            user_type_id   = str(u["user_type_id"])
-            user_type_name = type_id_to_name.get(user_type_id)
-
-        # visa hours
-        visa_used  = u.get("visa_hours_used")
-        visa_total = u.get("visa_hours_total")
-        consumed   = u.get("consumed_hours")
-        visa_hours_remaining = consumed if consumed is not None else (
-            f"{visa_used}/{visa_total}" if visa_used is not None and visa_total else None
-        )
-
-        # work history
-        prior_shifts = prior_shifts_map.get(uid_str, 0)
-        _plural      = "s" if prior_shifts != 1 else ""
-        if prior_shifts > 0 and last_contacted:
-            work_history = f"{prior_shifts} Shift{_plural} · {last_contacted}"
-        elif prior_shifts > 0:
-            work_history = f"{prior_shifts} Shift{_plural}"
-        elif last_contacted:
-            work_history = last_contacted
-        else:
-            work_history = None
-
-        sub_oids = u.get("user_sub_type_oids") or []
-        results.append({
-            "id":                    uid_str,
-            "xn_user_id":            u.get("xn_user_id"),
-            "name":                  " ".join(filter(None, [u.get("first_name", ""),
-                                                            u.get("last_name", "")])).strip() or "—",
-            "email":                 u.get("email"),
-            "phone":                 u.get("phone"),
-            "designation":           u.get("designation"),
-            "rating":                u.get("rating"),
-            "channel":               "Phone",
-            "staff_tags":            staff_tags,
-            "last_contacted":        last_contacted,
-            "visa_hours_remaining":  visa_hours_remaining,
-            "work_permit_exemption": u.get("work_permit_exemption"),
-            "consumed_hours":        u.get("consumed_hours"),
-            "qqi_status_number":     u.get("qqi_status_number"),
-            "gender_id":             str(u["gender_id"]) if u.get("gender_id") else None,
-            "user_sub_type_ids":     u.get("user_sub_type_ids") or [],
-            "user_sub_type_oids":    [str(oid) for oid in sub_oids],
-            "user_sub_types":        ([{"id": str(oid), "name": sub_type_name_map.get(str(oid), "")}
-                                       for oid in sub_oids if ObjectId.is_valid(str(oid))]
-                                      or [{"id": None, "name": n}
-                                          for n in (u.get("user_sub_type_ids") or []) if n]),
-            "visa_type_id":          u.get("visa_type_id"),
-            "visa_type_name":        visa_type_name_map.get(str(u.get("visa_type_id", "")))
-                                     if u.get("visa_type_id") else None,
-            "prior_shifts":          prior_shifts,
-            "work_history":          work_history,
-            "status":                u.get("status"),
-            "county_id":             county_id,
-            "county":                county_name,
-            "user_type_id":          user_type_id,
-            "user_type":             user_type_name,
-            "user_latitude":         ucoords[0] if ucoords else None,
-            "user_longitude":        ucoords[1] if ucoords else None,
-            "distance_km":           u.get("_distance_km"),
-            "excluded":              u.get("_excluded", 0),
-            "exclusion_tags":        u.get("_excl_tags") or [],
-            "requested":             1 if uid_str in requested_user_ids else 0,
-            "in_pool":               u.get("_in_pool", 0),
-        })
-
+    backfill: list = []
+    results = [_build_row_multi(u, maps, requested_ids, prior_map, backfill) for u in users]
     if order_by == "name":
         results.sort(key=lambda r: r["name"].lower(), reverse=reverse)
 
-    # ── by_designation — shift user_types + upstream only, ignores filters ───
-    desig_clauses: list = [{"status": "Enabled"}]
-    if shift_user_types:
-        desig_clauses.append({"designation": {"$in": shift_user_types}})
-    if upstream_xn_ids:
-        desig_clauses.append({"xn_user_id": {"$in": list(upstream_xn_ids)}})
-    desig_filter = desig_clauses[0] if len(desig_clauses) == 1 else {"$and": desig_clauses}
+    # ── Flush writes in the background (don't block the response) ────────────
+    async def _flush():
+        for label, ops in (("exclusion cache", cache_writes),
+                           ("county/user_type backfill", backfill)):
+            if ops:
+                try:
+                    await db["users"].bulk_write(ops, ordered=False)
+                except Exception as e:
+                    logger.warning(f"[list-multi] {label} write failed: {e}")
 
-    designation_list  = []
-    designation_total = 0
-    async for row in db["users"].aggregate([
-        {"$match": desig_filter},
-        {"$group": {
-            "_id":          {"$ifNull": ["$designation", "Unknown"]},
-            "user_type_id": {"$first": "$user_type_id"},
-            "count":        {"$sum": 1},
-        }},
-        {"$sort": {"count": -1}},
-    ]):
-        designation_list.append({
-            "designation":  row["_id"],
-            "user_type_id": str(row["user_type_id"]) if row.get("user_type_id") else None,
-            "count":        row["count"],
-        })
-        designation_total += row["count"]
-
-    # ── Flush writes ─────────────────────────────────────────────────────────
-    if _cache_writes:
-        try:
-            await db["users"].bulk_write(_cache_writes, ordered=False)
-        except Exception as e:
-            logger.warning(f"[list-multi] exclusion cache write failed: {e}")
-
-    if _backfill:
-        try:
-            await db["users"].bulk_write(_backfill, ordered=False)
-        except Exception as e:
-            logger.warning(f"[list-multi] county/user_type backfill failed: {e}")
+    asyncio.create_task(_flush())
 
     return {
         "success":             True,
@@ -2370,7 +2510,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         "filtered_total":      filtered_total,
         "scanned":             scanned,
         "scan_truncated":      scan_truncated,
-        "exclusions_computed": len(_cache_writes),
+        "exclusions_computed": len(cache_writes),
         "page":                payload.page,
         "per_page":            payload.per_page,
         "shift_ids":           [str(o) for o in shift_oids],
@@ -2384,6 +2524,18 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         "by_designation":      designation_list,
         "data":                results,
     }
+
+
+# ── Recommended indexes (run once) ───────────────────────────────────────────
+# db.users.create_index([("status", 1), ("xn_user_id", 1), ("first_name", 1)])
+# db.users.create_index([("status", 1), ("designation", 1), ("first_name", 1)])
+# db.shifts.create_index([("staff_email", 1), ("upstream_status", 1), ("date", 1)])
+# db.documents_new.create_index([("user_id", 1), ("level", 1), ("status", 1)])
+# db.shifts_pool.create_index([("shift_id", 1), ("user_id", 1)])
+# db.shifts_group_pool.create_index([("group_id", 1), ("user_id", 1)])
+# db.shifts_users.create_index([("user_id", 1), ("shift_id", 1), ("call_processed_at", -1)])
+# db.shifts_users.create_index([("user_id", 1), ("availability", 1)])
+# db.shifts_group_users.create_index([("user_id", 1), ("group_id", 1), ("call_processed_at", -1)])
 
 
 # ── POST /shift-users/confirm ─────────────────────────────────────────────────
