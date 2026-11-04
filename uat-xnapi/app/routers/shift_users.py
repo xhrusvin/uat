@@ -18,7 +18,17 @@ from app.core.config import settings
 from app.core.security import verify_api_key
 
 logger = logging.getLogger(__name__)
-limiter = Limiter(key_func=get_remote_address)
+
+
+def _client_key(request: Request) -> str:
+    """Rate-limit key: real client IP behind a proxy/load balancer."""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=_client_key)
 router = APIRouter(prefix="/shift-users", tags=["Shift Users"])
 
 
@@ -46,10 +56,58 @@ _EXCLUSION_CONCURRENCY = 10
 # Keeps the CSV exports (per_page=5000) from becoming a full collection scan.
 _MAX_SCAN = 5000
 
+# Mongo-side time limit (ms) for the heavy list queries
+_MONGO_MAX_TIME_MS = 20000
+
+# Match shift user_type against users.designation_lc (indexed, lowercase)
+# instead of a case-insensitive regex on users.designation.
+# Turn ON only after:
+#   db.users.updateMany({designation: {$type: "string"}},
+#     [{$set: {designation_lc: {$toLower: {$trim: {input: "$designation"}}}}}])
+#   db.users.createIndex({status: 1, designation_lc: 1, first_name: 1})
+# and after your user sync job also writes designation_lc.
+_USE_DESIGNATION_LC = False
+
+
+def _designation_clause(user_types: list) -> dict:
+    """shifts.user_type == users.designation (exact, case-insensitive)."""
+    if _USE_DESIGNATION_LC:
+        return {"designation_lc": {"$in": [str(t).strip().lower() for t in user_types]}}
+    regs = [{"designation": {"$regex": f"^{re.escape(str(t).strip())}$", "$options": "i"}}
+            for t in user_types]
+    return regs[0] if len(regs) == 1 else {"$or": regs}
+
 
 def _get_db():
     from app.db.database import _client
     return _client[settings.MONGODB_DB]
+
+
+_bg_tasks: set = set()   # keeps background tasks from being garbage-collected
+
+
+def _json_safe(o):
+    """Recursively make a value JSON-encodable (ObjectId, datetime, NaN/inf)."""
+    if isinstance(o, ObjectId):
+        return str(o)
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: _json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple, set)):
+        return [_json_safe(v) for v in o]
+    if hasattr(o, "isoformat"):
+        return o.isoformat()
+    return o
+
+
+def _num(v) -> float:
+    """Safe numeric sort key (handles None, strings, junk)."""
+    try:
+        f = float(v)
+        return f if math.isfinite(f) else 0.0
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _serialize(doc: dict) -> dict:
@@ -433,25 +491,35 @@ async def _get_shift_client_coords(db, shift_oid: ObjectId):
         lng = loc.get("longitude") or loc.get("lng") or loc.get("lon")
     if lat is None or lng is None:
         return None
+    try:
+        lat_f, lng_f = float(lat), float(lng)
+    except (TypeError, ValueError):
+        return None
     return {
-        "latitude":  float(lat),
-        "longitude": float(lng),
+        "latitude":  lat_f,
+        "longitude": lng_f,
         "name":      client.get("name") or shift.get("client_name"),
         "address":   client.get("address"),
     }
 
 
 def _user_location_coords(u: dict):
+    def _pair(lat, lng):
+        if lat is None or lng is None:
+            return None
+        try:
+            la, lo = float(lat), float(lng)
+        except (TypeError, ValueError):
+            return None
+        return (la, lo) if math.isfinite(la) and math.isfinite(lo) else None
+
     loc = u.get("location")
     if isinstance(loc, dict):
-        lat = loc.get("latitude") or loc.get("lat")
-        lng = loc.get("longitude") or loc.get("lng") or loc.get("lon")
-        if lat is not None and lng is not None:
-            return (float(lat), float(lng))
-    lat, lng = u.get("latitude"), u.get("longitude")
-    if lat is not None and lng is not None:
-        return (float(lat), float(lng))
-    return None
+        p = _pair(loc.get("latitude") or loc.get("lat"),
+                  loc.get("longitude") or loc.get("lng") or loc.get("lon"))
+        if p:
+            return p
+    return _pair(u.get("latitude"), u.get("longitude"))
 
 
 def _format_time_ago(dt) -> str:
@@ -791,12 +859,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     if not payload.user_type_multiple:
         shift_user_type = target_shift.get("user_type")
         if shift_user_type:
-            clauses.append({
-                "designation": {
-                    "$regex":   f"^{re.escape(str(shift_user_type).strip())}$",
-                    "$options": "i",
-                }
-            })
+            clauses.append(_designation_clause([shift_user_type]))
 
     if upstream_xn_ids:
         clauses.append({"xn_user_id": {"$in": upstream_xn_ids}})
@@ -869,7 +932,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     user_filter = clauses[0] if len(clauses) == 1 else {"$and": clauses}
 
-    db_total = await db["users"].count_documents(user_filter)
+    db_total = await db["users"].count_documents(user_filter, maxTimeMS=_MONGO_MAX_TIME_MS)
 
     # ── Client coords (needed during selection for the radius filter) ────────
     client_data   = await _get_shift_client_coords(db, shift_oid)
@@ -895,15 +958,19 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
     _shift_key    = str(shift_oid)
     _now          = datetime.now(timezone.utc)
 
+    # Fetch only THIS shift's cache entry, not the whole growing dict
+    _PROJ = {k: v for k, v in _LIST_PROJECTION.items() if k != "exclusion_cache_by_shift"}
+    _PROJ[f"exclusion_cache_by_shift.{_shift_key}"] = 1
+
     def _cached_tags(u: dict):
         """Return cached tags for THIS shift if present and fresh, else None."""
         entry = (u.get("exclusion_cache_by_shift") or {}).get(_shift_key)
         if not isinstance(entry, dict):
             return None
         at = entry.get("at")
-        if at is None:
+        if not isinstance(at, datetime):
             return None
-        if getattr(at, "tzinfo", None) is None:
+        if at.tzinfo is None:
             at = at.replace(tzinfo=timezone.utc)
         if (_now - at).total_seconds() > _EXCLUSION_CACHE_TTL_SECONDS:
             return None
@@ -1014,8 +1081,9 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
 
     if not _has_local_filter and not _local_sort:
         # Fast path: DB pagination is exact, annotate exactly this page.
-        users = await db["users"].find(user_filter, _LIST_PROJECTION) \
-            .sort(db_sort).skip(skip).limit(limit).to_list(length=limit)
+        users = await db["users"].find(user_filter, _PROJ) \
+            .sort(db_sort).skip(skip).limit(limit).max_time_ms(_MONGO_MAX_TIME_MS) \
+            .to_list(length=limit)
         await _annotate(users)
         filtered_total = db_total
         scanned        = len(users)
@@ -1030,8 +1098,8 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
         scanned = offset = 0
 
         while scanned < scan_cap:
-            chunk = await db["users"].find(user_filter, _LIST_PROJECTION) \
-                .sort(db_sort).skip(offset).limit(chunk_size) \
+            chunk = await db["users"].find(user_filter, _PROJ) \
+                .sort(db_sort).skip(offset).limit(chunk_size).max_time_ms(_MONGO_MAX_TIME_MS) \
                 .to_list(length=chunk_size)
             if not chunk:
                 break
@@ -1054,7 +1122,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
                 reverse=reverse,
             )
         elif order_by == "rating":
-            matched.sort(key=lambda u: u.get("rating") or 0, reverse=reverse)
+            matched.sort(key=lambda u: _num(u.get("rating")), reverse=reverse)
         elif order_by == "last_contacted":
             _epoch = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -1314,7 +1382,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             work_history = "0 Shifts"
 
         sub_oids = u.get("user_sub_type_oids") or []
-        results.append({
+        results.append(_json_safe({
             "id":                    uid_str,
             "xn_user_id":            u.get("xn_user_id"),
             "name":                  " ".join(filter(None, [u.get("first_name", ""),
@@ -1359,7 +1427,7 @@ async def list_shift_users_paginated(request: Request, payload: ListShiftUsersRe
             "requested":             1 if uid_str in requested_user_ids else 0,
             "in_pool":               u.get("_in_pool", 0),
             "checked":               1 if uid_str in checked_user_set else 0,
-        })
+        }))
 
     # Name sort within the page (DB already ordered by first_name; this makes
     # the full display name authoritative). Other orderings were applied above.
@@ -1686,6 +1754,21 @@ async def assign_staff_to_shift(request: Request, payload: AssignStaffRequest):
 #    6. Upstream available-staff-list is cached 60s on a pooled httpx client.
 #    7. Shifts fetched once (was twice); county lookups merged.
 #    8. Cache / backfill writes happen in a background task.
+#
+#  Stability fixes
+#    * Only the primary shift's exclusion-cache entry is projected (the whole
+#      exclusion_cache_by_shift dict grows without bound).
+#    * Mongo queries carry maxTimeMS.
+#    * Rows are passed through _json_safe (ObjectId / datetime / NaN).
+#    * Coordinate parsing and rating sort tolerate bad data.
+#    * Background flush task is referenced so it can't be garbage-collected.
+#
+#  Speed
+#    * Upstream, client coords and group lookups run concurrently.
+#    * Slow path scans with a lean projection; full rows loaded for the page only.
+#    * Per-stage timings logged (timings_ms=...).
+#    * Optional: _USE_DESIGNATION_LC (indexed designation match) and
+#      _UPSTREAM_STALE (stale-while-revalidate upstream cache), both OFF.
 # ══════════════════════════════════════════════════════════════════════════════
 
 class ListMultiShiftUsersRequest(BaseModel):
@@ -1711,8 +1794,13 @@ class ListMultiShiftUsersRequest(BaseModel):
 
 # ── Shared HTTP client + upstream cache ──────────────────────────────────────
 
-_UPSTREAM_TTL = 60  # seconds
+_UPSTREAM_FRESH = 60   # seconds: served from cache without any refresh
+# Seconds a cached list may still be served while it refreshes in the
+# background. 0 = disabled (always wait for upstream once FRESH expires).
+# Set to e.g. 300 to trade up to 5 minutes of staleness for speed.
+_UPSTREAM_STALE = 0
 _upstream_cache: dict = {}  # xn_shift_id -> (monotonic_ts, rows)
+_upstream_refreshing: set = set()
 _http: Optional[httpx.AsyncClient] = None
 
 
@@ -1720,16 +1808,13 @@ def _http_client() -> httpx.AsyncClient:
     global _http
     if _http is None:
         _http = httpx.AsyncClient(
-            timeout=30.0,
+            timeout=httpx.Timeout(10.0, connect=3.0),
             limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
         )
     return _http
 
 
-async def _fetch_available_staff(xn_shift_id: str) -> list:
-    hit = _upstream_cache.get(xn_shift_id)
-    if hit and time.monotonic() - hit[0] < _UPSTREAM_TTL:
-        return hit[1]
+async def _refresh_available_staff(xn_shift_id: str) -> list:
     try:
         resp = await _http_client().post(
             f"{settings.SHIFT_URL.rstrip('/')}/ai/shifts/available-staff-list",
@@ -1748,7 +1833,24 @@ async def _fetch_available_staff(xn_shift_id: str) -> list:
             return rows
     except Exception as e:
         logger.warning(f"[list-multi] upstream {xn_shift_id}: {e}")
+    finally:
+        _upstream_refreshing.discard(xn_shift_id)
     return []
+
+
+async def _fetch_available_staff(xn_shift_id: str) -> list:
+    hit = _upstream_cache.get(xn_shift_id)
+    age = (time.monotonic() - hit[0]) if hit else None
+    if hit and age < _UPSTREAM_FRESH:
+        return hit[1]
+    if hit and _UPSTREAM_STALE and age < _UPSTREAM_STALE:
+        if xn_shift_id not in _upstream_refreshing:
+            _upstream_refreshing.add(xn_shift_id)
+            t = asyncio.create_task(_refresh_available_staff(xn_shift_id))
+            _bg_tasks.add(t)
+            t.add_done_callback(_bg_tasks.discard)
+        return hit[1]
+    return await _refresh_available_staff(xn_shift_id)
 
 
 # ── Batched exclusion ────────────────────────────────────────────────────────
@@ -1986,7 +2088,10 @@ async def _client_coords_for(db, shift: dict):
         lng = loc.get("longitude") or loc.get("lng") or loc.get("lon")
     if lat is None or lng is None:
         return None
-    return (float(lat), float(lng))
+    try:
+        return (float(lat), float(lng))
+    except (TypeError, ValueError):
+        return None
 
 
 async def _resolve_group_oids(db, payload, shift_oids: list) -> list:
@@ -2011,7 +2116,7 @@ async def _designation_breakdown(db, shift_user_types: list, upstream_ids: set):
                     "user_type_id": {"$first": "$user_type_id"},
                     "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
-    ]):
+    ], maxTimeMS=_MONGO_MAX_TIME_MS):
         rows.append({"designation": row["_id"],
                      "user_type_id": str(row["user_type_id"]) if row.get("user_type_id") else None,
                      "count": row["count"]})
@@ -2024,10 +2129,7 @@ async def _build_user_filter(db, payload, shift_user_types: list, upstream_ids: 
 
     # shifts.user_type == users.designation (exact, case-insensitive)
     if not payload.user_type_multiple and shift_user_types:
-        clauses.append({"$or": [
-            {"designation": {"$regex": f"^{re.escape(str(t).strip())}$", "$options": "i"}}
-            for t in shift_user_types
-        ]})
+        clauses.append(_designation_clause(shift_user_types))
     if upstream_ids:
         clauses.append({"xn_user_id": {"$in": list(upstream_ids)}})
 
@@ -2253,6 +2355,13 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     """
     db = _get_db()
 
+    # Stage timings (ms since request start) — logged at the end
+    _t0 = time.perf_counter()
+    _marks: dict = {}
+
+    def _mark(name: str) -> None:
+        _marks[name] = round((time.perf_counter() - _t0) * 1000)
+
     if not payload.shift_ids:
         raise HTTPException(status_code=400, detail="shift_ids must not be empty")
 
@@ -2282,12 +2391,20 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     # Primary shift — exclusion + distance are measured against this one
     target_shift = next((s for s in shift_docs if s["_id"] == primary_oid), {})
+    _mark("shifts")
 
-    # ── Upstream available-staff-list (parallel + cached) ────────────────────
+    # ── Upstream + client coords + groups, all at once ───────────────────────
+    # (coords and groups don't depend on upstream, so don't wait for it)
     xn_ids = [s["shift_id"] for s in shift_docs if s.get("shift_id")]
     upstream_xn_ids:       set  = set()
     upstream_distance_map: dict = {}
-    for batch in await asyncio.gather(*[_fetch_available_staff(x) for x in xn_ids]):
+    upstream_batches, client_coords, group_oids = await asyncio.gather(
+        asyncio.gather(*[_fetch_available_staff(x) for x in xn_ids]),
+        _client_coords_for(db, target_shift),
+        _resolve_group_oids(db, payload, shift_oids),
+    )
+    _mark("upstream")
+    for batch in upstream_batches:
         for s in batch:
             uid = str(s.get("id", ""))
             if uid:
@@ -2298,12 +2415,11 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     user_filter = await _build_user_filter(db, payload, shift_user_types, upstream_xn_ids)
 
     # ── Independent lookups, concurrently ────────────────────────────────────
-    db_total, client_coords, group_oids, (designation_list, designation_total) = await asyncio.gather(
-        db["users"].count_documents(user_filter),
-        _client_coords_for(db, target_shift),
-        _resolve_group_oids(db, payload, shift_oids),
+    db_total, (designation_list, designation_total) = await asyncio.gather(
+        db["users"].count_documents(user_filter, maxTimeMS=_MONGO_MAX_TIME_MS),
         _designation_breakdown(db, shift_user_types, upstream_xn_ids),
     )
+    _mark("counts")
     client_location = ({"latitude": client_coords[0], "longitude": client_coords[1]}
                        if client_coords else None)
 
@@ -2311,6 +2427,19 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     _shift_key   = str(primary_oid)
     _now         = datetime.now(timezone.utc)
     cache_writes: list = []
+
+    # Fetch only THIS shift's cache entry, not the whole growing dict
+    _PROJ = {k: v for k, v in _LIST_PROJECTION.items() if k != "exclusion_cache_by_shift"}
+    _PROJ[f"exclusion_cache_by_shift.{_shift_key}"] = 1
+
+    # Slow path scans many users: fetch only what filtering / sorting /
+    # exclusion needs, then load the full projection for the page only.
+    _SCAN_PROJ = {
+        "first_name": 1, "email": 1, "xn_user_id": 1, "rating": 1,
+        "location": 1, "latitude": 1, "longitude": 1,
+        "tags": 1, "banned_clients": 1,
+        f"exclusion_cache_by_shift.{_shift_key}": 1,
+    }
 
     def _prep(u: dict) -> None:
         """Cheap, DB-free: coords + distance."""
@@ -2332,7 +2461,9 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         if not isinstance(entry, dict) or entry.get("at") is None:
             return None
         at = entry["at"]
-        if getattr(at, "tzinfo", None) is None:
+        if not isinstance(at, datetime):
+            return None
+        if at.tzinfo is None:
             at = at.replace(tzinfo=timezone.utc)
         if (_now - at).total_seconds() > _EXCLUSION_CACHE_TTL_SECONDS:
             return None
@@ -2388,8 +2519,9 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
     if not _has_local_filter and not _local_sort:
         # Fast path: exact DB pagination
-        users = await db["users"].find(user_filter, _LIST_PROJECTION) \
-            .sort(db_sort).skip(skip).limit(limit).to_list(length=limit)
+        users = await db["users"].find(user_filter, _PROJ) \
+            .sort(db_sort).skip(skip).limit(limit).max_time_ms(_MONGO_MAX_TIME_MS) \
+            .to_list(length=limit)
         for u in users:
             _prep(u)
         filtered_total = db_total
@@ -2399,8 +2531,9 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         scan_cap = min(_MAX_SCAN, 3000 if _local_sort else max(need * 20, 500))
 
         # ONE bounded query instead of a skip(offset) chunk walk
-        cands = await db["users"].find(user_filter, _LIST_PROJECTION) \
-            .sort(db_sort).limit(scan_cap).to_list(length=scan_cap)
+        cands = await db["users"].find(user_filter, _SCAN_PROJ) \
+            .sort(db_sort).limit(scan_cap).max_time_ms(_MONGO_MAX_TIME_MS) \
+            .to_list(length=scan_cap)
         scanned        = len(cands)
         scan_truncated = scanned >= scan_cap and scanned < db_total
         for u in cands:
@@ -2437,7 +2570,7 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
                 reverse=reverse,
             )
         elif order_by == "rating":
-            matched.sort(key=lambda u: u.get("rating") or 0, reverse=reverse)
+            matched.sort(key=lambda u: _num(u.get("rating")), reverse=reverse)
         elif order_by == "last_contacted":
             await _attach_lc(matched)
             _epoch = datetime.min.replace(tzinfo=timezone.utc)
@@ -2453,6 +2586,16 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
 
         filtered_total = len(matched)
         users          = matched[skip: skip + limit]
+
+        # Hydrate the page with the full projection (computed _keys are kept)
+        if users:
+            full = {d["_id"]: d async for d in db["users"].find(
+                {"_id": {"$in": [u["_id"] for u in users]}}, _PROJ)}
+            for u in users:
+                for k, v in (full.get(u["_id"]) or {}).items():
+                    u.setdefault(k, v)
+
+    _mark("select")
 
     # ── Page-only enrichment, all concurrent ─────────────────────────────────
     user_oids_page = [u["_id"] for u in users]
@@ -2472,10 +2615,12 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
         _attach_pool(users),
         _attach_lc(users),
     )
+    _mark("enrich")
 
     logger.info(
         f"[list-multi] shifts={len(shift_oids)} types={shift_user_types} "
-        f"db_total={db_total} scanned={scanned} matched={filtered_total} page={len(users)}"
+        f"db_total={db_total} scanned={scanned} matched={filtered_total} page={len(users)} "
+        f"timings_ms={_marks}"
     )
 
     # Requested staff, union across all shifts
@@ -2487,7 +2632,8 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
     }
 
     backfill: list = []
-    results = [_build_row_multi(u, maps, requested_ids, prior_map, backfill) for u in users]
+    results = [_json_safe(_build_row_multi(u, maps, requested_ids, prior_map, backfill))
+               for u in users]
     if order_by == "name":
         results.sort(key=lambda r: r["name"].lower(), reverse=reverse)
 
@@ -2501,7 +2647,9 @@ async def list_shift_users_multi(request: Request, payload: ListMultiShiftUsersR
                 except Exception as e:
                     logger.warning(f"[list-multi] {label} write failed: {e}")
 
-    asyncio.create_task(_flush())
+    _t = asyncio.create_task(_flush())
+    _bg_tasks.add(_t)
+    _t.add_done_callback(_bg_tasks.discard)
 
     return {
         "success":             True,
