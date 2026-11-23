@@ -601,8 +601,10 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
     now = datetime.now(timezone.utc)
     group_oid = ObjectId(payload.group_id)
     channel   = payload.channel or "Phone"
-    if channel not in ("Phone", "WhatsApp", "Email", "SMS"):
+    #if channel not in ("Phone", "WhatsApp", "Email", "SMS"):
+    if channel not in ("Email", "SMS"):
         channel = "Phone"
+        raise HTTPException(status_code=422, detail="channel must be Email or SMS. WhatsApp and Phone temporarily disabled")
 
     # Reset all existing pool users selected=0 first (like shift-users/bulk)
     await db["shifts_group_pool"].update_many(
