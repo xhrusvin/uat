@@ -377,9 +377,9 @@ def _score_shift(shift, user_doc, history, dist_km):
         reasons.append(f"Worked in {shift_county} {times}x (+{pts})")
 
     # Deprioritise if already worked this exact shift
-    if shift_id_str in history["worked_shift_oids"]:
-        score -= 50
-        reasons.append("Already worked this shift (-50)")
+    # if shift_id_str in history["worked_shift_oids"]:
+    #     score -= 50
+    #     reasons.append("Already worked this shift (-50)")
 
     return score, reasons
 
