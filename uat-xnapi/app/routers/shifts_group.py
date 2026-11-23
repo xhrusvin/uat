@@ -559,7 +559,6 @@ class GroupPoolAddRequest(BaseModel):
     group_id:  str
     user_ids:  list
     channel:   Optional[str] = "Phone"  # Phone, WhatsApp, Email, SMS
-    is_update: Optional[int] = 0        # 1 → pool becomes EXACTLY user_ids
 
 
 class GroupPoolRemoveRequest(BaseModel):
@@ -575,17 +574,8 @@ class GroupPoolRemoveRequest(BaseModel):
 @limiter.limit("30/minute")
 async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest):
     """
-    Body: {
-      "group_id": "...",
-      "user_ids": ["<user_id>", ...],
-      "channel": "Phone",
-      "is_update": 0
-    }
-
-    is_update = 0 → adds users to shifts_group_pool for this group (skips duplicates).
-    is_update = 1 → the pool is REPLACED by user_ids: every other user is removed
-                    from shifts_group_pool (and shifts_group_users) for this group,
-                    and the given user_ids are kept / added.
+    Body: { "group_id": "...", "user_ids": ["<user_id>", ...] }
+    Adds users to shifts_group_pool for this group (skips duplicates).
     """
     db = _get_db()
     if not ObjectId.is_valid(payload.group_id):
@@ -594,8 +584,6 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
     group = await db["shifts_group"].find_one({"_id": ObjectId(payload.group_id)}, {"_id": 1})
     if not group:
         raise HTTPException(status_code=404, detail="Shift group not found")
-
-    is_update = 1 if payload.is_update == 1 else 0
 
     # Validate user ObjectIds
     user_oids = []
@@ -607,8 +595,7 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
             invalid.append(uid)
     if invalid:
         raise HTTPException(status_code=422, detail=f"Invalid user_ids: {invalid}")
-    # With is_update=1 an empty list is allowed and clears the pool
-    if not user_oids and not is_update:
+    if not user_oids:
         raise HTTPException(status_code=400, detail="No valid user_ids provided")
 
     now = datetime.now(timezone.utc)
@@ -617,27 +604,6 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
     if channel not in ("Phone", "WhatsApp", "Email", "SMS"):
         channel = "Phone"
 
-    # ── is_update == 1 → keep ONLY the given user_ids in this group's pool ────
-    removed = 0
-    if is_update:
-        stale = await db["shifts_group_pool"].find(
-            {"group_id": group_oid, "user_id": {"$nin": user_oids}},
-            {"user_id": 1}
-        ).to_list(5000)
-        stale_oids = [s["user_id"] for s in stale if s.get("user_id")]
-        if stale_oids:
-            del_res = await db["shifts_group_pool"].delete_many(
-                {"group_id": group_oid, "user_id": {"$in": stale_oids}}
-            )
-            removed = del_res.deleted_count
-            # keep shifts_group_users consistent with the pool
-            await db["shifts_group_users"].delete_many(
-                {"group_id": group_oid, "user_id": {"$in": stale_oids}}
-            )
-            logger.info(
-                f"[pool/add] is_update=1 group={payload.group_id} removed={removed}"
-            )
-
     # Reset all existing pool users selected=0 first (like shift-users/bulk)
     await db["shifts_group_pool"].update_many(
         {"group_id": group_oid},
@@ -645,15 +611,13 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
     )
 
     # Get already added user_ids
-    existing = set()
-    if user_oids:
-        existing = {
-            str(p["user_id"])
-            async for p in db["shifts_group_pool"].find(
-                {"group_id": group_oid, "user_id": {"$in": user_oids}},
-                {"user_id": 1}
-            )
-        }
+    existing = {
+        str(p["user_id"])
+        async for p in db["shifts_group_pool"].find(
+            {"group_id": group_oid, "user_id": {"$in": user_oids}},
+            {"user_id": 1}
+        )
+    }
 
     inserted = 0
     skipped  = 0
@@ -676,21 +640,12 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
         })
         inserted += 1
 
-    pool_total = await db["shifts_group_pool"].count_documents({"group_id": group_oid})
-
     return {
         "success":  True,
-        "message": (
-            f"Pool updated: {inserted} added, {skipped} kept, {removed} removed"
-            if is_update
-            else f"{inserted} staff added to group pool"
-        ),
-        "group_id":   payload.group_id,
-        "is_update":  is_update,
-        "inserted":   inserted,
-        "skipped":    skipped,
-        "removed":    removed,
-        "pool_total": pool_total,
+        "message":  f"{inserted} staff added to group pool",
+        "group_id": payload.group_id,
+        "inserted": inserted,
+        "skipped":  skipped,
     }
 
 
