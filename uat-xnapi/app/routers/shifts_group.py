@@ -559,6 +559,7 @@ class GroupPoolAddRequest(BaseModel):
     group_id:  str
     user_ids:  list
     channel:   Optional[str] = "Phone"  # Phone, WhatsApp, Email, SMS
+    is_update: Optional[int] = 0        # 1 → replace pool: remove every user NOT in user_ids
 
 
 class GroupPoolRemoveRequest(BaseModel):
@@ -574,8 +575,18 @@ class GroupPoolRemoveRequest(BaseModel):
 @limiter.limit("30/minute")
 async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest):
     """
-    Body: { "group_id": "...", "user_ids": ["<user_id>", ...] }
-    Adds users to shifts_group_pool for this group (skips duplicates).
+    Body: {
+        "group_id":  "...",
+        "user_ids":  ["<user_id>", ...],
+        "channel":   "Email" | "SMS",
+        "is_update": 0 | 1
+    }
+
+    is_update = 0 (default) → users are added to shifts_group_pool, existing
+                              pool members are left in place.
+    is_update = 1           → the pool becomes exactly user_ids: every other
+                              user is removed from shifts_group_pool for this
+                              group, and the given user_ids are kept/added.
     """
     db = _get_db()
     if not ObjectId.is_valid(payload.group_id):
@@ -605,6 +616,19 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
     if channel not in ("Email", "SMS"):
         channel = "Phone"
         raise HTTPException(status_code=422, detail="channel must be Email or SMS. WhatsApp and Phone temporarily disabled")
+
+    # ── is_update = 1 → drop every pool member that is not in user_ids ────────
+    removed = 0
+    if payload.is_update == 1:
+        del_res = await db["shifts_group_pool"].delete_many({
+            "group_id": group_oid,
+            "user_id":  {"$nin": user_oids},
+        })
+        removed = del_res.deleted_count
+        logger.info(
+            f"[pool/add] is_update=1 group={payload.group_id} "
+            f"removed={removed} keeping={len(user_oids)}"
+        )
 
     # Reset all existing pool users selected=0 first (like shift-users/bulk)
     await db["shifts_group_pool"].update_many(
@@ -642,12 +666,25 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
         })
         inserted += 1
 
+    pool_total = await db["shifts_group_pool"].count_documents({"group_id": group_oid})
+
+    if payload.is_update == 1:
+        message = (
+            f"Pool updated: {len(user_oids)} staff kept "
+            f"({inserted} added, {skipped} retained), {removed} removed"
+        )
+    else:
+        message = f"{inserted} staff added to group pool"
+
     return {
-        "success":  True,
-        "message":  f"{inserted} staff added to group pool",
-        "group_id": payload.group_id,
-        "inserted": inserted,
-        "skipped":  skipped,
+        "success":    True,
+        "message":    message,
+        "group_id":   payload.group_id,
+        "is_update":  payload.is_update or 0,
+        "inserted":   inserted,
+        "skipped":    skipped,
+        "removed":    removed,
+        "pool_total": pool_total,
     }
 
 
