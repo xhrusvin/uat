@@ -558,8 +558,8 @@ async def delete_shift_group(request: Request, payload: ShiftGroupDeleteRequest)
 class GroupPoolAddRequest(BaseModel):
     group_id:  str
     user_ids:  list
-    channel:   Optional[str] = "Phone"  # Phone, WhatsApp, Email, SMS
-    is_update: Optional[int] = 0        # 1 → replace pool: remove every user NOT in user_ids
+    channel:   Optional[str] = None  # Email | SMS — not required when is_update == 1
+    is_update: Optional[int] = 0     # 1 → replace pool: remove every user NOT in user_ids
 
 
 class GroupPoolRemoveRequest(BaseModel):
@@ -578,15 +578,20 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
     Body: {
         "group_id":  "...",
         "user_ids":  ["<user_id>", ...],
-        "channel":   "Email" | "SMS",
+        "channel":   "Email" | "SMS",   # optional when is_update == 1
         "is_update": 0 | 1
     }
 
     is_update = 0 (default) → users are added to shifts_group_pool, existing
-                              pool members are left in place.
+                              pool members are left in place. channel is
+                              required and must be Email or SMS.
     is_update = 1           → the pool becomes exactly user_ids: every other
                               user is removed from shifts_group_pool for this
                               group, and the given user_ids are kept/added.
+                              channel is optional here — when omitted, the
+                              channel already stored in the pool is reused
+                              (per row for existing members, and the group's
+                              current channel for newly inserted ones).
     """
     db = _get_db()
     if not ObjectId.is_valid(payload.group_id):
@@ -609,17 +614,41 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
     if not user_oids:
         raise HTTPException(status_code=400, detail="No valid user_ids provided")
 
-    now = datetime.now(timezone.utc)
+    now       = datetime.now(timezone.utc)
     group_oid = ObjectId(payload.group_id)
-    channel   = payload.channel or "Phone"
-    #if channel not in ("Phone", "WhatsApp", "Email", "SMS"):
-    if channel not in ("Email", "SMS"):
-        channel = "Phone"
-        raise HTTPException(status_code=422, detail="channel must be Email or SMS. WhatsApp and Phone temporarily disabled")
+    is_update = 1 if payload.is_update == 1 else 0
+
+    # ── Resolve channel ───────────────────────────────────────────────────────
+    # is_update == 1 and no channel sent → reuse whatever the pool already uses.
+    channel = payload.channel or None
+    if channel:
+        #if channel not in ("Phone", "WhatsApp", "Email", "SMS"):
+        if channel not in ("Email", "SMS"):
+            raise HTTPException(
+                status_code=422,
+                detail="channel must be Email or SMS. WhatsApp and Phone temporarily disabled",
+            )
+    elif is_update == 1:
+        # Prefer the channel of a user that is staying in the pool, else any
+        # channel stored for this group.
+        _ch_doc = await db["shifts_group_pool"].find_one(
+            {"group_id": group_oid, "user_id": {"$in": user_oids}, "channel": {"$ne": None}},
+            {"channel": 1},
+        ) or await db["shifts_group_pool"].find_one(
+            {"group_id": group_oid, "channel": {"$ne": None}},
+            {"channel": 1},
+        )
+        channel = (_ch_doc or {}).get("channel") or None
+        logger.info(f"[pool/add] is_update=1 group={payload.group_id} reusing channel={channel}")
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail="channel is required and must be Email or SMS. WhatsApp and Phone temporarily disabled",
+        )
 
     # ── is_update = 1 → drop every pool member that is not in user_ids ────────
     removed = 0
-    if payload.is_update == 1:
+    if is_update == 1:
         del_res = await db["shifts_group_pool"].delete_many({
             "group_id": group_oid,
             "user_id":  {"$nin": user_oids},
@@ -649,10 +678,14 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
     skipped  = 0
     for oid in user_oids:
         if str(oid) in existing:
-            # Update channel and selected=1
+            # selected=1; only touch channel when one was sent or resolved,
+            # so an is_update with no channel leaves each row's channel as-is.
+            set_fields = {"selected": 1, "updated_at": now}
+            if channel:
+                set_fields["channel"] = channel
             await db["shifts_group_pool"].update_one(
                 {"group_id": group_oid, "user_id": oid},
-                {"$set": {"channel": channel, "selected": 1, "updated_at": now}}
+                {"$set": set_fields}
             )
             skipped += 1
             continue
@@ -668,7 +701,7 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
 
     pool_total = await db["shifts_group_pool"].count_documents({"group_id": group_oid})
 
-    if payload.is_update == 1:
+    if is_update == 1:
         message = (
             f"Pool updated: {len(user_oids)} staff kept "
             f"({inserted} added, {skipped} retained), {removed} removed"
@@ -680,7 +713,8 @@ async def add_staff_to_group_pool(request: Request, payload: GroupPoolAddRequest
         "success":    True,
         "message":    message,
         "group_id":   payload.group_id,
-        "is_update":  payload.is_update or 0,
+        "is_update":  is_update,
+        "channel":    channel,
         "inserted":   inserted,
         "skipped":    skipped,
         "removed":    removed,
