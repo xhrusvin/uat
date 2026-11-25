@@ -91,7 +91,7 @@ async def _upsert_user(xn_user_id: str, update_doc: dict, now: datetime) -> dict
             "xn_user_id":       xn_user_id,
             "is_admin":         False,
             "is_active":        True,
-            "call_sent":        1,
+            # "call_sent":                       1,
             # "garda_email_sent":                1,
             # "follow_up_sent":                  1,
             # "onboarded":                       0,

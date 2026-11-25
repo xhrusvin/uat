@@ -243,7 +243,7 @@ def _serialize_shift(shift, distance_km, client_cache, score=None, score_reasons
         total_pay_rate = round(duration * hourly_rate, 2)
 
     d = {
-        "id":                 shift.get("parent_id") or str(shift.get("_id")),
+        "id":                 str(shift.get("shift_id")) if shift.get("shift_id") is not None else None,
         "client":             shift.get("client_name"),
         "check_in_distance":  _check_in_distance(shift, client_cache),
         "date":               _fmt_date(shift.get("date")),
@@ -377,9 +377,9 @@ def _score_shift(shift, user_doc, history, dist_km):
         reasons.append(f"Worked in {shift_county} {times}x (+{pts})")
 
     # Deprioritise if already worked this exact shift
-    # if shift_id_str in history["worked_shift_oids"]:
-    #     score -= 50
-    #     reasons.append("Already worked this shift (-50)")
+    if shift_id_str in history["worked_shift_oids"]:
+        score -= 50
+        reasons.append("Already worked this shift (-50)")
 
     return score, reasons
 
