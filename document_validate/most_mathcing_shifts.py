@@ -245,6 +245,7 @@ def _serialize_shift(shift, distance_km, client_cache, score=None, score_reasons
     d = {
         "id":                 str(shift.get("shift_id")) if shift.get("shift_id") is not None else None,
         "shift_id":           str(shift.get("shift_id")),
+        "shift_code":         shift.get("shift_xn_id"),
         "client":             shift.get("client_name"),
         "check_in_distance":  _check_in_distance(shift, client_cache),
         "date":               _fmt_date(shift.get("date")),
