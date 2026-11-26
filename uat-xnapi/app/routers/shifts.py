@@ -345,6 +345,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
 
     doc = {
         "shift_id":           data.get("id", ""),
+        "parent_id":          data.get("parent_id"),
         "shift_code":         data.get("shift_code", ""),
         "shift_xn_id":        data.get("shift_code", ""),
         "name":               data.get("shift_code", ""),
@@ -530,6 +531,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
         "shift_code": data.get("shift_code"),
         "data": {
             "shift_id":    data.get("id"),
+            "parent_id":   data.get("parent_id"),
             "shift_code":  data.get("shift_code"),
             "date":        data.get("date"),
             "start_time":  start_time,
