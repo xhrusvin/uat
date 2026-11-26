@@ -327,6 +327,7 @@ async def sync_shift_detail(request: Request, payload: ShiftSyncDetailRequest):
             "xn_staff_id":      xn_staff_id,
             "staff_id":         internal_user_id,  # users._id
             "shift_id":         rs.get("shift_id"),
+            "parent_id":        rs.get("parent_id"),
             "staff":            rs.get("staff"),
             "status":           rs.get("status"),
             "status_name":      rs.get("status_name"),
