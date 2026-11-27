@@ -111,6 +111,11 @@ class RecruitmentDetailRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class UserDocumentListRequest(BaseModel):
+    staff_id:    str = Field(..., description="XN user / staff id")
+    document_id: Optional[str] = Field(None, description="Optional single document id")
+
+
 def _error(msg: str, status: int = 500, url: str = "", upstream: Any = None) -> dict:
     return {
         "success":      False,
@@ -227,4 +232,97 @@ async def recruitment_detail(request: Request, payload: RecruitmentDetailRequest
         return _error(f"Could not connect to User API: {e}", 502, url, upstream)
     except Exception as e:
         logger.error(f"recruitment/detail unexpected error: {e}", exc_info=True)
+        return _error(f"Internal error: {e}", 500, url, upstream)
+
+
+@router.post("/user-document-list", summary="Fetch a staff member's documents from the User API")
+@limiter.limit("60/minute")
+async def user_document_list(request: Request, payload: UserDocumentListRequest):
+    """
+    POST body: { "staff_id": "<xn_user_id>", "document_id": "<document_id>" }
+
+    Proxies GET {USER_API_URL}ai/recruitments/user-document-list using
+    USER_EXTERNAL_API_KEY and returns the staff member's name, email and
+    document list (type, status, signed url, expiry and last update).
+    """
+    staff_id = (payload.staff_id or "").strip()
+    if not staff_id:
+        return _error("staff_id is required", 400)
+
+    url  = f"{settings.USER_API_URL.rstrip('/')}/ai/recruitments/user-document-list"
+    body = {"staff_id": staff_id}
+    if payload.document_id and payload.document_id.strip():
+        body["document_id"] = payload.document_id.strip()
+
+    upstream: Any = None
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=body, headers=_external_api_headers())
+
+        try:
+            upstream = response.json()
+        except Exception:
+            upstream = response.text
+
+        if response.status_code != 200:
+            msg = (upstream.get("message") if isinstance(upstream, dict) else None) \
+                  or f"Upstream returned HTTP {response.status_code}"
+            return _error(
+                f"User API error ({response.status_code}): {msg}",
+                response.status_code, url, upstream,
+            )
+
+        raw  = upstream if isinstance(upstream, dict) else {}
+        data = raw.get("data") or {}
+
+        if not data:
+            return _error(
+                raw.get("message") or "No data returned from upstream API",
+                200, url, raw,
+            )
+
+        documents = data.get("documents") or []
+        if not isinstance(documents, list):
+            documents = []
+
+        results = []
+        for d in documents:
+            if not isinstance(d, dict):
+                continue
+            results.append({
+                "document_id":            str(d.get("document_id") or ""),
+                "document_type_name":     d.get("document_type_name"),
+                "document_category_type": d.get("document_category_type"),
+                "sub_type_id":            d.get("sub_type_id"),
+                "sub_type_name":          d.get("sub_type_name"),
+                "url":                    d.get("url"),
+                "status":                 d.get("status"),
+                "expiry_date":            d.get("expiry_date"),
+                "updated_at":             d.get("updated_at"),
+            })
+
+        logger.info(
+            f"user-document-list: staff_id={staff_id} "
+            f"document_id={payload.document_id} docs={len(results)}"
+        )
+
+        return {
+            "success":      True,
+            "status_code":  200,
+            "upstream_url": url,
+            "message":      raw.get("message") or "User Document List",
+            "data": {
+                "id":        str(data.get("id") or staff_id),
+                "name":      data.get("name"),
+                "email":     data.get("email"),
+                "documents": results,
+            },
+        }
+
+    except httpx.TimeoutException:
+        return _error("Request to User API timed out after 30 seconds", 504, url, upstream)
+    except httpx.RequestError as e:
+        return _error(f"Could not connect to User API: {e}", 502, url, upstream)
+    except Exception as e:
+        logger.error(f"recruitments/user-document-list unexpected error: {e}", exc_info=True)
         return _error(f"Internal error: {e}", 500, url, upstream)

@@ -34,6 +34,11 @@ const publicClient = axios.create({ baseURL: BASE_URL, timeout: 120000 })
 
 export const recruitmentsApi = {
   detail: (id) => publicClient.post('/recruitments/detail', { _id: id }),
+  userDocumentList: (staffId, documentId) =>
+    publicClient.post('/recruitments/user-document-list', {
+      staff_id:    staffId,
+      document_id: documentId || null,
+    }),
 }
 
 export const clientsApi = {
