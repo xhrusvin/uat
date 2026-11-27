@@ -9,6 +9,7 @@ import ShiftListPage from './pages/ShiftListPage'
 import ShiftSyncDetailPage from './pages/ShiftSyncDetailPage'
 import CronPage from './pages/CronPage'
 import DocumentUploadedPage from './pages/DocumentUploadedPage'
+import UploadedDocumentsPage from './pages/UploadedDocumentsPage'
 import PromptsPage from './pages/PromptsPage'
 import GendersPage from './pages/GendersPage'
 import UserSubTypesPage from './pages/UserSubTypesPage'
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="master/qqi-statuses"          element={<QQIStatusesPage />} />
           <Route path="master/visa-types"             element={<VisaTypesPage />} />
           <Route path="webhook/document-uploaded"  element={<DocumentUploadedPage />} />
+          <Route path="documents/uploaded-documents" element={<UploadedDocumentsPage />} />
           <Route path="cron/sync-shifts"             element={<CronPage />} />
           <Route path="xn-api/shift-details"     element={<ShiftSyncDetailPage />} />
           <Route path="xn-api/client-type-list"  element={<ClientTypeListPage />} />
